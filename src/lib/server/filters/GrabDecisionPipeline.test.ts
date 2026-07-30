@@ -27,7 +27,15 @@ vi.mock('$lib/server/db/index.js', () => ({
 			from: () => ({
 				where: () => Object.assign([], { limit: () => [] })
 			})
-		})
+		}),
+		query: {
+			movies: { findFirst: vi.fn().mockResolvedValue(null) },
+			tvShows: { findFirst: vi.fn().mockResolvedValue(null) },
+			delayProfiles: {
+				findFirst: vi.fn().mockResolvedValue(null),
+				findMany: vi.fn().mockResolvedValue([])
+			}
+		}
 	}
 }));
 
@@ -58,7 +66,8 @@ vi.mock('$lib/server/db/schema.js', () => ({
 		importedAt: 'importedAt'
 	},
 	movieFiles: { id: 'id', movieId: 'movieId' },
-	movies: { id: 'id', hasFile: 'hasFile' }
+	movies: { id: 'id', hasFile: 'hasFile' },
+	delayProfiles: { id: 'id', enabled: 'enabled', isDefault: 'isDefault' }
 }));
 
 const { GrabDecisionPipeline } = await import('./GrabDecisionPipeline.js');
@@ -129,13 +138,15 @@ describe('GrabDecisionPipeline', () => {
 			'blocklist',
 			'scoring',
 			'bannedFormat',
+			'requiredFormats',
 			'sizeValidation',
 			'protocol',
 			'minimumScore',
 			'duplicateHash',
 			'mediaOccupancy',
 			'blockedExtension',
-			'upgrade'
+			'upgrade',
+			'delay'
 		]);
 		expect(decision.audit.totalDurationMs).toBeGreaterThanOrEqual(0);
 		for (const stage of decision.audit.stages) {

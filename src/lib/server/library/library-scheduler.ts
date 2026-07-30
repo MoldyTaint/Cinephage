@@ -403,6 +403,8 @@ export class LibrarySchedulerService extends EventEmitter implements BackgroundS
 		const importService = getImportService();
 		for (const s of allSeries) {
 			await importService.updateSeriesStats(s.id);
+			// Yield between series to keep the event loop responsive.
+			await new Promise<void>((resolve) => setImmediate(resolve));
 		}
 
 		logger.info('[LibraryScheduler] Series stats updated');

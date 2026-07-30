@@ -19,6 +19,17 @@ export function destroyTestDb(testDb: TestDatabase) {
 	testDb.sqlite.close();
 }
 
+// Storage / media-server tables. Cleared BEFORE core tables because storage_items
+// references movie_files / episode_files. Children-first ordering.
+const STORAGE_TABLES = [
+	'storageItemServerLinks',
+	'storageInsights',
+	'storageItems',
+	'mediaServerSyncedItems',
+	'mediaServerSyncedRuns',
+	'mediaBrowserServers'
+] as const;
+
 const CORE_TABLES = [
 	'scoringProfiles',
 	'customFormats',
@@ -30,10 +41,15 @@ const CORE_TABLES = [
 	'seasons',
 	'episodes',
 	'episodeFiles',
-	'downloadQueue'
+	'downloadQueue',
+	'rootFolders',
+	'unmatchedFiles'
 ] as const;
 
 export function clearTestDb(testDb: TestDatabase) {
+	for (const table of STORAGE_TABLES) {
+		testDb.db.delete(schema[table]).run();
+	}
 	for (const table of CORE_TABLES) {
 		testDb.db.delete(schema[table]).run();
 	}

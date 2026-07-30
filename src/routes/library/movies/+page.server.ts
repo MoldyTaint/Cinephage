@@ -13,6 +13,7 @@ import type { LibraryMovie, MovieFile, QualityProfileSummary } from '$lib/types/
 import { logger } from '$lib/logging';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 
 export const load: PageServerLoad = async ({ url }) => {
 	// Parse URL params for sorting and filtering
@@ -403,6 +404,10 @@ export const actions: Actions = {
 
 			if (!selectedLibrary) {
 				await db.update(movies).set({ monitored });
+				libraryMediaEvents.emitLibraryDataChanged({
+					source: 'movie',
+					reason: 'toggle-all-monitored'
+				});
 				return { success: true };
 			}
 
@@ -440,6 +445,11 @@ export const actions: Actions = {
 			if (scopedIds.length > 0) {
 				await db.update(movies).set({ monitored }).where(inArray(movies.id, scopedIds));
 			}
+
+			libraryMediaEvents.emitLibraryDataChanged({
+				source: 'movie',
+				reason: 'toggle-all-monitored'
+			});
 
 			return { success: true };
 		} catch (error) {

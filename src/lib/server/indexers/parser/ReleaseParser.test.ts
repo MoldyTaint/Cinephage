@@ -207,6 +207,35 @@ describe('ReleaseParser', () => {
 			expect(result.episode?.episodes).toContain(2);
 		});
 
+		it('should parse episode version suffix without separator (s01e01v2)', () => {
+			const result = parseRelease('[HorribleSubs] Honzuki no Gekokujou - s01e01v2 [1080p].mkv');
+
+			expect(result.episode?.season).toBe(1);
+			expect(result.episode?.episodes).toEqual([1]);
+		});
+
+		it('should parse episode version suffixes with dot and hyphen separators', () => {
+			const dotResult = parseRelease('[HorribleSubs] Honzuki no Gekokujou - s01e01.v2 [1080p].mkv');
+			const hyphenResult = parseRelease(
+				'[HorribleSubs] Honzuki no Gekokujou - s01e01-v2 [1080p].mkv'
+			);
+
+			expect(dotResult.episode?.season).toBe(1);
+			expect(dotResult.episode?.episodes).toEqual([1]);
+			expect(hyphenResult.episode?.season).toBe(1);
+			expect(hyphenResult.episode?.episodes).toEqual([1]);
+		});
+
+		it('should parse higher episode version numbers (v3, v4, v10)', () => {
+			const v3 = parseRelease('[SubsPlease] Show Title - S01E05v3 [720p].mkv');
+			const v4 = parseRelease('[SubsPlease] Show Title - S01E05v4 [720p].mkv');
+			const v10 = parseRelease('[SubsPlease] Show Title - S01E05v10 [720p].mkv');
+
+			expect(v3.episode?.episodes).toEqual([5]);
+			expect(v4.episode?.episodes).toEqual([5]);
+			expect(v10.episode?.episodes).toEqual([5]);
+		});
+
 		it('should parse season packs', () => {
 			const result = parseRelease('The.Office.US.S01.1080p.BluRay.x264-DEMAND');
 
@@ -369,6 +398,30 @@ describe('ReleaseParser', () => {
 			expect(result.episode?.episodes?.length).toBe(22);
 		});
 
+		it('should parse S01-S07 with language/source tags as complete series', () => {
+			const result = parseRelease('The.Mentalist.S01-S07.ITA.DLMUX.x264');
+
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.isCompleteSeries).toBe(true);
+			expect(result.episode?.seasons).toEqual([1, 2, 3, 4, 5, 6, 7]);
+		});
+
+		it('should parse S01-07 (no second S prefix) with language tags as complete series', () => {
+			const result = parseRelease('The.Mentalist.S01-07.ITA.WEBRIP.x264');
+
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.isCompleteSeries).toBe(true);
+			expect(result.episode?.seasons).toEqual([1, 2, 3, 4, 5, 6, 7]);
+		});
+
+		it('should parse localized title with year range and bracketed S01-S07 as complete series', () => {
+			const result = parseRelease('Mentalista - The Mentalist 2008-2015 [S01-S07]');
+
+			expect(result.episode?.isSeasonPack).toBe(true);
+			expect(result.episode?.isCompleteSeries).toBe(true);
+			expect(result.episode?.seasons).toEqual([1, 2, 3, 4, 5, 6, 7]);
+		});
+
 		it('should parse 1x05 format', () => {
 			const result = parseRelease('House.1x05.720p.WEB-DL.AAC2.0.H264-BTN');
 
@@ -516,6 +569,60 @@ describe('ReleaseParser', () => {
 			// 1080p should NOT be detected as a group
 			const result = extractReleaseGroup('Movie.2023.1080p');
 			expect(result?.group).not.toBe('1080p');
+		});
+
+		it('should extract fansub group from leading brackets', () => {
+			const result = extractReleaseGroup('[HorribleSubs] Honzuki no Gekokujou - 01 [1080p].mkv');
+			expect(result?.group).toBe('HorribleSubs');
+		});
+
+		it('should extract hyphenated fansub group from leading brackets', () => {
+			const result = extractReleaseGroup('[Erai-raws] Fullmetal Alchemist - 01 [1080p].mkv');
+			expect(result?.group).toBe('Erai-raws');
+		});
+
+		it('should extract fansub group when episode has version suffix', () => {
+			const result = extractReleaseGroup(
+				'[SubsPlease] Honzuki no Gekokujou - s01e01v2 [1080p].mkv'
+			);
+			expect(result?.group).toBe('SubsPlease');
+		});
+
+		it('should extract fansub group from leading parentheses', () => {
+			const result = extractReleaseGroup('(Hi10) Anime Title - 01 [1080p].mkv');
+			expect(result?.group).toBe('Hi10');
+		});
+
+		it('should extract hyphenated fansub group from leading parentheses', () => {
+			const result = extractReleaseGroup('(Hi10-P) Anime Title - 01 [1080p].mkv');
+			expect(result?.group).toBe('Hi10-P');
+		});
+
+		it('should not treat Chinese site prefix as a fansub group', () => {
+			const result = extractReleaseGroup('[www.mkvhome.com] Movie.Title.2023.1080p.mkv');
+			expect(result?.group).not.toBe('wwwmkvhomecom');
+		});
+
+		it('should extract dot-separated, dash-less group via parseRelease', () => {
+			// Regression: dotted scene names with no dash before the group must resolve
+			// the same as their spaced equivalent. parseRelease normalizes separators
+			// before extraction; the activity feed relies on this stored value rather
+			// than re-parsing the raw (separator-sensitive) title at display time.
+			const dotted = parseRelease('Movie.Title.2024.1080p.WEBRip.x264.SPARKS');
+			const spaced = parseRelease('Movie Title 2024 1080p WEBRip x264 SPARKS');
+			expect(dotted.releaseGroup).toBe('SPARKS');
+			expect(spaced.releaseGroup).toBe('SPARKS');
+			expect(dotted.releaseGroup).toBe(spaced.releaseGroup);
+		});
+
+		it('should extract dotted group with a filename extension', () => {
+			const result = parseRelease('Movie.Title.2024.1080p.BluRay.x265.SPARKS.mkv');
+			expect(result.releaseGroup).toBe('SPARKS');
+		});
+
+		it('should return undefined when a title genuinely has no group', () => {
+			const result = parseRelease('Movie.Title.2024.1080p');
+			expect(result.releaseGroup).toBeUndefined();
 		});
 	});
 

@@ -1,6 +1,26 @@
+export type ScanProgressPayload = {
+	phase: string;
+	rootFolderId?: string;
+	rootFolderPath?: string;
+	filesFound: number;
+	filesProcessed: number;
+	filesAdded: number;
+	filesUpdated: number;
+	filesRemoved: number;
+	unmatchedCount: number;
+	currentFile?: string;
+};
+
 export const layoutState = $state({
 	isSidebarExpanded: true,
 	mobileSseStatus: null as 'connected' | 'connecting' | 'error' | null,
+	// Storage maintenance live state. Owned by
+	// /settings/monitoring/status/+layout.svelte; consumed by sub-pages so the
+	// state survives navigation between status sub-pages.
+	scanInProgress: false,
+	scanProgress: null as ScanProgressPayload | null,
+	mediaServerSyncing: false,
+	lastInsightsUpdate: null as string | null,
 	toggleSidebar() {
 		this.isSidebarExpanded = !this.isSidebarExpanded;
 	},
@@ -9,6 +29,16 @@ export const layoutState = $state({
 	},
 	clearMobileSseStatus() {
 		this.mobileSseStatus = null;
+	},
+	setScanState(inProgress: boolean, progress: ScanProgressPayload | null) {
+		this.scanInProgress = inProgress;
+		this.scanProgress = inProgress ? progress : null;
+	},
+	setMediaServerSyncing(syncing: boolean) {
+		this.mediaServerSyncing = syncing;
+	},
+	markInsightsUpdated(timestamp: string) {
+		this.lastInsightsUpdate = timestamp;
 	}
 });
 

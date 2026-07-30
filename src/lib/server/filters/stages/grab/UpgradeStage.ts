@@ -2,6 +2,11 @@ import type { DecisionStage, StageResult } from '../../types.js';
 import type { GrabDecisionContext, ExistingFile, UpgradeStatus } from './types.js';
 import { isUpgrade } from '$lib/server/scoring/scorer.js';
 import { buildExistingAttrs } from '$lib/server/scoring/utils.js';
+import {
+	effectiveBuckets,
+	isMultiQualityMode,
+	selectBestExistingFileInBucket
+} from '$lib/server/quality/buckets.js';
 
 export class UpgradeStage implements DecisionStage<GrabDecisionContext> {
 	name = 'upgrade';
@@ -11,7 +16,7 @@ export class UpgradeStage implements DecisionStage<GrabDecisionContext> {
 	}
 
 	async evaluate(ctx: GrabDecisionContext): Promise<StageResult> {
-		const { existingFiles, profile, options, target } = ctx;
+		const { existingFiles, profile, options, target, desiredQualities } = ctx;
 
 		if (existingFiles.length === 0) {
 			ctx.computed.upgradeStatus = 'new';
@@ -30,6 +35,29 @@ export class UpgradeStage implements DecisionStage<GrabDecisionContext> {
 				reason: 'Upgrades are disabled for this profile',
 				details: { rejectionType: 'upgrades_disabled', upgradeStatus: 'blocked' }
 			};
+		}
+
+		// Multi-quality: scope the movie comparison to the candidate's resolution
+		// bucket. An empty bucket is treated as a fresh fill (upgradeStatus 'new').
+		if (target.type === 'movie') {
+			const candidateResolution = ctx.computed.scoringResult?.resolution;
+			const effective = effectiveBuckets(
+				desiredQualities,
+				profile.minResolution,
+				profile.maxResolution
+			);
+			if (
+				candidateResolution &&
+				isMultiQualityMode(effective) &&
+				effective.includes(candidateResolution)
+			) {
+				const inBucket = selectBestExistingFileInBucket(existingFiles, candidateResolution);
+				if (!inBucket) {
+					ctx.computed.upgradeStatus = 'new';
+					return { accepted: true, details: { upgradeStatus: 'new' } };
+				}
+				return this.evaluateSingleFile(ctx, inBucket);
+			}
 		}
 
 		if (target.type === 'movie' || target.type === 'episode') {

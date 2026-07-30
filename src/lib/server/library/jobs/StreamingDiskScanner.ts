@@ -4,10 +4,19 @@ import { stat } from 'node:fs/promises';
 import { isVideoFile } from '$lib/server/library/media-info.js';
 import { DOWNLOAD } from '$lib/config/constants';
 import type { DiscoveredFile } from '$lib/server/library/disk-scan.js';
+import {
+	matchIgnore,
+	classifyFile,
+	recognizeStructure,
+	type CompiledPatterns
+} from '$lib/server/library/patterns/PatternRecognitionService.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 
+// Hardcoded fallback patterns — used only when ScannerOptions.patterns is
+// absent (backward-compatible path). When patterns are provided, the
+// PatternRecognitionService handles all filtering.
 const EXCLUDED_FOLDER_PATTERNS = [
 	/^\./,
 	/^@/,
@@ -33,6 +42,7 @@ export interface ScannerOptions {
 	batchSize: number;
 	customExcludedFolders: string[];
 	blockedExtensions: string[];
+	patterns?: CompiledPatterns;
 }
 
 const DEFAULT_OPTIONS: ScannerOptions = {
@@ -41,13 +51,13 @@ const DEFAULT_OPTIONS: ScannerOptions = {
 	blockedExtensions: []
 };
 
-function shouldExcludeFolder(name: string, customPatterns: string[]): boolean {
+function shouldExcludeFolderLegacy(name: string, customPatterns: string[]): boolean {
 	if (EXCLUDED_FOLDER_PATTERNS.some((pattern) => pattern.test(name))) return true;
 	const lower = name.toLowerCase();
 	return customPatterns.some((p) => p.toLowerCase() === lower);
 }
 
-function shouldExcludeFile(
+function shouldExcludeFileLegacy(
 	fileName: string,
 	filePath: string,
 	customPatterns: string[],
@@ -62,7 +72,7 @@ function shouldExcludeFile(
 
 	const pathParts = filePath.split('/');
 	for (const part of pathParts) {
-		if (shouldExcludeFolder(part, customPatterns)) return true;
+		if (shouldExcludeFolderLegacy(part, customPatterns)) return true;
 	}
 
 	return false;
@@ -73,6 +83,10 @@ export class StreamingDiskScanner {
 
 	constructor(options: Partial<ScannerOptions> = {}) {
 		this.options = { ...DEFAULT_OPTIONS, ...options };
+	}
+
+	get hasPatterns(): boolean {
+		return this.options.patterns !== undefined;
 	}
 
 	async *scan(rootPath: string): AsyncGenerator<DiscoveredFile[]> {
@@ -89,6 +103,33 @@ export class StreamingDiskScanner {
 		if (batch.length > 0) {
 			yield batch;
 		}
+	}
+
+	private shouldExcludeFolder(name: string): boolean {
+		const { patterns, customExcludedFolders } = this.options;
+		if (patterns) {
+			// Folder-level ignore: test with trailing slash so directory
+			// patterns match consistently.
+			const relPath = name + '/';
+			return matchIgnore(relPath, patterns);
+		}
+		return shouldExcludeFolderLegacy(name, customExcludedFolders);
+	}
+
+	private shouldExcludeFile(relPath: string, fileName: string): boolean {
+		const { patterns, customExcludedFolders, blockedExtensions } = this.options;
+		if (patterns) {
+			return matchIgnore(relPath, patterns);
+		}
+		return shouldExcludeFileLegacy(fileName, relPath, customExcludedFolders, blockedExtensions);
+	}
+
+	private classify(relPath: string): 'main' | 'bonus' {
+		const { patterns } = this.options;
+		if (patterns) {
+			return classifyFile(relPath, patterns) ?? 'main';
+		}
+		return 'main';
 	}
 
 	private async *walkDirectory(
@@ -114,23 +155,15 @@ export class StreamingDiskScanner {
 			const fullPath = join(currentPath, entry.name);
 
 			if (entry.isDirectory()) {
-				if (shouldExcludeFolder(entry.name, this.options.customExcludedFolders)) continue;
+				if (this.shouldExcludeFolder(entry.name)) continue;
 
 				yield* this.walkDirectory(rootPath, fullPath);
 			} else if (entry.isFile() || entry.isSymbolicLink()) {
 				if (!isVideoFile(entry.name)) continue;
 
 				const relativePath = relative(rootPath, fullPath);
-				if (
-					shouldExcludeFile(
-						entry.name,
-						relativePath,
-						this.options.customExcludedFolders,
-						this.options.blockedExtensions
-					)
-				) {
-					continue;
-				}
+
+				if (this.shouldExcludeFile(relativePath, entry.name)) continue;
 
 				try {
 					const stats = await stat(fullPath);
@@ -141,12 +174,19 @@ export class StreamingDiskScanner {
 						continue;
 					}
 
+					const contentCategory = this.classify(relativePath);
+					const structureMatch = this.options.patterns
+						? recognizeStructure(relativePath, this.options.patterns)
+						: null;
+
 					yield {
 						path: fullPath,
 						relativePath,
 						size: stats.size,
 						modifiedAt: stats.mtime,
-						parentFolder: dirname(relativePath) || '.'
+						parentFolder: dirname(relativePath) || '.',
+						contentCategory,
+						structureMatch
 					};
 				} catch (statError) {
 					logger.warn(

@@ -1,17 +1,7 @@
 /**
  * Indexer Registry Module
  *
- * Provides the unified indexer definition registry system.
+ * The UnifiedDefinitionRegistry was removed in the CinephageAPI subsystem
+ * overhaul (v104). Indexer definitions are exclusively YAML-backed through
+ * YamlDefinitionLoader. No registry-level exports remain.
  */
-
-export {
-	UnifiedDefinitionRegistry,
-	getUnifiedRegistry,
-	resetUnifiedRegistry,
-	createDefinition,
-	convertLegacyDefinition,
-	type RegisteredDefinition,
-	type DefinitionSource,
-	type DefinitionFilter,
-	type IndexerFactory
-} from './UnifiedDefinitionRegistry';

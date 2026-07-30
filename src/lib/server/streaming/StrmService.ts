@@ -107,9 +107,12 @@ export interface StrmCreateResult {
 /** Pre-fetched series data to avoid redundant DB queries */
 export interface SeriesData {
 	title: string;
+	originalTitle?: string | null;
 	year: number | null;
 	path: string | null;
+	tmdbId?: number | null;
 	tvdbId?: number | null;
+	imdbId?: string | null;
 	seasonFolder?: boolean | null;
 }
 
@@ -353,9 +356,11 @@ export class StrmService {
 				rootFolderPath,
 				{
 					title: seriesData.title,
+					originalTitle: seriesData.originalTitle,
 					year: seriesData.year,
-					tmdbId: Number(tmdbId),
+					tmdbId: seriesData.tmdbId ?? Number(tmdbId),
 					tvdbId: seriesData.tvdbId,
+					imdbId: seriesData.imdbId,
 					path: seriesData.path,
 					seasonFolder: seriesData.seasonFolder
 				},
@@ -412,18 +417,22 @@ export class StrmService {
 		rootFolderPath: string,
 		movie: {
 			title: string;
+			originalTitle?: string | null;
 			year: number | null;
 			tmdbId: number;
 			imdbId?: string | null;
+			collectionName?: string | null;
 			path: string | null;
 		}
 	): string {
 		const namingService = this.getNamingService();
 		const info: MediaNamingInfo = {
 			title: movie.title,
+			originalTitle: movie.originalTitle ?? undefined,
 			year: movie.year ?? undefined,
 			tmdbId: movie.tmdbId,
 			imdbId: movie.imdbId ?? undefined,
+			collectionName: movie.collectionName ?? undefined,
 			originalExtension: '.strm'
 		};
 
@@ -439,9 +448,11 @@ export class StrmService {
 		rootFolderPath: string,
 		show: {
 			title: string;
+			originalTitle?: string | null;
 			year: number | null;
 			tmdbId: number;
 			tvdbId?: number | null;
+			imdbId?: string | null;
 			path: string | null;
 			seasonFolder?: boolean | null;
 		},
@@ -452,9 +463,11 @@ export class StrmService {
 		const namingService = this.getNamingService();
 		const seriesInfo: MediaNamingInfo = {
 			title: show.title,
+			originalTitle: show.originalTitle ?? undefined,
 			year: show.year ?? undefined,
 			tmdbId: show.tmdbId,
-			tvdbId: show.tvdbId ?? undefined
+			tvdbId: show.tvdbId ?? undefined,
+			imdbId: show.imdbId ?? undefined
 		};
 		const showPath = sanitizePath(show.path || namingService.generateSeriesFolderName(seriesInfo));
 		if (!isPathSafe(rootFolderPath, showPath)) {
@@ -655,6 +668,17 @@ export class StrmService {
 						skippedMissingMetadata += 1;
 						continue;
 					}
+					// Only update strm files that already contain a Cinephage streaming URL.
+					// Use parseStrmFileUrl for strict pattern matching so user strm files
+					// with unrelated URLs (nzbdav, Jellyfin, etc.) are never overwritten.
+					try {
+						const existing = readFileSync(fullPath, 'utf8').trim();
+						if (!this.parseStrmFileUrl(existing)) {
+							continue;
+						}
+					} catch {
+						continue;
+					}
 					strmFiles.add(fullPath);
 					// Map file path to movie info for direct URL generation
 					this.strayFilePaths.set(fullPath, {
@@ -672,6 +696,17 @@ export class StrmService {
 				}
 				const fullPath = this.resolveMediaPath(row.rootPath, row.parentPath, row.relativePath);
 				if (existsSync(fullPath)) {
+					// Only update strm files that already contain a Cinephage streaming URL.
+					// Use parseStrmFileUrl for strict pattern matching so user strm files
+					// with unrelated URLs (nzbdav, Jellyfin, etc.) are never overwritten.
+					try {
+						const existing = readFileSync(fullPath, 'utf8').trim();
+						if (!this.parseStrmFileUrl(existing)) {
+							continue;
+						}
+					} catch {
+						continue;
+					}
 					strmFiles.add(fullPath);
 					// Map file path to episode info for direct URL generation
 					this.strayFilePaths.set(fullPath, {
@@ -932,9 +967,12 @@ export class StrmService {
 
 				seriesData = {
 					title: show.title,
+					originalTitle: show.originalTitle,
 					year: show.year,
 					path: show.path,
+					tmdbId: show.tmdbId,
 					tvdbId: show.tvdbId,
+					imdbId: show.imdbId,
 					seasonFolder: show.seasonFolder
 				};
 				rootFolderPath = show.rootFolder.path;
@@ -1076,9 +1114,12 @@ export class StrmService {
 
 			const seriesData: SeriesData = {
 				title: show.title,
+				originalTitle: show.originalTitle,
 				year: show.year,
 				path: show.path,
+				tmdbId: show.tmdbId,
 				tvdbId: show.tvdbId,
+				imdbId: show.imdbId,
 				seasonFolder: show.seasonFolder
 			};
 			const rootFolderPath = show.rootFolder.path;

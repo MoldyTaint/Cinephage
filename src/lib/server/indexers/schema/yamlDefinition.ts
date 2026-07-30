@@ -576,6 +576,14 @@ export const yamlDefinitionSchema = z.object({
 	// Protocol type: torrent, usenet, or streaming
 	protocol: z.enum(['torrent', 'usenet', 'streaming']).default('torrent'),
 	requestdelay: z.number().optional(),
+	/** Per-request HTTP timeout in ms. Overrides the default 30-second timeout. */
+	requesttimeout: z.number().optional(),
+
+	// Auto-managed / not user-addable. When true, the definition is hidden
+	// from the indexers-page picker and is seeded by a subsystem module
+	// (e.g. CinephageAPI library-streaming owns cinephage-stream). The
+	// resulting indexer row is marked isBuiltIn and protected from delete/edit.
+	internal: z.boolean().optional().default(false),
 
 	// URLs
 	links: z.array(z.string()),

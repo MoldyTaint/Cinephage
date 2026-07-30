@@ -1,14 +1,18 @@
 # ==========================================
-# Build Stage
+# Build-deps base (shared by builder + prod-deps to avoid duplicate apt layers)
 # ==========================================
-FROM node:24-trixie-slim AS builder
+FROM node:24-trixie-slim AS build-deps-base
 WORKDIR /app
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	python3 \
 	make \
 	g++ \
 	&& rm -rf /var/lib/apt/lists/*
+
+# ==========================================
+# Build Stage
+# ==========================================
+FROM build-deps-base AS builder
 
 COPY package*.json ./
 COPY .npmrc ./
@@ -32,14 +36,7 @@ RUN npm run build
 # ==========================================
 # Production Dependencies Stage
 # ==========================================
-FROM node:24-trixie-slim AS prod-deps
-WORKDIR /app
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-	python3 \
-	make \
-	g++ \
-	&& rm -rf /var/lib/apt/lists/*
+FROM build-deps-base AS prod-deps
 
 COPY package*.json ./
 COPY .npmrc ./
@@ -50,6 +47,7 @@ COPY .npmrc ./
 RUN npm ci --omit=dev --no-audit --no-fund \
 	&& find node_modules -type f -name '*.map' -delete \
 	&& find node_modules -type d \( -name test -o -name tests -o -name __tests__ -o -name docs -o -name doc -o -name examples -o -name example \) -prune -exec rm -rf '{}' + \
+	&& find node_modules -name 'lightningcss-linux-x64-musl' -prune -exec rm -rf '{}' + \
 	&& find node_modules -type d -empty -delete
 
 # ==========================================
@@ -63,6 +61,7 @@ ARG APP_SOURCE=https://github.com/MoldyTaint/Cinephage
 ARG VCS_REF=unknown
 ARG BUILD_CREATED=unknown
 ENV APP_VERSION=${APP_VERSION}
+ENV APP_COMMIT=${VCS_REF}
 RUN printf '%s\n' "$APP_VERSION" > /app/version.txt
 
 LABEL org.opencontainers.image.title='Cinephage' \
@@ -101,11 +100,14 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/server.js ./server.js
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/data ./bundled-data
+# Camoufox shadow-unlock addon (loaded at runtime for Cloudflare Turnstile solving)
+COPY --from=builder /app/src/lib/server/captcha/browser/addon ./camoufox-addon
 COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/cinephage-entrypoint
 COPY --chmod=755 docker-script-runner.sh /usr/local/bin/cinephage-script
 RUN ln -sf /usr/local/bin/cinephage-script /usr/local/bin/cine-run
 
 ENV NODE_ENV=production \
+    NODE_OPTIONS="--max-old-space-size=2048" \
     HOST=0.0.0.0 \
     PORT=3000 \
     FFPROBE_PATH=/usr/bin/ffprobe \

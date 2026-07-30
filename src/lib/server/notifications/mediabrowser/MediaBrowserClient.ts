@@ -271,6 +271,39 @@ export class MediaBrowserClient {
 	}
 
 	/**
+	 * Delete an item from a Jellyfin/Emby server (DB-only — files on disk are untouched).
+	 * Used before renaming a series/movie folder so Jellyfin cleanly removes the old
+	 * entry + all child rows, preventing the ghost-entry loop (jellyfin#16883).
+	 *
+	 * Plex does not support item deletion via API; returns false for Plex.
+	 */
+	async deleteItem(itemId: string): Promise<boolean> {
+		if (this.serverType === 'plex') return false;
+		try {
+			const response = await this.requestMediaBrowser(`/Items/${itemId}`, { method: 'DELETE' });
+			if (response.ok || response.status === 404) {
+				logger.debug({ serverType: this.serverType, itemId }, 'Media server item deleted');
+				return true;
+			}
+			logger.warn(
+				{ serverType: this.serverType, itemId, status: response.status },
+				'Media server item deletion failed'
+			);
+			return false;
+		} catch (error) {
+			logger.warn(
+				{
+					serverType: this.serverType,
+					itemId,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Media server item deletion error'
+			);
+			return false;
+		}
+	}
+
+	/**
 	 * Make an HTTP request to a Jellyfin/Emby server.
 	 */
 	private async requestMediaBrowser(path: string, options: RequestInit = {}): Promise<Response> {

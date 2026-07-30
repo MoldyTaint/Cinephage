@@ -23,6 +23,8 @@ export interface DownloadClientConfig {
 	implementation?: string;
 	/** API key for clients that use key-based auth (e.g., SABnzbd) */
 	apiKey?: string | null;
+	/** Decrypted API token for debrid connection tests. */
+	apiToken?: string | null;
 }
 
 /**

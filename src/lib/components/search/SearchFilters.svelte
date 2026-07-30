@@ -26,7 +26,7 @@
 	}: Props = $props();
 </script>
 
-<div class="mb-3 flex flex-wrap items-center gap-2 sm:gap-4">
+<div class="mb-1 flex flex-wrap items-center gap-2 sm:mb-3 sm:gap-4">
 	<div class="form-control w-full sm:w-auto">
 		<input
 			type="text"
@@ -60,6 +60,53 @@
 			<option value="age">Age</option>
 		</select>
 		<button class="btn btn-ghost btn-xs" onclick={onSortDirToggle}>
+			{sortDir === 'desc' ? '↓' : '↑'}
+		</button>
+	</div>
+
+	<div class="ml-auto hidden items-center gap-2 sm:flex">
+		<span class="text-xs text-base-content/60">{m.search_label_sort()}</span>
+		<div class="join">
+			<button
+				class="btn btn-xs join-item {sortBy === 'score'
+					? 'btn-primary'
+					: 'btn-ghost border border-base-content/20'}"
+				onclick={() => onSortByChange('score')}
+			>
+				{m.search_sort_score()}
+			</button>
+			<button
+				class="btn btn-xs join-item {sortBy === 'seeders'
+					? 'btn-primary'
+					: 'btn-ghost border border-base-content/20'}"
+				onclick={() => onSortByChange('seeders')}
+			>
+				{m.search_sort_seeders()}
+			</button>
+			<button
+				class="btn btn-xs join-item {sortBy === 'size'
+					? 'btn-primary'
+					: 'btn-ghost border border-base-content/20'}"
+				onclick={() => onSortByChange('size')}
+			>
+				{m.search_sort_size()}
+			</button>
+			<button
+				class="btn btn-xs join-item {sortBy === 'age'
+					? 'btn-primary'
+					: 'btn-ghost border border-base-content/20'}"
+				onclick={() => onSortByChange('age')}
+			>
+				Age
+			</button>
+		</div>
+		<button
+			class="btn btn-ghost btn-xs"
+			onclick={onSortDirToggle}
+			title={sortDir === 'desc'
+				? 'Descending - click for ascending'
+				: 'Ascending - click for descending'}
+		>
 			{sortDir === 'desc' ? '↓' : '↑'}
 		</button>
 	</div>

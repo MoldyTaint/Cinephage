@@ -23,6 +23,7 @@ import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { ValidationError } from '$lib/errors';
 import { logger } from '$lib/logging';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 
 interface BulkAddResult {
 	added: number;
@@ -201,6 +202,13 @@ export const POST: RequestHandler = async ({ request }) => {
 					error: error instanceof Error ? error.message : 'Failed to add movie'
 				});
 			}
+		}
+
+		if (results.added > 0) {
+			libraryMediaEvents.emitLibraryDataChanged({
+				source: 'movie',
+				reason: 'bulk-movies-added'
+			});
 		}
 
 		return json({

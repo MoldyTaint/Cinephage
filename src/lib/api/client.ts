@@ -22,13 +22,13 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<ApiRe
 	const res = await fetch(url, options);
 
 	if (!res.ok) {
-		let body: ApiResponse;
+		let body: ApiResponse & { message?: string };
 		try {
 			body = await res.json();
 		} catch {
 			body = { success: false, error: res.statusText };
 		}
-		throw new ApiError(body.error || res.statusText, res.status, body);
+		throw new ApiError(body.error || body.message || res.statusText, res.status, body);
 	}
 
 	return res.json() as Promise<ApiResponse<T>>;

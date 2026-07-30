@@ -8,15 +8,13 @@
 		RenamePreviewModal
 	} from '$lib/components/library';
 	import { TVSeriesSidebar, BulkActionBar } from '$lib/components/library/tv';
-	import { InteractiveSearchModal } from '$lib/components/search';
-	import type { Release } from '$lib/components/search/SearchResultRow.svelte';
+	import { MediaSearchModal } from '$lib/components/search';
 	import { SubtitleSearchModal } from '$lib/components/subtitles';
 	import SubtitleSyncModal from '$lib/components/subtitles/SubtitleSyncModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { todayDateString } from '$lib/utils/format.js';
-	import { grabRelease } from '$lib/api/downloads.js';
 	import { autoSearchSubtitles, syncSubtitle, deleteSubtitle } from '$lib/api/subtitles.js';
 	import {
 		updateSeries,
@@ -27,7 +25,6 @@
 		updateSeason,
 		updateEpisode
 	} from '$lib/api/library.js';
-	import { ApiError } from '$lib/api/client.js';
 	import { apiPostStream } from '$lib/api';
 	import type { SeriesEditData } from '$lib/components/library/SeriesEditModal.svelte';
 	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
@@ -57,9 +54,6 @@
 	const series = $derived(seriesState ?? data.series);
 	const seasons = $derived(seasonsState ?? data.seasons);
 	const queueItems = $derived(queueItemsState ?? data.queueItems);
-	const effectiveScoringProfileId = $derived.by(
-		() => series.scoringProfileId ?? data.qualityProfiles.find((p) => p.isDefault)?.id ?? null
-	);
 
 	function computeSeriesEpisodeStats(seasonList: PageData['seasons']) {
 		const regularSeasons = seasonList.filter((season) => season.seasonNumber > 0);
@@ -1666,72 +1660,6 @@
 		}
 		return ids;
 	}
-
-	async function handleGrab(
-		release: Release,
-		streaming?: boolean
-	): Promise<{ success: boolean; error?: string; errorCode?: string }> {
-		try {
-			const episodeMatch = release.episodeMatch || release.parsed?.episode;
-
-			let seasonNumber: number | undefined;
-			let episodeIds: string[] | undefined;
-
-			if (episodeMatch) {
-				if (episodeMatch.isSeasonPack && episodeMatch.season !== undefined) {
-					seasonNumber = episodeMatch.season;
-				} else if (episodeMatch.seasons && episodeMatch.seasons.length === 1) {
-					seasonNumber = episodeMatch.seasons[0];
-				} else if (episodeMatch.season !== undefined && episodeMatch.episodes?.length) {
-					seasonNumber = episodeMatch.season;
-					episodeIds = lookupEpisodeIds(episodeMatch.season, episodeMatch.episodes);
-				}
-			}
-
-			if (seasonNumber === undefined && searchContext?.season !== undefined) {
-				seasonNumber = searchContext.season;
-				if (searchContext.episode !== undefined) {
-					episodeIds = lookupEpisodeIds(searchContext.season, [searchContext.episode]);
-				}
-			}
-
-			const result = await grabRelease({
-				guid: release.guid,
-				downloadUrl: release.downloadUrl,
-				magnetUrl: release.magnetUrl,
-				infoHash: release.infoHash,
-				title: release.title,
-				indexerId: release.indexerId,
-				indexerName: release.indexerName,
-				protocol: release.protocol,
-				seriesId: series.id,
-				mediaType: 'tv',
-				seasonNumber,
-				episodeIds,
-				streamUsenet: streaming && release.protocol === 'usenet',
-				commentsUrl: release.commentsUrl
-			});
-
-			if (result.success && (release.protocol === 'streaming' || streaming)) {
-				setTimeout(() => {
-					void refreshSeriesFromApi();
-				}, 500);
-			}
-
-			return { success: result.success, error: result.error, errorCode: result.errorCode };
-		} catch (error) {
-			return {
-				success: false,
-				error: error instanceof ApiError ? error.message : m.toast_library_tvDetail_failedToGrab()
-			};
-		}
-	}
-
-	// Get search title - just the series title, no episode token embedded
-	// Season/episode info is passed separately and the backend handles format composition
-	const searchTitle = $derived(() => {
-		return series.title;
-	});
 </script>
 
 <svelte:head>
@@ -1883,6 +1811,7 @@
 	open={isEditModalOpen}
 	{series}
 	qualityProfiles={data.qualityProfiles}
+	delayProfiles={data.delayProfiles}
 	rootFolders={data.rootFolders}
 	saving={isSaving}
 	onClose={handleEditClose}
@@ -1890,24 +1819,17 @@
 />
 
 <!-- Search Modal -->
-<InteractiveSearchModal
+<MediaSearchModal
 	open={isSearchModalOpen}
-	title={searchTitle()}
-	tmdbId={series.tmdbId}
-	imdbId={series.imdbId}
-	tvdbId={series.tvdbId}
-	expectedEpisodeCount={series.episodeCount}
-	year={series.year}
-	mediaType="tv"
-	scoringProfileId={effectiveScoringProfileId ?? undefined}
+	seriesId={series.id}
 	season={searchContext?.season}
 	episode={searchContext?.episode}
 	searchMode={searchContext?.searchMode ?? 'all'}
+	resolveEpisodeIds={lookupEpisodeIds}
 	onClose={() => {
 		isSearchModalOpen = false;
 		searchContext = null;
 	}}
-	onGrab={handleGrab}
 />
 
 <!-- Subtitle Search Modal -->

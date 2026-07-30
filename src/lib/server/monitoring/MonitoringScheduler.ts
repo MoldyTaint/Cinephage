@@ -35,7 +35,8 @@ const DEFAULT_INTERVALS = {
 	missingSubtitles: 6, // Every 6 hours
 	subtitleUpgrade: 24, // Daily
 	smartListRefresh: 1, // Hourly (checks which smart lists are due based on their individual intervals)
-	historyCleanup: 24 // Daily
+	historyCleanup: 24, // Daily
+	libraryReconcile: 6 // Every 6 hours
 } as const;
 
 /**
@@ -94,6 +95,8 @@ export interface MonitoringSettings {
 	// Download behavior
 	stalledDownloadTimeoutMinutes: number;
 	stalledDownloadProgressThreshold: number;
+	// Blocklist duration (hours) for auto-removed stalled releases; 0 = permanent
+	stalledDownloadBlocklistHours: number;
 }
 
 /**
@@ -121,6 +124,7 @@ export interface MonitoringStatus {
 		subtitleUpgrade: TaskStatus;
 		smartListRefresh: TaskStatus;
 		historyCleanup: TaskStatus;
+		libraryReconcile: TaskStatus;
 	};
 }
 
@@ -316,6 +320,9 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			),
 			stalledDownloadProgressThreshold: parseFloat(
 				settingsMap.get('stalled_download_progress_threshold') || '1'
+			),
+			stalledDownloadBlocklistHours: parseFloat(
+				settingsMap.get('stalled_download_blocklist_hours') || '72'
 			)
 		};
 	}
@@ -394,6 +401,12 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			updates.push({
 				key: 'stalled_download_progress_threshold',
 				value: String(settings.stalledDownloadProgressThreshold)
+			});
+		}
+		if (settings.stalledDownloadBlocklistHours !== undefined) {
+			updates.push({
+				key: 'stalled_download_blocklist_hours',
+				value: String(settings.stalledDownloadBlocklistHours)
 			});
 		}
 
@@ -492,6 +505,9 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 		const historyCleanupInterval =
 			(await taskSettingsService.getTaskInterval('historyCleanup')) ??
 			DEFAULT_INTERVALS.historyCleanup;
+		const libraryReconcileInterval =
+			(await taskSettingsService.getTaskInterval('library-reconcile')) ??
+			DEFAULT_INTERVALS.libraryReconcile;
 
 		this.taskIntervals.set('missing', Math.max(missingInterval, MIN_INTERVAL_HOURS));
 		this.taskIntervals.set('upgrade', Math.max(upgradeInterval, MIN_INTERVAL_HOURS));
@@ -511,6 +527,10 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			Math.max(smartListRefreshInterval, MIN_INTERVAL_HOURS)
 		);
 		this.taskIntervals.set('historyCleanup', Math.max(historyCleanupInterval, MIN_INTERVAL_HOURS));
+		this.taskIntervals.set(
+			'library-reconcile',
+			Math.max(libraryReconcileInterval, MIN_INTERVAL_HOURS)
+		);
 
 		// Log scheduled intervals
 		for (const [taskType, intervalHours] of this.taskIntervals.entries()) {
@@ -813,6 +833,10 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				const { executeHistoryCleanupTask } = await import('./tasks/HistoryCleanupTask.js');
 				return await executeHistoryCleanupTask(ctx);
 			}
+			case 'library-reconcile': {
+				const { executeLibraryReconcileTask } = await import('./tasks/LibraryReconcileTask.js');
+				return await executeLibraryReconcileTask(ctx);
+			}
 			case 'metadata-refresh': {
 				const { executeMetadataRefreshTask } = await import('./tasks/MetadataRefreshTask.js');
 				return await executeMetadataRefreshTask(ctx);
@@ -859,6 +883,10 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 
 	async runHistoryCleanup(): Promise<TaskResult> {
 		return await this.executeTaskManually('historyCleanup');
+	}
+
+	async runLibraryReconcile(): Promise<TaskResult> {
+		return await this.executeTaskManually('library-reconcile');
 	}
 
 	async runMetadataRefresh(): Promise<TaskResult> {
@@ -1028,7 +1056,11 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 					'smartListRefresh',
 					DEFAULT_INTERVALS.smartListRefresh
 				),
-				historyCleanup: await getTaskStatus('historyCleanup', DEFAULT_INTERVALS.historyCleanup)
+				historyCleanup: await getTaskStatus('historyCleanup', DEFAULT_INTERVALS.historyCleanup),
+				libraryReconcile: await getTaskStatus(
+					'library-reconcile',
+					DEFAULT_INTERVALS.libraryReconcile
+				)
 			}
 		};
 	}

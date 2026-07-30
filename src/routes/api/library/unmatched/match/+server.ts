@@ -4,6 +4,7 @@ import { unmatchedFileService } from '$lib/server/library/unmatched-file-service
 import { logger } from '$lib/logging';
 import { parseBody } from '$lib/server/api/validate.js';
 import { unmatchedMatchSchema } from '$lib/validation/schemas.js';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 
 export const POST: RequestHandler = async ({ request }: { request: Request }) => {
 	try {
@@ -22,6 +23,13 @@ export const POST: RequestHandler = async ({ request }: { request: Request }) =>
 		});
 
 		const firstError = result.errors.length > 0 ? result.errors[0] : undefined;
+
+		if (result.matched > 0) {
+			libraryMediaEvents.emitLibraryDataChanged({
+				source: mediaType === 'tv' ? 'series' : 'movie',
+				reason: 'unmatched-matched'
+			});
+		}
 
 		return json({
 			success: result.matched > 0,

@@ -1,0 +1,165 @@
+---
+# TorrentGalaxy Clone (torrentgalaxy.one / torrentgalaxy.info)
+# Public torrent index running the RARBG-style engine (get-posts paths).
+# Magnet links live on the /post-detail/ page only, so this uses the same
+# two-stage download pattern as therarbg.yaml and limetorrents.yaml.
+# Selector notes (verified against live HTML, 2026-07-18):
+# - category comes from the first cell's /get-posts/category: link
+# - the seed/leech cell holds ONE span: [<font><b>seeds</b></font>/<font><b>leech</b></font>]
+# - the date cell shows compound relative ages ("1 week, 5 days") and embeds a
+#   div.bighide mobile summary that must be removed before parsing
+# Filter chains are guarded by definitions/torrentgalaxyclone.test.ts.
+id: torrentgalaxyclone
+name: TorrentGalaxy Clone
+description: TorrentGalaxy Clone is a public torrent index covering Movies, TV, Anime, Music, Books, Games, Apps, Documentaries and Other content.
+language: en-US
+type: public
+encoding: UTF-8
+protocol: torrent
+requestdelay: 2
+
+links:
+  - https://torrentgalaxy.one/
+  - https://torrentgalaxy.info/
+
+legacylinks:
+  - https://torrentgalaxy.space/
+
+caps:
+  categories:
+    '2000': Movies
+    '5000': TV
+    '5070': TV/Anime
+    '5080': TV/Documentary
+    '3000': Audio
+    '7000': Books
+    '1000': PC
+    '4000': PC/Games
+    '8000': Other
+
+  categorymappings:
+    - id: Anime
+      cat: '5070'
+      desc: Anime
+    - id: Apps
+      cat: '1000'
+      desc: Apps
+    - id: Books
+      cat: '7000'
+      desc: Books
+    - id: Docus
+      cat: '5080'
+      desc: Documentaries
+    - id: Documentaries
+      cat: '5080'
+      desc: Documentaries
+    - id: E-books
+      cat: '7000'
+      desc: E-books
+    - id: Games
+      cat: '4000'
+      desc: Games
+    - id: Movies
+      cat: '2000'
+      desc: Movies
+      default: true
+    - id: Music
+      cat: '3000'
+      desc: Music
+    - id: Other
+      cat: '8000'
+      desc: Other
+    - id: TV
+      cat: '5000'
+      desc: TV
+
+  modes:
+    search: [q]
+    tv-search: [q, season, ep]
+    movie-search: [q]
+    music-search: [q]
+    book-search: [q]
+
+settings:
+  - name: uploader
+    type: text
+    label: Filter by Uploader
+  - name: info_uploader
+    type: info
+    label: About filtering by Uploader
+    default: Enter the case-sensitive uploader username, or leave empty to return results from all uploaders.
+  - name: info_flaresolverr
+    type: info
+    label: FlareSolverr
+    default: This site may require FlareSolverr if a configured domain is protected by Cloudflare.
+
+download:
+  selectors:
+    - selector: a[href^="magnet:?xt="]
+      attribute: href
+
+search:
+  paths:
+    - path: get-posts/{{ if .Keywords }}keywords:{{ .Keywords }}{{ end }}{{ range .Categories }}:category:{{ . }}{{ end }}
+
+  keywordsfilters:
+    - name: trim
+
+  rows:
+    selector: div.tgxtablerow{{ if .Config.uploader }}:has(a.username:contains({{ .Config.uploader }})){{ end }}
+
+  fields:
+    category:
+      selector: a[href^="/get-posts/category:"] small
+      optional: true
+      default: Movies
+
+    title:
+      selector: a[href^="/post-detail/"]
+      attribute: title
+
+    details:
+      selector: a[href^="/post-detail/"]
+      attribute: href
+
+    download:
+      selector: a[href^="/post-detail/"]
+      attribute: href
+
+    imdbid:
+      selector: a[href^="/get-posts/keywords:tt"]
+      attribute: href
+      optional: true
+      filters:
+        - name: re_replace
+          args:
+            - .*keywords:(tt\d+).*
+            - $1
+
+    size:
+      selector: div.tgxtablecell:nth-last-child(5)
+
+    seeders:
+      selector: div.tgxtablecell:nth-last-child(2) font:nth-of-type(1) b
+      optional: true
+
+    leechers:
+      selector: div.tgxtablecell:nth-last-child(2) font:nth-of-type(2) b
+      optional: true
+
+    date:
+      selector: div.tgxtablecell:nth-last-child(1)
+      remove: div.bighide
+      optional: true
+      filters:
+        - name: split
+          args: [',', '0']
+        - name: append
+          args: ' ago'
+        - name: timeago
+
+    downloadvolumefactor:
+      text: '0'
+
+    uploadvolumefactor:
+      text: '1'

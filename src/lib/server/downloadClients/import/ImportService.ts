@@ -28,12 +28,21 @@ import {
 } from '$lib/server/db/schema';
 import { eq, and, or, inArray, gte } from 'drizzle-orm';
 import { downloadMonitor } from '../monitoring/DownloadMonitorService';
+import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
+import { replaceIdsForImport } from '$lib/server/quality/buckets.js';
+import type { Resolution } from '$lib/server/indexers/parser/types.js';
 import {
 	transferFileWithMode,
 	findVideoFiles,
 	ensureDirectory,
 	fileExists,
 	isVideoFile,
+	hasSufficientDiskSpace,
+	removeEmptyDirectories,
+	moveToRecycleBin,
+	deletePhysicalFile,
+	copyExtraFiles,
+	applyFilePermissions,
 	ImportMode
 } from './FileTransfer';
 import { getDownloadClientManager } from '../DownloadClientManager';
@@ -56,12 +65,14 @@ import {
 } from '$lib/config/constants';
 import { ImportWorker, workerManager } from '$lib/server/workers';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
+import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import {
 	getMediaParseStem,
 	matchEpisodesByIdentifier,
-	resolveTvEpisodeIdentifier,
+	matchEpisodesFromQueueContext as matchEpisodesFromQueueContextShared,
+	resolveEpisodeIdentifierWithFallback as resolveEpisodeIdentifierWithFallbackShared,
 	type ResolvedTvEpisodeIdentifier
 } from '$lib/server/library/tv-episode-resolver.js';
 import { isImportedQueueStatus, type QueueStatus } from '$lib/types/queue';
@@ -105,6 +116,14 @@ export interface ImportJobResult {
 interface ImportableFileOptions {
 	allowStrmSmall?: boolean;
 	preferNonStrm?: boolean;
+	minimumFreeSpaceGb?: number;
+	deleteEmptyFolders?: boolean;
+	recycleEnabled?: boolean;
+	extraFileExtensions?: string[];
+	preferHardlink?: boolean;
+	preservePermissions?: boolean;
+	chmodFile?: string;
+	effectiveImportMode?: ImportMode;
 }
 
 /**
@@ -610,44 +629,68 @@ export class ImportService extends EventEmitter {
 			// Fetch download info from client to determine if we can move files
 			// Seeding torrents can't be moved (canMoveFiles=false) - must use hardlink/copy
 			// Usenet downloads can always be moved (canMoveFiles=true)
-			let canMoveFiles = true; // Default to true (safe for usenet)
+			// The global "Copy" setting overrides to always keep source files.
+			const {
+				importMode: globalImportMode,
+				preferHardlink,
+				minimumFreeSpaceGb,
+				deleteEmptyFolders,
+				recycleEnabled,
+				extraFileExtensions,
+				preservePermissions,
+				chmodFile
+			} = await getFileManagementSettings();
+			importOptions.minimumFreeSpaceGb = minimumFreeSpaceGb;
+			importOptions.deleteEmptyFolders = deleteEmptyFolders;
+			importOptions.recycleEnabled = recycleEnabled;
+			importOptions.extraFileExtensions = extraFileExtensions;
+			importOptions.preferHardlink = preferHardlink;
+			importOptions.preservePermissions = preservePermissions;
+			importOptions.chmodFile = chmodFile;
+			let canMoveFiles = globalImportMode === 'move'; // only move mode deletes the source
+			const effectiveImportMode =
+				globalImportMode === 'symlink' ? ImportMode.Symlink : ImportMode.Auto;
+			importOptions.effectiveImportMode = effectiveImportMode;
 
-			if (client) {
-				try {
-					const clientManager = getDownloadClientManager();
-					const clientInstance = await clientManager.getClientInstance(client.id);
+			if (globalImportMode === 'move') {
+				// Only check the download client's seeding state when the user wants moves
+				if (client) {
+					try {
+						const clientManager = getDownloadClientManager();
+						const clientInstance = await clientManager.getClientInstance(client.id);
 
-					if (clientInstance) {
-						const downloadId = queueItem.infoHash || queueItem.downloadId;
-						const downloadInfo = await clientInstance.getDownload(downloadId);
+						if (clientInstance) {
+							const downloadId = queueItem.infoHash || queueItem.downloadId;
+							const downloadInfo = await clientInstance.getDownload(downloadId);
 
-						if (downloadInfo) {
-							canMoveFiles = downloadInfo.canMoveFiles;
-							logger.debug(
-								{
-									canMoveFiles,
-									status: downloadInfo.status,
-									protocol: queueItem.protocol,
-									downloadId
-								},
-								'Determined import mode from download client'
-							);
+							if (downloadInfo) {
+								canMoveFiles = downloadInfo.canMoveFiles;
+								logger.debug(
+									{
+										canMoveFiles,
+										status: downloadInfo.status,
+										protocol: queueItem.protocol,
+										downloadId
+									},
+									'Determined import mode from download client'
+								);
+							}
 						}
+					} catch (err) {
+						logger.warn(
+							{
+								error: err instanceof Error ? err.message : String(err),
+								queueItemId
+							},
+							'Failed to get download info for import mode detection, defaulting to hardlink'
+						);
+						// If we can't determine, prefer hardlink/copy (safer for seeding)
+						canMoveFiles = queueItem.protocol === 'usenet';
 					}
-				} catch (err) {
-					logger.warn(
-						{
-							error: err instanceof Error ? err.message : String(err),
-							queueItemId
-						},
-						'Failed to get download info for import mode detection, defaulting to hardlink'
-					);
-					// If we can't determine, prefer hardlink/copy (safer for seeding)
+				} else {
+					// No client info, use protocol to guess
 					canMoveFiles = queueItem.protocol === 'usenet';
 				}
-			} else {
-				// No client info, use protocol to guess
-				canMoveFiles = queueItem.protocol === 'usenet';
 			}
 
 			// Determine what to import based on linked media
@@ -810,7 +853,9 @@ export class ImportService extends EventEmitter {
 
 		// Build destination path
 		const movieFolder = join(rootFolder.path, movie.path);
-		const destFileName = this.buildMovieFileName(movie, mainFile.path, queueItem);
+		const allowStrmProbe = movie.scoringProfileId !== 'streamer';
+		const mediaInfo = await mediaInfoService.extractMediaInfo(mainFile.path, { allowStrmProbe });
+		const destFileName = this.buildMovieFileName(movie, mainFile.path, queueItem, mediaInfo);
 		const destPath = join(movieFolder, destFileName);
 
 		// Check for existing file (upgrade scenario)
@@ -822,7 +867,7 @@ export class ImportService extends EventEmitter {
 		const isUpgrade = queueItem.isUpgrade || false;
 
 		// Log upgrade detection but DON'T delete old files yet - wait until new file is imported
-		if (existingFiles.length > 0 && isUpgrade) {
+		if (existingFiles.some((file) => file.relativePath !== destFileName) && isUpgrade) {
 			logger.info(
 				{
 					movieId: movie.id,
@@ -832,6 +877,19 @@ export class ImportService extends EventEmitter {
 			);
 		}
 
+		// Check minimum free space on the destination before transferring
+		const minFreeGb = importOptions.minimumFreeSpaceGb ?? 0;
+		if (minFreeGb > 0) {
+			const hasSpace = await hasSufficientDiskSpace(rootFolder.path, minFreeGb);
+			if (!hasSpace) {
+				const msg = `Insufficient disk space on destination: less than ${minFreeGb} GB free`;
+				result.error = msg;
+				worker.log('error', msg);
+				await downloadMonitor.markFailed(queueItem.id, msg);
+				return result;
+			}
+		}
+
 		// Transfer the file FIRST (keep old file until new one is successfully imported)
 		// Use ImportMode.Auto to decide based on canMoveFiles:
 		// - Seeding torrents (canMoveFiles=false): Use hardlink/copy to preserve source
@@ -839,9 +897,10 @@ export class ImportService extends EventEmitter {
 		worker.log('info', `Transferring file to: ${destPath} (canMoveFiles=${canMoveFiles})`);
 		const preserveSymlinks = rootFolder.preserveSymlinks ?? false;
 		const transferResult = await transferFileWithMode(mainFile.path, destPath, {
-			importMode: ImportMode.Auto,
+			importMode: importOptions.effectiveImportMode ?? ImportMode.Auto,
 			canMoveFiles,
-			preserveSymlinks
+			preserveSymlinks,
+			preferHardlink: importOptions.preferHardlink ?? true
 		});
 
 		if (!transferResult.success) {
@@ -862,13 +921,37 @@ export class ImportService extends EventEmitter {
 				? 'symlink'
 				: transferResult.mode === 'hardlink'
 					? 'hardlink'
-					: 'copy'
+					: transferResult.mode === 'move'
+						? 'move'
+						: 'copy'
 		);
 		worker.setDestinationPath(destPath);
 
-		// Extract media info (skip STRM probing for streamer profile)
-		const allowStrmProbe = movie.scoringProfileId !== 'streamer';
-		const mediaInfo = await mediaInfoService.extractMediaInfo(destPath, { allowStrmProbe });
+		if (importOptions.deleteEmptyFolders && transferResult.mode === 'move') {
+			await removeEmptyDirectories(dirname(mainFile.path), downloadPath);
+		}
+
+		if (transferResult.mode !== 'symlink') {
+			await applyFilePermissions(
+				destPath,
+				mainFile.path,
+				importOptions.preservePermissions ?? false,
+				importOptions.chmodFile ?? ''
+			);
+		}
+
+		if (importOptions.extraFileExtensions?.length) {
+			await copyExtraFiles(
+				dirname(mainFile.path),
+				dirname(destPath),
+				importOptions.extraFileExtensions,
+				transferResult.mode === 'move',
+				{
+					preservePermissions: importOptions.preservePermissions ?? false,
+					chmodFile: importOptions.chmodFile ?? ''
+				}
+			);
+		}
 
 		const importedMetadata = this.buildImportedMetadata(queueItem, mainFile.path, mediaInfo);
 
@@ -876,11 +959,7 @@ export class ImportService extends EventEmitter {
 		const relativePath = destFileName;
 
 		// Check if a file record already exists for this path (prevent duplicates)
-		const existingFileRecord = await db
-			.select()
-			.from(movieFiles)
-			.where(and(eq(movieFiles.movieId, movie.id), eq(movieFiles.relativePath, relativePath)))
-			.limit(1);
+		const existingFileRecord = existingFiles.filter((file) => file.relativePath === relativePath);
 
 		const fileData = {
 			movieId: movie.id,
@@ -920,22 +999,41 @@ export class ImportService extends EventEmitter {
 			queueItem.protocol as 'torrent' | 'usenet'
 		);
 
-		// NOW delete old files (after successful import - so media is never missing)
+		// NOW delete old files (after successful import - so media is never missing).
+		// In multi-quality mode, only the file(s) in the SAME resolution bucket as
+		// the new file are replaced; other tiers are preserved. Single-quality mode
+		// keeps the existing behavior (replace all on upgrade).
+		const { multiQuality } = await resolveMovieMultiQuality(
+			movie.desiredQualities,
+			movie.scoringProfileId
+		);
+		const newResolution = importedMetadata.quality?.resolution as Resolution | undefined;
+		const replaceIdSet = new Set(
+			replaceIdsForImport(existingFiles, { newResolution, multiQuality, isUpgrade })
+		);
+		replaceIdSet.delete(fileId); // never the just-imported file
+
 		const deletedFileIds: string[] = [];
-		if (existingFiles.length > 0 && isUpgrade) {
+		if (replaceIdSet.size > 0) {
 			logger.info(
 				{
 					movieId: movie.id,
-					existingCount: existingFiles.length
+					existingCount: existingFiles.length,
+					replaceCount: replaceIdSet.size,
+					multiQuality
 				},
 				'Import successful - now deleting old files'
 			);
 
 			for (const oldFile of existingFiles) {
-				// Don't delete the file we just created/updated
-				if (oldFile.id === fileId) continue;
+				// Only delete files selected for replacement by the bucket logic
+				if (!replaceIdSet.has(oldFile.id)) continue;
 
-				const deleteResult = await this.deleteMovieFile(oldFile.id, movie.id);
+				const deleteResult = await this.deleteMovieFile(
+					oldFile.id,
+					movie.id,
+					importOptions.recycleEnabled
+				);
 				if (deleteResult.success) {
 					logger.info(
 						{
@@ -1032,7 +1130,14 @@ export class ImportService extends EventEmitter {
 		});
 
 		// For usenet downloads, delete source folder (no seeding needed)
-		if (queueItem.protocol === 'usenet' && queueItem.outputPath) {
+		// Skip when symlink mode is active; the library symlinks point at the source, so deleting it would break them
+		// Skip when canMoveFiles=false; user has configured copy mode and wants to keep the source
+		if (
+			queueItem.protocol === 'usenet' &&
+			queueItem.outputPath &&
+			canMoveFiles &&
+			importOptions.effectiveImportMode !== ImportMode.Symlink
+		) {
 			this.cleanupUsenetSource(queueItem.outputPath).catch((err) => {
 				logger.warn(
 					{
@@ -1059,7 +1164,7 @@ export class ImportService extends EventEmitter {
 		queueItem: typeof downloadQueue.$inferSelect,
 		worker: ImportWorker,
 		importOptions: ImportableFileOptions,
-		_canMoveFiles: boolean
+		canMoveFiles: boolean
 	): Promise<ImportJobResult> {
 		const result: ImportJobResult = {
 			success: false,
@@ -1134,6 +1239,19 @@ export class ImportService extends EventEmitter {
 			return result;
 		}
 
+		// Check minimum free space on the destination before transferring
+		const minFreeGbSeries = importOptions.minimumFreeSpaceGb ?? 0;
+		if (minFreeGbSeries > 0) {
+			const hasSpace = await hasSufficientDiskSpace(rootFolder.path, minFreeGbSeries);
+			if (!hasSpace) {
+				const msg = `Insufficient disk space on destination: less than ${minFreeGbSeries} GB free`;
+				result.error = msg;
+				worker.log('error', msg);
+				await downloadMonitor.markFailed(queueItem.id, msg);
+				return result;
+			}
+		}
+
 		// Find video files
 		const videoFiles = await this.findImportableFiles(downloadPath, importOptions);
 
@@ -1189,7 +1307,9 @@ export class ImportService extends EventEmitter {
 					seriesData,
 					rootFolder,
 					queueItem,
-					_canMoveFiles
+					canMoveFiles,
+					worker,
+					importOptions
 				);
 
 				if (importResult.success) {
@@ -1283,8 +1403,14 @@ export class ImportService extends EventEmitter {
 				});
 			}
 
-			// For usenet downloads, delete source folder (no seeding needed)
-			if (queueItem.protocol === 'usenet' && queueItem.outputPath) {
+			// Skip when symlink mode is active; the library symlinks point at the source, so deleting it would break them
+			// Skip when canMoveFiles=false; user has configured copy mode and wants to keep the source
+			if (
+				queueItem.protocol === 'usenet' &&
+				queueItem.outputPath &&
+				canMoveFiles &&
+				importOptions?.effectiveImportMode !== ImportMode.Symlink
+			) {
 				this.cleanupUsenetSource(queueItem.outputPath).catch((err) => {
 					logger.warn(
 						{
@@ -1311,54 +1437,31 @@ export class ImportService extends EventEmitter {
 		queueItem: Pick<typeof downloadQueue.$inferSelect, 'title' | 'seasonNumber'>,
 		seriesType: 'standard' | 'anime' | 'daily'
 	): ResolvedTvEpisodeIdentifier | null {
-		const seasonHint = queueItem.seasonNumber ?? undefined;
-		const candidates: Array<{
-			source: 'file' | 'queueTitle' | 'parentFolder';
-			value?: string | null;
-		}> = [
-			{ source: 'file', value: videoFilePath },
-			{ source: 'queueTitle', value: queueItem.title },
-			{ source: 'parentFolder', value: basename(dirname(videoFilePath)) }
-		];
-		const seenStems = new Set<string>();
+		const result = resolveEpisodeIdentifierWithFallbackShared(
+			videoFilePath,
+			{
+				title: queueItem.title,
+				seasonNumber: queueItem.seasonNumber
+			},
+			seriesType
+		);
 
-		for (const candidate of candidates) {
-			if (!candidate.value) continue;
-			const stem = getMediaParseStem(candidate.value);
-			const normalizedStem = stem.trim().toLowerCase();
-			if (!normalizedStem || seenStems.has(normalizedStem)) {
-				continue;
-			}
-			seenStems.add(normalizedStem);
-
-			const parsed = this.parser.parse(stem);
-			const identifier = resolveTvEpisodeIdentifier({
-				filePath: videoFilePath,
-				fileName: stem,
-				parsed,
-				seasonHint,
-				seriesType
-			});
-
-			if (!identifier) {
-				continue;
-			}
-
-			if (candidate.source !== 'file') {
-				logger.info(
-					{
-						sourcePath: videoFilePath,
-						fallbackSource: candidate.source,
-						fallbackToken: stem
-					},
-					'[ImportService] Resolved episode identifier from fallback context'
-				);
-			}
-
-			return identifier;
+		if (!result) {
+			return null;
 		}
 
-		return null;
+		if (result.source !== 'file') {
+			logger.info(
+				{
+					sourcePath: videoFilePath,
+					fallbackSource: result.source,
+					fallbackToken: result.stem
+				},
+				'[ImportService] Resolved episode identifier from fallback context'
+			);
+		}
+
+		return result.identifier;
 	}
 
 	private async importEpisodeFile(
@@ -1366,7 +1469,9 @@ export class ImportService extends EventEmitter {
 		seriesData: typeof series.$inferSelect,
 		rootFolder: typeof rootFolders.$inferSelect,
 		queueItem: typeof downloadQueue.$inferSelect,
-		canMoveFiles: boolean
+		canMoveFiles: boolean,
+		worker: ImportWorker,
+		importOptions?: ImportableFileOptions
 	): Promise<ImportResult> {
 		const normalizedSeriesType =
 			seriesData.seriesType === 'anime' || seriesData.seriesType === 'daily'
@@ -1421,6 +1526,8 @@ export class ImportService extends EventEmitter {
 		// Build destination path
 		const seriesFolder = join(rootFolder.path, seriesData.path);
 
+		const allowStrmProbe = seriesData.scoringProfileId !== 'streamer';
+		const mediaInfo = await mediaInfoService.extractMediaInfo(videoFile.path, { allowStrmProbe });
 		const destFileName = this.buildEpisodeFileName(
 			seriesData,
 			seasonNum,
@@ -1429,7 +1536,8 @@ export class ImportService extends EventEmitter {
 			queueItem,
 			firstEpisode?.title ?? undefined,
 			absoluteNumber,
-			firstEpisode?.airDate ?? undefined
+			firstEpisode?.airDate ?? undefined,
+			mediaInfo
 		);
 		const relativePath = this.buildEpisodeRelativePath(
 			seriesData.seasonFolder ?? true,
@@ -1444,9 +1552,10 @@ export class ImportService extends EventEmitter {
 		// Transfer file using mode based on seeding state
 		const preserveSymlinks = rootFolder.preserveSymlinks ?? false;
 		const transferResult = await transferFileWithMode(videoFile.path, destPath, {
-			importMode: ImportMode.Auto,
+			importMode: importOptions?.effectiveImportMode ?? ImportMode.Auto,
 			canMoveFiles,
-			preserveSymlinks
+			preserveSymlinks,
+			preferHardlink: importOptions?.preferHardlink ?? true
 		});
 
 		if (!transferResult.success) {
@@ -1457,9 +1566,46 @@ export class ImportService extends EventEmitter {
 			};
 		}
 
-		// Extract media info (skip STRM probing for streamer profile)
-		const allowStrmProbe = seriesData.scoringProfileId !== 'streamer';
-		const mediaInfo = await mediaInfoService.extractMediaInfo(destPath, { allowStrmProbe });
+		worker.fileTransferred(
+			basename(videoFile.path),
+			transferResult.mode === 'symlink'
+				? 'symlink'
+				: transferResult.mode === 'hardlink'
+					? 'hardlink'
+					: transferResult.mode === 'move'
+						? 'move'
+						: 'copy'
+		);
+
+		if (importOptions?.deleteEmptyFolders && transferResult.mode === 'move') {
+			const downloadPath = queueItem.outputPath ?? queueItem.clientDownloadPath ?? '';
+			if (downloadPath) {
+				await removeEmptyDirectories(dirname(videoFile.path), downloadPath);
+			}
+		}
+
+		if (transferResult.mode !== 'symlink') {
+			await applyFilePermissions(
+				destPath,
+				videoFile.path,
+				importOptions?.preservePermissions ?? false,
+				importOptions?.chmodFile ?? ''
+			);
+		}
+
+		if (importOptions?.extraFileExtensions?.length) {
+			await copyExtraFiles(
+				dirname(videoFile.path),
+				dirname(destPath),
+				importOptions.extraFileExtensions,
+				transferResult.mode === 'move',
+				{
+					preservePermissions: importOptions?.preservePermissions ?? false,
+					chmodFile: importOptions?.chmodFile ?? ''
+				}
+			);
+		}
+
 		const importedMetadata = this.buildImportedMetadata(queueItem, videoFile.path, mediaInfo);
 
 		const episodeIds = matchingEpisodes.map((ep) => ep.id);
@@ -1473,11 +1619,16 @@ export class ImportService extends EventEmitter {
 		const filesToReplace: string[] = [];
 		const isUpgrade = queueItem.isUpgrade || false;
 
-		if (isUpgrade && existingFiles.length > 0) {
-			// Find files that cover any of the same episodes
+		if (existingFiles.length > 0) {
 			for (const existingFile of existingFiles) {
 				const hasOverlap = existingFile.episodeIds?.some((id) => episodeIds.includes(id)) ?? false;
-				if (hasOverlap) {
+				if (!hasOverlap) continue;
+				// Skip the record for the same destination path — we're updating it in place, not replacing it
+				if (existingFile.relativePath === relativePath) continue;
+				// Always replace .strm placeholders with real video files; replace other files only on explicit upgrade
+				const isStrmPlaceholder =
+					existingFile.relativePath?.toLowerCase().endsWith('.strm') ?? false;
+				if (isUpgrade || isStrmPlaceholder) {
 					filesToReplace.push(existingFile.id);
 				}
 			}
@@ -1488,21 +1639,17 @@ export class ImportService extends EventEmitter {
 						seriesId: seriesData.id,
 						seasonNumber: seasonNum,
 						episodeNumbers: episodeNums,
-						filesToReplace
+						filesToReplace,
+						reason: isUpgrade ? 'upgrade' : 'strm-placeholder-replaced'
 					},
-					'Upgrade detected - will replace existing episode file(s)'
+					isUpgrade
+						? 'Upgrade detected - will replace existing episode file(s)'
+						: 'Replacing .strm placeholder with real video file'
 				);
 			}
 		}
-
 		// Check if a file record already exists for this path (prevent duplicates)
-		const existingFileRecord = await db
-			.select()
-			.from(episodeFiles)
-			.where(
-				and(eq(episodeFiles.seriesId, seriesData.id), eq(episodeFiles.relativePath, relativePath))
-			)
-			.limit(1);
+		const existingFileRecord = existingFiles.filter((file) => file.relativePath === relativePath);
 
 		let fileId: string;
 		const fileData = {
@@ -1578,7 +1725,11 @@ export class ImportService extends EventEmitter {
 		// Delete old files if this was an upgrade
 		if (filesToReplace.length > 0) {
 			for (const oldFileId of filesToReplace) {
-				const deleteResult = await this.deleteEpisodeFile(oldFileId, seriesData.id);
+				const deleteResult = await this.deleteEpisodeFile(
+					oldFileId,
+					seriesData.id,
+					importOptions?.recycleEnabled
+				);
 				if (deleteResult.success) {
 					logger.info(
 						{
@@ -1627,46 +1778,14 @@ export class ImportService extends EventEmitter {
 		queueItem: Pick<typeof downloadQueue.$inferSelect, 'episodeIds' | 'seasonNumber'>,
 		identifier: ResolvedTvEpisodeIdentifier
 	): Array<typeof episodes.$inferSelect> {
-		if (identifier.numbering !== 'standard') {
-			return [];
-		}
-
-		const queuedEpisodeIds = queueItem.episodeIds ?? [];
-		if (queuedEpisodeIds.length === 0) {
-			return [];
-		}
-
-		const targetSeason = queueItem.seasonNumber ?? identifier.seasonNumber;
-		if (targetSeason === undefined || targetSeason === null) {
-			return [];
-		}
-
-		// Require season alignment before applying relative index mapping.
-		if (identifier.seasonNumber !== targetSeason) {
-			return [];
-		}
-
-		const queuedEpisodesInSeason = seriesEpisodes
-			.filter(
-				(episode) => queuedEpisodeIds.includes(episode.id) && episode.seasonNumber === targetSeason
-			)
-			.sort((a, b) => a.episodeNumber - b.episodeNumber);
-
-		if (queuedEpisodesInSeason.length === 0) {
-			return [];
-		}
-
-		const resolved = identifier.episodeNumbers
-			.map((episodeNumber) => queuedEpisodesInSeason[episodeNumber - 1])
-			.filter((episode): episode is typeof episodes.$inferSelect => Boolean(episode));
-
-		if (resolved.length !== identifier.episodeNumbers.length) {
-			return [];
-		}
-
-		// Deduplicate in case a release token repeats an episode number.
-		const uniqueById = new Map(resolved.map((episode) => [episode.id, episode]));
-		return [...uniqueById.values()];
+		return matchEpisodesFromQueueContextShared(
+			seriesEpisodes,
+			{
+				episodeIds: queueItem.episodeIds,
+				seasonNumber: queueItem.seasonNumber
+			},
+			identifier
+		);
 	}
 
 	/**
@@ -1989,31 +2108,42 @@ export class ImportService extends EventEmitter {
 			: destFileName;
 	}
 
-	/**
-	 * Build a movie filename using the naming service
-	 */
+	private formatAudioChannels(channels?: number): string | undefined {
+		if (!channels) return undefined;
+		const map: Record<number, string> = { 1: '1.0', 2: '2.0', 6: '5.1', 8: '7.1' };
+		return map[channels] ?? `${channels}.0`;
+	}
+
 	private buildMovieFileName(
 		movie: typeof movies.$inferSelect,
 		sourcePath: string,
-		queueItem: typeof downloadQueue.$inferSelect
+		queueItem: typeof downloadQueue.$inferSelect,
+		mediaInfo?: Awaited<ReturnType<typeof mediaInfoService.extractMediaInfo>>
 	): string {
 		const parsed = this.parser.parse(queueItem.title);
+		const fromRelease = releaseToNamingInfo(parsed, sourcePath);
 
-		// Build naming info from movie and parsed release
 		const namingInfo: MediaNamingInfo = {
 			title: movie.title,
+			originalTitle: movie.originalTitle ?? undefined,
 			year: movie.year ?? undefined,
 			tmdbId: movie.tmdbId,
 			imdbId: movie.imdbId ?? undefined,
-			...releaseToNamingInfo(parsed, sourcePath)
+			collectionName: movie.collectionName ?? undefined,
+			...fromRelease,
+			bitDepth: mediaInfo?.videoBitDepth?.toString() ?? fromRelease.bitDepth,
+			audioCodec: mediaInfo?.audioCodec ?? fromRelease.audioCodec,
+			audioChannels:
+				this.formatAudioChannels(mediaInfo?.audioChannels) ?? fromRelease.audioChannels,
+			audioLanguages:
+				mediaInfo?.audioLanguages && mediaInfo.audioLanguages.length > 0
+					? mediaInfo.audioLanguages
+					: fromRelease.audioLanguages
 		};
 
 		return this.getNamingService().generateMovieFileName(namingInfo);
 	}
 
-	/**
-	 * Build an episode filename using the naming service
-	 */
 	private buildEpisodeFileName(
 		seriesData: typeof series.$inferSelect,
 		seasonNum: number,
@@ -2022,27 +2152,39 @@ export class ImportService extends EventEmitter {
 		queueItem: typeof downloadQueue.$inferSelect,
 		episodeTitle?: string,
 		absoluteNumber?: number,
-		airDate?: string
+		airDate?: string,
+		mediaInfo?: Awaited<ReturnType<typeof mediaInfoService.extractMediaInfo>>
 	): string {
 		const parsed = this.parser.parse(queueItem.title);
 		const isAnime = seriesData.seriesType === 'anime';
 		const isDaily = seriesData.seriesType === 'daily';
+		const fromRelease = releaseToNamingInfo(parsed, sourcePath);
 
-		// Build naming info from series and parsed release
-		// IMPORTANT: Spread releaseToNamingInfo FIRST, then override with explicit values
-		// This prevents season pack parsing from overwriting per-file episode numbers
+		// IMPORTANT: Spread releaseToNamingInfo FIRST, then override with explicit values.
+		// This prevents season pack parsing from overwriting per-file episode numbers.
 		const namingInfo: MediaNamingInfo = {
-			...releaseToNamingInfo(parsed, sourcePath),
+			...fromRelease,
 			title: seriesData.title,
+			originalTitle: seriesData.originalTitle ?? undefined,
 			year: seriesData.year ?? undefined,
+			tmdbId: seriesData.tmdbId ?? undefined,
 			tvdbId: seriesData.tvdbId ?? undefined,
+			imdbId: seriesData.imdbId ?? undefined,
 			seasonNumber: seasonNum,
 			episodeNumbers: episodeNums,
 			episodeTitle,
 			absoluteNumber,
 			airDate,
 			isAnime,
-			isDaily
+			isDaily,
+			bitDepth: mediaInfo?.videoBitDepth?.toString() ?? fromRelease.bitDepth,
+			audioCodec: mediaInfo?.audioCodec ?? fromRelease.audioCodec,
+			audioChannels:
+				this.formatAudioChannels(mediaInfo?.audioChannels) ?? fromRelease.audioChannels,
+			audioLanguages:
+				mediaInfo?.audioLanguages && mediaInfo.audioLanguages.length > 0
+					? mediaInfo.audioLanguages
+					: fromRelease.audioLanguages
 		};
 
 		return this.getNamingService().generateEpisodeFileName(namingInfo);
@@ -2334,11 +2476,17 @@ export class ImportService extends EventEmitter {
 	}
 
 	/**
-	 * Delete a movie file (both database record and physical file)
+	 * Delete a movie file (both database record and physical file).
+	 *
+	 * Public so other edit-time flows (e.g. removing now-redundant quality tiers
+	 * on a desiredQualities change) can reuse the gold-standard delete path:
+	 * resolves the full path, recycles-or-unlinks, cleans the DB row, and emits
+	 * the `file:deleted` SSE event.
 	 */
-	private async deleteMovieFile(
+	async deleteMovieFile(
 		fileId: string,
-		movieId: string
+		movieId: string,
+		recycleEnabled?: boolean
 	): Promise<{ success: boolean; error?: string }> {
 		try {
 			// Get file info before deleting
@@ -2373,12 +2521,9 @@ export class ImportService extends EventEmitter {
 			// Build full path
 			const fullPath = join(rootFolder.path, movie.path, fileRecord.relativePath);
 
-			// Delete physical file if it exists
+			// Delete or recycle physical file if it exists
 			try {
-				if (await fileExists(fullPath)) {
-					await unlink(fullPath);
-					logger.info({ fileId, path: fullPath }, 'Deleted old movie file');
-				}
+				await deletePhysicalFile(fullPath, !!recycleEnabled, rootFolder.path);
 			} catch (error) {
 				logger.warn(
 					{
@@ -2386,7 +2531,7 @@ export class ImportService extends EventEmitter {
 						path: fullPath,
 						err: error
 					},
-					'Failed to delete physical file (continuing anyway)'
+					'Failed to delete/recycle physical file (continuing anyway)'
 				);
 			}
 
@@ -2413,9 +2558,10 @@ export class ImportService extends EventEmitter {
 	/**
 	 * Delete an episode file (both database record and physical file)
 	 */
-	private async deleteEpisodeFile(
+	async deleteEpisodeFile(
 		fileId: string,
-		seriesId: string
+		seriesId: string,
+		recycleEnabled?: boolean
 	): Promise<{ success: boolean; error?: string }> {
 		try {
 			// Get file info before deleting
@@ -2450,11 +2596,16 @@ export class ImportService extends EventEmitter {
 			// Build full path
 			const fullPath = join(rootFolder.path, seriesData.path, fileRecord.relativePath);
 
-			// Delete physical file if it exists
+			// Delete or recycle physical file if it exists
 			try {
 				if (await fileExists(fullPath)) {
-					await unlink(fullPath);
-					logger.info({ fileId, path: fullPath }, 'Deleted old episode file');
+					if (recycleEnabled) {
+						await moveToRecycleBin(fullPath, rootFolder.path);
+						logger.info({ fileId, path: fullPath }, 'Moved old episode file to recycle bin');
+					} else {
+						await unlink(fullPath);
+						logger.info({ fileId, path: fullPath }, 'Deleted old episode file');
+					}
 				}
 			} catch (error) {
 				logger.warn(
@@ -2463,7 +2614,7 @@ export class ImportService extends EventEmitter {
 						path: fullPath,
 						err: error
 					},
-					'Failed to delete physical file (continuing anyway)'
+					'Failed to delete/recycle physical file (continuing anyway)'
 				);
 			}
 
@@ -2510,10 +2661,7 @@ export class ImportService extends EventEmitter {
 	 * Trigger subtitle search for newly imported media
 	 * Runs asynchronously and doesn't block import completion
 	 */
-	private async triggerSubtitleSearch(
-		mediaType: 'movie' | 'episode',
-		mediaId: string
-	): Promise<void> {
+	async triggerSubtitleSearch(mediaType: 'movie' | 'episode', mediaId: string): Promise<void> {
 		try {
 			// Check if subtitle search on import is enabled
 			const settings = await monitoringScheduler.getSettings();
@@ -2556,7 +2704,7 @@ export class ImportService extends EventEmitter {
 	/**
 	 * Trigger subtitle search for episodes associated with imported episode files
 	 */
-	private async triggerSubtitleSearchForEpisodeFiles(fileIds: string[]): Promise<void> {
+	async triggerSubtitleSearchForEpisodeFiles(fileIds: string[]): Promise<void> {
 		// Check if subtitle search on import is enabled
 		const settings = await monitoringScheduler.getSettings();
 		if (!settings.subtitleSearchOnImportEnabled) {

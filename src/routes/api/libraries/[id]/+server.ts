@@ -5,6 +5,7 @@ import { parseBody, parseOptionalBody } from '$lib/server/api/validate.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { libraryUpdateSchema, libraryDeleteSchema } from '$lib/validation/schemas.js';
 import { NotFoundError, isAppError } from '$lib/errors';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 
 export const GET: RequestHandler = async (event) => {
 	const authError = requireAuth(event);
@@ -27,6 +28,11 @@ export const PUT: RequestHandler = async (event) => {
 		const updates = await parseBody(event.request, libraryUpdateSchema);
 		const service = getLibraryEntityService();
 		const library = await service.updateLibrary(event.params.id, updates);
+		libraryMediaEvents.emitLibraryDataChanged({
+			source: 'library',
+			reason: 'library-updated',
+			entityId: event.params.id
+		});
 		return json({ success: true, library });
 	} catch (error) {
 		if (isAppError(error)) {
@@ -44,6 +50,11 @@ export const DELETE: RequestHandler = async (event) => {
 		const payload = await parseOptionalBody(event.request, libraryDeleteSchema);
 		const service = getLibraryEntityService();
 		await service.deleteLibrary(event.params.id, payload.targetLibraryId ?? null);
+		libraryMediaEvents.emitLibraryDataChanged({
+			source: 'library',
+			reason: 'library-deleted',
+			entityId: event.params.id
+		});
 		return json({ success: true });
 	} catch (error) {
 		if (isAppError(error)) {

@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
-import { downloadClientUpdateSchema } from '$lib/validation/schemas';
+import { downloadClientUpdateSchemaForImplementation } from '$lib/validation/schemas';
 import { assertFound, parseBody } from '$lib/server/api/validate';
 import { NotFoundError } from '$lib/errors';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
@@ -27,9 +27,13 @@ export const PUT: RequestHandler = async (event) => {
 	if (authError) return authError;
 
 	const { params, request } = event;
-	// Throws ValidationError if invalid JSON or schema mismatch
-	const data = await parseBody(request, downloadClientUpdateSchema);
 	const manager = getDownloadClientManager();
+	const existing = assertFound(await manager.getClient(params.id), 'Download client', params.id);
+	// The stored implementation is authoritative for partial-update validation.
+	const data = await parseBody(
+		request,
+		downloadClientUpdateSchemaForImplementation(existing.implementation)
+	);
 
 	try {
 		const updated = await manager.updateClient(params.id, data);

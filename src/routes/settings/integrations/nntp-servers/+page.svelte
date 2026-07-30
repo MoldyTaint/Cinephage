@@ -382,12 +382,17 @@
 			await Promise.all(
 				serverIds.map((id, index) => updateUsenetServer(id, { priority: index + 1 }))
 			);
-			await invalidateAll();
 		} catch (error) {
 			toasts.error(error instanceof Error ? error.message : 'Failed to reorder priorities');
+		} finally {
+			await invalidateAll();
 		}
 	}
 </script>
+
+<svelte:head>
+	<title>{m.nav_nntpServers()}</title>
+</svelte:head>
 
 <SettingsPage title={m.nav_nntpServers()} subtitle={m.settings_integrations_nntpServers_subtitle()}>
 	{#snippet actions()}

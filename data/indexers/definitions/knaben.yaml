@@ -73,7 +73,7 @@ search:
         order_direction: desc
         size: '150'
         hide_unsafe: 'true'
-        hide_xxx: '{{ .Config.hide_xxx }}'
+        hide_xxx: '{{ if .Config.hide_xxx }}true{{ else }}false{{ end }}'
 
     # TV search
     - path: /v1
@@ -87,7 +87,7 @@ search:
         order_direction: desc
         size: '150'
         hide_unsafe: 'true'
-        hide_xxx: '{{ .Config.hide_xxx }}'
+        hide_xxx: '{{ if .Config.hide_xxx }}true{{ else }}false{{ end }}'
 
     # XXX search — override hide_xxx so adult searches always return adult results
     # regardless of the user's "Hide XXX Content" preference for general browsing
@@ -113,7 +113,7 @@ search:
         order_direction: desc
         size: '150'
         hide_unsafe: 'true'
-        hide_xxx: '{{ .Config.hide_xxx }}'
+        hide_xxx: '{{ if .Config.hide_xxx }}true{{ else }}false{{ end }}'
 
   headers:
     Content-Type: application/json

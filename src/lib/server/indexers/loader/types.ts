@@ -101,6 +101,13 @@ export interface IndexerDefinition {
 	/** Protocol: torrent or usenet */
 	protocol: IndexerProtocol;
 
+	/**
+	 * True for auto-managed definitions (e.g. cinephage-stream). Hidden from
+	 * the picker UI; seeded and owned by a subsystem module. The resulting
+	 * indexer row is marked isBuiltIn and protected from delete/edit.
+	 */
+	internal?: boolean;
+
 	/** Source of this definition */
 	source: DefinitionSource;
 
@@ -452,6 +459,7 @@ export function yamlToUnifiedDefinition(
 		language: def.language ?? 'en-US',
 		type: mapAccessType(def.type),
 		protocol: def.protocol ?? 'torrent',
+		internal: def.internal ?? false,
 		source: 'yaml',
 		urls: def.links ?? [],
 		legacyUrls: def.legacylinks,

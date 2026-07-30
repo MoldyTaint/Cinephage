@@ -4,8 +4,12 @@
  */
 
 import { db } from '$lib/server/db';
-import { mediaBrowserServers, type MediaBrowserServerRecord } from '$lib/server/db/schema';
-import { eq, asc } from 'drizzle-orm';
+import {
+	mediaBrowserServers,
+	mediaServerSyncedItems,
+	type MediaBrowserServerRecord
+} from '$lib/server/db/schema';
+import { eq, and, asc } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
@@ -324,6 +328,65 @@ class MediaBrowserManager {
 			server,
 			client: this.clientCache.get(server.id) ?? this.createClient(server)
 		}));
+	}
+
+	/**
+	 * Delete a media item (series or movie) from all enabled Jellyfin/Emby servers
+	 * by its TMDB ID. This removes only the server's library entry — files on disk
+	 * are never touched. Used before renaming a folder to avoid the ghost-entry
+	 * resurrection loop (jellyfin#16883).
+	 *
+	 * Best-effort: failures from unreachable servers or stale item IDs are logged
+	 * but do not block the caller. Returns the count of servers the item was
+	 * successfully deleted from.
+	 */
+	async deleteMediaItemByTmdb(tmdbId: number, itemType: 'movie' | 'series'): Promise<number> {
+		if (!tmdbId) return 0;
+
+		const servers = await this.getEnabledServers();
+		let deleted = 0;
+
+		for (const server of servers) {
+			try {
+				const synced = await db
+					.select({ serverItemId: mediaServerSyncedItems.serverItemId })
+					.from(mediaServerSyncedItems)
+					.where(
+						and(
+							eq(mediaServerSyncedItems.serverId, server.id),
+							eq(mediaServerSyncedItems.tmdbId, tmdbId),
+							eq(mediaServerSyncedItems.itemType, itemType)
+						)
+					)
+					.limit(1);
+
+				if (synced.length === 0) continue;
+
+				const client = this.clientCache.get(server.id) ?? this.createClient(server);
+				const ok = await client.deleteItem(synced[0].serverItemId);
+				if (ok) deleted++;
+			} catch (error) {
+				logger.warn(
+					{
+						serverId: server.id,
+						serverName: server.name,
+						tmdbId,
+						itemType,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'[MediaBrowserManager] Failed to delete media item from server'
+				);
+			}
+		}
+
+		if (deleted > 0) {
+			logger.info(
+				{ tmdbId, itemType, deleted },
+				'[MediaBrowserManager] Deleted media item from servers before folder rename'
+			);
+		}
+
+		return deleted;
 	}
 }
 

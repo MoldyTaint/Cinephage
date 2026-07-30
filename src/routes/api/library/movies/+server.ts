@@ -23,6 +23,7 @@ import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { fetchAndStoreMovieAlternateTitles } from '$lib/server/services/AlternateTitleService.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { ValidationError, isAppError } from '$lib/errors';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 import { logger } from '$lib/logging';
 import { requireAuth } from '$lib/server/auth/authorization.js';
 
@@ -55,6 +56,7 @@ export const GET: RequestHandler = async (event) => {
 				rootFolderPath: rootFolders.path,
 				rootFolderMediaType: rootFolders.mediaType,
 				scoringProfileId: movies.scoringProfileId,
+				desiredQualities: movies.desiredQualities,
 				monitored: movies.monitored,
 				minimumAvailability: movies.minimumAvailability,
 				added: movies.added,
@@ -142,6 +144,7 @@ export const POST: RequestHandler = async (event) => {
 			tmdbId,
 			rootFolderId,
 			scoringProfileId,
+			desiredQualities,
 			monitored,
 			minimumAvailability,
 			availabilityDelay,
@@ -241,6 +244,7 @@ export const POST: RequestHandler = async (event) => {
 				libraryId: owningLibrary.id,
 				rootFolderId,
 				scoringProfileId: effectiveProfileId,
+				desiredQualities: desiredQualities ?? null,
 				monitored,
 				minimumAvailability,
 				availabilityDelay,
@@ -265,9 +269,10 @@ export const POST: RequestHandler = async (event) => {
 			);
 		});
 
-		// Trigger search if requested and movie is monitored (shared logic)
+		// Trigger search if explicitly requested regardless of monitoring state
 		let searchTriggered = false;
-		if (shouldSearch && monitored) {
+		let searchWarning: string | undefined;
+		if (shouldSearch) {
 			const searchResult = await triggerMovieSearch({
 				movieId: newMovie.id,
 				tmdbId,
@@ -277,7 +282,14 @@ export const POST: RequestHandler = async (event) => {
 				scoringProfileId
 			});
 			searchTriggered = searchResult.triggered;
+			searchWarning = searchResult.searchWarning;
 		}
+
+		libraryMediaEvents.emitLibraryDataChanged({
+			source: 'movie',
+			reason: 'movie-added',
+			entityId: newMovie.id
+		});
 
 		return json({
 			success: true,
@@ -288,7 +300,8 @@ export const POST: RequestHandler = async (event) => {
 				year: newMovie.year,
 				path: newMovie.path,
 				monitored: newMovie.monitored,
-				searchTriggered
+				searchTriggered,
+				searchWarning
 			}
 		});
 	} catch (error) {

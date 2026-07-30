@@ -356,7 +356,7 @@
 	{/if}
 
 	<a
-		href={resolve('/settings/general/status')}
+		href={resolve('/settings/monitoring/status')}
 		class="card bg-base-200 transition-colors hover:bg-base-300"
 	>
 		<div class="card-body gap-1.5 p-3">

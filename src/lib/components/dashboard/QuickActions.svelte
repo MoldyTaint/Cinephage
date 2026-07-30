@@ -54,7 +54,7 @@
 					{m.dashboard_quickActions_addDownloadClient()}
 				</a>
 				<a
-					href={resolve('/settings/general/root-folders')}
+					href={resolve('/settings/library/root-folders')}
 					class="btn min-w-34 justify-center border-warning bg-warning text-warning-content btn-sm hover:border-warning hover:bg-warning/90"
 				>
 					<HardDrive class="h-4 w-4" />
@@ -110,7 +110,7 @@
 				{/if}
 				{#if hasMissingEpisodes}
 					<a
-						href={resolve('/settings/tasks')}
+						href={resolve('/settings/monitoring/tasks')}
 						class="btn min-w-34 justify-center border-warning bg-warning text-warning-content btn-sm hover:border-warning hover:bg-warning/90"
 					>
 						<Search class="h-4 w-4" />
@@ -118,7 +118,7 @@
 					</a>
 				{:else}
 					<a
-						href={resolve('/settings/tasks')}
+						href={resolve('/settings/monitoring/tasks')}
 						class="btn min-w-34 justify-center border-warning bg-warning text-warning-content btn-sm hover:border-warning hover:bg-warning/90"
 					>
 						<ListTodo class="h-4 w-4" />

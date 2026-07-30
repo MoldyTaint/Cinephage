@@ -13,8 +13,6 @@ import type { ExternalListProvider, ExternalListItem, ExternalListResult } from 
 export interface TmdbListConfig {
 	/** TMDb list ID */
 	listId: string;
-	/** Maximum pages to fetch (default: 5) */
-	maxPages?: number;
 }
 
 interface TmdbListItem {
@@ -43,6 +41,9 @@ interface TmdbListResponse {
 	description: string;
 	poster_path: string | null;
 	item_count: number;
+	page: number;
+	total_pages: number;
+	total_results: number;
 	items: TmdbListItem[];
 }
 
@@ -104,50 +105,52 @@ export class TmdbListProvider implements ExternalListProvider {
 		);
 
 		try {
-			// TMDb list API doesn't have pagination in the same way as discover
-			// It returns all items in one request (up to a limit)
-			// We'll fetch the list and filter by media type if specified (empty string = show all)
-			const response = (await tmdb.fetch(
-				`/list/${normalizedListId}`,
-				{},
-				true
-			)) as TmdbListResponse;
+			let currentPage = 1;
+			let totalPages = 1;
 
-			if (!response.items || response.items.length === 0) {
-				logger.info({ listId: normalizedListId }, '[TmdbListProvider] List is empty');
-				return {
-					items: [],
-					totalCount: 0,
-					failedCount: 0
-				};
-			}
+			while (currentPage <= totalPages) {
+				const response = (await tmdb.fetch(
+					`/list/${normalizedListId}?page=${currentPage}`,
+					{},
+					true
+				)) as TmdbListResponse;
 
-			logger.info(
-				{
-					listId: normalizedListId,
-					listName: response.name,
-					itemCount: response.items.length
-				},
-				'[TmdbListProvider] Fetched list'
-			);
-
-			for (const item of response.items) {
-				// Filter by media type if specified (skip filter if mediaType is empty string)
-				if (mediaType && item.media_type && item.media_type !== mediaType) {
-					continue;
+				if (currentPage === 1) {
+					if (!response.items || response.items.length === 0) {
+						logger.info({ listId: normalizedListId }, '[TmdbListProvider] List is empty');
+						return { items: [], totalCount: 0, failedCount: 0 };
+					}
+					totalPages = response.total_pages ?? 1;
+					logger.info(
+						{
+							listId: normalizedListId,
+							listName: response.name,
+							totalResults: response.total_results,
+							totalPages
+						},
+						'[TmdbListProvider] Fetched list metadata'
+					);
 				}
 
-				const parsedItem = this.parseItem(item);
-				if (parsedItem) {
-					items.push(parsedItem);
+				for (const item of response.items ?? []) {
+					if (mediaType && item.media_type && item.media_type !== mediaType) {
+						continue;
+					}
+					const parsedItem = this.parseItem(item);
+					if (parsedItem) {
+						items.push(parsedItem);
+					}
 				}
+
+				currentPage++;
 			}
 
 			logger.info(
 				{
 					listId: normalizedListId,
 					totalItems: items.length,
-					filteredFrom: response.items.length
+					pagesFetched: currentPage - 1,
+					totalPages
 				},
 				'[TmdbListProvider] Completed TMDb list fetch'
 			);

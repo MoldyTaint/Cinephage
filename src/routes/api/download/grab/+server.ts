@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { requireAuth } from '$lib/server/auth/authorization.js';
 import { grabService } from '$lib/server/downloads/GrabService.js';
 import { parseBody } from '$lib/server/api/validate.js';
-import { grabRequestSchema } from '$lib/validation/schemas.js';
+import { grabRequestSchema, type GrabRequest as GrabRequestBody } from '$lib/validation/schemas.js';
 import type { GrabResponse } from '$lib/types/queue';
 import type { GrabRequest as ServiceGrabRequest } from '$lib/server/downloads/grab-types.js';
 import type { GrabTarget } from '$lib/server/filters/stages/grab/types.js';
@@ -13,6 +13,8 @@ import { db } from '$lib/server/db';
 import { series } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '$lib/logging';
+import { isAppError } from '$lib/errors';
+import { getDefaultAcquisitionProtocol } from '$lib/server/settings/acquisition.js';
 
 const parser = new ReleaseParser();
 
@@ -20,7 +22,24 @@ export const POST: RequestHandler = async (event) => {
 	const authError = requireAuth(event);
 	if (authError) return authError;
 
-	const data = await parseBody(event.request, grabRequestSchema);
+	let data: GrabRequestBody;
+	try {
+		data = await parseBody(event.request, grabRequestSchema);
+	} catch (error) {
+		// parseBody throws AppError (e.g. ValidationError) on invalid input. Return it with
+		// its real status code instead of letting SvelteKit surface an opaque 500.
+		if (isAppError(error)) {
+			logger.warn(
+				{ logDomain: 'downloads', code: error.code, context: error.context },
+				'[Grab] Rejected: invalid request body'
+			);
+			return json(
+				{ success: false, error: error.message, errorCode: error.code } satisfies GrabResponse,
+				{ status: error.statusCode }
+			);
+		}
+		throw error;
+	}
 
 	if (data.categories && data.categories.length > 0) {
 		const searchType = data.mediaType === 'movie' ? 'movie' : 'tv';
@@ -32,6 +51,7 @@ export const POST: RequestHandler = async (event) => {
 			const actualContentType = getCategoryContentType(data.categories[0]);
 			logger.error(
 				{
+					logDomain: 'downloads',
 					title: data.title,
 					expectedType: data.mediaType,
 					actualContentType,
@@ -68,6 +88,7 @@ export const POST: RequestHandler = async (event) => {
 			if (!titlesMatch && parsedTitle.length > 0) {
 				logger.error(
 					{
+						logDomain: 'downloads',
 						releaseTitle: data.title,
 						parsedTitle: parsed.cleanTitle,
 						normalizedParsed: parsedTitle,
@@ -89,6 +110,19 @@ export const POST: RequestHandler = async (event) => {
 	}
 
 	if (!data.protocol) {
+		logger.warn(
+			{
+				logDomain: 'downloads',
+				title: data.title,
+				mediaType: data.mediaType,
+				indexerId: data.indexerId,
+				indexerName: data.indexerName,
+				hasDownloadUrl: !!data.downloadUrl,
+				hasMagnetUrl: !!data.magnetUrl,
+				hasInfoHash: !!data.infoHash
+			},
+			'[Grab] BLOCKED: Missing protocol field in request'
+		);
 		return json({ success: false, error: 'protocol is required' } satisfies GrabResponse, {
 			status: 422
 		});
@@ -107,6 +141,7 @@ export const POST: RequestHandler = async (event) => {
 			indexerId: data.indexerId,
 			indexerName: data.indexerName,
 			size: data.size,
+			publishDate: data.publishDate ? new Date(data.publishDate) : undefined,
 			protocol: data.protocol,
 			guid: data.guid,
 			commentsUrl: data.commentsUrl,
@@ -121,7 +156,9 @@ export const POST: RequestHandler = async (event) => {
 			isAutomatic: data.isAutomatic ?? false,
 			downloadClientId: undefined,
 			isUpgrade: data.isUpgrade,
-			streamUsenet: data.streamUsenet
+			streamUsenet: data.streamUsenet,
+			acquisitionProtocol:
+				data.acquisitionProtocol ?? (data.isAutomatic ? getDefaultAcquisitionProtocol() : 'default')
 		}
 	};
 
@@ -136,16 +173,15 @@ export const POST: RequestHandler = async (event) => {
 		result = await grabService.grab(serviceRequest);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
-		logger.error({ error: message, title: data.title }, 'Failed to grab release');
+		logger.error(
+			{ logDomain: 'downloads', error: message, title: data.title },
+			'Failed to grab release'
+		);
 		return json({ success: false, error: message } satisfies GrabResponse, { status: 500 });
 	}
 
 	if (!result.success) {
 		if (result.error) {
-			logger.error(
-				{ title: data.title, error: result.error, decision: result.decision },
-				'[Grab] Handler returned failure'
-			);
 			return json(
 				{
 					success: false,

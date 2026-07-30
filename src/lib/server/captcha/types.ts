@@ -119,6 +119,8 @@ export interface SolveRequest {
 	cookies?: Cookie[];
 	/** Proxy override for this request */
 	proxy?: ProxyConfig;
+	/** Abort signal — closes the browser and cancels the solve when fired */
+	signal?: AbortSignal;
 }
 
 /**
@@ -137,6 +139,14 @@ export interface BrowserFetchRequest {
 	timeout?: number;
 	/** Proxy override for this request */
 	proxy?: ProxyConfig;
+	/** Abort signal — closes the browser and cancels the fetch when fired */
+	signal?: AbortSignal;
+	/**
+	 * When true, only the clearance cookies + user agent are needed; the page
+	 * body may be skipped to save memory. Callers that only want cf_clearance
+	 * (e.g. to replay via an impersonating HTTP client) should set this.
+	 */
+	returnOnlyCookies?: boolean;
 }
 
 /**

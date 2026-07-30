@@ -33,10 +33,10 @@ export interface LibraryEntity {
 	rootFolders: LibraryRootFolder[];
 	defaultRootFolderId: string | null;
 	defaultRootFolderPath: string | null;
-	defaultMonitored: boolean;
 	defaultSearchOnAdd: boolean;
 	defaultWantsSubtitles: boolean;
 	sortOrder: number;
+	scanMode?: string | null;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -47,10 +47,11 @@ export interface CreateLibraryInput {
 	mediaSubType?: LibraryMediaSubType;
 	rootFolderIds?: string[];
 	isDefault?: boolean;
-	defaultMonitored?: boolean;
 	defaultSearchOnAdd?: boolean;
 	defaultWantsSubtitles?: boolean;
 	sortOrder?: number;
+	scanMode?: string;
+	scanConfig?: Record<string, unknown> | null;
 }
 
 export type UpdateLibraryInput = Partial<CreateLibraryInput>;
@@ -286,10 +287,11 @@ export class LibraryEntityService {
 
 	private async loadLibraryEntities(options: ListOptions = {}): Promise<LibraryEntity[]> {
 		const includeSystem = options.includeSystem ?? true;
-		if (includeSystem) {
-			await this.syncSystemLibrariesFromRootFolders();
-		}
-		await this.backfillLibraryRootFolders();
+		// Reconciliation (syncSystemLibrariesFromRootFolders + backfillLibraryRootFolders)
+		// was previously triggered here, causing writes on every read path (listLibraries,
+		// getLibrary, getLibraryForMutation). Reconciliation now runs from write paths
+		// (assignRootFoldersToLibrary / releaseRootFoldersToSystemLibraries) and the
+		// library-reconcile scheduled task. See reconcileAll().
 
 		const rows = await db
 			.select({
@@ -302,10 +304,10 @@ export class LibraryEntityService {
 				systemKey: libraries.systemKey,
 				isDefault: libraries.isDefault,
 				defaultRootFolderId: libraries.defaultRootFolderId,
-				defaultMonitored: libraries.defaultMonitored,
 				defaultSearchOnAdd: libraries.defaultSearchOnAdd,
 				defaultWantsSubtitles: libraries.defaultWantsSubtitles,
 				sortOrder: libraries.sortOrder,
+				scanMode: libraries.scanMode,
 				createdAt: libraries.createdAt,
 				updatedAt: libraries.updatedAt
 			})
@@ -373,7 +375,6 @@ export class LibraryEntityService {
 					defaultPathByLibraryId.get(row.id) ??
 					attachedRootFolders.find((folder) => folder.id === defaultRootFolderId)?.path ??
 					null,
-				defaultMonitored: row.defaultMonitored ?? true,
 				defaultSearchOnAdd: row.defaultSearchOnAdd ?? true,
 				defaultWantsSubtitles: row.defaultWantsSubtitles ?? true,
 				sortOrder: row.sortOrder ?? 0,
@@ -399,7 +400,6 @@ export class LibraryEntityService {
 					systemKey: def.systemKey,
 					isDefault: def.isDefault,
 					defaultRootFolderId: null,
-					defaultMonitored: true,
 					defaultSearchOnAdd: true,
 					defaultWantsSubtitles: true,
 					sortOrder: def.sortOrder,
@@ -588,6 +588,21 @@ export class LibraryEntityService {
 		await this.reconcileRootFolderAssignments();
 	}
 
+	/**
+	 * Run full library <-> root folder reconciliation.
+	 * Called from write paths and the library-reconcile scheduled task.
+	 * Performs: backfillLibraryRootFolders + syncSystemLibrariesFromRootFolders
+	 * (which delegates to reconcileRootFolderAssignments).
+	 *
+	 * This is the canonical entry point for healing drift between libraries,
+	 * root folders, and their join-table assignments. Read paths
+	 * (listLibraries / getLibrary) no longer reconcile implicitly.
+	 */
+	async reconcileAll(): Promise<void> {
+		await this.backfillLibraryRootFolders();
+		await this.syncSystemLibrariesFromRootFolders();
+	}
+
 	async resolveOwningLibraryForRootFolder(
 		rootFolderId: string,
 		mediaType: LibraryMediaType
@@ -748,10 +763,11 @@ export class LibraryEntityService {
 			systemKey: null,
 			isDefault: input.isDefault ?? false,
 			defaultRootFolderId: null,
-			defaultMonitored: input.defaultMonitored ?? true,
 			defaultSearchOnAdd: input.defaultSearchOnAdd ?? true,
 			defaultWantsSubtitles: input.defaultWantsSubtitles ?? true,
 			sortOrder: nextSortOrder,
+			scanMode: input.scanMode ?? 'scheduled',
+			scanConfig: input.scanConfig ?? null,
 			createdAt: now,
 			updatedAt: now
 		});
@@ -820,9 +836,6 @@ export class LibraryEntityService {
 		if (updates.isDefault !== undefined) {
 			updateData.isDefault = updates.isDefault;
 		}
-		if (updates.defaultMonitored !== undefined) {
-			updateData.defaultMonitored = updates.defaultMonitored;
-		}
 		if (updates.defaultSearchOnAdd !== undefined) {
 			updateData.defaultSearchOnAdd = updates.defaultSearchOnAdd;
 		}
@@ -831,6 +844,12 @@ export class LibraryEntityService {
 		}
 		if (updates.sortOrder !== undefined) {
 			updateData.sortOrder = updates.sortOrder;
+		}
+		if (updates.scanMode !== undefined) {
+			updateData.scanMode = updates.scanMode;
+		}
+		if (updates.scanConfig !== undefined) {
+			updateData.scanConfig = updates.scanConfig ?? null;
 		}
 
 		await db.update(libraries).set(updateData).where(eq(libraries.id, id));

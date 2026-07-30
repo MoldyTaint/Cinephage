@@ -26,18 +26,29 @@ import { requireAuth } from '$lib/server/auth/authorization.js';
 import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 
 /**
  * Generate a folder name for a series using the naming service
  * Uses database naming configuration instead of defaults
  */
-function generateSeriesFolderName(title: string, year?: number, tvdbId?: number): string {
+function generateSeriesFolderName(
+	title: string,
+	year?: number,
+	tvdbId?: number,
+	tmdbId?: number,
+	imdbId?: string,
+	originalTitle?: string
+): string {
 	const config = namingSettingsService.getConfigSync();
 	const namingService = new NamingService(config);
 	const info: MediaNamingInfo = {
 		title,
+		originalTitle,
 		year,
-		tvdbId
+		tvdbId,
+		tmdbId,
+		imdbId
 	};
 	return namingService.generateSeriesFolderName(info);
 }
@@ -192,7 +203,14 @@ export const POST: RequestHandler = async (event) => {
 		const year = tvDetails.first_air_date
 			? new Date(tvDetails.first_air_date).getFullYear()
 			: undefined;
-		const folderName = generateSeriesFolderName(tvDetails.name, year, tvdbId ?? undefined);
+		const folderName = generateSeriesFolderName(
+			tvDetails.name,
+			year,
+			tvdbId ?? undefined,
+			tmdbId,
+			imdbId ?? undefined,
+			tvDetails.original_name ?? undefined
+		);
 
 		// Calculate total episode count (including specials if monitorSpecials is enabled)
 		const totalEpisodes =
@@ -400,16 +418,24 @@ export const POST: RequestHandler = async (event) => {
 			}
 		}
 
-		// Trigger search if requested and series is monitored (shared logic)
+		// Trigger search if explicitly requested regardless of monitoring state
 		let searchTriggered = false;
-		if (shouldSearch && monitored && monitorType !== 'none') {
+		let searchWarning: string | undefined;
+		if (shouldSearch) {
 			const searchResult = await triggerSeriesSearch({
 				seriesId: newSeries.id,
 				tmdbId,
 				title: tvDetails.name
 			});
 			searchTriggered = searchResult.triggered;
+			searchWarning = searchResult.searchWarning;
 		}
+
+		libraryMediaEvents.emitLibraryDataChanged({
+			source: 'series',
+			reason: 'series-added',
+			entityId: newSeries.id
+		});
 
 		return json({
 			success: true,
@@ -421,7 +447,8 @@ export const POST: RequestHandler = async (event) => {
 				path: newSeries.path,
 				monitored: newSeries.monitored,
 				episodeCount: newSeries.episodeCount,
-				searchTriggered
+				searchTriggered,
+				searchWarning
 			}
 		});
 	} catch (error) {

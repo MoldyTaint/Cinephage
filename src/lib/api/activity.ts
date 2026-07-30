@@ -16,6 +16,12 @@ export async function setRetentionDays(retentionDays: number) {
 	return apiPut('/api/activity/settings', { retentionDays });
 }
 
-export async function purgeHistory(action: 'older_than_retention' | 'all') {
-	return apiPost('/api/activity/settings', { action });
+export async function purgeHistory(
+	action: 'older_than_retention' | 'all',
+	options?: { removeFromClient?: boolean }
+) {
+	return apiPost('/api/activity/settings', {
+		action,
+		removeFromClient: options?.removeFromClient ?? false
+	});
 }

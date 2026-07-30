@@ -210,6 +210,11 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			throw error(404, 'Queue item not found');
 		}
 
+		if (queueItem.protocol === 'debrid' && (action === 'pause' || action === 'resume')) {
+			const actionLabel = action === 'pause' ? 'Pause' : 'Resume';
+			throw error(400, `${actionLabel} is not supported for debrid downloads`);
+		}
+
 		// Handle different actions using downloadMonitor which emits SSE events
 		if (action === 'pause') {
 			await downloadMonitor.pauseDownload(id);
@@ -223,7 +228,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 		throw error(400, 'No valid action specified');
 	} catch (err) {
-		if (err instanceof Error && 'status' in err) throw err;
+		if (err && typeof err === 'object' && 'status' in err) throw err;
 		logger.error('Error updating queue item', err instanceof Error ? err : undefined);
 		throw error(500, 'Failed to update queue item');
 	}

@@ -363,6 +363,11 @@ export interface ScoringProfile {
 	 * @default ['torrent', 'usenet', 'streaming'] for streaming profile
 	 */
 	allowedProtocols?: ('torrent' | 'usenet' | 'streaming')[];
+
+	/**
+	 * Required format entries. AND entries must all match; OR entries need at least one match.
+	 */
+	requiredFormats?: { id: string; op: 'AND' | 'OR' }[];
 }
 
 /**

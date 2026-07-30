@@ -136,6 +136,7 @@ export function normalizeActivity(activity: Partial<UnifiedActivity>): UnifiedAc
 		downloadClientId: activity.downloadClientId ?? null,
 		downloadClientName: activity.downloadClientName ?? null,
 		status: normalizeActivityStatus(activity.status),
+		queueStatus: activity.queueStatus,
 		statusReason: activity.statusReason,
 		downloadProgress: activity.downloadProgress,
 		isUpgrade: activity.isUpgrade ?? false,

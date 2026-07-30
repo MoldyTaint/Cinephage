@@ -24,6 +24,7 @@ import type {
 } from './types';
 import { browserFetch, solveChallenge, testForChallenge } from './browser/CamoufoxSolver';
 import { getCamoufoxManager, shutdownCamoufoxManager } from './browser/CamoufoxManager';
+import { installBrowserCrashGuard } from './browser/browser-crash-guard';
 
 /**
  * Captcha Solver Background Service
@@ -81,6 +82,11 @@ export class CaptchaSolver implements BackgroundService {
 	private async initialize(): Promise<void> {
 		try {
 			logger.info('[CaptchaSolver] Initializing with Camoufox');
+
+			// Guard the process against uncaught errors thrown from inside the
+			// headless browser stack (Camoufox/Playwright/Firefox) during solving,
+			// which would otherwise terminate the whole server.
+			installBrowserCrashGuard();
 
 			// Wait for Camoufox availability check to complete
 			const camoufoxManager = getCamoufoxManager();
@@ -249,7 +255,11 @@ export class CaptchaSolver implements BackgroundService {
 
 		const result = await browserFetch(request, {
 			headless: config.headless,
-			timeoutSeconds: request.timeout ?? config.timeoutSeconds
+			timeoutSeconds: request.timeout ?? config.timeoutSeconds,
+			// Media blocking is left OFF by default: aborting image/font requests during
+			// a Cloudflare challenge can prevent the challenge from completing. The global
+			// browser semaphore is what bounds memory, not per-page media blocking.
+			blockMedia: false
 		});
 
 		if (result.success) {

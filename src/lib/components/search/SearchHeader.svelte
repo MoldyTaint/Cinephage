@@ -14,7 +14,7 @@
 	let { title, searchMode, searching, onRefresh, onClose }: Props = $props();
 </script>
 
-<div class="mb-3 flex items-start justify-between gap-2">
+<div class="mb-1 flex items-start justify-between gap-2 sm:mb-3">
 	<div class="min-w-0 flex-1">
 		<h3
 			id="interactive-search-modal-title"

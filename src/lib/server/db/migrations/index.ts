@@ -97,6 +97,32 @@ import { migration_v096 } from './096-add-adult-columns.js';
 import { migration_v097 } from './097-add-episode-group-id.js';
 import { migration_v098 } from './098-add-indexer-categories.js';
 import { migration_v100 } from './100-add-scoring-profile-prevent-downgrades.js';
+import { migration_v101 } from './101-add-cinephage-api-tables.js';
+import { migration_v102 } from './102-add-indexers-is-built-in.js';
+import { migration_v103 } from './103-migrate-streaming-settings.js';
+import { migration_v104 } from './104-drop-indexer-definitions-table.js';
+import { migration_v105 } from './105-add-delay-profile-assignment.js';
+import { migration_v106 } from './106-add-required-formats-to-scoring-profiles.js';
+import { migration_v107 } from './107-migrate-required-formats-to-entries.js';
+import { migration_v108 } from './108-add-download-queue-stalled-since.js';
+import { migration_v109 } from './109-add-stalled-orphan-tracking-table.js';
+import { migration_v110 } from './110-add-storage-items-tables.js';
+import { migration_v111 } from './111-add-rename-history.js';
+import { migration_v112 } from './112-add-pattern-recognition.js';
+import { migration_v113 } from './113-add-resolution-categories.js';
+import { migration_v114 } from './114-add-quality-scaffolding.js';
+import { migration_v115 } from './115-add-scan-mode.js';
+import { migration_v116 } from './116-add-duplicate-detection.js';
+import { migration_v117 } from './117-add-quality-profile-to-delay-profiles.js';
+import { migration_v118 } from './118-add-scan-mode-to-delay-profiles.js';
+import { migration_v119 } from './119-backfill-release-group-from-title.js';
+import { migration_v120 } from './120-migrate-prowlarr-indexers-to-native.js';
+import { migration_v121 } from './121-migrate-jackett-indexers-to-native.js';
+import { migration_v122 } from './122-remove-quality-scaffolding-defaults.js';
+import { migration_v123 } from './123-add-movies-desired-qualities.js';
+import { migration_v124 } from './124-add-subtitles-movie-file-id.js';
+import { migration_v125 } from './125-add-debrid-client-columns.js';
+import { migration_v126 } from './126-add-metadata-language-overrides.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -196,5 +222,31 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v096,
 	migration_v097,
 	migration_v098,
-	migration_v100
+	migration_v100,
+	migration_v101,
+	migration_v102,
+	migration_v103,
+	migration_v104,
+	migration_v105,
+	migration_v106,
+	migration_v107,
+	migration_v108,
+	migration_v109,
+	migration_v110,
+	migration_v111,
+	migration_v112,
+	migration_v113,
+	migration_v114,
+	migration_v115,
+	migration_v116,
+	migration_v117,
+	migration_v118,
+	migration_v119,
+	migration_v120,
+	migration_v121,
+	migration_v122,
+	migration_v123,
+	migration_v124,
+	migration_v125,
+	migration_v126
 ];

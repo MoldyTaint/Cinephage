@@ -12,6 +12,8 @@ import { createTestDb, destroyTestDb } from '../../../../test/db-helper';
 import { RenamePreviewService, type RenamePreviewResult } from './RenamePreviewService';
 import { NamingService, type MediaNamingInfo, DEFAULT_NAMING_CONFIG } from './NamingService';
 import { chooseBestParsedRelease } from './preview-metadata';
+import * as schema from '$lib/server/db/schema';
+import { eq } from 'drizzle-orm';
 
 const testDb = createTestDb();
 
@@ -28,6 +30,43 @@ vi.mock('$lib/server/db', () => ({
 vi.mock('$lib/server/notifications/mediabrowser', () => ({
 	getMediaBrowserNotifier: () => ({ queueUpdate: vi.fn() })
 }));
+
+const mockedMoveFile = vi.fn();
+const mockedFileExists = vi.fn();
+
+vi.mock('$lib/server/downloadClients/import/FileTransfer', () => ({
+	get moveFile() {
+		return mockedMoveFile;
+	},
+	get fileExists() {
+		return mockedFileExists;
+	}
+}));
+
+vi.mock('node:fs/promises', () => ({
+	rename: vi.fn(),
+	stat: vi.fn()
+}));
+
+// Import the mocked module to get references to the mock functions.
+import * as mockFs from 'node:fs/promises';
+
+function resetAllMocks() {
+	vi.clearAllMocks();
+	mockedMoveFile.mockResolvedValue({
+		success: true,
+		sourcePath: '',
+		destPath: '',
+		mode: 'move' as const
+	});
+	mockedFileExists.mockResolvedValue(true);
+	(mockFs.rename as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+	(mockFs.stat as ReturnType<typeof vi.fn>).mockResolvedValue({
+		size: 100,
+		isFile: () => true,
+		isDirectory: () => false
+	});
+}
 
 afterAll(() => {
 	destroyTestDb(testDb);
@@ -1506,6 +1545,93 @@ describe('RenamePreviewService', () => {
 				const result = service.generateSeriesFolderName(info);
 				expect(result).toContain('Boku no Hero Academia');
 			});
+		});
+	});
+
+	describe('executeRenames safety: files-only (no folder rename)', () => {
+		beforeEach(() => {
+			resetAllMocks();
+		});
+
+		it('no-op guard: returns success when currentFullPath === newFullPath', async () => {
+			const service = new RenamePreviewService();
+			const item = {
+				fileId: 'file-1',
+				mediaType: 'movie' as const,
+				mediaId: 'movie-1',
+				mediaTitle: 'Test',
+				currentParentPath: 'Test (2024) [tmdbid-1]',
+				currentRelativePath: 'Test (2024).mkv',
+				currentFullPath: '/media/Test (2024) [tmdbid-1]/Test (2024).mkv',
+				newParentPath: 'Test (2024) [tmdbid-1]',
+				newRelativePath: 'Test (2024).mkv',
+				newFullPath: '/media/Test (2024) [tmdbid-1]/Test (2024).mkv',
+				status: 'will_change' as const
+			};
+
+			// @ts-expect-error accessing private method for testing
+			const result = await service.executeFileRename(item);
+
+			expect(result.success).toBe(true);
+			expect(mockedMoveFile).not.toHaveBeenCalled();
+		});
+
+		it('does NOT rename parent folders during file rename (separation of concerns)', async () => {
+			const service = new RenamePreviewService();
+
+			const rootId = 'root-1';
+			const movieId = 'movie-foldertest';
+			const fileId = 'file-foldertest';
+
+			testDb.db
+				.insert(schema.rootFolders)
+				.values({
+					id: rootId,
+					name: 'Movies',
+					path: '/media/Movies',
+					mediaType: 'movie',
+					readOnly: false
+				})
+				.run();
+
+			testDb.db
+				.insert(schema.movies)
+				.values({
+					id: movieId,
+					tmdbId: 999999,
+					title: 'Folder Test',
+					year: 2024,
+					path: 'Folder Test (2024) {tmdb-999999}',
+					rootFolderId: rootId,
+					hasFile: true
+				})
+				.run();
+
+			// Name that will produce a DIFFERENT target under the current naming config
+			testDb.db
+				.insert(schema.movieFiles)
+				.values({
+					id: fileId,
+					movieId: movieId,
+					relativePath: 'bad-name.avi',
+					quality: { resolution: '1080p', source: 'WEBRip', codec: 'x265' },
+					releaseGroup: 'RARBG'
+				})
+				.run();
+
+			mockedFileExists.mockResolvedValue(true);
+
+			const result = await service.executeRenames([fileId]);
+
+			expect(result.processed).toBeGreaterThanOrEqual(1);
+
+			// Verify the movie's folder path was NOT changed.
+			const movieAfter = testDb.db
+				.select()
+				.from(schema.movies)
+				.where(eq(schema.movies.id, movieId))
+				.get();
+			expect(movieAfter?.path).toBe('Folder Test (2024) {tmdb-999999}');
 		});
 	});
 });

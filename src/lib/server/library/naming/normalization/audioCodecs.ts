@@ -17,31 +17,34 @@ function preprocessAudioCodec(codec: string): string {
 const AUDIO_CODEC_MAPPINGS: Record<string, string> = {
 	// Lossless formats
 	truehd: 'TrueHD',
-	'truehd atmos': 'TrueHD Atmos',
-	truhdatmos: 'TrueHD Atmos',
 	truehdatmos: 'TrueHD Atmos',
+	truhdatmos: 'TrueHD Atmos',
 	dtshd: 'DTS-HD',
 	dtshdma: 'DTS-HD MA',
-	'dtshd ma': 'DTS-HD MA',
+	dtshdhra: 'DTS-HD HRA',
 	dtsx: 'DTS-X',
 	flac: 'FLAC',
 	pcm: 'PCM',
 	lpcm: 'LPCM',
+	alac: 'ALAC',
+	mlp: 'TrueHD',
 
 	// Lossy formats
 	dts: 'DTS',
-	'dolby digital': 'DD',
+	dtses: 'DTS-ES',
 	dolbydigital: 'DD',
+	dolbydigitalplus: 'DD+',
 	dd: 'DD',
+	ac3: 'DD',
 	ddp: 'DD+',
 	'dd+': 'DD+',
 	ddplus: 'DD+',
-	eac3: 'EAC3',
-	ac3: 'AC3',
+	eac3: 'DD+',
 	aac: 'AAC',
 	mp3: 'MP3',
 	opus: 'Opus',
-	vorbis: 'Vorbis'
+	vorbis: 'Vorbis',
+	wma: 'WMA'
 };
 
 export const audioCodecNormalizer: NormalizationMap = createNormalizationMap(AUDIO_CODEC_MAPPINGS);

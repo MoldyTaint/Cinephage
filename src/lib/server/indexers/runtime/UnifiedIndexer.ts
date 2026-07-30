@@ -137,8 +137,14 @@ export class UnifiedIndexer implements IIndexer {
 		this.enableAutomaticSearch = record.enableAutomaticSearch ?? true;
 		this.enableInteractiveSearch = record.enableInteractiveSearch ?? true;
 
-		// Get protocol from definition (no longer hardcoded!)
-		this.protocol = this.mapProtocol(definition.protocol);
+		// settings.protocol overrides the definition for indexers (like prowlarr) that
+		// serve mixed torrent/usenet content under a single definition.
+		const settingsProtocol = settings.protocol;
+		const resolvedProtocol =
+			settingsProtocol === 'usenet' || settingsProtocol === 'torrent'
+				? (settingsProtocol as string)
+				: definition.protocol;
+		this.protocol = this.mapProtocol(resolvedProtocol);
 		this.accessType = this.mapAccessType(definition.type);
 
 		// Build capabilities from definition
@@ -233,7 +239,8 @@ export class UnifiedIndexer implements IIndexer {
 				: definition.links.slice(1),
 			userAgent: 'Cinephage/1.0',
 			rateLimit: rateLimit ?? { requests: 30, periodMs: 60_000 },
-			encoding: definition.encoding
+			encoding: definition.encoding,
+			defaultTimeout: definition.requesttimeout
 		});
 		this.hostRateLimiter = getHostRateLimiter();
 
@@ -473,7 +480,7 @@ export class UnifiedIndexer implements IIndexer {
 				await this.checkRateLimit();
 				await this.hostRateLimiter.waitIfNeeded(request.url);
 
-				const results = await this.executeSearchRequest(request);
+				const results = await this.executeSearchRequest(request, criteria.signal);
 				allResults.push(...results);
 				successfulRequests += 1;
 			} catch (error) {
@@ -505,16 +512,19 @@ export class UnifiedIndexer implements IIndexer {
 	/**
 	 * Execute a single search request
 	 */
-	private async executeSearchRequest(request: {
-		url: string;
-		method: 'GET' | 'POST';
-		headers: Record<string, string>;
-		body?: string | URLSearchParams;
-		searchPath: unknown;
-	}): Promise<ReleaseResult[]> {
+	private async executeSearchRequest(
+		request: {
+			url: string;
+			method: 'GET' | 'POST';
+			headers: Record<string, string>;
+			body?: string | URLSearchParams;
+			searchPath: unknown;
+		},
+		signal?: AbortSignal
+	): Promise<ReleaseResult[]> {
 		this.http.setCookies(this.cookies);
 
-		this.log.info(
+		this.log.debug(
 			{
 				url: request.url,
 				method: request.method,
@@ -527,14 +537,16 @@ export class UnifiedIndexer implements IIndexer {
 			request.method === 'POST'
 				? await this.http.post(request.url, request.body!, {
 						headers: request.headers,
-						followRedirects: this.definition.followredirect ?? true
+						followRedirects: this.definition.followredirect ?? true,
+						signal
 					})
 				: await this.http.get(request.url, {
 						headers: request.headers,
-						followRedirects: this.definition.followredirect ?? true
+						followRedirects: this.definition.followredirect ?? true,
+						signal
 					});
 
-		this.log.info(
+		this.log.debug(
 			{
 				status: response.status,
 				url: response.url,
@@ -630,7 +642,7 @@ export class UnifiedIndexer implements IIndexer {
 	 * Parse a response into release results
 	 */
 	private parseResponse(content: string, searchPath: unknown): ReleaseResult[] {
-		this.log.info(
+		this.log.debug(
 			{
 				indexer: this.name,
 				contentLength: content.length,
@@ -650,7 +662,7 @@ export class UnifiedIndexer implements IIndexer {
 			}
 		);
 
-		this.log.info(
+		this.log.debug(
 			{
 				indexer: this.name,
 				releasesFound: parseResult.releases.length,
@@ -798,9 +810,19 @@ export class UnifiedIndexer implements IIndexer {
 	 * - Not configured (null in DB) → return criteria unchanged, RequestBuilder fills defaults.
 	 * - Empty restriction [] → set categories to [] so RequestBuilder sends no cat= param (open search).
 	 * - Non-empty restriction → replace categories with the user-selected set.
+	 *
+	 * For Prowlarr native indexers (definitionId='prowlarr'), unrestricted searches
+	 * send no categories so Prowlarr queries all applicable indexers without filtering.
 	 */
 	private applyAdditionalCategories(criteria: SearchCriteria): SearchCriteria {
-		if (!this.categoryRestrictionEnabled) return criteria;
+		if (!this.categoryRestrictionEnabled) {
+			// Prowlarr's native API uses categories= to restrict which indexers participate.
+			// When no restriction is set, omit categories entirely so all indexers are searched.
+			if (this.definition.id === 'prowlarr') {
+				return { ...criteria, categories: [] };
+			}
+			return criteria;
+		}
 		return { ...criteria, categories: this.additionalCategories };
 	}
 

@@ -25,6 +25,7 @@
 	// State
 	let loading = $state(false);
 	let executing = $state(false);
+	let refreshing = $state(false);
 	let error = $state<string | null>(null);
 	let success = $state<string | null>(null);
 	let preview = $state<RenamePreviewResult | null>(null);
@@ -67,6 +68,20 @@
 			error = e instanceof Error ? e.message : m.library_renamePreview_failedToLoad();
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function refreshMetadata() {
+		refreshing = true;
+		error = null;
+		try {
+			const res = await fetch(`/api/library/movies/${mediaId}/refresh`, { method: 'POST' });
+			if (!res.ok) throw new Error(await res.text());
+			await loadPreview();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to refresh metadata';
+		} finally {
+			refreshing = false;
 		}
 	}
 
@@ -284,6 +299,33 @@
 							>
 						{/if}
 					</div>
+
+					{#if preview.missingCollectionData}
+						<div class="alert alert-warning mb-4">
+							<AlertTriangle class="h-4 w-4 shrink-0" />
+							<div class="min-w-0 flex-1 text-sm">
+								<p class="font-medium">No collection data</p>
+								<p class="text-warning-content/80">
+									Your folder template uses <code class="font-mono">{'{Collection}'}</code> but this movie
+									has no collection data - paths may be incorrect. Refresh metadata to fetch it from TMDB.
+								</p>
+							</div>
+							<button
+								type="button"
+								class="btn btn-sm btn-warning"
+								disabled={refreshing}
+								onclick={refreshMetadata}
+							>
+								{#if refreshing}
+									<RefreshCw class="h-3 w-3 animate-spin" />
+									Refreshing...
+								{:else}
+									<RefreshCw class="h-3 w-3" />
+									Refresh Metadata
+								{/if}
+							</button>
+						</div>
+					{/if}
 
 					{#if preview.totalFiles === 0}
 						<div class="py-10 text-center text-base-content/60">

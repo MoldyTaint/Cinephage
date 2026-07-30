@@ -5,14 +5,12 @@
 		Tv,
 		Settings,
 		Trash2,
-		Eye,
-		EyeOff,
 		Search,
 		SearchSlash,
 		Captions,
 		CaptionsOff
 	} from 'lucide-svelte';
-	import type { LayoutData } from '../../../routes/settings/general/$types';
+	import type { PageData } from '../../../routes/settings/library/libraries/$types';
 
 	type LibraryRootFolder = {
 		id: string;
@@ -20,7 +18,7 @@
 		path?: string;
 	};
 
-	type LibraryEntity = NonNullable<LayoutData['libraries']>[number] & {
+	type LibraryEntity = NonNullable<PageData['libraries']>[number] & {
 		rootFolders?: LibraryRootFolder[];
 	};
 
@@ -175,26 +173,7 @@
 									</div>
 								</div>
 
-								<div class="mt-3 grid grid-cols-3 gap-2 border-t border-base-300 pt-3">
-									<div
-										class="flex flex-col items-center gap-1 rounded-lg"
-										title={m.settings_general_statusTooltip({
-											label: m.settings_general_monitorByDefault(),
-											status: library.defaultMonitored ? m.common_enabled() : m.common_disabled()
-										})}
-									>
-										<span
-											class={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${getStatusBadgeClass(
-												library.defaultMonitored
-											)}`}
-										>
-											{#if library.defaultMonitored}
-												<Eye class="h-3.5 w-3.5" />
-											{:else}
-												<EyeOff class="h-3.5 w-3.5" />
-											{/if}
-										</span>
-									</div>
+								<div class="mt-3 grid grid-cols-2 gap-2 border-t border-base-300 pt-3">
 									<div
 										class="flex flex-col items-center gap-1 rounded-lg"
 										title={m.settings_general_statusTooltip({

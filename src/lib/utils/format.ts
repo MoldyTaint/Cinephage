@@ -103,10 +103,12 @@ export function formatCountry(code: string, locale = 'en-US'): string {
 }
 
 /**
- * Format bytes to human-readable string (e.g., "1.5 GB")
+ * Format bytes to human-readable string (e.g., "1.5 GB").
+ * Returns "0 B" for 0; returns "-" only for null/undefined (missing data).
  */
 export function formatBytes(bytes: number | null | undefined): string {
-	if (!bytes) return '-';
+	if (bytes === null || bytes === undefined) return '-';
+	if (bytes === 0) return '0 B';
 	const k = 1024;
 	const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
 	const i = Math.floor(Math.log(bytes) / Math.log(k));

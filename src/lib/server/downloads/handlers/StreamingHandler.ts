@@ -6,6 +6,8 @@ import { getLibraryRelativePath } from '$lib/server/library/media-paths.js';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { fileExists, importService } from '$lib/server/downloadClients/import/index.js';
+import { deletePhysicalFile } from '$lib/server/downloadClients/import/FileTransfer.js';
+import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 import { eventBuffer } from '$lib/server/sse/EventBuffer.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 import { createChildLogger } from '$lib/logging/index.js';
@@ -23,6 +25,9 @@ import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { join } from 'node:path';
+import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
+import { replaceIdsForImport } from '$lib/server/quality/buckets.js';
+import type { Resolution } from '$lib/server/indexers/parser/types.js';
 import type { GrabRequest, ResolvedContext, HandlerResult } from '../grab-types.js';
 
 const logger = createChildLogger({ module: 'StreamingHandler' });
@@ -219,8 +224,19 @@ export class StreamingHandler {
 
 		const relativePath = getLibraryRelativePath(movie.rootFolder.path, movie.path, filePath);
 
+		// Resolve multi-quality context so a streaming grab only replaces the file
+		// in the same resolution bucket, never the other tiers.
+		const { multiQuality } = await resolveMovieMultiQuality(
+			movie.desiredQualities,
+			movie.scoringProfileId
+		);
+		const newResolution = quality.resolution as Resolution | undefined;
+
 		if (isUpgrade) {
-			await this.deleteExistingMovieFiles(movieId, movie.rootFolder.path, movie.path);
+			await this.deleteExistingMovieFiles(movieId, movie.rootFolder.path, movie.path, {
+				multiQuality,
+				newResolution
+			});
 		}
 
 		const fileId = randomUUID();
@@ -645,18 +661,30 @@ export class StreamingHandler {
 	private async deleteExistingMovieFiles(
 		movieId: string,
 		rootFolderPath: string,
-		moviePath: string
+		moviePath: string,
+		options?: { multiQuality?: boolean; newResolution?: Resolution }
 	): Promise<void> {
 		const existingFiles = await db.query.movieFiles.findMany({
 			where: eq(movieFiles.movieId, movieId)
 		});
 
+		// This is only invoked on upgrade; in multi-quality mode only the file(s)
+		// in the same resolution bucket are replaced, other tiers are preserved.
+		const replaceIds = new Set(
+			replaceIdsForImport(existingFiles, {
+				newResolution: options?.newResolution,
+				multiQuality: options?.multiQuality ?? false,
+				isUpgrade: true
+			})
+		);
+
+		const { recycleEnabled } = await getFileManagementSettings();
+
 		for (const oldFile of existingFiles) {
+			if (!replaceIds.has(oldFile.id)) continue;
 			const oldFilePath = join(rootFolderPath, moviePath, oldFile.relativePath);
 			try {
-				if (await fileExists(oldFilePath)) {
-					await unlink(oldFilePath);
-				}
+				await deletePhysicalFile(oldFilePath, recycleEnabled, rootFolderPath);
 			} catch {
 				// non-critical
 			}

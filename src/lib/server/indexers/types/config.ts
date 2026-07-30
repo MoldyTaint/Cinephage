@@ -43,6 +43,13 @@ export interface IndexerConfig {
 	 * Cleared automatically if the indexer re-appears in a subsequent sync.
 	 */
 	orphaned?: boolean;
+	/**
+	 * True for indexers owned by a built-in subsystem (e.g. the CinephageAPI
+	 * library-streaming module owns the cinephage-stream row). These rows
+	 * are non-deletable via the indexers page; their config is managed by
+	 * the owning subsystem. See schema.ts:223 for the source of truth.
+	 */
+	isBuiltIn?: boolean;
 	/** Base URL (can override definition default) */
 	baseUrl: string;
 	/** Alternative/fallback URLs (tried in order if primary fails) */

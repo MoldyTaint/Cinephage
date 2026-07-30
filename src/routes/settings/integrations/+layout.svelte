@@ -46,7 +46,7 @@
 		},
 		{
 			href: '/settings/integrations/streaming',
-			label: m.settings_streaming_heading(),
+			label: m.nav_streaming(),
 			icon: Archive
 		}
 	];

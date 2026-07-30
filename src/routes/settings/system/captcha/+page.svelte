@@ -312,30 +312,6 @@
 					</label>
 				</div>
 
-				<!-- Headless Mode -->
-				<div class="form-control">
-					<label
-						class="label w-full cursor-pointer items-start justify-start gap-3 py-0 whitespace-normal"
-					>
-						<input
-							type="checkbox"
-							bind:checked={captchaSettings.headless}
-							class="toggle mt-0.5 shrink-0 toggle-secondary"
-							disabled={!captchaSettings.enabled}
-						/>
-						<div class="min-w-0">
-							<span class="label-text block font-medium whitespace-normal">
-								{m.settings_integrations_captcha_headlessLabel()}
-							</span>
-							<p
-								class="text-sm leading-relaxed wrap-break-word whitespace-normal text-base-content/60"
-							>
-								{m.settings_integrations_captcha_headlessDesc()}
-							</p>
-						</div>
-					</label>
-				</div>
-
 				<div class="divider text-sm">{m.settings_integrations_captcha_timing()}</div>
 
 				<div class="grid gap-4 sm:grid-cols-2">

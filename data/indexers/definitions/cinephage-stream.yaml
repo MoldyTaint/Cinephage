@@ -3,6 +3,10 @@
 # This internal indexer queries the local library database to provide
 # streaming URLs for content in your library.
 #
+# Auto-managed by the CinephageAPI subsystem's library-streaming module.
+# Config (useHttps, externalHost, version/commit) lives in the subsystem
+# settings UI, NOT here — this YAML is only the search-execution template.
+#
 # Quality is determined at playback time by the streaming proxy,
 # which extracts streams from providers and selects the best available quality.
 
@@ -14,36 +18,15 @@ protocol: streaming
 language: en-US
 encoding: UTF-8
 
+# Hides this definition from the indexers-page picker and marks the seeded
+# indexer row as isBuiltIn (non-deletable, non-editable from the UI).
+internal: true
+
 links:
   - https://api.cinephage.net
 
-settings:
-  - name: useHttps
-    type: checkbox
-    label: Use HTTPS
-    default: false
-    helpText: 'Enable only if your own Cinephage server address is exposed over HTTPS. If you use a non-default port for HTTP or HTTPS, include it in Cinephage Server Address.'
-
-  - name: externalHost
-    type: text
-    label: Cinephage Server Address
-    default: ''
-    placeholder: '192.168.1.100:3000'
-    helpText: 'Manual address for your own Cinephage server, used by Jellyfin and .strm playback. You can enter an IP address or a web domain. Include the port when Cinephage is not using the default HTTP or HTTPS port, for example 192.168.1.100:3000 or media.example.com:8443. Do not enter api.cinephage.net here.'
-
-  - name: cinephageCommit
-    type: text
-    label: Cinephage API Commit
-    default: ''
-    placeholder: 'abc123def'
-    helpText: 'Manual dev value used for X-Cinephage-Commit. Must match the current published build accepted by api.cinephage.net.'
-
-  - name: cinephageVersion
-    type: text
-    label: Cinephage API Version
-    default: ''
-    placeholder: '2.3.3'
-    helpText: 'Manual dev value used for X-Cinephage-Version. Must match the current published build accepted by api.cinephage.net.'
+# User-configurable settings have moved to the CinephageAPI subsystem
+# (Settings -> Integrations -> Cinephage). This YAML no longer declares any.
 
 # Protocol-specific configuration for streaming
 protocolConfig:

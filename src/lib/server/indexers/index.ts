@@ -24,17 +24,6 @@ export * from './protocols';
 // Export authentication providers
 export * from './auth';
 
-// Export unified registry (explicit exports to avoid conflicts)
-export {
-	UnifiedDefinitionRegistry,
-	getUnifiedRegistry,
-	resetUnifiedRegistry,
-	type RegisteredDefinition,
-	type DefinitionSource,
-	type DefinitionFilter,
-	type IndexerFactory
-} from './registry';
-
 // =============================================================================
 // RUNTIME EXPORTS
 // =============================================================================

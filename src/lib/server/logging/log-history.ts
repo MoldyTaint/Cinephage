@@ -344,7 +344,7 @@ class LogHistoryService {
 				const filePath = getLogFilePath(new Date(entry.timestamp));
 				this.rotateIfNeeded(filePath);
 				await new Promise<void>((resolve, reject) => {
-					if (!this.stream) {
+					if (!this.stream || this.stream.destroyed || !this.stream.writable) {
 						reject(new Error('Log history stream is not available'));
 						return;
 					}
@@ -390,6 +390,21 @@ class LogHistoryService {
 			stopWhenLimitReached: true
 		});
 		return result.entries;
+	}
+
+	async clearAllFiles(): Promise<void> {
+		if (!existsSync(LOGS_DIR)) return;
+		const directory = await opendir(LOGS_DIR);
+		for await (const entry of directory) {
+			if (!entry.isFile()) continue;
+			if (!parseLogFileDate(entry.name)) continue;
+			const filePath = join(LOGS_DIR, entry.name);
+			if (filePath === this.currentFilePath) {
+				this.closeStream();
+				this.currentFilePath = null;
+			}
+			await unlink(filePath);
+		}
 	}
 
 	async cleanupOldFiles(retentionDays?: number): Promise<void> {

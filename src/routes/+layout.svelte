@@ -24,15 +24,11 @@
 		Compass,
 		Library,
 		User,
-		Filter,
-		ListTodo,
-		FileSignature,
 		List,
 		Radio,
 		Calendar,
 		Activity,
 		FileQuestion,
-		ScrollText,
 		LogOut,
 		Server,
 		Download,
@@ -41,11 +37,12 @@
 		Loader2,
 		Puzzle,
 		FolderCog,
-		Shield,
 		Ban,
 		Globe,
-		Palette
+		Palette,
+		Pin
 	} from 'lucide-svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 
 	const GITHUB_URL = 'https://github.com/MoldyTaint/Cinephage';
 	const DISCORD_URL = 'https://discord.gg/scGCBTSWEt';
@@ -85,7 +82,9 @@
 	let isMobileDrawerOpen = $state(false);
 	let isLoggingOut = $state(false);
 	let expandedMenuSection = $state<string | null>(null);
+	let pinnedMenuSections = $state<Set<string>>(new Set());
 	const SIDEBAR_EXPANDED_STORAGE_KEY = 'cinephage.sidebar.expanded';
+	const PINNED_SECTIONS_STORAGE_KEY = 'cinephage.sidebar.pinned';
 
 	function usesFocusedLayout(pathname: string): boolean {
 		return (
@@ -147,7 +146,28 @@
 
 	function handleSubmenuToggle(item: MenuItem): void {
 		const key = getMenuSectionKey(item);
+		if (pinnedMenuSections.has(key)) {
+			// Clicking a pinned section un-pins and collapses it
+			togglePinnedSection(key);
+			expandedMenuSection = null;
+			return;
+		}
 		expandedMenuSection = expandedMenuSection === key ? null : key;
+	}
+
+	function togglePinnedSection(key: string): void {
+		const next = new SvelteSet(pinnedMenuSections);
+		if (next.has(key)) {
+			next.delete(key);
+		} else {
+			next.add(key);
+			// Ensure the section is visually open immediately
+			expandedMenuSection = key;
+		}
+		pinnedMenuSections = next;
+		if (browser) {
+			localStorage.setItem(PINNED_SECTIONS_STORAGE_KEY, JSON.stringify([...next]));
+		}
 	}
 
 	function openFooterDropdownOnExpand(type: 'language' | 'theme'): void {
@@ -263,10 +283,16 @@
 				icon: Settings,
 				children: [
 					{
-						href: '/settings/general/libraries',
+						href: '/settings/library/libraries',
 						label: m.nav_libraryStorage,
 						icon: FolderCog,
-						match: (url: URL) => url.pathname.startsWith('/settings/general')
+						match: (url: URL) => url.pathname.startsWith('/settings/library')
+					},
+					{
+						href: '/settings/integrations/indexers',
+						label: m.nav_integrations,
+						icon: Puzzle,
+						match: (url: URL) => url.pathname.startsWith('/settings/integrations')
 					},
 					{
 						href: '/settings/system/general',
@@ -274,24 +300,18 @@
 						icon: Server,
 						match: (url: URL) => url.pathname.startsWith('/settings/system')
 					},
-					{ href: '/settings/logs', label: m.nav_logs, icon: ScrollText },
-					{ href: '/settings/naming', label: m.nav_naming, icon: FileSignature },
-					{ href: '/settings/quality', label: m.nav_qualitySettings, icon: Shield },
-					{
-						href: '/settings/integrations/indexers',
-						label: m.nav_integrations,
-						icon: Puzzle,
-						match: (url: URL) => url.pathname.startsWith('/settings/integrations')
-					},
-					{ href: '/settings/tasks', label: m.nav_tasks, icon: ListTodo },
 					{
 						href: '/settings/blocklist/releases',
 						label: m.nav_blocklist,
 						icon: Ban,
-						match: (url) => url.pathname.startsWith('/settings/blocklist')
+						match: (url: URL) => url.pathname.startsWith('/settings/blocklist')
 					},
-					{ href: '/settings/filters', label: m.nav_globalFilters, icon: Filter },
-					{ href: '/profile', label: m.nav_profile, icon: User }
+					{
+						href: '/settings/monitoring/status',
+						label: m.nav_monitoring,
+						icon: Activity,
+						match: (url: URL) => url.pathname.startsWith('/settings/monitoring')
+					}
 				]
 			}
 		];
@@ -360,6 +380,17 @@
 		const stored = localStorage.getItem(SIDEBAR_EXPANDED_STORAGE_KEY);
 		if (stored === 'true' || stored === 'false') {
 			layoutState.isSidebarExpanded = stored === 'true';
+		}
+		const storedPinned = localStorage.getItem(PINNED_SECTIONS_STORAGE_KEY);
+		if (storedPinned) {
+			try {
+				const keys = JSON.parse(storedPinned);
+				if (Array.isArray(keys)) {
+					pinnedMenuSections = new Set(keys as string[]);
+				}
+			} catch {
+				// ignore malformed data
+			}
 		}
 	});
 
@@ -512,8 +543,10 @@
 							<li class={layoutState.isSidebarExpanded ? 'w-full' : 'mx-auto w-11'}>
 								{#if item.children}
 									{#if layoutState.isSidebarExpanded}
+										{@const sectionKey = getMenuSectionKey(item)}
+										{@const isPinned = pinnedMenuSections.has(sectionKey)}
 										<details
-											open={isItemActive(item) || expandedMenuSection === getMenuSectionKey(item)}
+											open={isItemActive(item) || expandedMenuSection === sectionKey || isPinned}
 											class="group/nav-section"
 										>
 											<summary
@@ -526,8 +559,23 @@
 											>
 												<item.icon class="h-4.5 w-4.5 shrink-0" />
 												<span class="truncate">{item.label()}</span>
+												<button
+													type="button"
+													class="ml-auto rounded p-0.5 transition-all {isPinned
+														? 'text-primary opacity-90'
+														: 'opacity-0 group-hover/nav-section:opacity-40 hover:opacity-70!'}"
+													title={isPinned ? 'Unpin menu' : 'Pin menu open'}
+													onclick={(event) => {
+														event.stopPropagation();
+														togglePinnedSection(sectionKey);
+													}}
+												>
+													<Pin class="h-3 w-3 {isPinned ? 'fill-primary' : ''}" />
+												</button>
 												<ChevronDown
-													class="nav-chevron h-4 w-4 shrink-0 text-base-content/60 transition-transform duration-200 group-open/nav-section:rotate-180"
+													class="nav-chevron h-4 w-4 shrink-0 text-base-content/60 transition-transform duration-200 group-open/nav-section:rotate-180 {isPinned
+														? 'opacity-30'
+														: ''}"
 												/>
 											</summary>
 											<ul>

@@ -8,12 +8,14 @@ import { downloadClients as downloadClientsTable } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { createChildLogger } from '$lib/logging';
+import { decryptDebridToken, encryptDebridToken } from '$lib/server/crypto/debridTokenCrypto';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
 
 import type { IDownloadClient, DownloadClientConfig } from './core/interfaces';
 import type {
 	DownloadClient,
+	DownloadClientInput,
 	ConnectionTestResult,
 	DownloadClientImplementation,
 	DownloadClientHealth
@@ -25,11 +27,17 @@ import { RTorrentClient } from './rtorrent/RTorrentClient';
 import { Aria2Client } from './aria2/Aria2Client';
 import { SABnzbdClient, type SABnzbdConfig } from './sabnzbd';
 import { NZBGetClient } from './nzbget';
+import {
+	createDebridAdapter,
+	isDebridError,
+	type DebridAdapter,
+	type DebridProvider
+} from './debrid/debrid-adapter';
 
 /**
  * Protocol type for download clients.
  */
-export type DownloadClientProtocol = 'torrent' | 'usenet';
+export type DownloadClientProtocol = 'torrent' | 'usenet' | 'debrid';
 
 /**
  * Map implementation to protocol.
@@ -41,8 +49,27 @@ const IMPLEMENTATION_PROTOCOL_MAP: Record<string, DownloadClientProtocol> = {
 	rtorrent: 'torrent',
 	aria2: 'torrent',
 	sabnzbd: 'usenet',
-	nzbget: 'usenet'
+	nzbget: 'usenet',
+	realdebrid: 'debrid',
+	torbox: 'debrid'
 };
+
+/**
+ * Debrid implementations that use an API token instead of host/port connection.
+ */
+const DEBRID_IMPLEMENTATIONS = new Set(['realdebrid', 'torbox']);
+
+/**
+ * Canonical host/port values for debrid implementations (satisfy NOT NULL constraints).
+ */
+const DEBRID_CANONICAL_ENDPOINTS: Record<string, { host: string; port: number }> = {
+	realdebrid: { host: 'api.real-debrid.com', port: 443 },
+	torbox: { host: 'api.torbox.app', port: 443 }
+};
+
+type StoredDebridTokenResult =
+	| { success: true; apiToken: string }
+	| { success: false; error: string };
 
 function parsePositiveIntEnv(name: string, fallback: number): number {
 	const value = process.env[name];
@@ -73,6 +100,8 @@ const LEGACY_DOWNLOAD_CLIENT_SELECT = {
 	password: downloadClientsTable.password,
 	urlBase: downloadClientsTable.urlBase,
 	mountMode: downloadClientsTable.mountMode,
+	apiToken: downloadClientsTable.apiToken,
+	removeAfterImport: downloadClientsTable.removeAfterImport,
 	movieCategory: downloadClientsTable.movieCategory,
 	tvCategory: downloadClientsTable.tvCategory,
 	recentPriority: downloadClientsTable.recentPriority,
@@ -88,34 +117,6 @@ const LEGACY_DOWNLOAD_CLIENT_SELECT = {
 	createdAt: downloadClientsTable.createdAt,
 	updatedAt: downloadClientsTable.updatedAt
 };
-
-/**
- * Configuration for creating/updating a download client.
- */
-export interface DownloadClientInput {
-	name: string;
-	implementation: DownloadClientImplementation;
-	enabled?: boolean;
-	host: string;
-	port: number;
-	useSsl?: boolean;
-	urlBase?: string | null;
-	mountMode?: 'nzbdav' | 'altmount' | null;
-	username?: string | null;
-	password?: string | null;
-	movieCategory?: string;
-	tvCategory?: string;
-	recentPriority?: 'normal' | 'high' | 'force';
-	olderPriority?: 'normal' | 'high' | 'force';
-	initialState?: 'start' | 'pause' | 'force';
-	seedRatioLimit?: string | null;
-	seedTimeLimit?: number | null;
-	downloadPathLocal?: string | null;
-	downloadPathRemote?: string | null;
-	tempPathLocal?: string | null;
-	tempPathRemote?: string | null;
-	priority?: number;
-}
 
 /**
  * Central service for managing download clients.
@@ -225,6 +226,19 @@ export class DownloadClientManager {
 		};
 	}
 
+	private async loadStoredDebridToken(id: string): Promise<StoredDebridTokenResult> {
+		const rows = await this.selectClientRowsById(id);
+		const encryptedToken = rows[0]?.apiToken;
+		const apiToken = encryptedToken ? decryptDebridToken(encryptedToken) : null;
+
+		return apiToken
+			? { success: true, apiToken }
+			: {
+					success: false,
+					error: 'Stored API token is unavailable. Re-enter the token and try again.'
+				};
+	}
+
 	/**
 	 * Create a new download client configuration.
 	 */
@@ -232,29 +246,61 @@ export class DownloadClientManager {
 		const id = randomUUID();
 		const now = new Date().toISOString();
 
+		const implementation = this.normalizeImplementation(input.implementation);
+		const isDebrid = DEBRID_IMPLEMENTATIONS.has(implementation);
+
+		if (!isDebrid) {
+			if (!input.host || input.host.length === 0) {
+				throw new Error('Host is required');
+			}
+			if (input.port === undefined || input.port === null) {
+				throw new Error('Port is required');
+			}
+		}
+
+		// For debrid implementations, fill canonical host/port to satisfy NOT NULL
+		// constraints. The user does not provide host/port for debrid clients.
+		let host: string;
+		let port: number;
+		if (isDebrid) {
+			host = DEBRID_CANONICAL_ENDPOINTS[implementation]?.host ?? 'api.real-debrid.com';
+			port = DEBRID_CANONICAL_ENDPOINTS[implementation]?.port ?? 443;
+		} else {
+			if (!input.host || input.port === undefined || input.port === null) {
+				throw new Error('Host and port are required');
+			}
+			host = input.host;
+			port = input.port;
+		}
+
+		// Encrypt the debrid API token before storing.
+		const apiToken = isDebrid && input.apiToken ? encryptDebridToken(input.apiToken) : null;
+
 		await db.insert(downloadClientsTable).values({
 			id,
 			name: input.name,
-			implementation: this.normalizeImplementation(input.implementation),
+			implementation,
 			enabled: input.enabled ?? true,
-			host: input.host,
-			port: input.port,
-			useSsl: input.useSsl ?? false,
-			urlBase: input.urlBase ?? null,
-			mountMode: this.normalizeMountMode(input.mountMode),
-			username: input.username,
-			password: input.password,
-			movieCategory: input.movieCategory ?? 'movies',
-			tvCategory: input.tvCategory ?? 'tv',
-			recentPriority: input.recentPriority ?? 'normal',
-			olderPriority: input.olderPriority ?? 'normal',
-			initialState: input.initialState ?? 'start',
-			seedRatioLimit: input.seedRatioLimit,
-			seedTimeLimit: input.seedTimeLimit,
-			downloadPathLocal: input.downloadPathLocal,
-			downloadPathRemote: input.downloadPathRemote,
-			tempPathLocal: input.tempPathLocal,
-			tempPathRemote: input.tempPathRemote,
+			host,
+			port,
+			useSsl: isDebrid ? false : (input.useSsl ?? false),
+			urlBase: isDebrid ? null : (input.urlBase ?? null),
+			mountMode: isDebrid ? null : this.normalizeMountMode(input.mountMode),
+			username: isDebrid ? null : input.username,
+			password: isDebrid ? null : input.password,
+			apiToken,
+			removeAfterImport: isDebrid ? (input.removeAfterImport ?? false) : false,
+			movieCategory: isDebrid ? 'movies' : (input.movieCategory ?? 'movies'),
+			tvCategory: isDebrid ? 'tv' : (input.tvCategory ?? 'tv'),
+			recentPriority: isDebrid ? 'normal' : (input.recentPriority ?? 'normal'),
+			olderPriority: isDebrid ? 'normal' : (input.olderPriority ?? 'normal'),
+			initialState: isDebrid ? 'start' : (input.initialState ?? 'start'),
+			seedRatioLimit: isDebrid ? null : input.seedRatioLimit,
+			seedTimeLimit: isDebrid ? null : input.seedTimeLimit,
+			downloadPathLocal: isDebrid ? null : input.downloadPathLocal,
+			downloadPathRemote: isDebrid ? null : input.downloadPathRemote,
+			tempPathLocal: isDebrid ? null : input.tempPathLocal,
+			tempPathRemote: isDebrid ? null : input.tempPathRemote,
 			priority: input.priority ?? 1,
 			createdAt: now,
 			updatedAt: now
@@ -300,6 +346,15 @@ export class DownloadClientManager {
 		// (null or empty string means "keep existing password")
 		if (updates.password !== undefined && updates.password !== null && updates.password !== '') {
 			updateData.password = updates.password;
+		}
+		// Only update apiToken if explicitly provided with a non-empty value.
+		// If apiToken is not provided (undefined/null/empty), preserve the existing
+		// encrypted token — same pattern as password.
+		if (updates.apiToken !== undefined && updates.apiToken !== null && updates.apiToken !== '') {
+			updateData.apiToken = encryptDebridToken(updates.apiToken);
+		}
+		if (updates.removeAfterImport !== undefined) {
+			updateData.removeAfterImport = updates.removeAfterImport;
 		}
 		if (updates.movieCategory !== undefined) updateData.movieCategory = updates.movieCategory;
 		if (updates.tvCategory !== undefined) updateData.tvCategory = updates.tvCategory;
@@ -350,6 +405,16 @@ export class DownloadClientManager {
 	 * Can test either an existing client by ID or test config before saving.
 	 */
 	async testClient(config: DownloadClientConfig): Promise<ConnectionTestResult> {
+		const implementation = this.normalizeImplementation(
+			(config as { implementation?: string }).implementation
+		);
+
+		// Debrid clients use their dedicated provider adapter.
+		if (DEBRID_IMPLEMENTATIONS.has(implementation)) {
+			const apiToken = (config as { apiToken?: string | null }).apiToken ?? null;
+			return this.testDebridClient('test-config', implementation, async () => apiToken, false);
+		}
+
 		const client = this.createClientInstance(config);
 		if (!client) {
 			return {
@@ -362,6 +427,52 @@ export class DownloadClientManager {
 	}
 
 	/**
+	 * Test a debrid client via its provider adapter.
+	 *
+	 * 429 (throttled) is health-neutral (decision 10): it does not disable the
+	 * client or mark credentials invalid. Only non-throttled failures record
+	 * a health failure when recordHealth is true.
+	 */
+	private async testDebridClient(
+		storedClientId: string,
+		implementation: string,
+		tokenLoader: () => Promise<string | null>,
+		recordHealth: boolean
+	): Promise<ConnectionTestResult> {
+		try {
+			const adapter = createDebridAdapter(implementation as DebridProvider, {
+				storedClientId,
+				tokenLoader
+			});
+			const credential = await adapter.testCredentials();
+			if (recordHealth) {
+				await this.recordHealthSuccess(storedClientId);
+			}
+			return {
+				success: true,
+				accountId: credential.accountId,
+				...(credential.accountLabel ? { accountLabel: credential.accountLabel } : {})
+			};
+		} catch (err) {
+			if (isDebridError(err)) {
+				// 429 is health-neutral: do not record a failure.
+				if (err.kind !== 'throttled' && recordHealth) {
+					await this.recordHealthFailure(storedClientId, err.redactedMessage);
+				}
+				return {
+					success: false,
+					error: `${implementation}: ${err.redactedMessage}`
+				};
+			}
+			const fallback = 'Connection test failed';
+			if (recordHealth) {
+				await this.recordHealthFailure(storedClientId, fallback);
+			}
+			return { success: false, error: `${implementation}: ${fallback}` };
+		}
+	}
+
+	/**
 	 * Test an existing client by ID.
 	 */
 	async testClientById(id: string): Promise<ConnectionTestResult> {
@@ -371,6 +482,17 @@ export class DownloadClientManager {
 				success: false,
 				error: `Download client not found: ${id}`
 			};
+		}
+
+		const implementation = this.normalizeImplementation(clientConfig.implementation);
+
+		// Debrid clients use the provider adapter with the stored-token loader.
+		if (DEBRID_IMPLEMENTATIONS.has(implementation)) {
+			const tokenLoader = async (): Promise<string | null> => {
+				const stored = await this.loadStoredDebridToken(id);
+				return stored.success ? stored.apiToken : null;
+			};
+			return this.testDebridClient(id, implementation, tokenLoader, true);
 		}
 
 		const result = await this.testClient({
@@ -415,6 +537,15 @@ export class DownloadClientManager {
 		const implementation = this.normalizeImplementation(
 			overrides.implementation ?? clientConfig.implementation
 		);
+		const hasApiTokenOverride =
+			typeof overrides.apiToken === 'string' && overrides.apiToken.trim().length > 0;
+		let effectiveApiToken = hasApiTokenOverride ? overrides.apiToken : undefined;
+
+		if (DEBRID_IMPLEMENTATIONS.has(implementation) && !hasApiTokenOverride) {
+			const storedToken = await this.loadStoredDebridToken(id);
+			if (!storedToken.success) return storedToken;
+			effectiveApiToken = storedToken.apiToken;
+		}
 
 		const result = await this.testClient({
 			host: overrides.host ?? clientConfig.host,
@@ -425,11 +556,18 @@ export class DownloadClientManager {
 			username: overrides.username ?? clientConfig.username,
 			password: effectivePassword,
 			implementation,
-			apiKey: implementation === 'sabnzbd' ? effectivePassword : undefined
+			apiKey: implementation === 'sabnzbd' ? effectivePassword : undefined,
+			apiToken: effectiveApiToken
 		});
 
 		if (result.success) {
 			await this.recordHealthSuccess(id);
+		} else if (
+			DEBRID_IMPLEMENTATIONS.has(implementation) &&
+			(result.error ?? '').toLowerCase().includes('rate limit')
+		) {
+			// 429 is health-neutral for debrid (decision 10):
+			// do not disable the client or mark credentials invalid.
 		} else {
 			await this.recordHealthFailure(id, result.error ?? 'Connection test failed');
 		}
@@ -479,7 +617,9 @@ export class DownloadClientManager {
 	 */
 	async getEnabledClients(): Promise<Array<{ client: DownloadClient; instance: IDownloadClient }>> {
 		const clients = await this.getClients();
-		const enabledClients = clients.filter((c) => c.enabled);
+		const enabledClients = clients.filter(
+			(c) => c.enabled && !DEBRID_IMPLEMENTATIONS.has(c.implementation)
+		);
 
 		const results: Array<{ client: DownloadClient; instance: IDownloadClient }> = [];
 
@@ -533,6 +673,43 @@ export class DownloadClientManager {
 		// Sort by priority (lower = higher priority)
 		clients.sort((a, b) => a.client.priority - b.client.priority);
 		return clients[0];
+	}
+
+	/**
+	 * Select an enabled debrid client with a usable stored token.
+	 *
+	 * Debrid adapters intentionally do not implement IDownloadClient, so they
+	 * cannot use getClientForProtocol(). The optional ID is used by retry paths
+	 * that must stay on the queue row's original provider.
+	 */
+	async getDebridClientForAcquisition(
+		preferredClientId?: string
+	): Promise<{ client: DownloadClient; adapter: DebridAdapter } | undefined> {
+		const clients = (await this.getClients())
+			.filter(
+				(client) =>
+					client.enabled &&
+					DEBRID_IMPLEMENTATIONS.has(client.implementation) &&
+					(!preferredClientId || client.id === preferredClientId)
+			)
+			.sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
+
+		for (const client of clients) {
+			const storedToken = await this.loadStoredDebridToken(client.id);
+			if (!storedToken.success) continue;
+
+			const implementation = client.implementation as DebridProvider;
+			const adapter = createDebridAdapter(implementation, {
+				storedClientId: client.id,
+				tokenLoader: async () => {
+					const token = await this.loadStoredDebridToken(client.id);
+					return token.success ? token.apiToken : null;
+				}
+			});
+			return { client, adapter };
+		}
+
+		return undefined;
 	}
 
 	/**
@@ -760,6 +937,8 @@ export class DownloadClientManager {
 			mountMode,
 			username: row.username,
 			hasPassword: !!row.password,
+			hasApiToken: !!row.apiToken,
+			removeAfterImport: !!row.removeAfterImport,
 			movieCategory: row.movieCategory ?? 'movies',
 			tvCategory: row.tvCategory ?? 'tv',
 			recentPriority: (row.recentPriority as 'normal' | 'high' | 'force') ?? 'normal',

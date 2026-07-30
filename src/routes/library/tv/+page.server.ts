@@ -16,6 +16,7 @@ import { logger } from '$lib/logging';
 import { todayDateString } from '$lib/utils/format.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 
 export const load: PageServerLoad = async ({ url }) => {
 	// Parse URL params for sorting and filtering
@@ -481,6 +482,10 @@ export const actions: Actions = {
 						.set({ monitored })
 						.where(inArray(episodes.seriesId, allSeriesIds));
 				}
+				libraryMediaEvents.emitLibraryDataChanged({
+					source: 'series',
+					reason: 'toggle-all-monitored'
+				});
 				return { success: true };
 			}
 
@@ -520,6 +525,11 @@ export const actions: Actions = {
 				await db.update(seasons).set({ monitored }).where(inArray(seasons.seriesId, scopedIds));
 				await db.update(episodes).set({ monitored }).where(inArray(episodes.seriesId, scopedIds));
 			}
+
+			libraryMediaEvents.emitLibraryDataChanged({
+				source: 'series',
+				reason: 'toggle-all-monitored'
+			});
 
 			return { success: true };
 		} catch (error) {

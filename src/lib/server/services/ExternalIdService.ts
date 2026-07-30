@@ -335,14 +335,22 @@ export class ExternalIdService implements BackgroundService {
 				success: true
 			};
 		} catch (error) {
-			logger.warn(
-				{
-					id: movie.id,
-					title: movie.title,
-					err: error
-				},
-				`[${this.name}] Failed to fetch external IDs for movie`
-			);
+			const message = error instanceof Error ? error.message : String(error);
+			const isNotFound = /resource you requested could not be found/i.test(message);
+
+			if (isNotFound) {
+				const { eq } = await import('drizzle-orm');
+				await db.update(movies).set({ imdbId: '' }).where(eq(movies.id, movie.id));
+				logger.info(
+					{ id: movie.id, title: movie.title, tmdbId: movie.tmdbId },
+					`[${this.name}] TMDB entry not found for movie — marked as no IMDB ID`
+				);
+			} else {
+				logger.warn(
+					{ id: movie.id, title: movie.title, err: error },
+					`[${this.name}] Failed to fetch external IDs for movie`
+				);
+			}
 
 			return {
 				id: movie.id,
@@ -352,7 +360,7 @@ export class ExternalIdService implements BackgroundService {
 				imdbId: null,
 				tvdbId: null,
 				success: false,
-				error: error instanceof Error ? error.message : String(error)
+				error: message
 			};
 		}
 	}
@@ -443,14 +451,25 @@ export class ExternalIdService implements BackgroundService {
 				success: true
 			};
 		} catch (error) {
-			logger.warn(
-				{
-					id: show.id,
-					title: show.title,
-					err: error
-				},
-				`[${this.name}] Failed to fetch external IDs for series`
-			);
+			const message = error instanceof Error ? error.message : String(error);
+			const isNotFound = /resource you requested could not be found/i.test(message);
+
+			if (isNotFound) {
+				const { eq } = await import('drizzle-orm');
+				await db
+					.update(series)
+					.set({ imdbId: show.imdbId ?? '', tvdbId: show.tvdbId ?? 0 })
+					.where(eq(series.id, show.id));
+				logger.info(
+					{ id: show.id, title: show.title, tmdbId: show.tmdbId },
+					`[${this.name}] TMDB entry not found for series — marked as no external IDs`
+				);
+			} else {
+				logger.warn(
+					{ id: show.id, title: show.title, err: error },
+					`[${this.name}] Failed to fetch external IDs for series`
+				);
+			}
 
 			return {
 				id: show.id,
@@ -460,7 +479,7 @@ export class ExternalIdService implements BackgroundService {
 				imdbId: null,
 				tvdbId: null,
 				success: false,
-				error: error instanceof Error ? error.message : String(error)
+				error: message
 			};
 		}
 	}

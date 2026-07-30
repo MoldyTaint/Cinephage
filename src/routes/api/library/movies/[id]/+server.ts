@@ -35,6 +35,11 @@ import { getLibraryEntityService } from '$lib/server/library/LibraryEntityServic
 import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
 import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
+import { importService } from '$lib/server/downloadClients/import/index.js';
+import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
+import { redundantFileIds } from '$lib/server/quality/buckets.js';
+import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
+import { refreshMovieMetadata } from '$lib/server/metadata/metadata-refresh.js';
 
 function isAnimeMovieSignal(input: {
 	rootFolderPath: string | null;
@@ -72,6 +77,7 @@ export const GET: RequestHandler = async ({ params }) => {
 				rootFolderId: movies.rootFolderId,
 				rootFolderPath: rootFolders.path,
 				scoringProfileId: movies.scoringProfileId,
+				desiredQualities: movies.desiredQualities,
 				languageProfileId: movies.languageProfileId,
 				monitored: movies.monitored,
 				minimumAvailability: movies.minimumAvailability,
@@ -81,7 +87,9 @@ export const GET: RequestHandler = async ({ params }) => {
 				releaseDate: movies.releaseDate,
 				digitalReleaseDate: movies.digitalReleaseDate,
 				physicalReleaseDate: movies.physicalReleaseDate,
-				availabilityDelay: movies.availabilityDelay
+				availabilityDelay: movies.availabilityDelay,
+				metadataLanguage: movies.metadataLanguage,
+				preferOriginalTitle: movies.preferOriginalTitle
 			})
 			.from(movies)
 			.leftJoin(rootFolders, eq(movies.rootFolderId, rootFolders.id))
@@ -186,14 +194,21 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	const {
 		monitored,
 		scoringProfileId,
+		desiredQualities,
 		minimumAvailability,
 		availabilityDelay,
 		providerRefs,
 		rootFolderId,
 		moveFilesOnRootChange,
+		removeUnwantedFiles,
 		wantsSubtitles,
 		languageProfileId,
-		folderPath
+		delayProfileId,
+		folderPath,
+		tmdbCollectionId,
+		collectionName,
+		metadataLanguage,
+		preferOriginalTitle
 	} = body;
 
 	// Capture current state before update (for subtitle trigger detection)
@@ -204,9 +219,11 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			path: movies.path,
 			rootFolderId: movies.rootFolderId,
 			scoringProfileId: movies.scoringProfileId,
+			desiredQualities: movies.desiredQualities,
 			wantsSubtitles: movies.wantsSubtitles,
 			languageProfileId: movies.languageProfileId,
-			hasFile: movies.hasFile
+			hasFile: movies.hasFile,
+			metadataLanguage: movies.metadataLanguage
 		})
 		.from(movies)
 		.where(eq(movies.id, params.id));
@@ -227,6 +244,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	}
 	if (scoringProfileId !== undefined) {
 		updateData.scoringProfileId = scoringProfileId;
+	}
+	if (desiredQualities !== undefined) {
+		updateData.desiredQualities = desiredQualities;
+	}
+	if (delayProfileId !== undefined) {
+		updateData.delayProfileId = delayProfileId;
 	}
 	if (minimumAvailability) {
 		updateData.minimumAvailability = minimumAvailability;
@@ -345,12 +368,122 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		updateData.path = trimmed;
 	}
 
+	if (tmdbCollectionId !== undefined) {
+		updateData.tmdbCollectionId = tmdbCollectionId;
+	}
+	if (collectionName !== undefined) {
+		updateData.collectionName = collectionName;
+	}
+	if (metadataLanguage !== undefined) {
+		updateData.metadataLanguage = metadataLanguage;
+	}
+	if (typeof preferOriginalTitle === 'boolean') {
+		updateData.preferOriginalTitle = preferOriginalTitle;
+	}
+
 	if (Object.keys(updateData).length === 0 && !moveRequest) {
 		return json({ success: false, error: 'No valid fields to update' }, { status: 400 });
 	}
 
 	if (Object.keys(updateData).length > 0) {
 		await db.update(movies).set(updateData).where(eq(movies.id, params.id));
+	}
+
+	// Refresh metadata from TMDB when language override changes
+	const languageChanged =
+		metadataLanguage !== undefined && metadataLanguage !== (currentMovie?.metadataLanguage ?? null);
+	if (languageChanged) {
+		refreshMovieMetadata(params.id).catch((err) => {
+			logger.error(
+				{ movieId: params.id, err },
+				'[API] Background metadata refresh on language change failed'
+			);
+		});
+	}
+
+	// Opt-in removal of now-redundant quality tiers when desiredQualities shrank.
+	// The redundant set is recomputed SERVER-side authoritatively (never trust
+	// the client): load current files, resolve effective buckets against the
+	// movie's scoring profile, then delete via the gold-standard delete path.
+	let removedCount = 0;
+	const reconcileFailures: string[] = [];
+	if (removeUnwantedFiles === true) {
+		try {
+			const reconcileDesired =
+				desiredQualities !== undefined
+					? desiredQualities
+					: (currentMovie?.desiredQualities ?? null);
+			const reconcileProfileId =
+				scoringProfileId !== undefined
+					? scoringProfileId
+					: (currentMovie?.scoringProfileId ?? null);
+
+			const { effective: reconcileEffective } = await resolveMovieMultiQuality(
+				reconcileDesired,
+				reconcileProfileId
+			);
+
+			const existingMovieFiles = await db
+				.select({
+					id: movieFiles.id,
+					relativePath: movieFiles.relativePath,
+					quality: movieFiles.quality,
+					size: movieFiles.size
+				})
+				.from(movieFiles)
+				.where(eq(movieFiles.movieId, params.id));
+
+			const redundantIds = redundantFileIds(existingMovieFiles, reconcileEffective);
+			if (redundantIds.length > 0) {
+				const fileManagement = await getFileManagementSettings();
+				for (const redundantId of redundantIds) {
+					const deleteResult = await importService.deleteMovieFile(
+						redundantId,
+						params.id,
+						fileManagement.recycleEnabled
+					);
+					if (deleteResult.success) {
+						removedCount++;
+					} else {
+						reconcileFailures.push(deleteResult.error ?? 'Unknown error');
+					}
+				}
+				logger.info(
+					{
+						movieId: params.id,
+						attempted: redundantIds.length,
+						removed: removedCount,
+						failed: reconcileFailures.length,
+						recycleEnabled: fileManagement.recycleEnabled
+					},
+					'[API] Removed redundant quality files on desiredQualities change'
+				);
+				if (reconcileFailures.length > 0) {
+					logger.warn(
+						{
+							movieId: params.id,
+							failures: reconcileFailures
+						},
+						'[API] Some redundant quality file deletions failed'
+					);
+				}
+			}
+		} catch (error) {
+			logger.error(
+				{
+					movieId: params.id,
+					err: error instanceof Error ? error : undefined
+				},
+				'[API] Failed to reconcile redundant quality files'
+			);
+			return json(
+				{
+					success: false,
+					error: error instanceof Error ? error.message : 'Failed to remove unwanted files'
+				},
+				{ status: 500 }
+			);
+		}
 	}
 
 	let moveTask:
@@ -439,11 +572,19 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		getLibraryScheduler().queueFolderScan(currentMovie.rootFolderId);
 	}
 
+	const failedCount = reconcileFailures.length;
 	return json({
 		success: true,
 		moveQueued: Boolean(moveTask),
 		moveTaskId: moveTask?.taskId,
-		moveTaskHistoryId: moveTask?.historyId
+		moveTaskHistoryId: moveTask?.historyId,
+		removedCount,
+		...(failedCount > 0
+			? {
+					failedCount,
+					warning: `Removed ${removedCount}, ${failedCount} failed`
+				}
+			: {})
 	});
 };
 

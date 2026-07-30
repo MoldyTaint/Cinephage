@@ -105,15 +105,15 @@
 					{/each}
 				</div>
 				<div class="hidden overflow-x-auto md:block">
-					<table class="table w-full table-zebra">
+					<table class="table w-full table-fixed table-zebra">
 						<thead>
 							<tr>
-								<th class="w-1/3">{m.task_table_colTask()}</th>
-								<th>{m.task_table_colInterval()}</th>
-								<th>{m.task_table_colLastRun()}</th>
-								<th>{m.task_table_colNextRun()}</th>
-								<th>{m.task_table_colStatus()}</th>
-								<th class="w-px"></th>
+								<th>{m.task_table_colTask()}</th>
+								<th class="w-20">{m.task_table_colInterval()}</th>
+								<th class="w-28">{m.task_table_colLastRun()}</th>
+								<th class="w-28">{m.task_table_colNextRun()}</th>
+								<th class="w-16">{m.task_table_colStatus()}</th>
+								<th class="w-20"></th>
 							</tr>
 						</thead>
 						<tbody>
@@ -193,14 +193,14 @@
 					{/each}
 				</div>
 				<div class="hidden overflow-x-auto md:block">
-					<table class="table w-full table-zebra">
+					<table class="table w-full table-fixed table-zebra">
 						<thead>
 							<tr>
-								<th class="w-1/3">{m.task_table_colTask()}</th>
-								<th>{m.task_table_colType()}</th>
-								<th>{m.task_table_colLastRun()}</th>
-								<th>{m.task_table_colStatus()}</th>
-								<th class="w-px"></th>
+								<th>{m.task_table_colTask()}</th>
+								<th class="w-20">{m.task_table_colType()}</th>
+								<th class="w-28">{m.task_table_colLastRun()}</th>
+								<th class="w-16">{m.task_table_colStatus()}</th>
+								<th class="w-20"></th>
 							</tr>
 						</thead>
 						<tbody>

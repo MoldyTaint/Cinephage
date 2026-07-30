@@ -12,6 +12,7 @@ import { relations, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import type { ProtocolSettings } from '$lib/server/indexers/types/index.js';
 import type { NewznabCategory } from '$lib/server/indexers/newznab/types.js';
+import type { DesiredQuality } from '$lib/types/library.js';
 
 // ============================================================================
 // Better Auth Tables
@@ -152,67 +153,6 @@ export const settings = sqliteTable('settings', {
 });
 
 // ============================================================================
-// Indexer Definitions - Cached metadata from YAML files
-// ============================================================================
-
-/**
- * Indexer Definitions - Cached metadata loaded from YAML definition files.
- * This table stores parsed YAML definitions for quick lookup without
- * re-reading files on every request.
- */
-export const indexerDefinitions = sqliteTable(
-	'indexer_definitions',
-	{
-		// Definition ID (e.g., 'knaben', 'nzbgeek', 'cinephage-stream')
-		id: text('id').primaryKey(),
-		name: text('name').notNull(),
-		description: text('description'),
-		// Protocol type
-		protocol: text('protocol', { enum: ['torrent', 'usenet', 'streaming'] }).notNull(),
-		// Access type
-		type: text('type', { enum: ['public', 'semi-private', 'private'] }).notNull(),
-		language: text('language').default('en-US'),
-		// Primary and alternate URLs as JSON arrays
-		urls: text('urls', { mode: 'json' }).$type<string[]>().notNull(),
-		legacyUrls: text('legacy_urls', { mode: 'json' }).$type<string[]>(),
-		// Settings schema for UI generation (JSON array of setting field definitions)
-		settingsSchema: text('settings_schema', { mode: 'json' }).$type<
-			Array<{
-				name: string;
-				type: string;
-				label: string;
-				default?: string | boolean | number;
-				options?: Record<string, string>;
-			}>
-		>(),
-		// Capabilities JSON (search modes, categories, etc.)
-		capabilities: text('capabilities', { mode: 'json' })
-			.$type<{
-				search?: { available: boolean; supportedParams: string[] };
-				tvSearch?: { available: boolean; supportedParams: string[] };
-				movieSearch?: { available: boolean; supportedParams: string[] };
-				musicSearch?: { available: boolean; supportedParams: string[] };
-				bookSearch?: { available: boolean; supportedParams: string[] };
-				categories: Record<string, string>;
-			}>()
-			.notNull(),
-		// Source file info for change detection
-		filePath: text('file_path'),
-		fileHash: text('file_hash'),
-		// Timestamps
-		loadedAt: text('loaded_at').notNull(),
-		updatedAt: text('updated_at').notNull()
-	},
-	(table) => [
-		index('idx_indexer_definitions_protocol').on(table.protocol),
-		index('idx_indexer_definitions_type').on(table.type)
-	]
-);
-
-export type IndexerDefinitionRecord = typeof indexerDefinitions.$inferSelect;
-export type NewIndexerDefinitionRecord = typeof indexerDefinitions.$inferInsert;
-
-// ============================================================================
 // Indexers - User-configured indexer instances
 // ============================================================================
 
@@ -240,6 +180,12 @@ export const indexers = sqliteTable(
 		// (Prowlarr or Jackett). Soft-marks rather than hard-deletes so the user sees a
 		// "Deleted" badge and can manually remove or re-enable after testing.
 		orphaned: integer('orphaned', { mode: 'boolean' }).default(false),
+		// True for indexers owned by a built-in subsystem (e.g. the CinephageAPI
+		// library-streaming module owns the 'cinephage-stream' row). These rows
+		// are non-deletable via the indexers page; their config is managed by
+		// the owning subsystem. Matches the isBuiltIn convention on
+		// scoringProfiles (schema.ts:401) and namingPresets (schema.ts:1195).
+		isBuiltIn: integer('is_built_in', { mode: 'boolean' }).notNull().default(false),
 		// Selected base URL (from definition's urls array)
 		baseUrl: text('base_url').notNull(),
 		// Alternate URLs for failover (JSON array)
@@ -338,12 +284,8 @@ export const indexerStatusRelations = relations(indexerStatus, ({ one }) => ({
 	})
 }));
 
-// Relations for indexers to definitions
+// Relations for indexers to status
 export const indexersRelations = relations(indexers, ({ one }) => ({
-	definition: one(indexerDefinitions, {
-		fields: [indexers.definitionId],
-		references: [indexerDefinitions.id]
-	}),
 	status: one(indexerStatus, {
 		fields: [indexers.id],
 		references: [indexerStatus.indexerId]
@@ -404,6 +346,9 @@ export const scoringProfiles = sqliteTable('scoring_profiles', {
 	maxResolution: text('max_resolution'),
 	allowedSources: text('allowed_sources', { mode: 'json' }).$type<string[] | null>(),
 	excludedSources: text('excluded_sources', { mode: 'json' }).$type<string[] | null>(),
+	requiredFormats: text('required_formats', { mode: 'json' }).$type<
+		{ id: string; op: 'AND' | 'OR' }[]
+	>(),
 	createdAt: text('created_at').$defaultFn(() => new Date().toISOString()),
 	updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
 });
@@ -544,6 +489,12 @@ export const downloadClients = sqliteTable('download_clients', {
 	urlBase: text('url_base'),
 	mountMode: text('mount_mode'),
 
+	// Debrid provider settings (realdebrid, torbox)
+	// Encrypted API token (encrypted with debridTokenCrypto, distinct from apiKeyCrypto)
+	apiToken: text('api_token'),
+	// Whether to remove the torrent from the debrid provider after import
+	removeAfterImport: integer('remove_after_import', { mode: 'boolean' }).default(false),
+
 	// Category settings (separate for movie/tv)
 	movieCategory: text('movie_category').default('movies'),
 	tvCategory: text('tv_category').default('tv'),
@@ -600,6 +551,8 @@ export const rootFolders = sqliteTable('root_folders', {
 	defaultMonitored: integer('default_monitored', { mode: 'boolean' }).default(true),
 	// Cached free space in bytes (updated periodically)
 	freeSpaceBytes: integer('free_space_bytes'),
+	// Cached total disk capacity in bytes (added v105; populated by RootFolderService.refreshFreeSpace)
+	totalSpaceBytes: integer('total_space_bytes'),
 	// Last time free space was checked
 	lastCheckedAt: text('last_checked_at'),
 	// JSON string[] — folder names to skip during disk scan (case-insensitive exact match)
@@ -636,6 +589,15 @@ export const libraries = sqliteTable(
 			.notNull()
 			.default(true),
 		sortOrder: integer('sort_order').notNull().default(0),
+		qualityProfileId: text('quality_profile_id').references(() => scoringProfiles.id, {
+			onDelete: 'set null'
+		}),
+		scanMode: text('scan_mode').notNull().default('scheduled'), // 'manual' | 'scheduled' | 'scheduled_daily' | 'watch' (Phase 4)
+		scanConfig: text('scan_config', { mode: 'json' }).$type<{
+			intervalMinutes?: number;
+			scheduledTime?: string;
+			debounceSeconds?: number;
+		}>(),
 		createdAt: text('created_at').$defaultFn(() => new Date().toISOString()),
 		updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
 	},
@@ -699,6 +661,11 @@ export const movies = sqliteTable(
 		scoringProfileId: text('scoring_profile_id').references(() => scoringProfiles.id, {
 			onDelete: 'set null'
 		}),
+		// Desired qualities for multi-quality mode (e.g. ['2160p', '1080p']).
+		// When >= 2 effective buckets, the movie maintains independent files per
+		// resolution tier; upgrades only replace the same-resolution file.
+		// null/empty/<2 = single-quality mode (current behavior).
+		desiredQualities: text('desired_qualities', { mode: 'json' }).$type<DesiredQuality[]>(),
 		// Language profile for subtitle preferences (deferred reference - languageProfiles defined later)
 		languageProfileId: text('language_profile_id'),
 		// Whether to monitor for upgrades
@@ -726,7 +693,13 @@ export const movies = sqliteTable(
 		availabilityDelay: integer('availability_delay').notNull().default(0),
 		adult: integer('adult', { mode: 'boolean' }).default(false),
 		adultSource: text('adult_source'),
-		adultConfidence: text('adult_confidence')
+		adultConfidence: text('adult_confidence'),
+		// Delay profile for holding releases before grabbing
+		delayProfileId: text('delay_profile_id'),
+		// Metadata language override (null = inherit global, 'original' = use original_language)
+		metadataLanguage: text('metadata_language'),
+		// Display flag: use originalTitle instead of title in all UI
+		preferOriginalTitle: integer('prefer_original_title', { mode: 'boolean' }).default(false)
 	},
 	(table) => [
 		index('idx_movies_monitored_hasfile').on(table.monitored, table.hasFile),
@@ -786,7 +759,12 @@ export const movieFiles = sqliteTable('movie_files', {
 	languages: text('languages', { mode: 'json' }).$type<string[]>(),
 	// Info hash of the torrent used to download this file (for duplicate detection)
 	infoHash: text('info_hash'),
-	lastSeenScanId: text('last_seen_scan_id')
+	lastSeenScanId: text('last_seen_scan_id'),
+	// Content categorization: 'main' | 'bonus' (Phase 1 pattern recognition)
+	contentCategory: text('content_category').notNull().default('main'),
+	filenameSignature: text('filename_signature'),
+	contentHash: text('content_hash'),
+	contentHashAlgorithm: text('content_hash_algorithm')
 });
 
 /**
@@ -843,7 +821,13 @@ export const series = sqliteTable(
 		adult: integer('adult', { mode: 'boolean' }).default(false),
 		adultSource: text('adult_source'),
 		adultConfidence: text('adult_confidence'),
-		episodeGroupId: text('episode_group_id')
+		episodeGroupId: text('episode_group_id'),
+		// Delay profile for holding releases before grabbing
+		delayProfileId: text('delay_profile_id'),
+		// Metadata language override (null = inherit global, 'original' = use original_language)
+		metadataLanguage: text('metadata_language'),
+		// Display flag: use originalTitle instead of title in all UI
+		preferOriginalTitle: integer('prefer_original_title', { mode: 'boolean' }).default(false)
 	},
 	(table) => [
 		index('idx_series_monitored').on(table.monitored),
@@ -981,7 +965,12 @@ export const episodeFiles = sqliteTable('episode_files', {
 	languages: text('languages', { mode: 'json' }).$type<string[]>(),
 	// Info hash of the torrent used to download this file (for duplicate detection)
 	infoHash: text('info_hash'),
-	lastSeenScanId: text('last_seen_scan_id')
+	lastSeenScanId: text('last_seen_scan_id'),
+	// Content categorization: 'main' | 'bonus' (Phase 1 pattern recognition)
+	contentCategory: text('content_category').notNull().default('main'),
+	filenameSignature: text('filename_signature'),
+	contentHash: text('content_hash'),
+	contentHashAlgorithm: text('content_hash_algorithm')
 });
 
 // ============================================================================
@@ -1055,7 +1044,12 @@ export const unmatchedFiles = sqliteTable('unmatched_files', {
 	reason: text('reason'), // 'no_match', 'low_confidence', 'multiple_matches', 'parse_failed'
 	// When discovered
 	discoveredAt: text('discovered_at').$defaultFn(() => new Date().toISOString()),
-	lastSeenScanId: text('last_seen_scan_id')
+	lastSeenScanId: text('last_seen_scan_id'),
+	// Content categorization: 'main' | 'bonus' (Phase 1 pattern recognition)
+	contentCategory: text('content_category').notNull().default('main'),
+	filenameSignature: text('filename_signature'),
+	contentHash: text('content_hash'),
+	contentHashAlgorithm: text('content_hash_algorithm')
 });
 
 /**
@@ -1176,6 +1170,61 @@ export const librarySettings = sqliteTable('library_settings', {
  * - 'include_media_info': boolean
  * - 'include_release_group': boolean
  */
+/**
+ * Library Pattern Config - Per-library pattern recognition settings (Phase 1)
+ *
+ * Each row holds the pattern configuration for a library or the global
+ * fallback (scope='global'). Pattern families:
+ *   - ignore_defaults_enabled + ignore_user_patterns (glob, case-sensitive)
+ *   - bonus_patterns (glob, case-insensitive, content_category='bonus')
+ *   - structure_mode + structure_config (folder_depth or regex)
+ */
+/**
+ * Resolution Categories - User-editable resolution buckets (Phase 2)
+ *
+ * Replaces hardcoded "4k/1080p/720p/SD" with editable categories.
+ * Used by quality scoring badges, statistics, and profile rules.
+ * One fallback category with 0×0 thresholds is always required.
+ * IDs are immutable once assigned (quality profiles reference them).
+ */
+export const resolutionCategories = sqliteTable('resolution_categories', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => randomUUID()),
+	label: text('label').notNull(),
+	minWidth: integer('min_width').notNull().default(0),
+	minHeight: integer('min_height').notNull().default(0),
+	searchTerms: text('search_terms', { mode: 'json' }).$type<string[]>(),
+	isFallback: integer('is_fallback', { mode: 'boolean' }).default(false),
+	createdAt: text('created_at').$defaultFn(() => new Date().toISOString())
+});
+
+export const duplicateGroupSuppression = sqliteTable('duplicate_group_suppression', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => randomUUID()),
+	libraryId: text('library_id').references(() => libraries.id, { onDelete: 'cascade' }),
+	signature: text('signature').notNull(),
+	signatureType: text('signature_type').notNull(),
+	dismissedAt: text('dismissed_at').$defaultFn(() => new Date().toISOString()),
+	createdAt: text('created_at').$defaultFn(() => new Date().toISOString())
+});
+
+export const libraryPatternConfig = sqliteTable('library_pattern_config', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => randomUUID()),
+	libraryId: text('library_id').references(() => libraries.id, { onDelete: 'cascade' }),
+	scope: text('scope').notNull(), // 'global' | 'library'
+	ignoreDefaultsEnabled: integer('ignore_defaults_enabled', { mode: 'boolean' }).default(true),
+	ignoreUserPatterns: text('ignore_user_patterns', { mode: 'json' }).$type<string[]>(),
+	bonusPatterns: text('bonus_patterns', { mode: 'json' }).$type<string[]>(),
+	structureMode: text('structure_mode'), // 'folder_depth' | 'regex' | null
+	structureConfig: text('structure_config', { mode: 'json' }),
+	createdAt: text('created_at').$defaultFn(() => new Date().toISOString()),
+	updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
+});
+
 export const namingSettings = sqliteTable('naming_settings', {
 	key: text('key').primaryKey(),
 	value: text('value').notNull()
@@ -1233,7 +1282,7 @@ export const downloadQueue = sqliteTable(
 		// Original download/magnet URL
 		downloadUrl: text('download_url'),
 		magnetUrl: text('magnet_url'),
-		// Protocol: 'torrent' | 'usenet' | 'streaming'
+		// Queue lifecycle owner: 'torrent' | 'usenet' | 'streaming' | 'debrid'
 		protocol: text('protocol').notNull().default('torrent'),
 
 		// Linked media (at least one should be set)
@@ -1245,7 +1294,7 @@ export const downloadQueue = sqliteTable(
 		seasonNumber: integer('season_number'),
 
 		// Status tracking
-		// 'queued' | 'downloading' | 'paused' | 'completed' | 'importing' | 'imported' | 'failed' | 'seeding' | 'removed'
+		// 'queued' | 'downloading' | 'paused' | 'completed' | 'postprocessing' | 'importing' | 'imported' | 'failed' | 'seeding' | 'removed'
 		status: text('status').notNull().default('queued'),
 		// Download progress (0.0 - 1.0)
 		progress: text('progress').default('0'), // Stored as text for decimal precision
@@ -1282,6 +1331,10 @@ export const downloadQueue = sqliteTable(
 		addedAt: text('added_at').$defaultFn(() => new Date().toISOString()),
 		// When download started (first saw progress > 0)
 		startedAt: text('started_at'),
+		// When the download first entered the stalled state (drives stalled-timeout
+		// cleanup). Persisted so the timer survives restarts and isn't reset by brief
+		// metaDL ↔ downloading flaps. Cleared only when the download actually progresses.
+		stalledSince: text('stalled_since'),
 		// When download reached 100%
 		completedAt: text('completed_at'),
 		// When import finished
@@ -1335,6 +1388,26 @@ export const downloadQueueTombstones = sqliteTable(
 			table.remoteId
 		)
 	]
+);
+
+/**
+ * Stalled Orphan Tracking - Records when a torrent in one of our categories that
+ * is NOT actively tracked in the queue was first seen stalled, so the periodic
+ * orphan sweep can apply the stalled timeout to it (and retry deletes that didn't
+ * take, since the row survives until the torrent actually disappears).
+ */
+export const stalledOrphanTracking = sqliteTable(
+	'stalled_orphan_tracking',
+	{
+		downloadClientId: text('download_client_id')
+			.notNull()
+			.references(() => downloadClients.id, { onDelete: 'cascade' }),
+		infoHash: text('info_hash').notNull(),
+		firstStalledAt: text('first_stalled_at')
+			.notNull()
+			.$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [primaryKey({ columns: [table.downloadClientId, table.infoHash] })]
 );
 
 /**
@@ -1526,6 +1599,15 @@ export const delayProfiles = sqliteTable('delay_profiles', {
 	name: text('name').notNull(),
 	// Order for matching (lower = higher priority)
 	sortOrder: integer('sort_order').notNull().default(0),
+	qualityProfileId: text('quality_profile_id').references(() => scoringProfiles.id, {
+		onDelete: 'set null'
+	}),
+	scanMode: text('scan_mode').notNull().default('scheduled'), // 'manual' | 'scheduled' | 'scheduled_daily' | 'watch' (Phase 4)
+	scanConfig: text('scan_config', { mode: 'json' }).$type<{
+		intervalMinutes?: number;
+		scheduledTime?: string;
+		debounceSeconds?: number;
+	}>(),
 	// Enable/disable
 	enabled: integer('enabled', { mode: 'boolean' }).default(true),
 	// Protocol delays (in minutes, 0 = immediate)
@@ -1578,6 +1660,8 @@ export const pendingReleases = sqliteTable('pending_releases', {
 	delayProfileId: text('delay_profile_id').references(() => delayProfiles.id, {
 		onDelete: 'set null'
 	}),
+	// When the release was originally published on the indexer
+	publishDate: text('publish_date'),
 	addedAt: text('added_at').$defaultFn(() => new Date().toISOString()),
 	processAt: text('process_at').notNull(), // When to process this release
 	// Status
@@ -1718,6 +1802,11 @@ export const subtitles = sqliteTable(
 		// Link to media (one must be set)
 		movieId: text('movie_id').references(() => movies.id, { onDelete: 'cascade' }),
 		episodeId: text('episode_id').references(() => episodes.id, { onDelete: 'cascade' }),
+		// Link to a specific movie file (multi-quality: one subtitle per resolution tier).
+		// Nullable: null for legacy subtitles or episode subtitles.
+		movieFileId: text('movie_file_id').references(() => movieFiles.id, {
+			onDelete: 'set null'
+		}),
 
 		// File info
 		relativePath: text('relative_path').notNull(),
@@ -1877,6 +1966,61 @@ export const taskSettings = sqliteTable(
 
 export type TaskSettingsRecord = typeof taskSettings.$inferSelect;
 export type NewTaskSettingsRecord = typeof taskSettings.$inferInsert;
+
+// ============================================================================
+// Cinephage API Subsystem
+// ============================================================================
+// First-class integration with api.cinephage.net. The subsystem owns the
+// connection (HTTP client, version/commit identity, enable state) and houses
+// feature modules (library-streaming, remote-streaming, etc.). Per-module
+// config and enable state live here, not on the indexer row.
+//
+// See src/lib/server/cinephage/ for the runtime implementation.
+
+/**
+ * Cinephage API Config - Singleton row (id is always 1).
+ * Holds subsystem-level config: master enable toggle, base URL override, and
+ * version/commit overrides for cases where auto-detection from APP_VERSION /
+ * APP_COMMIT fails (custom builds, dev checkouts without git, etc.).
+ */
+export const cinephageApiConfig = sqliteTable('cinephage_api_config', {
+	id: integer('id').primaryKey(),
+	enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+	baseUrl: text('base_url').notNull().default('https://api.cinephage.net'),
+	// Optional manual overrides. When null, the subsystem auto-detects from
+	// APP_VERSION / APP_COMMIT env vars (baked into the Docker image at build).
+	versionOverride: text('version_override'),
+	commitOverride: text('commit_override'),
+	updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
+});
+
+export type CinephageApiConfigRecord = typeof cinephageApiConfig.$inferSelect;
+export type NewCinephageApiConfigRecord = typeof cinephageApiConfig.$inferInsert;
+
+/**
+ * Cinephage API Modules - Per-module state.
+ * One row per registered feature module (e.g. 'library-streaming').
+ * The module's settingsSchema (Zod) validates writes; settings is a JSON bag
+ * whose shape is module-specific.
+ */
+export const cinephageApiModules = sqliteTable(
+	'cinephage_api_modules',
+	{
+		moduleId: text('module_id').primaryKey(),
+		enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+		settings: text('settings', { mode: 'json' })
+			.$type<Record<string, unknown>>()
+			.notNull()
+			.default({}),
+		// Populated when test() fails; cleared on success. Surfaced in the UI.
+		lastError: text('last_error'),
+		updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [index('idx_cinephage_api_modules_enabled').on(table.enabled)]
+);
+
+export type CinephageApiModuleRecord = typeof cinephageApiModules.$inferSelect;
+export type NewCinephageApiModuleRecord = typeof cinephageApiModules.$inferInsert;
 
 // ============================================================================
 // RELATIONS
@@ -2113,6 +2257,10 @@ export const subtitlesRelations = relations(subtitles, ({ one }) => ({
 	episode: one(episodes, {
 		fields: [subtitles.episodeId],
 		references: [episodes.id]
+	}),
+	movieFile: one(movieFiles, {
+		fields: [subtitles.movieFileId],
+		references: [movieFiles.id]
 	}),
 	provider: one(subtitleProviders, {
 		fields: [subtitles.providerId],
@@ -2916,6 +3064,102 @@ export type NewMediaServerSyncedItemRecord = typeof mediaServerSyncedItems.$infe
 export type MediaServerSyncedRunRecord = typeof mediaServerSyncedRuns.$inferSelect;
 export type NewMediaServerSyncedRunRecord = typeof mediaServerSyncedRuns.$inferInsert;
 
+/**
+ * Storage Items - Unified directory of media items across local library and media servers.
+ * Reference-model: holds identity + FK references; size/quality/playback stay on source tables.
+ * Populated by ReconciliationService (Phase 2).
+ */
+export const storageItems = sqliteTable('storage_items', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => randomUUID()),
+	itemType: text('item_type', { enum: ['movie', 'episode', 'series', 'season'] }).notNull(),
+	tmdbId: integer('tmdb_id'),
+	tvdbId: integer('tvdb_id'),
+	imdbId: text('imdb_id'),
+	title: text('title').notNull(),
+	year: integer('year'),
+	seriesName: text('series_name'),
+	seasonNumber: integer('season_number'),
+	episodeNumber: integer('episode_number'),
+	// FK to local file row (nullable when item only exists on a media server)
+	movieFileId: text('movie_file_id').references(() => movieFiles.id, { onDelete: 'set null' }),
+	episodeFileId: text('episode_file_id').references(() => episodeFiles.id, {
+		onDelete: 'set null'
+	}),
+	rootFolderId: text('root_folder_id').references(() => rootFolders.id, { onDelete: 'set null' }),
+	libraryId: text('library_id').references(() => libraries.id, { onDelete: 'set null' }),
+	sourceSystem: text('source_system', { enum: ['local', 'server', 'both'] }).notNull(),
+	matchConfidence: text('match_confidence', { enum: ['exact', 'id', 'fuzzy', 'none'] }).notNull(),
+	firstSeenAt: text('first_seen_at')
+		.notNull()
+		.$defaultFn(() => new Date().toISOString()),
+	lastReconciledAt: text('last_reconciled_at')
+});
+
+export type StorageItemRecord = typeof storageItems.$inferSelect;
+export type NewStorageItemRecord = typeof storageItems.$inferInsert;
+
+/**
+ * Storage Item Server Links - Sidecar mapping items to media-server presence.
+ * One item can be tracked by N servers; each (storageItemId, serverId) pair is unique.
+ */
+export const storageItemServerLinks = sqliteTable(
+	'storage_item_server_links',
+	{
+		storageItemId: text('storage_item_id')
+			.notNull()
+			.references(() => storageItems.id, { onDelete: 'cascade' }),
+		serverId: text('server_id')
+			.notNull()
+			.references(() => mediaBrowserServers.id, { onDelete: 'cascade' }),
+		syncedItemId: text('synced_item_id')
+			.notNull()
+			.references(() => mediaServerSyncedItems.id, { onDelete: 'cascade' }),
+		lastSeenAt: text('last_seen_at')
+			.notNull()
+			.$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [
+		primaryKey({ columns: [table.storageItemId, table.serverId] }),
+		index('idx_storage_links_synced').on(table.syncedItemId)
+	]
+);
+
+export type StorageItemServerLinkRecord = typeof storageItemServerLinks.$inferSelect;
+export type NewStorageItemServerLinkRecord = typeof storageItemServerLinks.$inferInsert;
+
+/**
+ * Storage Insights - Cached, dismissible findings produced by the InsightsService (Phase 3).
+ * One row per detected finding; dismissed findings remain for audit and can be re-detected on change.
+ */
+export const storageInsights = sqliteTable('storage_insights', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => randomUUID()),
+	insightType: text('insight_type').notNull(),
+	severity: text('severity', { enum: ['info', 'warning', 'critical'] }).notNull(),
+	scope: text('scope', { enum: ['global', 'library', 'root_folder', 'item'] }).notNull(),
+	scopeId: text('scope_id'),
+	title: text('title').notNull(),
+	summary: text('summary'),
+	detailsJson: text('details_json'),
+	reclaimableBytes: integer('reclaimable_bytes'),
+	itemCount: integer('item_count').notNull().default(0),
+	firstDetectedAt: text('first_detected_at')
+		.notNull()
+		.$defaultFn(() => new Date().toISOString()),
+	lastDetectedAt: text('last_detected_at')
+		.notNull()
+		.$defaultFn(() => new Date().toISOString()),
+	dismissedAt: text('dismissed_at'),
+	// Soft ref to auth DB user id - auth DB is separate, no FK possible (matches session/account convention)
+	dismissedBy: text('dismissed_by')
+});
+
+export type StorageInsightRecord = typeof storageInsights.$inferSelect;
+export type NewStorageInsightRecord = typeof storageInsights.$inferInsert;
+
 // ============================================================================
 // LIVE TV - STALKER PORTALS
 // ============================================================================
@@ -3601,3 +3845,24 @@ export const userApiKeySecretsRelations = relations(userApiKeySecrets, ({ one })
 		references: [user.id]
 	})
 }));
+
+// ============================================================================
+// Rename History Table
+// ============================================================================
+// Permanent audit trail for every file rename attempt.
+// Survives log rotation; enables undo/recovery if things go wrong.
+
+export const renameHistory = sqliteTable('rename_history', {
+	id: text('id').primaryKey(),
+	fileId: text('file_id').notNull(),
+	mediaType: text('media_type').notNull(),
+	oldPath: text('old_path').notNull(),
+	newPath: text('new_path').notNull(),
+	success: integer('success').notNull().default(0),
+	error: text('error'),
+	operation: text('operation').notNull().default('rename'),
+	createdAt: text('created_at').notNull()
+});
+
+export type RenameHistoryRecord = typeof renameHistory.$inferSelect;
+export type NewRenameHistoryRecord = typeof renameHistory.$inferInsert;

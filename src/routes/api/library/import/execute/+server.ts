@@ -5,6 +5,7 @@ import { manualImportService } from '$lib/server/library/manual-import-service.j
 import { isPathAllowed, isPathInsideManagedRoot } from '$lib/server/filesystem/path-guard.js';
 import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 
 function getExecuteErrorMessage(error: unknown): string {
 	const fsError = error as NodeJS.ErrnoException;
@@ -67,6 +68,10 @@ export const POST: RequestHandler = async (event) => {
 		}
 
 		const result = await manualImportService.executeImport(payload);
+		libraryMediaEvents.emitLibraryDataChanged({
+			source: payload.mediaType === 'tv' ? 'series' : 'movie',
+			reason: 'manual-import'
+		});
 		return json({ success: true, data: result });
 	} catch (error) {
 		logger.error('[API] Manual import execute failed', error instanceof Error ? error : undefined);

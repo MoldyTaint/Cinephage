@@ -131,6 +131,18 @@ const SCHEDULED_TASKS: UnifiedTaskDefinition[] = [
 		intervalEditable: true
 	},
 	{
+		id: 'library-reconcile',
+		name: 'Library Reconciliation',
+		description:
+			'Reconcile library <-> root folder assignments and heal drift from external changes',
+		category: 'scheduled',
+		runEndpoint: '/api/library/reconcile',
+		intervalKey: 'library_reconcile_interval_hours',
+		defaultIntervalHours: 6,
+		minIntervalHours: 1,
+		intervalEditable: true
+	},
+	{
 		id: 'historyCleanup',
 		name: 'History Cleanup',
 		description: 'Automatically purge old history entries based on the retention period setting',

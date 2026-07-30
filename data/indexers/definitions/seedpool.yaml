@@ -1,0 +1,203 @@
+---
+# seedpool Private Torrent Tracker (UNIT3D JSON API)
+# Auth via api/torrents/filter apiToken query param + Bearer header.
+# Endpoint verified live (serves the UNIT3D login wall without a token).
+# Same UNIT3D API shape as oldtoonsworld.yaml.
+id: seedpool
+name: seedpool
+description: seedpool is a private torrent tracker for 0-day movies, TV and general content
+language: en-US
+type: private
+encoding: UTF-8
+protocol: torrent
+requestdelay: 2
+
+links:
+  - https://seedpool.org/
+
+caps:
+  categorymappings:
+    - id: 1
+      cat: Movies
+      desc: Movie
+    - id: 2
+      cat: TV
+      desc: TV Show
+    - id: 3
+      cat: PC/Games
+      desc: Game
+    - id: 4
+      cat: Console/Other
+      desc: Deprecated - NSW Game
+    - id: 5
+      cat: Audio
+      desc: Music
+    - id: 6
+      cat: TV/Anime
+      desc: Anime
+    - id: 7
+      cat: Books/EBook
+      desc: E-Book
+    - id: 8
+      cat: TV/Sport
+      desc: Sports
+    - id: 9
+      cat: Audio/Audiobook
+      desc: Audiobook
+    - id: 10
+      cat: Movies/UHD
+      desc: Deprecated - 4K Movie
+    - id: 11
+      cat: Other
+      desc: Other
+    - id: 12
+      cat: Other
+      desc: Hobby
+    - id: 13
+      cat: TV
+      desc: Deprecated - BoxSet
+    - id: 14
+      cat: PC/Games
+      desc: Deprecated - Game
+    - id: 15
+      cat: Other
+      desc: Deprecated - Education
+    - id: 16
+      cat: PC
+      desc: Software
+    - id: 17
+      cat: PC/0day
+      desc: Deprecated - Linux
+    - id: 18
+      cat: PC/Mac
+      desc: Deprecated - macOS
+    - id: 19
+      cat: Console
+      desc: Deprecated - Consoles
+    - id: 20
+      cat: TV/Foreign
+      desc: Deprecated - JPTV
+    - id: 21
+      cat: PC
+      desc: Music Production
+
+  modes:
+    search: [q]
+    tv-search: [q, season, ep, imdbid, tvdbid, tmdbid]
+    movie-search: [q, imdbid, tmdbid]
+    music-search: [q]
+    book-search: [q]
+
+settings:
+  - name: apikey
+    type: password
+    label: API Key
+  - name: freeleech
+    type: checkbox
+    label: Search freeleech only
+    default: false
+  - name: sort
+    type: select
+    label: Sort
+    default: created_at
+    options:
+      created_at: created
+      seeders: seeders
+      size: size
+      name: title
+  - name: type
+    type: select
+    label: Order
+    default: desc
+    options:
+      desc: desc
+      asc: asc
+
+search:
+  paths:
+    - path: api/torrents/filter?apiToken={{ .Config.apikey }}{{ range .Categories }}&categories[]={{.}}{{end}}{{ if .Config.freeleech }}&free[]=100{{ end }}{{ if .Keywords }}&name={{ .Keywords }}{{ end }}{{ if .Query.IMDBIDShort }}&imdbId={{ .Query.IMDBIDShort }}{{ end }}{{ if .Query.TMDBID }}&tmdbId={{ .Query.TMDBID }}{{ end }}{{ if .Query.TVDBID }}&tvdbId={{ .Query.TVDBID }}{{ end }}{{ if .Query.Season }}&seasonNumber={{ .Query.Season }}{{ end }}{{ if .Query.Ep }}&episodeNumber={{ .Query.Ep }}{{ end }}&sortField={{ .Config.sort }}&sortDirection={{ .Config.type }}&perPage=100
+      method: get
+
+  response:
+    type: json
+
+  headers:
+    Authorization:
+      - Bearer {{ .Config.apikey }}
+
+  rows:
+    selector: data
+
+  fields:
+    category:
+      selector: attributes.category_id
+      optional: true
+
+    title:
+      selector: attributes.name
+
+    details:
+      selector: attributes.details_link
+
+    download:
+      selector: attributes.download_link
+
+    infohash:
+      selector: attributes.info_hash
+      optional: true
+
+    imdbid:
+      selector: attributes.imdb_id
+      optional: true
+
+    tmdbid:
+      selector: attributes.tmdb_id
+      optional: true
+
+    tvdbid:
+      selector: attributes.tvdb_id
+      optional: true
+
+    seeders:
+      selector: attributes.seeders
+      optional: true
+
+    leechers:
+      selector: attributes.leechers
+      optional: true
+
+    grabs:
+      selector: attributes.times_completed
+      optional: true
+
+    date:
+      selector: attributes.created_at
+      filters:
+        - name: re_replace
+          args:
+            - \.\d+Z$
+            - Z
+        - name: dateparse
+          args: YYYY-MM-DDTHH:mm:ssZ
+
+    size:
+      selector: attributes.size
+
+    downloadvolumefactor:
+      selector: attributes.freeleech
+      optional: true
+      case:
+        '100': '0'
+        100%: '0'
+        '*': '1'
+
+    uploadvolumefactor:
+      selector: attributes.double_upload
+      optional: true
+      case:
+        'True': '2'
+        'true': '2'
+        '*': '1'
+
+    minimumseedtime:
+      text: '864000'

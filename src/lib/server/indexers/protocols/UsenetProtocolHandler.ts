@@ -249,7 +249,7 @@ export class UsenetProtocolHandler extends BaseProtocolHandler implements IUsene
 		if (usenet?.passwordProtected) {
 			details.push({
 				label: 'Password',
-				value: '⚠️',
+				value: 'Yes',
 				tooltip: 'This release requires a password'
 			});
 		}

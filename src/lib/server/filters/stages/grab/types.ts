@@ -1,4 +1,5 @@
 import type { ScoringProfile, ScoringResult } from '$lib/server/scoring/types.js';
+import type { Resolution } from '$lib/server/indexers/parser/types.js';
 import type { DecisionAudit } from '../../types.js';
 
 export type UpgradeStatus = 'new' | 'upgrade' | 'sidegrade' | 'downgrade' | 'blocked' | 'rejected';
@@ -13,7 +14,9 @@ export type RejectionType =
 	| 'media_occupied'
 	| 'blocked_extension'
 	| 'not_upgrade'
-	| 'upgrades_disabled';
+	| 'upgrades_disabled'
+	| 'pending_delay'
+	| 'missing_required_format';
 
 export interface ReleaseInfo {
 	title: string;
@@ -25,6 +28,8 @@ export interface ReleaseInfo {
 	size?: number;
 	protocol?: 'torrent' | 'usenet' | 'streaming';
 	category?: string;
+	/** When the release was first published on the indexer */
+	publishDate?: Date;
 }
 
 export interface ExistingFile {
@@ -69,6 +74,8 @@ export interface GrabDecisionOptions {
 	allowSidegrade: boolean;
 	isAutomatic: boolean;
 	isUpgrade?: boolean;
+	/** Skip the delay stage - used when processing a release that has already waited its delay period */
+	skipDelay?: boolean;
 }
 
 export interface GrabDecisionContext {
@@ -77,6 +84,8 @@ export interface GrabDecisionContext {
 	existingFiles: ExistingFile[];
 	profile: ScoringProfile;
 	options: GrabDecisionOptions;
+	/** Per-movie desired qualities (multi-quality mode). Movies only. */
+	desiredQualities?: Resolution[];
 	computed: {
 		scoringResult?: ScoringResult;
 		candidateScore?: number;

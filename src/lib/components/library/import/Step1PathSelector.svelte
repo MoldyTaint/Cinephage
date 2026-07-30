@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SvelteSet } from 'svelte/reactivity';
 	import * as m from '$lib/paraglide/messages.js';
 	import {
 		ArrowUp,
@@ -8,7 +9,9 @@
 		Folder,
 		Home,
 		Loader2,
-		Sparkles
+		Search,
+		Sparkles,
+		X
 	} from 'lucide-svelte';
 
 	type MediaType = 'movie' | 'tv';
@@ -23,7 +26,6 @@
 	let {
 		preferredMediaType = $bindable('auto'),
 		sourcePath = $bindable('/'),
-		showRootFolders = $bindable(false),
 		browserPath = '/',
 		browserParentPath = null,
 		browserEntries = [],
@@ -33,11 +35,10 @@
 		isMediaTypeLockedByContext = false,
 		isFileOnlyContext = false,
 		onBrowse = (_path?: string) => {},
-		onDetect = () => {}
+		onDetect = (_paths?: string[]) => {}
 	}: {
 		preferredMediaType: 'auto' | MediaType;
 		sourcePath: string;
-		showRootFolders: boolean;
 		browserPath: string;
 		browserParentPath: string | null;
 		browserEntries: BrowseEntry[];
@@ -47,8 +48,57 @@
 		isMediaTypeLockedByContext: boolean;
 		isFileOnlyContext: boolean;
 		onBrowse: (path?: string) => void;
-		onDetect: () => void;
+		onDetect: (paths?: string[]) => void;
 	} = $props();
+
+	let selectedPaths = new SvelteSet<string>();
+	let browserFilter = $state('');
+
+	const filteredEntries = $derived(
+		browserFilter.trim()
+			? browserEntries.filter((e) =>
+					e.name.toLowerCase().includes(browserFilter.trim().toLowerCase())
+				)
+			: browserEntries
+	);
+	const allVisiblePaths = $derived(filteredEntries.map((e) => e.path));
+	const allSelected = $derived(
+		allVisiblePaths.length > 0 && allVisiblePaths.every((p) => selectedPaths.has(p))
+	);
+
+	function togglePath(path: string) {
+		if (selectedPaths.has(path)) {
+			selectedPaths.delete(path);
+		} else {
+			selectedPaths.add(path);
+		}
+	}
+
+	function toggleSelectAll() {
+		if (allSelected) {
+			selectedPaths.clear();
+		} else {
+			selectedPaths.clear();
+			allVisiblePaths.forEach((p) => selectedPaths.add(p));
+		}
+	}
+
+	function clearSelection() {
+		selectedPaths.clear();
+	}
+
+	function handleBrowse(path?: string) {
+		browserFilter = '';
+		onBrowse(path);
+	}
+
+	function handleDetect() {
+		if (selectedPaths.size > 0) {
+			onDetect([...selectedPaths]);
+		} else {
+			onDetect();
+		}
+	}
 
 	function formatSize(bytes?: number) {
 		if (!bytes) return '';
@@ -99,12 +149,15 @@
 			<button
 				type="button"
 				class="btn w-full btn-primary md:w-auto"
-				onclick={onDetect}
+				onclick={handleDetect}
 				disabled={detecting}
 			>
 				{#if detecting}
 					<Loader2 class="h-4 w-4 animate-spin" />
 					{m.library_import_detecting()}
+				{:else if selectedPaths.size > 0}
+					<Sparkles class="h-4 w-4" />
+					{m.library_import_detectSelected({ count: selectedPaths.size })}
 				{:else}
 					<Sparkles class="h-4 w-4" />
 					{m.library_import_detectMedia()}
@@ -118,7 +171,7 @@
 			<button
 				type="button"
 				class="btn btn-square btn-ghost btn-sm"
-				onclick={() => onBrowse('/')}
+				onclick={() => handleBrowse('/')}
 				title={m.library_import_goToRoot()}
 			>
 				<Home class="h-4 w-4" />
@@ -126,28 +179,54 @@
 			<button
 				class="btn btn-square btn-ghost btn-sm"
 				disabled={!browserParentPath}
-				onclick={() => browserParentPath && onBrowse(browserParentPath)}
+				onclick={() => browserParentPath && handleBrowse(browserParentPath)}
 			>
 				<ArrowUp class="h-4 w-4" />
 			</button>
 			<div class="min-w-0 flex-1 truncate rounded bg-base-100 px-2 py-1 font-mono text-sm">
 				{browserPath}
 			</div>
-			<label class="flex cursor-pointer items-center gap-1.5 text-xs text-base-content/70">
-				<input
-					type="checkbox"
-					class="checkbox checkbox-xs"
-					bind:checked={showRootFolders}
-					onchange={() => onBrowse(browserPath)}
-				/>
-				{m.library_import_showRootFolders()}
-			</label>
 			{#if !isFileOnlyContext}
 				<button class="btn btn-outline btn-xs" onclick={() => (sourcePath = browserPath)}>
 					{m.library_import_useFolder()}
 				</button>
 			{/if}
+			{#if selectedPaths.size > 0}
+				<span class="badge badge-primary badge-sm shrink-0">
+					{m.library_import_selectedCount({ count: selectedPaths.size })}
+				</span>
+				<button class="btn btn-ghost btn-xs shrink-0" onclick={clearSelection}>
+					{m.library_import_clearSelection()}
+				</button>
+			{/if}
 		</div>
+
+		{#if !browserLoading && !browserError && browserEntries.length > 0}
+			<div class="border-b border-base-300 px-3 py-2">
+				<div class="group relative">
+					<div class="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2">
+						<Search
+							class="h-4 w-4 text-base-content/40 transition-colors group-focus-within:text-primary"
+						/>
+					</div>
+					<input
+						type="text"
+						class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+						placeholder="Filter…"
+						bind:value={browserFilter}
+					/>
+					{#if browserFilter}
+						<button
+							class="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-0.5 text-base-content/40 transition-colors hover:bg-base-300 hover:text-base-content"
+							onclick={() => (browserFilter = '')}
+							type="button"
+						>
+							<X class="h-3.5 w-3.5" />
+						</button>
+					{/if}
+				</div>
+			</div>
+		{/if}
 
 		<div class="max-h-80 overflow-y-auto p-2">
 			{#if browserLoading}
@@ -162,32 +241,64 @@
 				<div class="py-6 text-center text-sm text-base-content/60">
 					{m.library_import_noFoldersOrFiles()}
 				</div>
+			{:else if filteredEntries.length === 0}
+				<div class="py-6 text-center text-sm text-base-content/60">
+					No entries match "{browserFilter}"
+				</div>
 			{:else}
 				<div class="space-y-1">
-					{#each browserEntries as entry (entry.path)}
-						<button
-							type="button"
-							class="flex w-full items-center gap-2 rounded px-2 py-2 text-left transition-colors hover:bg-base-200"
-							onclick={() => (entry.isDirectory ? onBrowse(entry.path) : (sourcePath = entry.path))}
+					<div class="flex items-center gap-2 border-b border-base-300/50 pb-1 mb-1 px-2">
+						<input
+							type="checkbox"
+							class="checkbox checkbox-xs shrink-0"
+							checked={allSelected}
+							onchange={toggleSelectAll}
+							title="Select all"
+						/>
+						<span class="text-xs text-base-content/50 select-none">Select all</span>
+					</div>
+					{#each filteredEntries as entry (entry.path)}
+						<div
+							class="flex w-full items-center gap-2 rounded px-2 py-1.5 transition-colors hover:bg-base-200 {selectedPaths.has(
+								entry.path
+							)
+								? 'bg-primary/5 ring-1 ring-primary/20'
+								: ''}"
 						>
-							{#if entry.isDirectory}
-								<Folder class="h-4 w-4 shrink-0 text-warning" />
-							{:else}
-								<FileVideo class="h-4 w-4 shrink-0 text-info" />
-							{/if}
-							<div class="min-w-0 flex-1">
-								<div class="truncate text-sm font-medium">{entry.name}</div>
-								{#if !entry.isDirectory}
-									<div class="text-xs text-base-content/60">{formatSize(entry.size)}</div>
+							<input
+								type="checkbox"
+								class="checkbox checkbox-sm shrink-0"
+								checked={selectedPaths.has(entry.path)}
+								onclick={(e) => {
+									e.stopPropagation();
+									togglePath(entry.path);
+								}}
+							/>
+							<button
+								type="button"
+								class="flex flex-1 items-center gap-2 text-left min-w-0"
+								onclick={() =>
+									entry.isDirectory ? handleBrowse(entry.path) : (sourcePath = entry.path)}
+							>
+								{#if entry.isDirectory}
+									<Folder class="h-4 w-4 shrink-0 text-warning" />
+								{:else}
+									<FileVideo class="h-4 w-4 shrink-0 text-info" />
 								{/if}
-							</div>
-							{#if sourcePath === entry.path}
-								<Check class="h-4 w-4 text-success" />
-							{/if}
-							{#if entry.isDirectory}
-								<ChevronRight class="h-4 w-4 text-base-content/40" />
-							{/if}
-						</button>
+								<div class="min-w-0 flex-1">
+									<div class="truncate text-sm font-medium">{entry.name}</div>
+									{#if !entry.isDirectory}
+										<div class="text-xs text-base-content/60">{formatSize(entry.size)}</div>
+									{/if}
+								</div>
+								{#if sourcePath === entry.path && !selectedPaths.has(entry.path)}
+									<Check class="h-4 w-4 shrink-0 text-success" />
+								{/if}
+								{#if entry.isDirectory}
+									<ChevronRight class="h-4 w-4 shrink-0 text-base-content/40" />
+								{/if}
+							</button>
+						</div>
 					{/each}
 				</div>
 			{/if}

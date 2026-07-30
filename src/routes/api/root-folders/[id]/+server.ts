@@ -6,6 +6,7 @@ import { assertFound, parseBody } from '$lib/server/api/validate';
 import { NotFoundError, isAppError } from '$lib/errors';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring/DownloadMonitorService.js';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 
 /**
  * GET /api/root-folders/[id]
@@ -35,6 +36,11 @@ export const PUT: RequestHandler = async (event) => {
 		if (data.blockedVideoExtensions !== undefined) {
 			downloadMonitor.checkBlockedExtensions().catch(() => {});
 		}
+		libraryMediaEvents.emitLibraryDataChanged({
+			source: 'root-folder',
+			reason: 'root-folder-updated',
+			entityId: params.id
+		});
 		return json({ success: true, ...result });
 	} catch (error) {
 		if (isAppError(error)) {
@@ -60,6 +66,11 @@ export const DELETE: RequestHandler = async (event) => {
 
 	try {
 		const result = await service.deleteFolder(params.id);
+		libraryMediaEvents.emitLibraryDataChanged({
+			source: 'root-folder',
+			reason: 'root-folder-deleted',
+			entityId: params.id
+		});
 		return json({ success: true, ...result });
 	} catch (error) {
 		if (error instanceof Error && error.message.includes('not found')) {

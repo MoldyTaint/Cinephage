@@ -42,6 +42,7 @@ import { seriesUpdateSchema } from '$lib/validation/schemas.js';
 import { tmdb } from '$lib/server/tmdb.js';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
 import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
+import { refreshSeriesMetadata } from '$lib/server/metadata/metadata-refresh.js';
 
 /**
  * GET /api/library/series/[id]
@@ -77,7 +78,9 @@ export const GET: RequestHandler = async ({ params }) => {
 				episodeCount: series.episodeCount,
 				episodeFileCount: series.episodeFileCount,
 				wantsSubtitles: series.wantsSubtitles,
-				episodeGroupId: series.episodeGroupId
+				episodeGroupId: series.episodeGroupId,
+				metadataLanguage: series.metadataLanguage,
+				preferOriginalTitle: series.preferOriginalTitle
 			})
 			.from(series)
 			.leftJoin(rootFolders, eq(series.rootFolderId, rootFolders.id))
@@ -231,8 +234,11 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			rootFolderId,
 			wantsSubtitles,
 			languageProfileId,
+			delayProfileId,
 			folderPath,
-			episodeGroupId
+			episodeGroupId,
+			metadataLanguage,
+			preferOriginalTitle
 		} = body;
 		const moveFilesOnRootChange = rawBody.moveFilesOnRootChange;
 
@@ -250,7 +256,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				wantsSubtitles: series.wantsSubtitles,
 				languageProfileId: series.languageProfileId,
 				episodeGroupId: series.episodeGroupId,
-				monitorSpecials: series.monitorSpecials
+				monitorSpecials: series.monitorSpecials,
+				metadataLanguage: series.metadataLanguage
 			})
 			.from(series)
 			.where(eq(series.id, params.id));
@@ -276,6 +283,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		}
 		if (scoringProfileId !== undefined) {
 			updateData.scoringProfileId = scoringProfileId;
+		}
+		if (delayProfileId !== undefined) {
+			updateData.delayProfileId = delayProfileId;
 		}
 		if (seasonFolder !== undefined) {
 			updateData.seasonFolder = seasonFolder;
@@ -367,6 +377,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		if (folderPath !== undefined) {
 			const trimmed = folderPath.trim();
 			if (currentSeries?.rootFolderId) {
+				// ... existing folder validation ...
 				const [rootFolder] = await db
 					.select({ path: rootFolders.path })
 					.from(rootFolders)
@@ -394,12 +405,32 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			updateData.path = trimmed;
 		}
 
+		if (metadataLanguage !== undefined) {
+			updateData.metadataLanguage = metadataLanguage;
+		}
+		if (typeof preferOriginalTitle === 'boolean') {
+			updateData.preferOriginalTitle = preferOriginalTitle;
+		}
+
 		if (Object.keys(updateData).length === 0 && !moveRequest && episodeGroupId === undefined) {
 			return json({ success: false, error: 'No valid fields to update' }, { status: 400 });
 		}
 
 		if (Object.keys(updateData).length > 0) {
 			await db.update(series).set(updateData).where(eq(series.id, params.id));
+		}
+
+		// Refresh metadata from TMDB when language override changes
+		const languageChanged =
+			metadataLanguage !== undefined &&
+			metadataLanguage !== (currentSeries?.metadataLanguage ?? null);
+		if (languageChanged) {
+			refreshSeriesMetadata(params.id).catch((err) => {
+				logger.error(
+					{ seriesId: params.id, err },
+					'[API] Background series metadata refresh on language change failed'
+				);
+			});
 		}
 
 		// Handle episode group change - requires full season/episode rebuild
@@ -569,11 +600,11 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 			if (settings.searchOnMonitorEnabled) {
 				// Fire and forget - don't block the response
-				searchOnAdd.searchForMissingEpisodes(params.id).catch((err) => {
+				searchOnAdd.searchForMissingEpisodes(params.id).catch((e: unknown) => {
 					logger.error(
 						{
 							seriesId: params.id,
-							error: err instanceof Error ? err.message : 'Unknown error'
+							error: e instanceof Error ? e.message : 'Unknown error'
 						},
 						'[API] Background search on monitor enable failed'
 					);

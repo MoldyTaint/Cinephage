@@ -8,6 +8,15 @@ export interface SeriesUpdatedEvent {
 	seriesId: string;
 }
 
+export interface LibraryDataChangedEvent {
+	/** Which source category was mutated */
+	source: 'movie' | 'series' | 'episode' | 'season' | 'root-folder' | 'library';
+	/** Free-form reason for logging/telemetry */
+	reason: string;
+	/** Optional affected entity id */
+	entityId?: string;
+}
+
 export interface SeriesSearchStartedEvent {
 	seriesId: string;
 	searchType: 'episode' | 'season' | 'missing' | 'bulk';
@@ -165,15 +174,34 @@ type LibraryMediaEventMap = {
 	'movie:searchCompleted': (event: MovieSearchCompletedEvent) => void;
 	'search:progress': (event: SearchProgressEvent) => void;
 	'search:completed': (event: SearchCompletedEvent) => void;
+	'library:data-changed': (event: LibraryDataChangedEvent) => void;
 };
 
 class LibraryMediaEvents extends EventEmitter {
 	emitMovieUpdated(movieId: string): void {
 		this.emit('movie:updated', { movieId });
+		// Fan-out: any movie mutation also signals a generic library data change
+		// so downstream subscribers (e.g. ReconciliationService) refresh without
+		// needing to know about per-entity events.
+		this.emit('library:data-changed', {
+			source: 'movie' as const,
+			reason: 'movie-updated',
+			entityId: movieId
+		});
 	}
 
 	emitSeriesUpdated(seriesId: string): void {
 		this.emit('series:updated', { seriesId });
+		// Fan-out: see emitMovieUpdated for rationale.
+		this.emit('library:data-changed', {
+			source: 'series' as const,
+			reason: 'series-updated',
+			entityId: seriesId
+		});
+	}
+
+	emitLibraryDataChanged(event: LibraryDataChangedEvent): void {
+		this.emit('library:data-changed', event);
 	}
 
 	emitSeriesSearchStarted(event: SeriesSearchStartedEvent): void {
@@ -254,6 +282,14 @@ class LibraryMediaEvents extends EventEmitter {
 
 	offSearchCompleted(handler: LibraryMediaEventMap['search:completed']): void {
 		this.off('search:completed', handler);
+	}
+
+	onLibraryDataChanged(handler: LibraryMediaEventMap['library:data-changed']): void {
+		this.on('library:data-changed', handler);
+	}
+
+	offLibraryDataChanged(handler: LibraryMediaEventMap['library:data-changed']): void {
+		this.off('library:data-changed', handler);
 	}
 
 	// ============================================================================

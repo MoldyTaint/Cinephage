@@ -7,7 +7,8 @@ import {
 	normalizeJackettUrl,
 	fetchJackettIndexers,
 	jackettIndexerUrl,
-	isIndexerFromJackett
+	isIndexerFromJackett,
+	extractJackettIndexerId
 } from '$lib/server/indexers/jackett/JackettConnectionService.js';
 
 const requestSchema = z.object({
@@ -67,10 +68,11 @@ export const POST: RequestHandler = async (event) => {
 	const indexers: JackettImportIndexer[] = [];
 	for (const raw of rawIndexers) {
 		const baseUrl = jackettIndexerUrl(jackettBase, raw.id);
-		const existing = existingIndexers.find(
-			(e) =>
-				isIndexerFromJackett(e.baseUrl, jackettBase) && e.baseUrl.replace(/\/+$/, '') === baseUrl
-		);
+		const existing = existingIndexers.find((e) => {
+			if (!isIndexerFromJackett(e, jackettBase)) return false;
+			const s = e.settings as Record<string, unknown> | null;
+			return extractJackettIndexerId(e.baseUrl, jackettBase, s) === raw.id;
+		});
 		if (existing && existing.name !== raw.name) {
 			await manager.updateIndexer(existing.id, { name: raw.name });
 		}

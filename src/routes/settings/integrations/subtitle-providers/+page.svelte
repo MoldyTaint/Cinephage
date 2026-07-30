@@ -473,6 +473,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>{m.nav_subtitleProviders()}</title>
+</svelte:head>
+
 <SettingsPage
 	title={m.nav_subtitleProviders()}
 	subtitle={m.settings_integrations_subtitleProviders_subtitle()}

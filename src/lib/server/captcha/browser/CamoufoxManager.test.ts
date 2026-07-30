@@ -176,6 +176,27 @@ describe('CamoufoxManager', () => {
 			);
 		});
 
+		it('should load the shadow-unlock addon', async () => {
+			const manager = new CamoufoxManager();
+			await manager.waitForAvailabilityCheck();
+
+			(Camoufox as ReturnType<typeof vi.fn>).mockClear();
+			(Camoufox as ReturnType<typeof vi.fn>).mockResolvedValue(mockBrowser);
+
+			await manager.createBrowser({ headless: true });
+
+			const options = (Camoufox as ReturnType<typeof vi.fn>).mock.calls[0][0];
+			expect(Array.isArray(options.addons)).toBe(true);
+			expect(options.addons[0]).toMatch(/addon$/);
+			expect(options).toEqual(
+				expect.objectContaining({
+					disable_coop: true,
+					main_world_eval: true,
+					locale: 'en-US'
+				})
+			);
+		});
+
 		it('should return managed browser with page', async () => {
 			const manager = new CamoufoxManager();
 			await manager.waitForAvailabilityCheck();
@@ -229,6 +250,133 @@ describe('CamoufoxManager', () => {
 
 			expect(managed.browser).toBeDefined();
 			expect(managed.page).toBeDefined();
+		});
+	});
+
+	describe('concurrency semaphore', () => {
+		it('should cap concurrent browsers and queue overflow until a slot frees', async () => {
+			const manager = new CamoufoxManager({ maxBrowsers: 1 });
+			await manager.waitForAvailabilityCheck();
+
+			const first = await manager.createBrowser({ headless: true });
+			expect(manager.getAcquiredSlotCount()).toBe(1);
+
+			let secondResolved = false;
+			const secondPromise = manager.createBrowser({ headless: true }).then((b) => {
+				secondResolved = true;
+				return b;
+			});
+
+			// Give the queued acquire a chance to (not) resolve
+			await new Promise((r) => setTimeout(r, 10));
+			expect(secondResolved).toBe(false);
+			expect(manager.getActiveBrowserCount()).toBe(1);
+
+			// Releasing the first slot should hand it to the queued caller
+			await manager.closeBrowser(first);
+			const second = await secondPromise;
+			expect(secondResolved).toBe(true);
+			expect(second.browser).toBeDefined();
+			expect(manager.getAcquiredSlotCount()).toBe(1);
+
+			await manager.closeBrowser(second);
+			expect(manager.getAcquiredSlotCount()).toBe(0);
+		});
+
+		it('should time out acquiring a slot when none becomes available', async () => {
+			const manager = new CamoufoxManager({ maxBrowsers: 1 });
+			await manager.waitForAvailabilityCheck();
+
+			const held = await manager.createBrowser({ headless: true });
+
+			await expect(manager.createBrowser({ headless: true, acquireTimeoutMs: 20 })).rejects.toThrow(
+				/Timed out waiting for a browser slot/
+			);
+
+			// The failed acquire must not have leaked a slot
+			expect(manager.getAcquiredSlotCount()).toBe(1);
+
+			await manager.closeBrowser(held);
+			expect(manager.getAcquiredSlotCount()).toBe(0);
+		});
+
+		it('should release the slot when a browser disconnects externally', async () => {
+			const manager = new CamoufoxManager({ maxBrowsers: 2 });
+			await manager.waitForAvailabilityCheck();
+
+			await manager.createBrowser({ headless: true });
+			expect(manager.getAcquiredSlotCount()).toBe(1);
+
+			// Find and invoke the 'disconnected' handler registered on the browser
+			const onMock = mockBrowser.on as ReturnType<typeof vi.fn>;
+			const disconnectCall = onMock.mock.calls.find((c) => c[0] === 'disconnected');
+			expect(disconnectCall).toBeDefined();
+			const handler = disconnectCall?.[1] as () => void;
+			handler();
+
+			expect(manager.getActiveBrowserCount()).toBe(0);
+			expect(manager.getAcquiredSlotCount()).toBe(0);
+		});
+
+		it('should release the slot even when the launch fails', async () => {
+			const manager = new CamoufoxManager({ maxBrowsers: 1 });
+			await manager.waitForAvailabilityCheck();
+
+			// Both the primary launch and the geoip-less fallback fail
+			(Camoufox as ReturnType<typeof vi.fn>).mockClear();
+			(Camoufox as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('launch boom'));
+
+			await expect(manager.createBrowser({ headless: true })).rejects.toThrow('launch boom');
+			expect(manager.getAcquiredSlotCount()).toBe(0);
+
+			// A subsequent (working) launch can still acquire the slot
+			(Camoufox as ReturnType<typeof vi.fn>).mockReset();
+			(Camoufox as ReturnType<typeof vi.fn>).mockResolvedValue(mockBrowser);
+			const ok = await manager.createBrowser({ headless: true });
+			expect(ok.browser).toBeDefined();
+			expect(manager.getAcquiredSlotCount()).toBe(1);
+		});
+
+		it('should fall back to a geoip-less launch when the first launch fails', async () => {
+			const manager = new CamoufoxManager({ maxBrowsers: 1 });
+			await manager.waitForAvailabilityCheck();
+
+			(Camoufox as ReturnType<typeof vi.fn>).mockClear();
+			// First (geoip) launch fails, retry succeeds
+			(Camoufox as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('geoip lookup hang'));
+			(Camoufox as ReturnType<typeof vi.fn>).mockResolvedValue(mockBrowser);
+
+			const managed = await manager.createBrowser({ headless: true });
+
+			expect(managed.browser).toBeDefined();
+			expect(Camoufox).toHaveBeenCalledTimes(2);
+			const retryOptions = (Camoufox as ReturnType<typeof vi.fn>).mock.calls[1][0];
+			expect(retryOptions.geoip).toBe(false);
+			expect(manager.getAcquiredSlotCount()).toBe(1);
+		});
+	});
+
+	describe('stale-browser reaper', () => {
+		it('should close and free the slot for browsers past max age', async () => {
+			const manager = new CamoufoxManager({ maxBrowsers: 2, maxBrowserAgeMs: 0 });
+			await manager.waitForAvailabilityCheck();
+
+			const managed = await manager.createBrowser({ headless: true });
+			expect(manager.getActiveBrowserCount()).toBe(1);
+
+			// Ensure at least a tick has elapsed so age > 0
+			await new Promise((r) => setTimeout(r, 5));
+
+			// Invoke the reaper directly (interval period is coarse for tests)
+			// @ts-expect-error accessing private method for deterministic test
+			manager.reapStaleBrowsers();
+
+			// closeBrowser is async; allow it to settle
+			await new Promise((r) => setTimeout(r, 0));
+
+			expect(managed.browser.close).toHaveBeenCalled();
+			expect(manager.getActiveBrowserCount()).toBe(0);
+			expect(manager.getAcquiredSlotCount()).toBe(0);
 		});
 	});
 

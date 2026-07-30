@@ -13,86 +13,44 @@ import {
 	seasons,
 	episodes,
 	episodeFiles,
-	rootFolders
+	rootFolders,
+	renameHistory
 } from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
-import { extname, join, dirname, basename } from 'path';
+import { extname, join, dirname, basename, resolve } from 'path';
 import { createChildLogger } from '$lib/logging';
 import { todayDateString } from '$lib/utils/format.js';
+import { randomUUID } from 'node:crypto';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 import { NamingService, type MediaNamingInfo } from './NamingService';
 import { namingSettingsService } from './NamingSettingsService';
 import { moveFile, fileExists } from '$lib/server/downloadClients/import/FileTransfer';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
-import { rename } from 'node:fs/promises';
+import { rename, stat, readdir, rmdir } from 'node:fs/promises';
 import { chooseBestParsedRelease } from './preview-metadata';
-import { getMediaBrowserNotifier } from '$lib/server/notifications/mediabrowser';
+import {
+	getMediaBrowserManager,
+	getMediaBrowserNotifier
+} from '$lib/server/notifications/mediabrowser';
 
-/**
- * Status of a rename preview item
- */
-export type RenameStatus = 'will_change' | 'already_correct' | 'collision' | 'error';
+// Types are defined in $lib/library/naming/types.ts (outside the server
+// bundle) so .svelte files can import them without pulling server code
+// into the client. Re-exported here for server-internal consumers.
+export type {
+	RenameStatus,
+	RenamePreviewItem,
+	RenamePreviewResult,
+	RenameExecuteResult,
+	ReorganizeRequestItem,
+	ReorganizeBatchResult
+} from '$lib/library/naming/types.js';
 
-/**
- * A single file's rename preview
- */
-export interface RenamePreviewItem {
-	fileId: string;
-	mediaType: 'movie' | 'episode';
-	mediaId: string;
-	mediaTitle: string;
-
-	// Current paths
-	currentParentPath: string;
-	currentRelativePath: string;
-	currentFullPath: string;
-
-	// New paths (what it would be renamed to)
-	newParentPath: string;
-	newRelativePath: string;
-	newFullPath: string;
-
-	// Status
-	status: RenameStatus;
-	collisionsWith?: string[]; // fileIds that would collide
-	error?: string;
-}
-
-/**
- * Result of a rename preview operation
- */
-export interface RenamePreviewResult {
-	willChange: RenamePreviewItem[];
-	alreadyCorrect: RenamePreviewItem[];
-	collisions: RenamePreviewItem[];
-	errors: RenamePreviewItem[];
-
-	// Summary stats
-	totalFiles: number;
-	totalWillChange: number;
-	totalAlreadyCorrect: number;
-	totalCollisions: number;
-	totalErrors: number;
-}
-
-/**
- * Result of executing renames
- */
-export interface RenameExecuteResult {
-	success: boolean;
-	processed: number;
-	succeeded: number;
-	failed: number;
-	results: Array<{
-		fileId: string;
-		mediaType: 'movie' | 'episode';
-		success: boolean;
-		oldPath: string;
-		newPath: string;
-		error?: string;
-	}>;
-}
+import type {
+	RenamePreviewItem,
+	RenamePreviewResult,
+	RenameExecuteResult
+} from '$lib/library/naming/types.js';
 
 /**
  * Create an empty preview result
@@ -108,23 +66,6 @@ function emptyPreviewResult(): RenamePreviewResult {
 		totalAlreadyCorrect: 0,
 		totalCollisions: 0,
 		totalErrors: 0
-	};
-}
-
-/**
- * Merge two preview results
- */
-function mergePreviewResults(a: RenamePreviewResult, b: RenamePreviewResult): RenamePreviewResult {
-	return {
-		willChange: [...a.willChange, ...b.willChange],
-		alreadyCorrect: [...a.alreadyCorrect, ...b.alreadyCorrect],
-		collisions: [...a.collisions, ...b.collisions],
-		errors: [...a.errors, ...b.errors],
-		totalFiles: a.totalFiles + b.totalFiles,
-		totalWillChange: a.totalWillChange + b.totalWillChange,
-		totalAlreadyCorrect: a.totalAlreadyCorrect + b.totalAlreadyCorrect,
-		totalCollisions: a.totalCollisions + b.totalCollisions,
-		totalErrors: a.totalErrors + b.totalErrors
 	};
 }
 
@@ -190,40 +131,121 @@ export class RenamePreviewService {
 	}
 
 	/**
-	 * Preview renames for all movies
+	 * Preview renames for all movies.
+	 * Batches DB queries to avoid N+1 per-movie lookups on large libraries.
 	 */
 	async previewAllMovies(): Promise<RenamePreviewResult> {
 		const allMovies = db.select().from(movies).all();
+		const allRootFolders = db.select().from(rootFolders).all();
+		const allFiles = db.select().from(movieFiles).all();
+
+		const rootFolderById = new Map(allRootFolders.map((rf) => [rf.id, rf]));
+		const filesByMovieId = new Map<string, (typeof movieFiles.$inferSelect)[]>();
+		for (const file of allFiles) {
+			const list = filesByMovieId.get(file.movieId) || [];
+			list.push(file);
+			filesByMovieId.set(file.movieId, list);
+		}
 
 		const result = emptyPreviewResult();
 
 		for (const movie of allMovies) {
-			const moviePreview = await this.previewMovie(movie.id);
-			Object.assign(result, mergePreviewResults(result, moviePreview));
+			const rootFolder = movie.rootFolderId ? rootFolderById.get(movie.rootFolderId) : undefined;
+			const rootFolderPath = rootFolder?.path ?? '';
+			const rootFolderReadOnly = rootFolder?.readOnly ?? false;
+			const files = filesByMovieId.get(movie.id) ?? [];
+
+			for (const file of files) {
+				const item = this.buildMoviePreviewItem(movie, file, rootFolderPath, rootFolderReadOnly);
+				result.totalFiles++;
+
+				if (item.status === 'error') {
+					result.errors.push(item);
+					result.totalErrors++;
+				} else if (
+					item.currentRelativePath === item.newRelativePath &&
+					item.currentParentPath === item.newParentPath
+				) {
+					item.status = 'already_correct';
+					result.alreadyCorrect.push(item);
+					result.totalAlreadyCorrect++;
+				} else {
+					item.status = 'will_change';
+					result.willChange.push(item);
+					result.totalWillChange++;
+				}
+			}
 		}
 
-		// Detect collisions across all items
 		this.detectCollisions(result);
-
 		return result;
 	}
 
 	/**
-	 * Preview renames for all episode files
+	 * Preview renames for all episode files.
+	 * Batches DB queries to avoid N+1 per-series lookups on large libraries.
 	 */
 	async previewAllEpisodes(): Promise<RenamePreviewResult> {
 		const allSeries = db.select().from(series).all();
+		const allRootFolders = db.select().from(rootFolders).all();
+		const allFiles = db.select().from(episodeFiles).all();
+		const allEpisodes = db.select().from(episodes).all();
+
+		const rootFolderById = new Map(allRootFolders.map((rf) => [rf.id, rf]));
+		const filesBySeriesId = new Map<string, (typeof episodeFiles.$inferSelect)[]>();
+		for (const file of allFiles) {
+			const list = filesBySeriesId.get(file.seriesId) || [];
+			list.push(file);
+			filesBySeriesId.set(file.seriesId, list);
+		}
+		const episodesBySeriesId = new Map<string, (typeof episodes.$inferSelect)[]>();
+		for (const ep of allEpisodes) {
+			const list = episodesBySeriesId.get(ep.seriesId) || [];
+			list.push(ep);
+			episodesBySeriesId.set(ep.seriesId, list);
+		}
 
 		const result = emptyPreviewResult();
 
 		for (const show of allSeries) {
-			const seriesPreview = await this.previewSeries(show.id);
-			Object.assign(result, mergePreviewResults(result, seriesPreview));
+			const rootFolder = show.rootFolderId ? rootFolderById.get(show.rootFolderId) : undefined;
+			const rootFolderPath = rootFolder?.path ?? '';
+			const rootFolderReadOnly = rootFolder?.readOnly ?? false;
+			const files = filesBySeriesId.get(show.id) ?? [];
+			const seriesEpisodes = episodesBySeriesId.get(show.id) ?? [];
+			const episodeMap = new Map(seriesEpisodes.map((ep) => [ep.id, ep]));
+			const absoluteEpisodeMap = this.buildAbsoluteEpisodeFallbackMap(seriesEpisodes);
+
+			for (const file of files) {
+				const item = this.buildEpisodePreviewItem(
+					show,
+					file,
+					episodeMap,
+					rootFolderPath,
+					absoluteEpisodeMap,
+					rootFolderReadOnly
+				);
+				result.totalFiles++;
+
+				if (item.status === 'error') {
+					result.errors.push(item);
+					result.totalErrors++;
+				} else if (
+					item.currentRelativePath === item.newRelativePath &&
+					item.currentParentPath === item.newParentPath
+				) {
+					item.status = 'already_correct';
+					result.alreadyCorrect.push(item);
+					result.totalAlreadyCorrect++;
+				} else {
+					item.status = 'will_change';
+					result.willChange.push(item);
+					result.totalWillChange++;
+				}
+			}
 		}
 
-		// Detect collisions across all items
 		this.detectCollisions(result);
-
 		return result;
 	}
 
@@ -238,8 +260,9 @@ export class RenamePreviewService {
 			return result;
 		}
 
-		// Get root folder path
+		// Get root folder path and read-only status
 		let rootFolderPath = '';
+		let rootFolderReadOnly = false;
 		if (movie.rootFolderId) {
 			const rootFolder = db
 				.select()
@@ -248,13 +271,22 @@ export class RenamePreviewService {
 				.get();
 			if (rootFolder) {
 				rootFolderPath = rootFolder.path;
+				rootFolderReadOnly = rootFolder.readOnly ?? false;
 			}
+		}
+
+		// Warn when the folder template uses {Collection} but this movie has no
+		// collection data — the token resolves to empty string, so the preview
+		// will show the movie moving OUT of its collection folder.
+		const namingConfig = namingSettingsService.getConfigSync();
+		if (namingConfig.movieFolderFormat?.includes('{Collection}') && !movie.collectionName) {
+			result.missingCollectionData = true;
 		}
 
 		const files = db.select().from(movieFiles).where(eq(movieFiles.movieId, movieId)).all();
 
 		for (const file of files) {
-			const item = this.buildMoviePreviewItem(movie, file, rootFolderPath);
+			const item = this.buildMoviePreviewItem(movie, file, rootFolderPath, rootFolderReadOnly);
 			result.totalFiles++;
 
 			if (item.status === 'error') {
@@ -291,8 +323,9 @@ export class RenamePreviewService {
 			return result;
 		}
 
-		// Get root folder path
+		// Get root folder path and read-only status
 		let rootFolderPath = '';
+		let rootFolderReadOnly = false;
 		if (show.rootFolderId) {
 			const rootFolder = db
 				.select()
@@ -301,6 +334,7 @@ export class RenamePreviewService {
 				.get();
 			if (rootFolder) {
 				rootFolderPath = rootFolder.path;
+				rootFolderReadOnly = rootFolder.readOnly ?? false;
 			}
 		}
 
@@ -317,7 +351,8 @@ export class RenamePreviewService {
 				file,
 				episodeMap,
 				rootFolderPath,
-				absoluteEpisodeMap
+				absoluteEpisodeMap,
+				rootFolderReadOnly
 			);
 			result.totalFiles++;
 
@@ -345,225 +380,158 @@ export class RenamePreviewService {
 	}
 
 	/**
-	 * Execute approved renames
+	 * Execute approved file renames.
+	 *
+	 * Renames only the files themselves within their existing parent folder.
+	 * Folder reorganization is a SEPARATE operation (see reorganizeFolder).
+	 * This separation eliminates the ordering race condition that can destroy
+	 * files when folder and file renames are combined.
+	 *
+	 * Pattern: Radarr's RenameMovieFileService (files only).
 	 */
 	async executeRenames(
 		fileIds: string[],
-		mediaType: 'movie' | 'episode' | 'mixed' = 'mixed'
+		_mediaType: 'movie' | 'episode' | 'mixed' = 'mixed'
 	): Promise<RenameExecuteResult> {
 		const result: RenameExecuteResult = {
 			success: true,
 			processed: 0,
 			succeeded: 0,
 			failed: 0,
-			results: []
+			results: [],
+			warnings: []
 		};
 
 		if (fileIds.length === 0) {
 			return result;
 		}
 
-		// First, generate preview to get the rename mappings
-		// This ensures we use the exact same logic as preview
-		let preview: RenamePreviewResult;
-
-		if (mediaType === 'movie') {
-			preview = await this.previewAllMovies();
-		} else if (mediaType === 'episode') {
-			preview = await this.previewAllEpisodes();
-		} else {
-			// Mixed: combine both
-			const moviePreview = await this.previewAllMovies();
-			const episodePreview = await this.previewAllEpisodes();
-			preview = mergePreviewResults(moviePreview, episodePreview);
+		// Build target paths only for the requested files (not the entire library).
+		const renameMap = await this.buildTargetMap(fileIds, result);
+		if (renameMap.size === 0) {
+			return result;
 		}
 
-		// Build a map of fileId -> preview item (only willChange items)
-		const renameMap = new Map<string, RenamePreviewItem>();
-		for (const item of preview.willChange) {
-			renameMap.set(item.fileId, item);
-		}
-
-		// Execute each rename
-		// Group items by mediaId to process folder renames first
-		const groups = new Map<string, RenamePreviewItem[]>();
-		for (const fileId of fileIds) {
-			const item = renameMap.get(fileId);
-			if (item) {
-				const group = groups.get(item.mediaId) || [];
-				group.push(item);
-				groups.set(item.mediaId, group);
-			} else {
-				// File not found in preview or already correct
-				result.results.push({
+		// Audit log: record every file's original path and target before any
+		// I/O so a recovery trail exists if something goes wrong.
+		logger.info(
+			{
+				renameCount: renameMap.size,
+				files: [...renameMap.entries()].map(([fileId, item]) => ({
 					fileId,
-					mediaType: 'movie', // Unknown, but provide something
-					success: false,
-					oldPath: '',
-					newPath: '',
-					error: 'File not found in rename preview or already correctly named'
-				});
-				result.failed++;
-				result.processed++;
-			}
+					mediaType: item.mediaType,
+					mediaId: item.mediaId,
+					from: item.currentFullPath,
+					to: item.newFullPath,
+					status: item.status
+				}))
+			},
+			'[RenamePreviewService] Rename audit log — pre-execution state'
+		);
+
+		// Group items by mediaId for parallel processing.
+		const groups = new Map<string, RenamePreviewItem[]>();
+		for (const item of renameMap.values()) {
+			const group = groups.get(item.mediaId) || [];
+			group.push(item);
+			groups.set(item.mediaId, group);
 		}
 
 		const touchedMovieIds = new Set<string>();
 		const touchedSeriesIds = new Set<string>();
 
-		for (const [mediaId, items] of groups) {
-			const firstItem = items[0];
-			if (firstItem?.mediaType === 'movie') {
-				touchedMovieIds.add(mediaId);
-			} else if (firstItem?.mediaType === 'episode') {
-				touchedSeriesIds.add(mediaId);
-			}
+		// Process each media group concurrently. Files in the same group are
+		// processed sequentially to avoid filesystem races in the same folder.
+		const groupResults = await Promise.allSettled(
+			[...groups.entries()].map(async ([mediaId, items]) => {
+				const firstItem = items[0];
+				if (firstItem?.mediaType === 'movie') {
+					touchedMovieIds.add(mediaId);
+				} else if (firstItem?.mediaType === 'episode') {
+					touchedSeriesIds.add(mediaId);
+				}
 
-			// Check if we need to rename the parent folder
-			if (
-				firstItem &&
-				firstItem.currentParentPath !== firstItem.newParentPath &&
-				firstItem.status !== 'collision'
-			) {
-				try {
-					// We need to resolve the root folder path carefully
-					let rootFolderPath = '';
+				const groupResult: RenameExecuteResult['results'] = [];
 
-					if (firstItem.mediaType === 'movie') {
-						const movie = db
-							.select({ rootFolderId: movies.rootFolderId })
-							.from(movies)
-							.where(eq(movies.id, mediaId))
-							.get();
-						if (movie?.rootFolderId) {
-							const rf = db
-								.select()
-								.from(rootFolders)
-								.where(eq(rootFolders.id, movie.rootFolderId))
-								.get();
-							if (rf) rootFolderPath = rf.path;
-						}
-					} else {
-						const show = db
-							.select({ rootFolderId: series.rootFolderId })
-							.from(series)
-							.where(eq(series.id, mediaId))
-							.get();
-						if (show?.rootFolderId) {
-							const rf = db
-								.select()
-								.from(rootFolders)
-								.where(eq(rootFolders.id, show.rootFolderId))
-								.get();
-							if (rf) rootFolderPath = rf.path;
-						}
-					}
-
-					if (!rootFolderPath) {
-						throw new Error(`Could not find root folder for media ${mediaId}`);
-					}
-
-					const actualOldFolder = join(rootFolderPath, firstItem.currentParentPath);
-					const actualNewFolder = join(rootFolderPath, firstItem.newParentPath);
-
-					logger.info(
-						{
-							mediaId,
-							mediaType: firstItem.mediaType,
-							from: actualOldFolder,
-							to: actualNewFolder
-						},
-						'[RenamePreviewService] Renaming parent folder'
-					);
-
-					// Verify source exists before renaming folder
-					const dirExisted = await fileExists(actualOldFolder);
-					const folderRenamed =
-						dirExisted && actualOldFolder !== actualNewFolder
-							? (await rename(actualOldFolder, actualNewFolder), true)
-							: false;
-
-					// Only update the DB path when the folder was actually renamed on disk.
-					// Updating unconditionally would cause all episodes to appear missing on
-					// the next scan if the source folder didn't exist or the rename failed.
-					if (folderRenamed || actualOldFolder === actualNewFolder) {
-						if (firstItem.mediaType === 'movie') {
-							db.update(movies)
-								.set({ path: firstItem.newParentPath })
-								.where(eq(movies.id, mediaId))
-								.run();
-						} else {
-							db.update(series)
-								.set({ path: firstItem.newParentPath })
-								.where(eq(series.id, mediaId))
-								.run();
-						}
-					}
-
-					if (dirExisted) {
-						// Update currentFullPath for all items in this group
-						// because the folder they are in has now been renamed
-						for (const item of items) {
-							// For movies, currentRelativePath is just the file name
-							// For episodes, it might be "Season 1/Episode.mkv"
-							// We need to replace the old parent with the new parent
-							item.currentFullPath = join(actualNewFolder, item.currentRelativePath);
-							item.currentParentPath = item.newParentPath;
-						}
-					}
-				} catch (error) {
-					logger.error(
-						{
-							mediaId,
-							error: error instanceof Error ? error.message : String(error)
-						},
-						'[RenamePreviewService] Failed to rename parent folder'
-					);
-					// If folder rename fails, we should fail all items in this group
-					for (const item of items) {
-						result.results.push({
+				for (const item of items) {
+					if (item.status === 'collision') {
+						const failResult = {
 							fileId: item.fileId,
 							mediaType: item.mediaType,
 							success: false,
 							oldPath: item.currentFullPath,
 							newPath: item.newFullPath,
-							error: `Parent folder rename failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-						});
-						result.failed++;
-						result.processed++;
+							error: 'Cannot rename: collision with another file'
+						};
+						groupResult.push(failResult);
+						await this.writeRenameHistory(item, failResult.success, failResult.error);
+						continue;
 					}
-					continue; // skip the rest of the loop for this group
-				}
-			}
 
-			// Now process each file in the group
-			for (const item of items) {
-				// Skip collision items
-				if (item.status === 'collision') {
-					result.results.push({
-						fileId: item.fileId,
-						mediaType: item.mediaType,
-						success: false,
-						oldPath: item.currentFullPath,
-						newPath: item.newFullPath,
-						error: 'Cannot rename: collision with another file'
-					});
-					result.failed++;
+					if (item.status === 'error') {
+						const failResult = {
+							fileId: item.fileId,
+							mediaType: item.mediaType,
+							success: false,
+							oldPath: item.currentFullPath,
+							newPath: item.newFullPath,
+							error: item.error ?? 'Cannot rename file'
+						};
+						groupResult.push(failResult);
+						await this.writeRenameHistory(item, failResult.success, failResult.error);
+						continue;
+					}
+
+					const renameResult = await this.executeFileRename(item);
+					groupResult.push(renameResult);
+					await this.writeRenameHistory(item, renameResult.success, renameResult.error);
+				}
+
+				// After all files in this group are processed, handle any folder rename.
+				// A folder rename occurs when at least one file successfully moved to a
+				// new parent path. We update the DB path record, move remaining extra
+				// files (artwork, nfo, etc.) to the new folder, and clean up empty dirs.
+				const successfulFolderChange = items.find((item) => {
+					const matched = groupResult.find((r) => r.fileId === item.fileId);
+					return matched?.success && item.currentParentPath !== item.newParentPath;
+				});
+				if (successfulFolderChange && firstItem) {
+					const originalStem = basename(
+						successfulFolderChange.currentFullPath,
+						extname(successfulFolderChange.currentFullPath)
+					);
+					const folderWarnings = await this.applyFolderRename(
+						mediaId,
+						firstItem.mediaType as 'movie' | 'episode',
+						successfulFolderChange.currentParentPath,
+						successfulFolderChange.newParentPath,
+						originalStem
+					);
+					if (folderWarnings.length > 0) {
+						result.warnings ??= [];
+						result.warnings.push(...folderWarnings);
+					}
+				}
+
+				return groupResult;
+			})
+		);
+
+		// Aggregate results from parallel groups.
+		for (const settled of groupResults) {
+			if (settled.status === 'fulfilled') {
+				for (const r of settled.value) {
+					result.results.push(r);
 					result.processed++;
-					continue;
+					if (r.success) {
+						result.succeeded++;
+					} else {
+						result.failed++;
+						result.success = false;
+					}
 				}
-
-				// Execute the rename
-				const renameResult = await this.executeFileRename(item);
-				result.results.push(renameResult);
-				result.processed++;
-
-				if (renameResult.success) {
-					result.succeeded++;
-				} else {
-					result.failed++;
-					result.success = false;
-				}
+			} else {
+				result.success = false;
 			}
 		}
 
@@ -573,7 +541,304 @@ export class RenamePreviewService {
 	}
 
 	/**
-	 * Execute a single file rename
+	 * Write a permanent rename_history record for audit and recovery.
+	 */
+	private async writeRenameHistory(
+		item: RenamePreviewItem,
+		success: boolean,
+		error?: string
+	): Promise<void> {
+		try {
+			db.insert(renameHistory)
+				.values({
+					id: randomUUID(),
+					fileId: item.fileId,
+					mediaType: item.mediaType,
+					oldPath: item.currentFullPath,
+					newPath: item.newFullPath,
+					success: success ? 1 : 0,
+					error: error ?? null,
+					operation: 'rename',
+					createdAt: new Date().toISOString()
+				})
+				.run();
+		} catch (writeError) {
+			logger.error(
+				{
+					error: writeError instanceof Error ? writeError.message : String(writeError),
+					fileId: item.fileId
+				},
+				'[RenamePreviewService] Failed to write rename history'
+			);
+		}
+	}
+
+	/**
+	 * Reorganize the parent folder for a single movie or series.
+	 *
+	 * This is a SEPARATE operation from file renaming.  The naming config is
+	 * re-evaluated, and if the folder name would differ from the current
+	 * on-disk folder, the folder is renamed and the DB record updated.
+	 *
+	 * Pattern: Radarr's MoveMovieService / Sonarr's MoveSeriesService.
+	 *
+	 * Returns true if the folder was reorganized (or already correct).
+	 */
+	async reorganizeFolder(
+		mediaId: string,
+		mediaType: 'movie' | 'series'
+	): Promise<{ success: boolean; oldPath?: string; newPath?: string; error?: string }> {
+		try {
+			let rootFolderPath = '';
+			let currentPath = '';
+			let rootFolderId: string | undefined;
+			let mediaTmdbId: number | null = null;
+
+			if (mediaType === 'movie') {
+				const movie = db.select().from(movies).where(eq(movies.id, mediaId)).get();
+				if (!movie) return { success: false, error: 'Movie not found' };
+				currentPath = movie.path;
+				rootFolderId = movie.rootFolderId ?? undefined;
+				mediaTmdbId = movie.tmdbId;
+			} else {
+				const show = db.select().from(series).where(eq(series.id, mediaId)).get();
+				if (!show) return { success: false, error: 'Series not found' };
+				currentPath = show.path;
+				rootFolderId = show.rootFolderId ?? undefined;
+				mediaTmdbId = show.tmdbId;
+			}
+
+			if (!rootFolderId) {
+				return { success: false, error: 'No root folder assigned' };
+			}
+
+			const rootFolder = db
+				.select()
+				.from(rootFolders)
+				.where(eq(rootFolders.id, rootFolderId))
+				.get();
+			if (!rootFolder) return { success: false, error: 'Root folder not found' };
+			rootFolderPath = rootFolder.path;
+
+			// Compute the target folder name using the current naming config.
+			const config = namingSettingsService.getConfigSync();
+			const naming = new NamingService(config);
+
+			let newFolderName: string;
+			if (mediaType === 'movie') {
+				const movie = db.select().from(movies).where(eq(movies.id, mediaId)).get()!;
+				newFolderName = naming.generateMovieFolderName({
+					title: movie.title,
+					originalTitle: movie.originalTitle ?? undefined,
+					year: movie.year ?? undefined,
+					tmdbId: movie.tmdbId,
+					imdbId: movie.imdbId ?? undefined,
+					collectionName: movie.collectionName ?? undefined
+				});
+			} else {
+				const show = db.select().from(series).where(eq(series.id, mediaId)).get()!;
+				newFolderName = naming.generateSeriesFolderName({
+					title: show.title,
+					originalTitle: show.originalTitle ?? undefined,
+					year: show.year ?? undefined,
+					tvdbId: show.tvdbId ?? undefined,
+					tmdbId: show.tmdbId,
+					imdbId: show.imdbId ?? undefined
+				});
+			}
+
+			if (currentPath === newFolderName) {
+				return { success: true, oldPath: currentPath, newPath: newFolderName };
+			}
+
+			const actualOldFolder = join(rootFolderPath, currentPath);
+			const actualNewFolder = join(rootFolderPath, newFolderName);
+
+			if (actualOldFolder === actualNewFolder) {
+				return { success: true, oldPath: currentPath, newPath: newFolderName };
+			}
+
+			const dirExisted = await fileExists(actualOldFolder);
+			if (!dirExisted) {
+				return { success: false, error: 'Source folder does not exist', oldPath: currentPath };
+			}
+
+			// Before renaming the folder, delete the old entry from all enabled
+			// Jellyfin/Emby servers so the stale item is cleanly removed (cascades
+			// to child rows). This prevents the ghost-entry resurrection loop when
+			// Jellyfin's scanner finds orphaned Season/Episode rows at the old path
+			// after the folder move (jellyfin#16883). Plex is unaffected.
+			// Best-effort: failures don't block the rename.
+			if (mediaTmdbId) {
+				const manager = getMediaBrowserManager();
+				await manager.deleteMediaItemByTmdb(mediaTmdbId, mediaType as 'movie' | 'series');
+			}
+
+			// Atomically rename the folder on disk.
+			await rename(actualOldFolder, actualNewFolder);
+
+			// Verify the destination exists before updating DB.
+			const destExists = await fileExists(actualNewFolder);
+			if (!destExists) {
+				return {
+					success: false,
+					error: 'Folder rename verification failed',
+					oldPath: currentPath,
+					newPath: newFolderName
+				};
+			}
+
+			// Update the DB record.
+			if (mediaType === 'movie') {
+				db.update(movies).set({ path: newFolderName }).where(eq(movies.id, mediaId)).run();
+			} else {
+				db.update(series).set({ path: newFolderName }).where(eq(series.id, mediaId)).run();
+			}
+
+			// Notify media servers of the new folder path so Jellyfin/Emby
+			// discovers the renamed folder as a fresh item.
+			getMediaBrowserNotifier().queueUpdate(actualNewFolder, 'Modified');
+
+			logger.info(
+				{ mediaId, mediaType, from: actualOldFolder, to: actualNewFolder },
+				'[RenamePreviewService] Folder reorganized'
+			);
+
+			return { success: true, oldPath: currentPath, newPath: newFolderName };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			logger.error(
+				{ mediaId, mediaType, error: message },
+				'[RenamePreviewService] Folder reorganize failed'
+			);
+			return { success: false, error: message };
+		}
+	}
+
+	/**
+	 * Build a fileId → RenamePreviewItem map for a set of file IDs,
+	 * computing target paths for only those files.
+	 * Unknown or already-correct files are recorded as failures in `result`.
+	 */
+	private async buildTargetMap(
+		fileIds: string[],
+		result: RenameExecuteResult
+	): Promise<Map<string, RenamePreviewItem>> {
+		const renameMap = new Map<string, RenamePreviewItem>();
+
+		// Pre-load root folder readOnly flags for cheap lookup.
+		const allRootFolders = db.select().from(rootFolders).all();
+		const readOnlyByFolderId = new Map(allRootFolders.map((rf) => [rf.id, rf.readOnly ?? false]));
+
+		for (const fileId of fileIds) {
+			// Try movie first
+			const movieFile = db.select().from(movieFiles).where(eq(movieFiles.id, fileId)).get();
+			if (movieFile) {
+				const movie = db.select().from(movies).where(eq(movies.id, movieFile.movieId)).get();
+				if (movie) {
+					const rootFolderPath = this.resolveRootFolderPath(movie.rootFolderId, allRootFolders);
+					const readOnly = readOnlyByFolderId.get(movie.rootFolderId ?? '') ?? false;
+					const item = this.buildMoviePreviewItem(movie, movieFile, rootFolderPath, readOnly);
+					if (
+						item.status !== 'error' &&
+						item.currentRelativePath === item.newRelativePath &&
+						item.currentParentPath === item.newParentPath
+					) {
+						// Already correct – skip (recorded in caller's result)
+						continue;
+					}
+					renameMap.set(fileId, item);
+					continue;
+				}
+			}
+
+			// Try episode
+			const episodeFile = db.select().from(episodeFiles).where(eq(episodeFiles.id, fileId)).get();
+			if (episodeFile) {
+				const show = db.select().from(series).where(eq(series.id, episodeFile.seriesId)).get();
+				if (show) {
+					const allEpisodes = db
+						.select()
+						.from(episodes)
+						.where(eq(episodes.seriesId, show.id))
+						.all();
+					const episodeMap = new Map(allEpisodes.map((ep) => [ep.id, ep]));
+					const absoluteEpisodeMap = this.buildAbsoluteEpisodeFallbackMap(allEpisodes);
+					const rootFolderPath = this.resolveRootFolderPath(show.rootFolderId, allRootFolders);
+					const readOnly = readOnlyByFolderId.get(show.rootFolderId ?? '') ?? false;
+					const item = this.buildEpisodePreviewItem(
+						show,
+						episodeFile,
+						episodeMap,
+						rootFolderPath,
+						absoluteEpisodeMap,
+						readOnly
+					);
+					if (
+						item.status !== 'error' &&
+						item.currentRelativePath === item.newRelativePath &&
+						item.currentParentPath === item.newParentPath
+					) {
+						continue;
+					}
+					renameMap.set(fileId, item);
+					continue;
+				}
+			}
+
+			// File not found in either table
+			result.results.push({
+				fileId,
+				mediaType: 'movie',
+				success: false,
+				oldPath: '',
+				newPath: '',
+				error: 'File not found in database'
+			});
+			result.failed++;
+			result.processed++;
+		}
+
+		// Detect collisions among the requested file set.
+		const pathMap = new Map<string, string[]>();
+		for (const [fId, item] of renameMap) {
+			if (item.status === 'error') continue;
+			const paths = pathMap.get(item.newFullPath) || [];
+			paths.push(fId);
+			pathMap.set(item.newFullPath, paths);
+		}
+		for (const fileIds of pathMap.values()) {
+			if (fileIds.length > 1) {
+				for (const collisionFileId of fileIds) {
+					const item = renameMap.get(collisionFileId);
+					if (item) {
+						item.status = 'collision';
+						item.collisionsWith = fileIds.filter((id) => id !== collisionFileId);
+					}
+				}
+			}
+		}
+
+		return renameMap;
+	}
+
+	/**
+	 * Resolve a root folder's absolute path from pre-loaded rows.
+	 */
+	private resolveRootFolderPath(
+		rootFolderId: string | null | undefined,
+		allRootFolders: (typeof rootFolders.$inferSelect)[]
+	): string {
+		if (!rootFolderId) return '';
+		const rf = allRootFolders.find((r) => r.id === rootFolderId);
+		return rf?.path ?? '';
+	}
+
+	/**
+	 * Execute a single file rename with safety guards:
+	 * - Skips no-op moves (source === dest).
+	 * - Verifies the destination exists and has size after a successful move.
+	 * - Does NOT delete DB records on failure — that is the reconcile pass's job.
 	 */
 	private async executeFileRename(
 		item: RenamePreviewItem
@@ -600,10 +865,20 @@ export class RenamePreviewService {
 				};
 			}
 
+			// No-op: source and destination already match (resolved to catch path aliasing)
+			if (resolve(item.currentFullPath) === resolve(item.newFullPath)) {
+				return {
+					fileId: item.fileId,
+					mediaType: item.mediaType,
+					success: true,
+					oldPath: item.currentFullPath,
+					newPath: item.newFullPath
+				};
+			}
+
 			// Verify source file exists
 			const sourceExists = await fileExists(item.currentFullPath);
 			if (!sourceExists) {
-				await this.reconcileMissingSourceRecord(item);
 				logger.warn(
 					{
 						fileId: item.fileId,
@@ -624,7 +899,7 @@ export class RenamePreviewService {
 
 			// Check if destination already exists (collision check)
 			const destExists = await fileExists(item.newFullPath);
-			if (destExists && item.currentFullPath !== item.newFullPath) {
+			if (destExists && resolve(item.currentFullPath) !== resolve(item.newFullPath)) {
 				logger.warn(
 					{
 						fileId: item.fileId,
@@ -658,6 +933,49 @@ export class RenamePreviewService {
 					},
 					'[RenamePreviewService] Move operation failed'
 				);
+
+				// Rollback: clean up any incomplete destination and verify source
+				// integrity.  Pattern: Radarr's RollbackPartialMove / RollbackCopy.
+				try {
+					const sourceStillExists = await fileExists(item.currentFullPath);
+					const destIncomplete = await fileExists(item.newFullPath);
+
+					if (!sourceStillExists && destIncomplete) {
+						// Partial copy: source lost but destination exists incompletely.
+						// Attempt to restore by moving the destination back.
+						const { rename } = await import('node:fs/promises');
+						await rename(item.newFullPath, item.currentFullPath);
+						logger.info(
+							{ fileId: item.fileId, from: item.currentFullPath },
+							'[RenamePreviewService] Rolled back — restored from incomplete destination'
+						);
+					} else if (destIncomplete) {
+						// Destination exists incompletely, source still safe — delete dest.
+						const { unlink } = await import('node:fs/promises');
+						await unlink(item.newFullPath);
+						logger.info(
+							{ fileId: item.fileId, path: item.newFullPath },
+							'[RenamePreviewService] Rolled back — removed incomplete destination'
+						);
+					} else if (!sourceStillExists) {
+						logger.error(
+							{
+								fileId: item.fileId,
+								path: item.currentFullPath
+							},
+							'[RenamePreviewService] Source file lost during failed move — data may be unrecoverable'
+						);
+					}
+				} catch (rollbackError) {
+					logger.error(
+						{
+							fileId: item.fileId,
+							error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError)
+						},
+						'[RenamePreviewService] Rollback failed'
+					);
+				}
+
 				return {
 					fileId: item.fileId,
 					mediaType: item.mediaType,
@@ -666,6 +984,41 @@ export class RenamePreviewService {
 					newPath: item.newFullPath,
 					error: moveResult.error || 'Failed to rename file'
 				};
+			}
+
+			// Post-rename verification: destination must exist and have content.
+			let destSize: number | undefined;
+			try {
+				const destStat = await stat(item.newFullPath);
+				destSize = destStat.size;
+			} catch {
+				logger.error(
+					{
+						fileId: item.fileId,
+						mediaType: item.mediaType,
+						destPath: item.newFullPath
+					},
+					'[RenamePreviewService] Destination file missing after successful move'
+				);
+				return {
+					fileId: item.fileId,
+					mediaType: item.mediaType,
+					success: false,
+					oldPath: item.currentFullPath,
+					newPath: item.newFullPath,
+					error: 'Destination file not found after move operation'
+				};
+			}
+
+			if (destSize !== undefined && destSize === 0) {
+				logger.warn(
+					{
+						fileId: item.fileId,
+						mediaType: item.mediaType,
+						path: item.newFullPath
+					},
+					'[RenamePreviewService] Destination file is empty after move'
+				);
 			}
 
 			// Update database with new relative path
@@ -720,33 +1073,159 @@ export class RenamePreviewService {
 		}
 	}
 
-	private async reconcileMissingSourceRecord(item: RenamePreviewItem): Promise<void> {
-		if (item.mediaType === 'movie') {
-			await this.reconcileMissingMovieFile(item.fileId, item.mediaId);
-			return;
-		}
+	/**
+	 * After file renames move media into a new parent folder:
+	 * 1. Update movie.path / series.path in the DB so the library entry reflects the new location.
+	 * 2. Move any remaining files (artwork, nfo, subtitles, etc.) from the old folder to the new one.
+	 * 3. Remove the old folder tree if it is now empty.
+	 */
+	// Extensions that identify companion files (artwork, metadata, subtitles).
+	// Used for stem-matched carry when the media file lives in the root folder.
+	private static readonly COMPANION_EXTENSIONS = new Set([
+		'.nfo',
+		'.jpg',
+		'.jpeg',
+		'.png',
+		'.webp',
+		'.tbn',
+		'.srt',
+		'.sub',
+		'.ass',
+		'.ssa',
+		'.vtt',
+		'.sup',
+		'.idx'
+	]);
 
-		await this.reconcileMissingEpisodeFile(item.fileId, item.mediaId);
+	private async applyFolderRename(
+		mediaId: string,
+		mediaType: 'movie' | 'episode',
+		oldParentPath: string,
+		newParentPath: string,
+		originalFileStem: string
+	): Promise<string[]> {
+		const warnings: string[] = [];
+		try {
+			let rootFolderId: string | undefined;
+			if (mediaType === 'movie') {
+				const movie = db.select().from(movies).where(eq(movies.id, mediaId)).get();
+				rootFolderId = movie?.rootFolderId ?? undefined;
+			} else {
+				const show = db.select().from(series).where(eq(series.id, mediaId)).get();
+				rootFolderId = show?.rootFolderId ?? undefined;
+			}
+			if (!rootFolderId) return warnings;
+
+			const rootFolder = db
+				.select()
+				.from(rootFolders)
+				.where(eq(rootFolders.id, rootFolderId))
+				.get();
+			if (!rootFolder) return warnings;
+
+			const rootFolderPath = rootFolder.path;
+			const oldFolder = join(rootFolderPath, oldParentPath);
+			const newFolder = join(rootFolderPath, newParentPath);
+			const isRootFolder = resolve(oldFolder) === resolve(rootFolderPath);
+
+			// 1. Update DB path record so the library entry shows the correct folder.
+			if (mediaType === 'movie') {
+				db.update(movies).set({ path: newParentPath }).where(eq(movies.id, mediaId)).run();
+			} else {
+				db.update(series).set({ path: newParentPath }).where(eq(series.id, mediaId)).run();
+			}
+
+			logger.info(
+				{ mediaId, mediaType, from: oldFolder, to: newFolder, isRootFolder },
+				'[RenamePreviewService] Folder path updated in DB after file renames'
+			);
+
+			// 2. Move companion files from the old folder to the new folder.
+			// When the media file is in a dedicated subfolder, carry everything (the
+			// whole folder belongs to this title). When it is in the root folder,
+			// only carry files whose names start with the original media file's stem
+			// to avoid carrying unrelated files into this title's new subfolder.
+			try {
+				const entries = await readdir(oldFolder, { withFileTypes: true });
+				const unmatchedCompanions: string[] = [];
+
+				for (const entry of entries) {
+					if (!entry.isFile()) continue;
+
+					if (isRootFolder) {
+						const entryStem = basename(entry.name, extname(entry.name));
+						const entryExt = extname(entry.name).toLowerCase();
+						const stemMatches = entryStem.startsWith(originalFileStem);
+
+						if (!stemMatches) {
+							// Track companion-extension files we couldn't safely match.
+							if (RenamePreviewService.COMPANION_EXTENSIONS.has(entryExt)) {
+								unmatchedCompanions.push(entry.name);
+							}
+							continue;
+						}
+					}
+
+					const src = join(oldFolder, entry.name);
+					const dest = join(newFolder, entry.name);
+					if (await fileExists(dest)) continue;
+					try {
+						await rename(src, dest);
+					} catch {
+						await moveFile(src, dest);
+					}
+				}
+
+				if (unmatchedCompanions.length > 0) {
+					warnings.push(
+						`Some companion files could not be automatically matched to "${originalFileStem}" ` +
+							`and were left in the root folder: ${unmatchedCompanions.join(', ')}. ` +
+							`Move them manually if needed.`
+					);
+					logger.info(
+						{ mediaId, unmatchedCompanions },
+						'[RenamePreviewService] Unmatched companion files left in root folder'
+					);
+				}
+			} catch {
+				// Old folder may not exist or be unreadable — not fatal.
+			}
+
+			// 3. Remove the old folder tree if empty (handles empty season subfolders for series).
+			// Skip when the old folder is the root — never remove the root folder.
+			if (!isRootFolder) {
+				await this.tryRemoveEmptyDir(oldFolder);
+			}
+		} catch (error) {
+			logger.warn(
+				{
+					mediaId,
+					mediaType,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[RenamePreviewService] applyFolderRename cleanup failed (non-fatal)'
+			);
+		}
+		return warnings;
 	}
 
-	private async reconcileMissingMovieFile(fileId: string, movieId: string): Promise<void> {
-		const fileRecord = db.select().from(movieFiles).where(eq(movieFiles.id, fileId)).get();
-		if (!fileRecord) {
-			return;
+	/**
+	 * Recursively remove a directory only if it is entirely empty.
+	 * Descends into subdirectories first so empty trees are cleaned bottom-up.
+	 * Directories that still contain files are left untouched.
+	 */
+	private async tryRemoveEmptyDir(dirPath: string): Promise<void> {
+		try {
+			const entries = await readdir(dirPath, { withFileTypes: true });
+			for (const entry of entries) {
+				if (entry.isDirectory()) {
+					await this.tryRemoveEmptyDir(join(dirPath, entry.name));
+				}
+			}
+			await rmdir(dirPath); // no-op fails silently if not empty
+		} catch {
+			// Directory has remaining files or doesn't exist — both are fine.
 		}
-
-		db.delete(movieFiles).where(eq(movieFiles.id, fileId)).run();
-
-		const remainingFiles = db
-			.select({ id: movieFiles.id })
-			.from(movieFiles)
-			.where(eq(movieFiles.movieId, movieId))
-			.all();
-
-		db.update(movies)
-			.set({ hasFile: remainingFiles.length > 0 })
-			.where(eq(movies.id, movieId))
-			.run();
 	}
 
 	private async reconcileTouchedMedia(
@@ -764,7 +1243,7 @@ export class RenamePreviewService {
 
 	private async reconcileMovieFileRecords(movieId: string): Promise<void> {
 		const movie = db
-			.select({ path: movies.path, rootFolderId: movies.rootFolderId })
+			.select({ path: movies.path, rootFolderId: movies.rootFolderId, hasFile: movies.hasFile })
 			.from(movies)
 			.where(eq(movies.id, movieId))
 			.get();
@@ -784,47 +1263,22 @@ export class RenamePreviewService {
 		}
 
 		const files = db.select().from(movieFiles).where(eq(movieFiles.movieId, movieId)).all();
-		const existingFileIds = new Set<string>();
+		let fileExistsCount = 0;
 
 		for (const file of files) {
 			const fullPath = join(rootFolder.path, movie.path, file.relativePath);
 			if (await fileExists(fullPath)) {
-				existingFileIds.add(file.id);
-				continue;
+				fileExistsCount++;
 			}
-
-			db.delete(movieFiles).where(eq(movieFiles.id, file.id)).run();
 		}
 
-		db.update(movies)
-			.set({ hasFile: existingFileIds.size > 0 })
-			.where(eq(movies.id, movieId))
-			.run();
-	}
+		// Non-destructive: only update hasFile status, never delete records.
+		const currentHasFile = !!movie.hasFile;
+		const shouldHaveFile = fileExistsCount > 0;
 
-	private async reconcileMissingEpisodeFile(fileId: string, seriesId: string): Promise<void> {
-		const fileRecord = db.select().from(episodeFiles).where(eq(episodeFiles.id, fileId)).get();
-		if (!fileRecord) {
-			return;
+		if (currentHasFile !== shouldHaveFile) {
+			db.update(movies).set({ hasFile: shouldHaveFile }).where(eq(movies.id, movieId)).run();
 		}
-
-		db.delete(episodeFiles).where(eq(episodeFiles.id, fileId)).run();
-
-		for (const episodeId of fileRecord.episodeIds ?? []) {
-			const remainingEpisodeFiles = db
-				.select({ id: episodeFiles.id, episodeIds: episodeFiles.episodeIds })
-				.from(episodeFiles)
-				.where(eq(episodeFiles.seriesId, seriesId))
-				.all();
-
-			const stillHasFile = remainingEpisodeFiles.some(
-				(file) => file.episodeIds?.includes(episodeId) ?? false
-			);
-
-			db.update(episodes).set({ hasFile: stillHasFile }).where(eq(episodes.id, episodeId)).run();
-		}
-
-		await this.recalculateSeriesEpisodeCounts(seriesId);
 	}
 
 	private async reconcileSeriesFileRecords(seriesId: string): Promise<void> {
@@ -858,10 +1312,8 @@ export class RenamePreviewService {
 				for (const episodeId of file.episodeIds ?? []) {
 					episodeIdsWithFiles.add(episodeId);
 				}
-				continue;
 			}
-
-			db.delete(episodeFiles).where(eq(episodeFiles.id, file.id)).run();
+			// Non-destructive: never delete file records.
 		}
 
 		for (const episode of allEpisodes) {
@@ -930,8 +1382,27 @@ export class RenamePreviewService {
 	private buildMoviePreviewItem(
 		movie: typeof movies.$inferSelect,
 		file: typeof movieFiles.$inferSelect,
-		rootFolderPath: string
+		rootFolderPath: string,
+		rootFolderReadOnly = false
 	): RenamePreviewItem {
+		if (rootFolderReadOnly) {
+			const movieFolderPath = join(rootFolderPath, movie.path);
+			return {
+				fileId: file.id,
+				mediaType: 'movie',
+				mediaId: movie.id,
+				mediaTitle: movie.title,
+				currentParentPath: movie.path,
+				currentRelativePath: file.relativePath,
+				currentFullPath: join(movieFolderPath, file.relativePath),
+				newParentPath: movie.path,
+				newRelativePath: file.relativePath,
+				newFullPath: join(movieFolderPath, file.relativePath),
+				status: 'error',
+				error: 'Cannot rename files in read-only folder'
+			};
+		}
+
 		try {
 			// Get current filename for fallback parsing
 			const currentFileName = basename(file.relativePath);
@@ -1042,8 +1513,27 @@ export class RenamePreviewService {
 		file: typeof episodeFiles.$inferSelect,
 		episodeMap: Map<string, typeof episodes.$inferSelect>,
 		rootFolderPath: string,
-		absoluteEpisodeMap: Map<string, number>
+		absoluteEpisodeMap: Map<string, number>,
+		rootFolderReadOnly = false
 	): RenamePreviewItem {
+		if (rootFolderReadOnly) {
+			const seriesFolderPath = join(rootFolderPath, show.path);
+			return {
+				fileId: file.id,
+				mediaType: 'episode',
+				mediaId: show.id,
+				mediaTitle: `${show.title} - S${String(file.seasonNumber).padStart(2, '0')}E${String(file.episodeIds?.[0] ?? '').padStart(2, '0')}`,
+				currentParentPath: show.path,
+				currentRelativePath: file.relativePath,
+				currentFullPath: join(seriesFolderPath, file.relativePath),
+				newParentPath: show.path,
+				newRelativePath: file.relativePath,
+				newFullPath: join(seriesFolderPath, file.relativePath),
+				status: 'error',
+				error: 'Cannot rename files in read-only folder'
+			};
+		}
+
 		try {
 			// Get current filename for fallback parsing
 			const currentFileName = basename(file.relativePath);
@@ -1289,23 +1779,4 @@ export class RenamePreviewService {
 			}
 		}
 	}
-}
-
-/**
- * Singleton instance
- */
-let instance: RenamePreviewService | null = null;
-
-export function getRenamePreviewService(): RenamePreviewService {
-	if (!instance) {
-		instance = new RenamePreviewService();
-	}
-	return instance;
-}
-
-/**
- * Reset the singleton (useful for tests)
- */
-export function resetRenamePreviewService(): void {
-	instance = null;
 }

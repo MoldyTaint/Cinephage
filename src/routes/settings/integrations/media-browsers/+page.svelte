@@ -465,6 +465,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>{m.nav_mediaServers()}</title>
+</svelte:head>
+
 <SettingsPage
 	title={m.nav_mediaServers()}
 	subtitle={m.settings_integrations_mediaBrowsers_subtitle()}

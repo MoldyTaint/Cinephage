@@ -6,6 +6,7 @@
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 	import type { RootFolderWithSpaceAndDefault as RootFolder } from '$lib/types/downloadClient.js';
+	import type { DesiredQuality } from '$lib/types/library.js';
 	import type { MinimumAvailability } from './add/MovieAddOptions.svelte';
 	import type { MonitorType, MonitorNewItems, SeriesType } from './add/SeriesAddOptions.svelte';
 	import AddMovieForm from './AddMovieForm.svelte';
@@ -35,7 +36,6 @@
 	interface LibraryEntity {
 		id: string;
 		mediaType: 'movie' | 'tv';
-		defaultMonitored: boolean;
 		defaultSearchOnAdd: boolean;
 		defaultWantsSubtitles: boolean;
 		rootFolders: Array<{ id: string }>;
@@ -47,6 +47,8 @@
 		description?: string;
 		isBuiltIn: boolean;
 		isDefault?: boolean;
+		minResolution?: string | null;
+		maxResolution?: string | null;
 	}
 
 	interface Season {
@@ -116,6 +118,7 @@
 	let minimumAvailability = $state<MinimumAvailability>('released');
 	let availabilityDelay = $state(0);
 	let monitored = $state(true);
+	let desiredQualities = $state<DesiredQuality[]>([]);
 
 	let monitorType = $state<MonitorType>('all');
 	let monitorNewItems = $state<MonitorNewItems>('all');
@@ -141,6 +144,9 @@
 	});
 	const selectedRootFolderLibrary = $derived(
 		selectedRootFolder ? rootFolderLibraryMap.get(selectedRootFolder) : undefined
+	);
+	const selectedRootFolderObj = $derived(
+		selectedRootFolder ? rootFolders.find((folder) => folder.id === selectedRootFolder) : undefined
 	);
 
 	function getRecommendedRootFolderId(folders: RootFolder[]): string | undefined {
@@ -183,7 +189,7 @@
 
 	const willBeMonitored = $derived(mediaType === 'tv' ? monitorType !== 'none' : monitored);
 
-	const willSearchOnAdd = $derived(searchOnAdd && willBeMonitored);
+	const willSearchOnAdd = $derived(searchOnAdd);
 
 	$effect(() => {
 		if (open) {
@@ -192,6 +198,7 @@
 			wantsSubtitles = true;
 			minimumAvailability = 'released';
 			availabilityDelay = 0;
+			desiredQualities = [];
 			monitorType = 'all';
 			monitorNewItems = 'all';
 			monitorSpecials = false;
@@ -243,10 +250,11 @@
 			wantsSubtitles = selectedRootFolderLibrary.defaultWantsSubtitles;
 		}
 		if (!monitoredTouched) {
+			const defaultMonitored = selectedRootFolderObj?.defaultMonitored ?? true;
 			if (mediaType === 'movie') {
-				monitored = selectedRootFolderLibrary.defaultMonitored;
+				monitored = defaultMonitored;
 			} else {
-				monitorType = selectedRootFolderLibrary.defaultMonitored ? 'all' : 'none';
+				monitorType = defaultMonitored ? 'all' : 'none';
 			}
 		}
 	});
@@ -443,7 +451,12 @@
 			};
 
 			const result = (mediaType === 'movie'
-				? await createMovie({ ...basePayload, minimumAvailability, availabilityDelay })
+				? await createMovie({
+						...basePayload,
+						minimumAvailability,
+						availabilityDelay,
+						desiredQualities: desiredQualities.length > 0 ? desiredQualities : null
+					})
 				: await createSeries({
 						...basePayload,
 						monitorType,
@@ -452,18 +465,33 @@
 						seriesType,
 						seasonFolder,
 						monitoredSeasons: Array.from(monitoredSeasons)
-					})) as unknown as { success: boolean; id?: string };
+					})) as unknown as {
+				success: boolean;
+				id?: string;
+				movie?: { id?: string; searchWarning?: string };
+				series?: { id?: string; searchWarning?: string };
+			};
 
-			toasts.success(`${title} added to library`, {
-				description: willSearchOnAdd ? 'Searching for releases...' : undefined,
-				action: result.id
-					? {
-							label: 'View',
-							href:
-								mediaType === 'movie' ? `/library/movie/${result.id}` : `/library/tv/${result.id}`
-						}
-					: undefined
-			});
+			const mediaId = result.movie?.id ?? result.series?.id ?? result.id;
+			const searchWarning = result.movie?.searchWarning ?? result.series?.searchWarning;
+			const viewAction = mediaId
+				? {
+						label: 'View',
+						href: mediaType === 'movie' ? `/library/movie/${mediaId}` : `/library/tv/${mediaId}`
+					}
+				: undefined;
+
+			if (searchWarning) {
+				toasts.warning(`${title} added to library`, {
+					description: searchWarning,
+					action: viewAction
+				});
+			} else {
+				toasts.success(`${title} added to library`, {
+					description: willSearchOnAdd ? 'Searching for releases...' : undefined,
+					action: viewAction
+				});
+			}
 
 			onClose();
 			onSuccess?.();
@@ -570,6 +598,7 @@
 				bind:minimumAvailability
 				bind:availabilityDelay
 				bind:monitored
+				bind:desiredQualities
 				bind:addEntireCollection
 			/>
 		{:else}

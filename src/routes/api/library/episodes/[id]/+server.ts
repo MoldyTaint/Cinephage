@@ -70,11 +70,11 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				}
 
 				// Fire and forget - don't block the response
-				searchOnAdd.searchForEpisode({ episodeId: params.id }).catch((err) => {
+				searchOnAdd.searchForEpisode({ episodeId: params.id }).catch((e: unknown) => {
 					logger.error(
 						{
 							episodeId: params.id,
-							error: err instanceof Error ? err.message : 'Unknown error'
+							error: e instanceof Error ? e.message : 'Unknown error'
 						},
 						'[API] Background search on episode monitor enable failed'
 					);

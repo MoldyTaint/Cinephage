@@ -135,6 +135,8 @@ export interface Indexer {
 	upstreamEnabled?: boolean | null;
 	/** True when sync detected this indexer no longer exists in the upstream service */
 	orphaned?: boolean;
+	/** True for system-owned indexers (e.g. cinephage-stream). Non-deletable, restricted editing. */
+	isBuiltIn?: boolean;
 	baseUrl: string;
 	/** Alternative/fallback URLs (tried in order if primary fails) */
 	alternateUrls: string[];

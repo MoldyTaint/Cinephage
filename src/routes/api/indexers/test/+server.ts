@@ -11,6 +11,7 @@ import {
 	normalizeJackettUrl
 } from '$lib/server/indexers/jackett/JackettConnectionService.js';
 import {
+	fetchProwlarrIndexers,
 	getProwlarrConnection,
 	isIndexerFromConnection,
 	normalizeProwlarrUrl
@@ -185,6 +186,7 @@ export const POST: RequestHandler = async (event) => {
 
 	let existingSettings: Record<string, unknown> | undefined;
 	let existingBaseUrl: string | undefined;
+	let existingIndexer: Awaited<ReturnType<typeof manager.getIndexer>> | undefined;
 
 	// If testing an existing saved indexer from overview, verify it exists
 	// so health tracking updates apply only to real indexers.
@@ -201,6 +203,7 @@ export const POST: RequestHandler = async (event) => {
 		}
 		existingSettings = existing.settings;
 		existingBaseUrl = existing.baseUrl;
+		existingIndexer = existing;
 
 		// If Prowlarr has this indexer disabled, skip the test and tell the user where to fix it.
 		if (existing.upstreamEnabled === false) {
@@ -224,13 +227,33 @@ export const POST: RequestHandler = async (event) => {
 			const jackettConn = await getJackettConnection();
 			if (jackettConn) {
 				const jackettBase = normalizeJackettUrl(jackettConn.url);
-				if (isIndexerFromJackett(existing.baseUrl, jackettBase)) {
+				// Warmup via torznab only applies to legacy format; native indexers use baseUrl = jackettBase
+				if (isIndexerFromJackett(existing, jackettBase) && existing.definitionId !== 'jackett') {
 					const warmupUrl = `${existing.baseUrl}?apikey=${encodeURIComponent(jackettConn.apiKey)}&t=search&q=test`;
 					await fetch(warmupUrl, { signal: AbortSignal.timeout(15000) });
 				}
 			}
 		} catch {
 			// Warm-up failure is expected when Jackett/FlareSolverr is down; proceed anyway.
+		}
+
+		// Refresh the API key from the current connection config so the test uses
+		// fresh credentials without requiring a manual sync first.
+		const [freshProwlarrConn, freshJackettConn] = await Promise.all([
+			getProwlarrConnection(),
+			getJackettConnection()
+		]);
+		if (freshProwlarrConn) {
+			const prowlarrBase = normalizeProwlarrUrl(freshProwlarrConn.url);
+			if (isIndexerFromConnection(existing, prowlarrBase)) {
+				existingSettings = { ...existingSettings, apikey: freshProwlarrConn.apiKey };
+			}
+		}
+		if (freshJackettConn) {
+			const jackettBase = normalizeJackettUrl(freshJackettConn.url);
+			if (isIndexerFromJackett(existing, jackettBase)) {
+				existingSettings = { ...existingSettings, apikey: freshJackettConn.apiKey };
+			}
 		}
 	}
 
@@ -242,6 +265,22 @@ export const POST: RequestHandler = async (event) => {
 			existingSettings,
 			definition.settings
 		);
+
+		// Aggregate Prowlarr indexer: skip the full fan-out search and do a lightweight
+		// /api/v1/indexer request to verify connectivity and authentication only.
+		if (validated.definitionId === 'prowlarr' && settings.aggregate) {
+			const apiKey = extractApiKey(settings);
+			if (!apiKey) {
+				return json({ success: false, error: 'Prowlarr API key is missing.' }, { status: 400 });
+			}
+			try {
+				await fetchProwlarrIndexers(validated.baseUrl, apiKey);
+				return json({ success: true });
+			} catch (e) {
+				const message = e instanceof Error ? e.message : 'Unable to connect to Prowlarr.';
+				return json({ success: false, error: message }, { status: 400 });
+			}
+		}
 
 		// Torznab validation: auto-discover the correct endpoint if the user entered a bare host URL,
 		// then validate the resolved URL's caps endpoint.
@@ -295,11 +334,13 @@ export const POST: RequestHandler = async (event) => {
 			let source: string | null = null;
 			if (prowlarrConn) {
 				const prowlarrBase = normalizeProwlarrUrl(prowlarrConn.url);
-				if (isIndexerFromConnection(existingBaseUrl, prowlarrBase)) source = 'Prowlarr';
+				if (existingIndexer && isIndexerFromConnection(existingIndexer, prowlarrBase))
+					source = 'Prowlarr';
 			}
 			if (!source && jackettConn2) {
 				const jackettBase = normalizeJackettUrl(jackettConn2.url);
-				if (isIndexerFromJackett(existingBaseUrl, jackettBase)) source = 'Jackett';
+				if (existingIndexer && isIndexerFromJackett(existingIndexer, jackettBase))
+					source = 'Jackett';
 			}
 
 			if (source) {

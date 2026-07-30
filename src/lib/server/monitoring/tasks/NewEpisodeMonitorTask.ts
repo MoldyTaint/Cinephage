@@ -6,7 +6,8 @@
  */
 
 import { db } from '$lib/server/db/index.js';
-import { monitoringHistory } from '$lib/server/db/schema.js';
+import { monitoringHistory, episodes } from '$lib/server/db/schema.js';
+import { inArray } from 'drizzle-orm';
 import { monitoringSearchService } from '../search/MonitoringSearchService.js';
 import { logger } from '$lib/logging/index.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
@@ -58,6 +59,23 @@ export async function executeNewEpisodeMonitorTask(
 			'[NewEpisodeMonitorTask] New episode search completed'
 		);
 
+		// Batch-fetch seriesId for episode items so history rows are correctly linked
+		const episodeIds = episodeResults.items
+			.filter((i) => i.itemType === 'episode')
+			.map((i) => i.itemId);
+		const episodeSeriesMap =
+			episodeIds.length > 0
+				? new Map(
+						(
+							await db
+								.select({ id: episodes.id, seriesId: episodes.seriesId })
+								.from(episodes)
+								.where(inArray(episodes.id, episodeIds))
+								.all()
+						).map((e) => [e.id, e.seriesId])
+					)
+				: new Map<string, string>();
+
 		// Record history for each episode (with cancellation checks)
 		if (ctx) {
 			for await (const item of ctx.iterate(episodeResults.items)) {
@@ -67,6 +85,10 @@ export async function executeNewEpisodeMonitorTask(
 					taskHistoryId,
 					taskType: 'new_episode',
 					episodeId: item.itemType === 'episode' ? item.itemId : undefined,
+					seriesId:
+						item.itemType === 'episode'
+							? (episodeSeriesMap.get(item.itemId) ?? undefined)
+							: undefined,
 					status: item.grabbed
 						? 'grabbed'
 						: item.error
@@ -90,6 +112,10 @@ export async function executeNewEpisodeMonitorTask(
 					taskHistoryId,
 					taskType: 'new_episode',
 					episodeId: item.itemType === 'episode' ? item.itemId : undefined,
+					seriesId:
+						item.itemType === 'episode'
+							? (episodeSeriesMap.get(item.itemId) ?? undefined)
+							: undefined,
 					status: item.grabbed
 						? 'grabbed'
 						: item.error

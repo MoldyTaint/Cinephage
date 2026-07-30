@@ -42,7 +42,7 @@ vi.mock('$lib/logging', () => ({
 }));
 
 // Import after mocking
-const { solveChallenge, testForChallenge } = await import('./CamoufoxSolver');
+const { solveChallenge, testForChallenge, browserFetch } = await import('./CamoufoxSolver');
 const { detectChallengeFromPage } = await import('../detection/ChallengeDetector');
 
 /**
@@ -60,6 +60,9 @@ function createMockPage(): Page {
 		url: vi.fn().mockReturnValue('https://example.com'),
 		evaluate: vi.fn().mockResolvedValue('Mozilla/5.0 (Test)'),
 		context: vi.fn().mockReturnValue(mockContext),
+		route: vi.fn().mockResolvedValue(undefined),
+		frames: vi.fn().mockReturnValue([]),
+		waitForLoadState: vi.fn().mockResolvedValue(undefined),
 		$: vi.fn().mockResolvedValue(null)
 	} as unknown as Page;
 }
@@ -69,7 +72,8 @@ function createMockPage(): Page {
  */
 function createMockResponse(status = 200): Response {
 	return {
-		status: vi.fn().mockReturnValue(status)
+		status: vi.fn().mockReturnValue(status),
+		headers: vi.fn().mockReturnValue({})
 	} as unknown as Response;
 }
 
@@ -256,7 +260,8 @@ describe('CamoufoxSolver', () => {
 				confidence: 0.95
 			} as ChallengeDetectionResult);
 
-			// Title shows challenge
+			// Title never leaves the challenge; cf_clearance is the only signal.
+			// (Post-timeout last-resort path, so use a short timeout.)
 			(mockManagedBrowser.page.title as ReturnType<typeof vi.fn>).mockResolvedValue(
 				'Just a moment...'
 			);
@@ -281,7 +286,7 @@ describe('CamoufoxSolver', () => {
 
 			const result = await solveChallenge(
 				{ url: 'https://example.com' },
-				{ headless: true, timeoutSeconds: 60 }
+				{ headless: true, timeoutSeconds: 1 }
 			);
 
 			expect(result.success).toBe(true);
@@ -456,6 +461,118 @@ describe('CamoufoxSolver', () => {
 			await testForChallenge('https://example.com', { headless: true });
 
 			expect(mockManager.closeBrowser).toHaveBeenCalledWith(mockManagedBrowser);
+		});
+	});
+
+	describe('browserFetch abort handling', () => {
+		it('should short-circuit and not launch a browser when already aborted', async () => {
+			const controller = new AbortController();
+			controller.abort();
+
+			const result = await browserFetch(
+				{ url: 'https://example.com', signal: controller.signal },
+				{ headless: true, timeoutSeconds: 60 }
+			);
+
+			expect(result.success).toBe(false);
+			expect(result.error).toBe('Aborted before start');
+			expect(mockManager.createBrowserForDomain).not.toHaveBeenCalled();
+		});
+
+		it('should close the browser when the signal fires mid-flight', async () => {
+			let resolveGoto: (value: unknown) => void = () => {};
+			(mockManagedBrowser.page.goto as ReturnType<typeof vi.fn>).mockImplementation(
+				() =>
+					new Promise((res) => {
+						resolveGoto = res;
+					})
+			);
+
+			const controller = new AbortController();
+			const fetchPromise = browserFetch(
+				{ url: 'https://example.com', signal: controller.signal },
+				{ headless: true, timeoutSeconds: 60 }
+			);
+
+			// Let createBrowserForDomain resolve and the abort listener attach
+			await new Promise((r) => setTimeout(r, 0));
+			controller.abort();
+
+			expect(mockManager.closeBrowser).toHaveBeenCalledWith(mockManagedBrowser);
+
+			// Unblock navigation so the function can settle
+			resolveGoto(createMockResponse(200));
+			await fetchPromise;
+		});
+
+		it('should block image/media/font resource types via route interception', async () => {
+			const mockResponse = createMockResponse(200);
+			(mockManagedBrowser.page.goto as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+
+			const routeMock = mockManagedBrowser.page.route as ReturnType<typeof vi.fn>;
+
+			await browserFetch(
+				{ url: 'https://example.com' },
+				{ headless: true, timeoutSeconds: 60, blockMedia: true }
+			);
+
+			expect(routeMock).toHaveBeenCalled();
+			const handler = routeMock.mock.calls[0][1] as (
+				route: { abort: ReturnType<typeof vi.fn>; continue: ReturnType<typeof vi.fn> },
+				req: { resourceType: () => string; url: () => string; method: () => string }
+			) => Promise<void>;
+
+			const abortRoute = { abort: vi.fn().mockResolvedValue(undefined), continue: vi.fn() };
+			await handler(abortRoute, {
+				resourceType: () => 'image',
+				url: () => 'https://example.com/a.png',
+				method: () => 'GET'
+			});
+			expect(abortRoute.abort).toHaveBeenCalled();
+			expect(abortRoute.continue).not.toHaveBeenCalled();
+
+			const continueRoute = {
+				abort: vi.fn(),
+				continue: vi.fn().mockResolvedValue(undefined)
+			};
+			await handler(continueRoute, {
+				resourceType: () => 'document',
+				url: () => 'https://example.com/',
+				method: () => 'GET'
+			});
+			expect(continueRoute.continue).toHaveBeenCalled();
+			expect(continueRoute.abort).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('browserFetch site-root warmup', () => {
+		it('warms up on the origin root before fetching a deep link', async () => {
+			const gotoMock = mockManagedBrowser.page.goto as ReturnType<typeof vi.fn>;
+			gotoMock.mockResolvedValue(createMockResponse(200));
+
+			const result = await browserFetch(
+				{ url: 'https://example.com/search/Avatar/1/' },
+				{ headless: true, timeoutSeconds: 60 }
+			);
+
+			const navigatedUrls = gotoMock.mock.calls.map((c) => c[0]);
+			expect(navigatedUrls).toContain('https://example.com/');
+			expect(navigatedUrls).toContain('https://example.com/search/Avatar/1/');
+			// Root must be visited before the deep link
+			expect(navigatedUrls.indexOf('https://example.com/')).toBeLessThan(
+				navigatedUrls.indexOf('https://example.com/search/Avatar/1/')
+			);
+			expect(result.success).toBe(true);
+		});
+
+		it('does not warm up when fetching the site root itself', async () => {
+			const gotoMock = mockManagedBrowser.page.goto as ReturnType<typeof vi.fn>;
+			gotoMock.mockResolvedValue(createMockResponse(200));
+
+			await browserFetch({ url: 'https://example.com/' }, { headless: true, timeoutSeconds: 60 });
+
+			const navigatedUrls = gotoMock.mock.calls.map((c) => c[0]);
+			expect(navigatedUrls).toEqual(['https://example.com/']);
 		});
 	});
 });

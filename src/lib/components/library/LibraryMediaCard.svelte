@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import type { LibraryMovie, LibrarySeries } from '$lib/types/library';
-	import { isLibraryMovie, getBestQualityFromFiles } from '$lib/types/library';
+	import { isLibraryMovie, getBestQualityFromFiles, displayTitle } from '$lib/types/library';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
 	import { Eye, EyeOff, Check, X, Download, AlertTriangle } from 'lucide-svelte';
 	import { resolvePath } from '$lib/utils/routing';
@@ -195,7 +195,7 @@
 			class="translate-y-4 transform transition-transform duration-300 group-hover:translate-y-0"
 		>
 			<h3 class="line-clamp-2 text-sm leading-tight font-bold text-white">
-				{item.title}
+				{displayTitle(item)}
 			</h3>
 			<div class="mt-1 flex items-center justify-between gap-2">
 				{#if item.year}

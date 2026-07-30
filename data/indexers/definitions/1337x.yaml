@@ -1,0 +1,108 @@
+---
+# 1337x Public Torrent Indexer
+# Adapted for Cinephage from the Prowlarr/Jackett community definition.
+# Cloudflare-protected: relies on Cinephage's built-in Camoufox captcha solver.
+id: 1337x
+name: 1337x
+description: 1337x is a Public torrent site that offers verified torrent downloads
+language: en-US
+type: public
+protocol: torrent
+encoding: UTF-8
+requestdelay: 2
+
+links:
+  - https://1337x.to/
+  - https://1337x.st/
+  - https://x1337x.ws/
+
+settings:
+  - name: info_flaresolverr
+    type: info_flaresolverr
+  - name: downloadlink
+    type: select
+    label: Download link
+    default: 'magnet:'
+    options:
+      'magnet:': Magnet
+      'http://itorrents.org/': iTorrents.org
+  - name: downloadlink2
+    type: select
+    label: Download link (fallback)
+    default: 'http://itorrents.org/'
+    options:
+      'http://itorrents.org/': iTorrents.org
+      'magnet:': Magnet
+
+caps:
+  categorymappings:
+    - { id: 28, cat: TV/Anime, desc: 'Anime/Anime' }
+    - { id: 1, cat: Movies/DVD, desc: 'Movies/DVD' }
+    - { id: 2, cat: Movies/SD, desc: 'Movies/Divx/Xvid' }
+    - { id: 42, cat: Movies/HD, desc: 'Movies/HD' }
+    - { id: 54, cat: Movies/HD, desc: 'Movies/h.264/x264' }
+    - { id: 70, cat: Movies/HD, desc: 'Movies/HEVC/x265' }
+    - { id: 76, cat: Movies/UHD, desc: 'Movies/UHD' }
+    - { id: 41, cat: TV/HD, desc: 'TV/HD' }
+    - { id: 71, cat: TV, desc: 'TV/HEVC/x265' }
+    - { id: 75, cat: TV/SD, desc: 'TV/SD' }
+    - { id: 5, cat: TV, desc: 'TV/DVD' }
+
+  modes:
+    search: [q]
+    tv-search: [q, season, ep]
+    movie-search: [q]
+
+download:
+  # The .torrent URL and magnet URI live on the details page.
+  selectors:
+    - selector: ul li a[href^="{{ .Config.downloadlink }}"]
+      attribute: href
+    - selector: ul li a[href^="{{ .Config.downloadlink2 }}"]
+      attribute: href
+
+search:
+  # 1337x serves a stricter Cloudflare challenge on deep links; the captcha
+  # solver warms up the site root first, so a simple search path is enough.
+  paths:
+    - path: 'search/{{ .Keywords }}/1/'
+
+  keywordsfilters:
+    - name: re_replace # daily standard S2023 > 2023
+      args: ['\bS(20\d{2})\b', '$1']
+
+  rows:
+    selector: 'tr:has(a[href^="/torrent/"])'
+
+  fields:
+    title:
+      selector: td[class^="coll-1"] a[href^="/torrent/"]
+    details:
+      selector: td[class^="coll-1"] a[href^="/torrent/"]
+      attribute: href
+    download:
+      selector: td[class^="coll-1"] a[href^="/torrent/"]
+      attribute: href
+    category:
+      selector: td[class^="coll-1"] a[href^="/sub/"]
+      attribute: href
+      optional: true
+      default: '42'
+      filters:
+        - name: split
+          args: ['/', 2]
+    seeders:
+      selector: td[class^="coll-2"]
+    leechers:
+      selector: td[class^="coll-3"]
+    size:
+      selector: td[class^="coll-4"]
+    date:
+      selector: td[class^="coll-date"]
+      optional: true
+      filters:
+        - name: fuzzytime
+    downloadvolumefactor:
+      text: '0'
+    uploadvolumefactor:
+      text: '1'

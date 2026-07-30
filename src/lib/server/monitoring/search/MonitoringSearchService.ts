@@ -20,7 +20,7 @@ import {
 	downloadQueue,
 	settings
 } from '$lib/server/db/schema.js';
-import { eq, and, lte, gte, inArray } from 'drizzle-orm';
+import { eq, and, lte, gte, inArray, isNotNull } from 'drizzle-orm';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
 
 import {
@@ -33,6 +33,9 @@ import type { SearchCriteria, EnhancedReleaseResult } from '$lib/server/indexers
 import { scoreRelease, isUpgrade } from '$lib/server/scoring/scorer.js';
 import type { ScoringProfile } from '$lib/server/scoring/types.js';
 import { qualityFilter } from '$lib/server/quality';
+import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
+import { getFilledResolutions } from '$lib/server/quality/buckets.js';
+import type { Resolution } from '$lib/server/indexers/parser/types.js';
 import { TaskCancelledException } from '$lib/server/tasks/TaskCancelledException.js';
 import {
 	getMovieSearchTitles,
@@ -76,6 +79,7 @@ export interface ItemSearchResult {
 	grabbedRelease?: string;
 	queueItemId?: string;
 	error?: string;
+	rejectionType?: string;
 	skipped?: boolean;
 	skipReason?: string;
 }
@@ -91,6 +95,7 @@ export interface SearchResults {
 		grabbed: number;
 		skipped: number;
 		errors: number;
+		rejectionBreakdown?: Record<string, number>;
 	};
 	/** Detailed upgrade decisions (only populated in dry-run mode) */
 	upgradeDetails?: UpgradeDecisionDetail[];
@@ -338,6 +343,82 @@ export class MonitoringSearchService {
 	}
 
 	/**
+	 * Detect and repair movies where hasFile=false but a movieFiles row exists.
+	 * Returns the set of movie IDs that were stale and have been corrected.
+	 */
+	private async repairStaleMovieHasFile(movieIds: string[]): Promise<Set<string>> {
+		if (movieIds.length === 0) return new Set();
+
+		const filesForMovies = await db
+			.select({ movieId: movieFiles.movieId })
+			.from(movieFiles)
+			.where(inArray(movieFiles.movieId, movieIds))
+			.all();
+
+		if (filesForMovies.length === 0) return new Set();
+
+		const staleMovieIds = new Set(filesForMovies.map((f) => f.movieId));
+
+		await db
+			.update(movies)
+			.set({ hasFile: true })
+			.where(inArray(movies.id, Array.from(staleMovieIds)));
+
+		logger.warn(
+			{ movieIds: Array.from(staleMovieIds) },
+			'[MonitoringSearch] Repaired stale hasFile flag: movies had movieFiles rows but hasFile=false. Skipping search for these movies.'
+		);
+
+		return staleMovieIds;
+	}
+
+	/**
+	 * Detect and repair episodes where hasFile=false but an episodeFiles row references them.
+	 * Returns the set of episode IDs that were stale and have been corrected.
+	 */
+	private async repairStaleEpisodeHasFile(
+		episodeIds: string[],
+		seriesIds: string[]
+	): Promise<Set<string>> {
+		if (episodeIds.length === 0 || seriesIds.length === 0) return new Set();
+
+		// Fetch episodeFiles for the affected series, retrieving the episodeIds JSON arrays
+		const filesForSeries = await db
+			.select({ episodeIds: episodeFiles.episodeIds })
+			.from(episodeFiles)
+			.where(inArray(episodeFiles.seriesId, seriesIds))
+			.all();
+
+		if (filesForSeries.length === 0) return new Set();
+
+		// Build the set of episode IDs that already have a file
+		const episodeIdsWithFile = new Set<string>();
+		for (const row of filesForSeries) {
+			if (row.episodeIds) {
+				for (const id of row.episodeIds) {
+					episodeIdsWithFile.add(id);
+				}
+			}
+		}
+
+		const staleEpisodeIds = new Set(episodeIds.filter((id) => episodeIdsWithFile.has(id)));
+
+		if (staleEpisodeIds.size === 0) return new Set();
+
+		await db
+			.update(episodes)
+			.set({ hasFile: true })
+			.where(inArray(episodes.id, Array.from(staleEpisodeIds)));
+
+		logger.warn(
+			{ episodeIds: Array.from(staleEpisodeIds) },
+			'[MonitoringSearch] Repaired stale hasFile flag: episodes had episodeFiles rows but hasFile=false. Skipping search for these episodes.'
+		);
+
+		return staleEpisodeIds;
+	}
+
+	/**
 	 * Pre-load episode counts for all seasons of given series IDs in a single query.
 	 * Call this at the start of a search operation to avoid N+1 queries.
 	 * Only counts aired episodes for accurate completion percentage calculation.
@@ -479,6 +560,9 @@ export class MonitoringSearchService {
 
 			logger.info({ count: missingMovies.length }, '[MonitoringSearch] Found missing movies');
 
+			// Repair any stale hasFile flags before searching (hasFile=false but file row exists)
+			const staleMovieIds = await this.repairStaleMovieHasFile(missingMovies.map((m) => m.id));
+
 			// Filter through specifications
 			const missingSpec = new MovieMissingContentSpecification();
 			const monitoredSpec = new MovieMonitoredSpecification();
@@ -492,6 +576,9 @@ export class MonitoringSearchService {
 					logger.info('[MonitoringSearch] Missing movies search cancelled during processing');
 					throw new TaskCancelledException('search');
 				}
+
+				// Skip movies whose hasFile flag was stale (already repaired above)
+				if (staleMovieIds.has(movie.id)) continue;
 				const context: MovieContext = {
 					movie,
 					profile: movie.scoringProfile ?? undefined
@@ -596,7 +683,249 @@ export class MonitoringSearchService {
 			logger.error({ err: error }, '[MonitoringSearch] Missing movies search failed');
 		}
 
+		// Multi-quality: fill any desired resolution buckets that have no file yet.
+		try {
+			const bucketResults = await this.searchMissingMovieQualityBuckets(signal, {
+				ignoreCooldown,
+				cooldownHours
+			});
+			results.push(...bucketResults);
+		} catch (error) {
+			logger.error({ err: error }, '[MonitoringSearch] Multi-quality bucket search failed');
+		}
+
 		return this.aggregateResults(results);
+	}
+
+	/**
+	 * For movies in multi-quality mode, search for and grab releases that fill
+	 * desired resolution buckets which currently have no file. A single title-based
+	 * search is run per movie; candidates are then filtered to each unfilled bucket.
+	 */
+	private async searchMissingMovieQualityBuckets(
+		signal?: AbortSignal,
+		options: MissingSearchOptions = {}
+	): Promise<ItemSearchResult[]> {
+		const { ignoreCooldown = false, cooldownHours } = options;
+		const results: ItemSearchResult[] = [];
+
+		// Monitored movies that have declared desired qualities (multi-quality candidates)
+		const candidates = await db.query.movies.findMany({
+			where: and(eq(movies.monitored, true), isNotNull(movies.desiredQualities)),
+			with: { scoringProfile: true }
+		});
+
+		if (candidates.length === 0) return results;
+
+		const cooldownSpec = new MovieSearchCooldownSpecification(cooldownHours);
+
+		for (const movie of candidates) {
+			if (signal?.aborted) {
+				throw new TaskCancelledException('search');
+			}
+
+			const { effective, multiQuality } = await resolveMovieMultiQuality(
+				movie.desiredQualities,
+				movie.scoringProfileId
+			);
+			if (!multiQuality) continue;
+
+			// Respect cooldown (per movie)
+			if (!ignoreCooldown) {
+				const cooldownResult = await cooldownSpec.isSatisfied({
+					movie,
+					profile: movie.scoringProfile ?? undefined
+				});
+				if (!cooldownResult.accepted) continue;
+			}
+
+			// Skip if there's already an active download for this movie
+			if (await this.isMovieAlreadyDownloading(movie.id)) continue;
+
+			const files = await db.query.movieFiles.findMany({
+				where: eq(movieFiles.movieId, movie.id)
+			});
+			const filled = getFilledResolutions(files);
+			const unfilled = effective.filter((r) => !filled.includes(r));
+			if (unfilled.length === 0) continue;
+
+			// Update lastSearchTime
+			await db
+				.update(movies)
+				.set({ lastSearchTime: new Date().toISOString() })
+				.where(eq(movies.id, movie.id));
+
+			// One title-based search, then grab per unfilled bucket
+			const [indexerManager, globalIncludeAdult] = await Promise.all([
+				getIndexerManager(),
+				this.getGlobalIncludeAdult()
+			]);
+			const searchTitles = await getMovieSearchTitles(movie.id);
+			const criteria: SearchCriteria = {
+				searchType: 'movie',
+				query: movie.title,
+				tmdbId: movie.tmdbId,
+				imdbId: movie.imdbId ?? undefined,
+				year: movie.year ?? undefined,
+				searchTitles,
+				isAdult: globalIncludeAdult && (movie.adult ?? false) ? true : undefined
+			};
+			const searchResult = await indexerManager.searchEnhanced(criteria, {
+				searchSource: 'automatic',
+				enrichment: {
+					scoringProfileId: movie.scoringProfileId ?? undefined,
+					filterRejected: true,
+					minScore: this.AUTO_GRAB_MIN_SCORE
+				}
+			});
+
+			if (searchResult.releases.length === 0) continue;
+
+			const blocklistSpec = new ReleaseBlocklistSpecification({ movieId: movie.id });
+			const filledSoFar = new Set<Resolution>(filled);
+
+			for (const targetResolution of unfilled) {
+				// Find the best-scoring release matching this bucket that isn't blocklisted
+				let bestRelease: (typeof searchResult.releases)[number] | undefined;
+				for (const release of searchResult.releases) {
+					if (release.parsed.resolution !== targetResolution) continue;
+					const bc: ReleaseCandidate = {
+						title: release.title,
+						score: release.totalScore ?? 0,
+						infoHash: release.infoHash,
+						indexerId: release.indexerId
+					};
+					const bl = await blocklistSpec.isSatisfied(bc);
+					if (!bl.accepted) continue;
+					if (!bestRelease || (release.totalScore ?? 0) > (bestRelease.totalScore ?? 0)) {
+						bestRelease = release;
+					}
+				}
+				if (!bestRelease) continue;
+
+				const grabResult = await this.grabRelease(bestRelease, {
+					mediaType: 'movie',
+					movieId: movie.id,
+					isAutomatic: true
+				});
+				if (grabResult.success) {
+					filledSoFar.add(targetResolution);
+					results.push({
+						itemId: movie.id,
+						itemType: 'movie',
+						title: movie.title,
+						searched: true,
+						releasesFound: searchResult.releases.length,
+						grabbed: true,
+						grabbedRelease: grabResult.releaseName,
+						queueItemId: grabResult.queueItemId
+					});
+				}
+			}
+
+			// Small delay between movies
+			await new Promise((resolve) => setTimeout(resolve, 500));
+		}
+
+		return results;
+	}
+
+	/**
+	 * For movies in multi-quality mode, search for within-tier upgrades across
+	 * each filled resolution bucket. A single title-based search is run; the best
+	 * same-resolution candidate per bucket is offered to the grab pipeline, which
+	 * only grabs when it is a genuine within-bucket upgrade.
+	 */
+	private async searchMovieQualityBucketUpgrades(
+		movie: typeof movies.$inferSelect & {
+			scoringProfile?: typeof scoringProfiles.$inferSelect | null;
+		},
+		existingFiles: (typeof movieFiles.$inferSelect)[],
+		effective: Resolution[],
+		options: { signal?: AbortSignal; ignoreCooldown?: boolean; cooldownHours?: number }
+	): Promise<ItemSearchResult[]> {
+		const { signal } = options;
+		const results: ItemSearchResult[] = [];
+
+		if (signal?.aborted) throw new TaskCancelledException('search');
+		if (await this.isMovieAlreadyDownloading(movie.id)) return results;
+
+		const filled = getFilledResolutions(existingFiles);
+		// Only buckets that are both desired and currently filled are upgrade targets
+		const upgradeTargets = effective.filter((r) => filled.includes(r));
+		if (upgradeTargets.length === 0) return results;
+
+		const [indexerManager, globalIncludeAdult] = await Promise.all([
+			getIndexerManager(),
+			this.getGlobalIncludeAdult()
+		]);
+		const searchTitles = await getMovieSearchTitles(movie.id);
+		const criteria: SearchCriteria = {
+			searchType: 'movie',
+			query: movie.title,
+			tmdbId: movie.tmdbId,
+			imdbId: movie.imdbId ?? undefined,
+			year: movie.year ?? undefined,
+			searchTitles,
+			isAdult: globalIncludeAdult && (movie.adult ?? false) ? true : undefined
+		};
+		const searchResult = await indexerManager.searchEnhanced(criteria, {
+			searchSource: 'automatic',
+			enrichment: {
+				scoringProfileId: movie.scoringProfileId ?? undefined,
+				filterRejected: true,
+				minScore: this.AUTO_GRAB_MIN_SCORE
+			}
+		});
+
+		if (searchResult.releases.length === 0) return results;
+
+		const blocklistSpec = new ReleaseBlocklistSpecification({ movieId: movie.id });
+
+		for (const targetResolution of upgradeTargets) {
+			if (signal?.aborted) throw new TaskCancelledException('search');
+
+			// Best-scoring non-blocklisted release matching this bucket
+			let bestRelease: (typeof searchResult.releases)[number] | undefined;
+			for (const release of searchResult.releases) {
+				if (release.parsed.resolution !== targetResolution) continue;
+				const bc: ReleaseCandidate = {
+					title: release.title,
+					score: release.totalScore ?? 0,
+					infoHash: release.infoHash,
+					indexerId: release.indexerId
+				};
+				const bl = await blocklistSpec.isSatisfied(bc);
+				if (!bl.accepted) continue;
+				if (!bestRelease || (release.totalScore ?? 0) > (bestRelease.totalScore ?? 0)) {
+					bestRelease = release;
+				}
+			}
+			if (!bestRelease) continue;
+
+			// isUpgrade bypasses occupancy for the filled bucket; the grab pipeline's
+			// UpgradeStage performs the within-bucket comparison and only grabs if better.
+			const grabResult = await this.grabRelease(bestRelease, {
+				mediaType: 'movie',
+				movieId: movie.id,
+				isAutomatic: true,
+				isUpgrade: true
+			});
+			if (grabResult.success) {
+				results.push({
+					itemId: movie.id,
+					itemType: 'movie',
+					title: movie.title,
+					searched: true,
+					releasesFound: searchResult.releases.length,
+					grabbed: true,
+					grabbedRelease: grabResult.releaseName,
+					queueItemId: grabResult.queueItemId
+				});
+			}
+		}
+
+		return results;
 	}
 
 	/**
@@ -642,6 +971,13 @@ export class MonitoringSearchService {
 
 			logger.info({ count: missingEpisodes.length }, '[MonitoringSearch] Found missing episodes');
 
+			// Repair any stale hasFile flags before searching (hasFile=false but episodeFiles row exists)
+			const uniqueSeriesIds = [...new Set(missingEpisodes.map((e) => e.seriesId))];
+			const staleEpisodeIds = await this.repairStaleEpisodeHasFile(
+				missingEpisodes.map((e) => e.id),
+				uniqueSeriesIds
+			);
+
 			// Filter through specifications first
 			const missingSpec = new EpisodeMissingContentSpecification();
 			const monitoredSpec = new EpisodeMonitoredSpecification();
@@ -658,6 +994,9 @@ export class MonitoringSearchService {
 					logger.info('[MonitoringSearch] Missing episodes search cancelled during processing');
 					throw new TaskCancelledException('search');
 				}
+
+				// Skip episodes whose hasFile flag was stale (already repaired above)
+				if (staleEpisodeIds.has(episode.id)) continue;
 
 				if (!episode.series) continue;
 
@@ -1076,6 +1415,7 @@ export class MonitoringSearchService {
 				queueItemId?: string;
 				addedToQueue?: boolean;
 				error?: string;
+				rejectionType?: string;
 			} | null = null;
 
 			// Load scoring profile for explicit validation
@@ -1149,7 +1489,8 @@ export class MonitoringSearchService {
 				grabbed: grabResult?.success ?? false,
 				grabbedRelease: grabResult?.releaseName,
 				queueItemId: grabResult?.queueItemId,
-				error: grabResult?.error
+				error: grabResult?.error,
+				rejectionType: grabResult?.rejectionType
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
@@ -1319,6 +1660,26 @@ export class MonitoringSearchService {
 				});
 
 				if (existingFiles.length === 0) continue;
+
+				// Multi-quality movies: evaluate each filled bucket for within-tier
+				// upgrades instead of a single best-file baseline. The dry-run preview
+				// still uses the best-file path below for simplicity.
+				if (!dryRun) {
+					const multiCtx = await resolveMovieMultiQuality(
+						movie.desiredQualities,
+						movie.scoringProfileId
+					);
+					if (multiCtx.multiQuality) {
+						const bucketResults = await this.searchMovieQualityBucketUpgrades(
+							movie,
+							existingFiles,
+							multiCtx.effective,
+							{ signal, ignoreCooldown, cooldownHours }
+						);
+						results.push(...bucketResults);
+						continue;
+					}
+				}
 
 				const existingFile = this.selectBestExistingFile(existingFiles);
 
@@ -1866,7 +2227,8 @@ export class MonitoringSearchService {
 							grabbed: grabResult.success,
 							grabbedRelease: grabResult.releaseName,
 							queueItemId: grabResult.queueItemId,
-							error: grabResult.error
+							error: grabResult.error,
+							rejectionType: grabResult.rejectionType
 						}
 					};
 				}
@@ -2209,7 +2571,8 @@ export class MonitoringSearchService {
 							grabbed: grabResult.success,
 							grabbedRelease: grabResult.releaseName,
 							queueItemId: grabResult.queueItemId,
-							error: grabResult.error
+							error: grabResult.error,
+							rejectionType: grabResult.rejectionType
 						}
 					};
 				}
@@ -2475,6 +2838,7 @@ export class MonitoringSearchService {
 				queueItemId?: string;
 				addedToQueue?: boolean;
 				error?: string;
+				rejectionType?: string;
 			} | null = null;
 
 			// Load scoring profile for explicit validation
@@ -2542,7 +2906,8 @@ export class MonitoringSearchService {
 				grabbed: (grabResult?.success ?? false) && grabResult?.addedToQueue !== false,
 				grabbedRelease: grabResult?.releaseName,
 				queueItemId: grabResult?.queueItemId,
-				error: grabResult?.error
+				error: grabResult?.error,
+				rejectionType: grabResult?.rejectionType
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
@@ -2649,6 +3014,7 @@ export class MonitoringSearchService {
 				queueItemId?: string;
 				addedToQueue?: boolean;
 				error?: string;
+				rejectionType?: string;
 			} | null = null;
 
 			// Load scoring profile for explicit validation
@@ -2729,7 +3095,8 @@ export class MonitoringSearchService {
 				grabbed: (grabResult?.success ?? false) && grabResult?.addedToQueue !== false,
 				grabbedRelease: grabResult?.releaseName,
 				queueItemId: grabResult?.queueItemId,
-				error: grabResult?.error
+				error: grabResult?.error,
+				rejectionType: grabResult?.rejectionType
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
@@ -2833,6 +3200,7 @@ export class MonitoringSearchService {
 		success: boolean;
 		releaseName?: string;
 		error?: string;
+		rejectionType?: string;
 		queueItemId?: string;
 		addedToQueue?: boolean;
 	}> {
@@ -2887,6 +3255,7 @@ export class MonitoringSearchService {
 			success: result.success,
 			releaseName: result.success ? release.title : undefined,
 			error: result.error ?? (result.success ? undefined : result.decision?.reason),
+			rejectionType: result.success ? undefined : result.decision?.rejectionType,
 			queueItemId: result.download?.queueId,
 			addedToQueue: result.download?.addedToQueue
 		};
@@ -2896,12 +3265,21 @@ export class MonitoringSearchService {
 	 * Aggregate search results into summary
 	 */
 	private aggregateResults(items: ItemSearchResult[]): SearchResults {
+		const rejectionBreakdown: Record<string, number> = {};
+		for (const item of items) {
+			if (item.rejectionType) {
+				rejectionBreakdown[item.rejectionType] = (rejectionBreakdown[item.rejectionType] ?? 0) + 1;
+			}
+		}
+
 		const summary = {
 			searched: items.filter((i) => i.searched).length,
 			found: items.filter((i) => i.releasesFound > 0).length,
 			grabbed: items.filter((i) => i.grabbed).length,
 			skipped: items.filter((i) => i.skipped).length,
-			errors: items.filter((i) => i.error).length
+			errors: items.filter((i) => i.error).length,
+			rejectionBreakdown:
+				Object.keys(rejectionBreakdown).length > 0 ? rejectionBreakdown : undefined
 		};
 
 		return { items, summary };

@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm';
 import { scoreRelease, parseRelease } from './scorer.js';
 import { buildExistingAttrs, type ExistingFileRecord } from './utils.js';
 import { QualityFilter } from '../quality/QualityFilter.js';
+import { selectBestFile } from '../quality/buckets.js';
 import type { ScoringProfile, ScoringResult, ReleaseAttributes } from './types.js';
 import { BALANCED_PROFILE } from './profiles.js';
 
@@ -99,8 +100,11 @@ export async function computeMovieFileScore(movieId: string): Promise<FileScoreR
 		return null;
 	}
 
-	// Use the first file (primary file)
-	const file = files[0];
+	// Use the best file (highest resolution, prefer downloaded over .strm)
+	const file = selectBestFile(files);
+	if (!file) {
+		return null;
+	}
 
 	// Get the scoring profile
 	const profile = await getProfileForMedia(movie.scoringProfileId);

@@ -1,0 +1,15 @@
+{
+	"manifest_version": 3,
+	"name": "cinephage-shadow-unlock",
+	"version": "1.0",
+	"description": "Forces shadow roots open so automation can reach challenge widgets.",
+	"content_scripts": [
+		{
+			"matches": ["<all_urls>"],
+			"js": ["inject.js"],
+			"run_at": "document_start",
+			"all_frames": true,
+			"world": "MAIN"
+		}
+	]
+}

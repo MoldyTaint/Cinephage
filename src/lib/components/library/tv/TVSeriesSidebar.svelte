@@ -132,7 +132,7 @@
 					<dt class="text-base-content/60">{m.library_tvDetail_tvdbId()}</dt>
 					<dd>
 						<a
-							href="https://thetvdb.com/series/{series.tvdbId}"
+							href="https://thetvdb.com/dereferrer/series/{series.tvdbId}"
 							target="_blank"
 							rel="noopener noreferrer"
 							class="link link-primary"

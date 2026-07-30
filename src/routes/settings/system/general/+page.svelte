@@ -311,13 +311,28 @@
 
 			<div class="mt-2 text-sm text-base-content/70">
 				<div class="mb-2 font-semibold">{m.settings_system_permissions()}:</div>
-				<ul class="list-inside list-disc space-y-1">
-					<li class="text-success">{m.settings_system_permM3u()}</li>
-					<li class="text-success">{m.settings_system_permEpg()}</li>
-					<li class="text-success">{m.settings_system_permLiveTvStreams()}</li>
-					<li class="text-success">{m.settings_system_permStreamingContent()}</li>
-					<li class="text-error">{m.settings_system_permNoLibrary()}</li>
-					<li class="text-error">{m.settings_system_permNoSettings()}</li>
+				<ul class="flex flex-wrap gap-2">
+					<li>
+						<span class="badge badge-sm badge-success">{m.settings_system_permM3u()}</span>
+					</li>
+					<li>
+						<span class="badge badge-sm badge-success">{m.settings_system_permEpg()}</span>
+					</li>
+					<li>
+						<span class="badge badge-sm badge-success">{m.settings_system_permLiveTvStreams()}</span
+						>
+					</li>
+					<li>
+						<span class="badge badge-sm badge-success"
+							>{m.settings_system_permStreamingContent()}</span
+						>
+					</li>
+					<li>
+						<span class="badge badge-sm badge-error">{m.settings_system_permNoLibrary()}</span>
+					</li>
+					<li>
+						<span class="badge badge-sm badge-error">{m.settings_system_permNoSettings()}</span>
+					</li>
 				</ul>
 			</div>
 

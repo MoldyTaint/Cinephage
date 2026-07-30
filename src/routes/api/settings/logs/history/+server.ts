@@ -31,3 +31,16 @@ export const GET: RequestHandler = async (event) => {
 		return json({ success: false, error: 'Failed to load log history' }, { status: 500 });
 	}
 };
+
+export const DELETE: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	try {
+		await logHistoryService.clearAllFiles();
+		return json({ success: true });
+	} catch (error) {
+		logger.error({ err: error }, 'Failed to clear log history');
+		return json({ success: false, error: 'Failed to clear log history' }, { status: 500 });
+	}
+};

@@ -104,7 +104,7 @@ export class LibraryWatcherService extends EventEmitter {
 		const watcher = chokidar.watch(folderPath, {
 			persistent: true,
 			ignoreInitial: true,
-			followSymlinks: true,
+			followSymlinks: false,
 			depth: 10,
 			awaitWriteFinish: {
 				stabilityThreshold: 2000,

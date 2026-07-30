@@ -2,7 +2,6 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
 import { CINEPHAGE_STREAM_DEFINITION_ID } from '$lib/server/indexers/types';
-import { sanitizeStreamingIndexerSettings } from '$lib/server/streaming/settings';
 import { indexerUpdateSchema } from '$lib/validation/schemas';
 import { mergeBlankSensitiveIndexerSettings } from '$lib/server/indexers/settingsSecrets';
 import { createChildLogger } from '$lib/logging';
@@ -35,7 +34,12 @@ export const DELETE: RequestHandler = async (event) => {
 		await manager.deleteIndexer(params.id);
 		return json({ success: true });
 	} catch (error) {
-		if (error instanceof Error && error.message.includes('not found')) {
+		const message = error instanceof Error ? error.message : String(error);
+		// Built-in indexer delete attempts return a clear 403.
+		if (message.includes('built-in indexer')) {
+			return json({ error: message }, { status: 403 });
+		}
+		if (message.includes('not found')) {
 			throw new NotFoundError('Indexer', params.id);
 		}
 		throw error;
@@ -60,16 +64,18 @@ export const PUT: RequestHandler = async (event) => {
 	const definition = manager
 		.getUnifiedDefinitions()
 		.find((d) => d.id === existingIndexer.definitionId);
+	// Note: built-in indexers (cinephage-stream) have their settings managed
+	// by the CinephageAPI subsystem; the IndexerManager.updateIndexer guard
+	// rejects attempts to edit restricted fields. For non-built-in indexers,
+	// merge blank sensitive settings normally.
 	const settings =
 		validated.settings === undefined
 			? undefined
-			: isStreamingIndexer
-				? sanitizeStreamingIndexerSettings(validated.settings as Record<string, unknown> | null)
-				: mergeBlankSensitiveIndexerSettings(
-						validated.settings,
-						existingIndexer.settings,
-						definition?.settings
-					);
+			: mergeBlankSensitiveIndexerSettings(
+					validated.settings,
+					existingIndexer.settings,
+					definition?.settings
+				);
 
 	try {
 		const updated = await manager.updateIndexer(params.id, {
@@ -100,7 +106,11 @@ export const PUT: RequestHandler = async (event) => {
 			additionalCategories: validated.additionalCategories
 		});
 
-		// If streaming indexer's baseUrl changed, trigger bulk .strm file update
+		// If streaming indexer's baseUrl changed, trigger bulk .strm file update.
+		// In practice this path is dead after Phase 2 — cinephage-stream's baseUrl
+		// is owned by the subsystem and rejected by updateIndexer's guard. The
+		// subsystem's own settings endpoint triggers the strm update instead.
+		// Kept defensively in case of legacy callers.
 		if (isStreamingIndexer && newBaseUrl && oldBaseUrl !== newBaseUrl) {
 			logger.info(
 				{
@@ -136,7 +146,11 @@ export const PUT: RequestHandler = async (event) => {
 
 		return json({ success: true, indexer: redactIndexer(updated) });
 	} catch (error) {
-		if (error instanceof Error && error.message.includes('not found')) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (message.includes('built-in indexer') || message.includes('restricted field')) {
+			return json({ error: message }, { status: 403 });
+		}
+		if (message.includes('not found')) {
 			throw new NotFoundError('Indexer', params.id);
 		}
 		throw error;

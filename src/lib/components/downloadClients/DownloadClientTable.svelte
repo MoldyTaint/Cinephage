@@ -50,6 +50,9 @@
 			case 'sabnzbd':
 			case 'nzbget':
 				return m.common_usenet();
+			case 'realdebrid':
+			case 'torbox':
+				return m.downloadClient_protocol_debrid();
 			default:
 				return m.common_torrent();
 		}
@@ -71,6 +74,10 @@
 				return m.downloadClient_rtorrent();
 			case 'aria2':
 				return m.downloadClient_aria2();
+			case 'realdebrid':
+				return m.downloadClient_realdebrid();
+			case 'torbox':
+				return m.downloadClient_torbox();
 			default:
 				return implementation;
 		}
@@ -87,6 +94,10 @@
 	function getClientUrl(client: UnifiedClientItem): string {
 		const path = client.urlBase ? `/${client.urlBase.replace(/^\/+/, '')}` : '';
 		return `${client.useSsl ? 'https' : 'http'}://${client.host}:${client.port}${path}`;
+	}
+
+	function isDebrid(client: UnifiedClientItem): boolean {
+		return client.implementation === 'realdebrid' || client.implementation === 'torbox';
 	}
 
 	const allSelected = $derived(clients.length > 0 && clients.every((c) => selectedIds.has(c.id)));
@@ -162,20 +173,20 @@
 					<span class="badge badge-outline badge-sm">
 						{getProtocolLabel(client.implementation)}
 					</span>
-					<span class="badge badge-ghost badge-sm"
-						>{m.common_movies()}: {client.movieCategory ?? '-'}</span
-					>
-					<span class="badge badge-ghost badge-sm"
-						>{m.common_tvShows()}: {client.tvCategory ?? '-'}</span
-					>
+					{#if !isDebrid(client)}<span class="badge badge-ghost badge-sm"
+							>{m.common_movies()}: {client.movieCategory ?? '-'}</span
+						>
+						<span class="badge badge-ghost badge-sm"
+							>{m.common_tvShows()}: {client.tvCategory ?? '-'}</span
+						>{/if}
 				</div>
 
-				<div
-					class="mb-3 min-w-0 truncate font-mono text-xs text-base-content/60"
-					title={getClientUrl(client)}
-				>
-					{getClientUrl(client)}
-				</div>
+				{#if !isDebrid(client)}<div
+						class="mb-3 min-w-0 truncate font-mono text-xs text-base-content/60"
+						title={getClientUrl(client)}
+					>
+						{getClientUrl(client)}
+					</div>{/if}
 
 				<div class="grid gap-1.5 {onTest ? 'grid-cols-4' : 'grid-cols-3'}">
 					{#if onTest}
@@ -321,17 +332,19 @@
 							>
 						</td>
 						<td>
-							<div class="font-mono text-sm">{getClientUrl(client)}</div>
+							{#if !isDebrid(client)}<div class="font-mono text-sm">
+									{getClientUrl(client)}
+								</div>{/if}
 						</td>
 						<td>
-							<div class="flex flex-col gap-1">
-								<span class="badge badge-ghost badge-sm"
-									>{m.common_movies()}: {client.movieCategory ?? '-'}</span
-								>
-								<span class="badge badge-ghost badge-sm"
-									>{m.common_tvShows()}: {client.tvCategory ?? '-'}</span
-								>
-							</div>
+							{#if !isDebrid(client)}<div class="flex flex-col gap-1">
+									<span class="badge badge-ghost badge-sm"
+										>{m.common_movies()}: {client.movieCategory ?? '-'}</span
+									>
+									<span class="badge badge-ghost badge-sm"
+										>{m.common_tvShows()}: {client.tvCategory ?? '-'}</span
+									>
+								</div>{/if}
 						</td>
 						<td class="pl-4!">
 							<div class="flex gap-0">

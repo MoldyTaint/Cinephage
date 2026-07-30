@@ -65,6 +65,8 @@
 	const isDeleteTargetProwlarr = $derived.by(() => {
 		const prowlarrBase = data.prowlarrConnection?.url?.replace(/\/+$/, '');
 		if (!prowlarrBase || !deleteTarget) return false;
+		if (deleteTarget.definitionId !== 'prowlarr') return false;
+		if ((deleteTarget.settings as Record<string, string> | null)?.aggregate === 'true') return true;
 		if (!deleteTarget.baseUrl.startsWith(prowlarrBase + '/')) return false;
 		const suffix = deleteTarget.baseUrl.slice(prowlarrBase.length + 1).replace(/\/+$/, '');
 		return /^\d+$/.test(suffix);
@@ -500,16 +502,22 @@
 
 	async function handleReorder(indexerIds: string[]) {
 		try {
-			for (const [index, id] of indexerIds.entries()) {
-				await updateIndexerById(id, { priority: index + 1 }, 'Failed to reorder priorities');
-			}
-
-			await invalidateAll();
+			await Promise.all(
+				indexerIds.map((id, index) =>
+					updateIndexerById(id, { priority: index + 1 }, 'Failed to reorder priorities')
+				)
+			);
 		} catch (e) {
 			toasts.error(e instanceof Error ? e.message : 'Failed to reorder priorities');
+		} finally {
+			await invalidateAll();
 		}
 	}
 </script>
+
+<svelte:head>
+	<title>{m.nav_indexers()}</title>
+</svelte:head>
 
 <SettingsPage title={m.nav_indexers()} subtitle={m.settings_integrations_indexers_subtitle()}>
 	{#snippet actions()}

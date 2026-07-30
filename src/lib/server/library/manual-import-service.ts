@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { readdir, stat, unlink } from 'node:fs/promises';
-import { eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.js';
-import { movies, rootFolders, series, unmatchedFiles } from '$lib/server/db/schema.js';
+import { episodes, movies, rootFolders, series, unmatchedFiles } from '$lib/server/db/schema.js';
 import { tmdb } from '$lib/server/tmdb.js';
 import { createChildLogger } from '$lib/logging';
 
@@ -20,8 +20,11 @@ import {
 import {
 	ensureDirectory,
 	ImportMode,
-	transferFileWithMode
+	transferFileWithMode,
+	hasSufficientDiskSpace,
+	removeEmptyDirectories
 } from '$lib/server/downloadClients/import/FileTransfer.js';
+import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 import {
 	validateRootFolder,
 	getAnimeSubtypeEnforcement,
@@ -67,6 +70,7 @@ interface ManualImportDetectionData {
 	parsedYear?: number;
 	parsedSeason?: number;
 	parsedEpisode?: number;
+	parsedEpisodes?: number[];
 	inferredMediaType: MediaType;
 	matches: ManualImportMatch[];
 }
@@ -94,6 +98,8 @@ export interface ExecuteManualImportRequest {
 	libraryId?: string;
 	seasonNumber?: number;
 	episodeNumber?: number;
+	/** Override the global file management import mode for this specific import */
+	importMode?: 'move' | 'copy' | 'symlink';
 }
 
 export interface ExecuteManualImportResult {
@@ -185,12 +191,39 @@ export class ManualImportService {
 		const normalizedGroupPath = resolve(groupPath);
 		const sourceFiles = await this.resolveSourceFiles(normalizedGroupPath);
 		const selectedFile = this.selectPrimarySourceFile(sourceFiles);
+		const isStrmFile = extname(selectedFile.path).toLowerCase() === '.strm';
+
 		const fileStem = getMediaParseStem(selectedFile.path);
-		const parsed = parseRelease(fileStem);
-		const tvIdentifier = resolveTvEpisodeIdentifier({
+		const fileParsed = parseRelease(fileStem);
+		const fileTvIdentifier = resolveTvEpisodeIdentifier({
 			filePath: selectedFile.path,
-			parsed
+			parsed: fileParsed
 		});
+
+		// When the selected file is a .strm placeholder (e.g. nzbdav) or has no
+		// recognisable title, the release info lives in the parent folder name instead.
+		// Use dirname(selectedFile.path) so this works whether the group was resolved
+		// as a file path or a folder path.
+		let parsed = fileParsed;
+		let tvIdentifier = fileTvIdentifier;
+		if (isStrmFile || !fileParsed.cleanTitle) {
+			const parentFolderName = basename(dirname(selectedFile.path));
+			const folderStem = getMediaParseStem(parentFolderName);
+			const folderParsed = parseRelease(folderStem);
+			if (
+				folderParsed.cleanTitle &&
+				this.isMeaningfulTitleCandidate(folderParsed.cleanTitle) &&
+				(!fileParsed.cleanTitle || isStrmFile)
+			) {
+				parsed = folderParsed;
+				tvIdentifier = resolveTvEpisodeIdentifier({
+					filePath: selectedFile.path,
+					fileName: parentFolderName,
+					parsed: folderParsed
+				});
+			}
+		}
+
 		const parsedTitle = parsed.cleanTitle || fileStem;
 		const inferredMediaType: MediaType = preferredMediaType || (tvIdentifier ? 'tv' : 'movie');
 		const titleCandidates = this.buildTitleCandidatesForMatching({
@@ -234,6 +267,10 @@ export class ManualImportService {
 					: tvIdentifier?.numbering === 'absolute'
 						? tvIdentifier.absoluteEpisode
 						: undefined,
+			parsedEpisodes:
+				tvIdentifier?.numbering === 'standard' && tvIdentifier.episodeNumbers.length > 1
+					? tvIdentifier.episodeNumbers
+					: undefined,
 			inferredMediaType,
 			matches: enrichedMatches
 		};
@@ -299,11 +336,66 @@ export class ManualImportService {
 		return sanitized;
 	}
 
+	// Generic container/library folder names that should never be used as TMDB search terms.
+	// These match common download client, media server, and root library folder conventions.
+	private static readonly GENERIC_FOLDER_NAMES = new Set([
+		'movies',
+		'movie',
+		'films',
+		'film',
+		'tv',
+		'tvshows',
+		'tv shows',
+		'shows',
+		'series',
+		'episodes',
+		'anime',
+		'animation',
+		'cartoons',
+		'downloads',
+		'download',
+		'completed',
+		'complete',
+		'completed-downloads',
+		'incomplete',
+		'downloading',
+		'seeding',
+		'media',
+		'videos',
+		'video',
+		'content',
+		'incoming',
+		'unsorted',
+		'import',
+		'imports',
+		'manual',
+		'nzb',
+		'nzbdav',
+		'usenet',
+		'torrents',
+		'torrent',
+		'blackhole',
+		'watch',
+		'auto',
+		'mnt',
+		'mount',
+		'data',
+		'storage',
+		'external',
+		'volume',
+		'plex',
+		'jellyfin',
+		'emby',
+		'kodi',
+		'library'
+	]);
+
 	private isMeaningfulTitleCandidate(candidate: string): boolean {
 		const trimmed = candidate.trim();
 		if (trimmed.length < 2) return false;
 		if (/^\d+$/.test(trimmed)) return false;
 		if (/^(?:s\d{1,3}|season\s*\d{1,3})$/i.test(trimmed)) return false;
+		if (ManualImportService.GENERIC_FOLDER_NAMES.has(trimmed.toLowerCase())) return false;
 		return true;
 	}
 
@@ -461,7 +553,8 @@ export class ManualImportService {
 			await this.transferSourceFile(
 				sourceFile.path,
 				destinationPath,
-				rootFolder.preserveSymlinks ?? false
+				rootFolder.preserveSymlinks ?? false,
+				request.importMode
 			);
 			const unmatchedId = await this.insertUnmatchedImportRecord({
 				destinationPath,
@@ -480,7 +573,10 @@ export class ManualImportService {
 				throw new Error('Cannot import to read-only root folder');
 			}
 
-			const episodeTitleCache = new Map<number, Map<number, string | undefined>>();
+			const episodeMetaCache = new Map<
+				number,
+				Map<number, { title?: string; absoluteNumber?: number; airDate?: string }>
+			>();
 			const tvFiles = this.selectTvSourceFiles(sourceFiles);
 			const destinationSet = new Set<string>();
 
@@ -500,19 +596,24 @@ export class ManualImportService {
 					);
 				}
 
-				const episodeTitle = await this.getEpisodeTitleCached(
+				const primaryEpisodeNumber = fileMapping.episodeNumbers[0];
+				const episodeMeta = await this.getEpisodeMetaCached(
 					request.tmdbId,
 					fileMapping.seasonNumber,
-					fileMapping.episodeNumber,
-					episodeTitleCache
+					primaryEpisodeNumber,
+					episodeMetaCache,
+					tvContext.existingSeriesDbId,
+					tvContext.tmdbSeriesSeasons
 				);
 				const namingInfo = await this.buildEpisodeNamingInfo(
 					sourceFile.path,
 					parsed,
 					tvContext.namingInfoBase,
 					fileMapping.seasonNumber,
-					fileMapping.episodeNumber,
-					episodeTitle
+					fileMapping.episodeNumbers,
+					episodeMeta.title,
+					episodeMeta.absoluteNumber,
+					episodeMeta.airDate
 				);
 				const destinationPath = this.buildEpisodeDestinationPath(
 					rootFolder.path,
@@ -533,7 +634,8 @@ export class ManualImportService {
 				await this.transferSourceFile(
 					sourceFile.path,
 					destinationPath,
-					rootFolder.preserveSymlinks ?? false
+					rootFolder.preserveSymlinks ?? false,
+					request.importMode
 				);
 				const unmatchedId = await this.insertUnmatchedImportRecord({
 					destinationPath,
@@ -542,7 +644,7 @@ export class ManualImportService {
 					parsedTitle: parsed.cleanTitle || sourceBaseName,
 					parsedYear: parsed.year,
 					parsedSeason: fileMapping.seasonNumber,
-					parsedEpisode: fileMapping.episodeNumber,
+					parsedEpisode: primaryEpisodeNumber,
 					tmdbId: request.tmdbId
 				});
 
@@ -550,7 +652,7 @@ export class ManualImportService {
 				unmatchedIds.push(unmatchedId);
 				episodeMapping[unmatchedId] = {
 					season: fileMapping.seasonNumber,
-					episode: fileMapping.episodeNumber
+					episode: primaryEpisodeNumber
 				};
 			}
 		}
@@ -674,9 +776,11 @@ export class ManualImportService {
 				.select({
 					id: movies.id,
 					title: movies.title,
+					originalTitle: movies.originalTitle,
 					year: movies.year,
 					path: movies.path,
 					imdbId: movies.imdbId,
+					collectionName: movies.collectionName,
 					rootFolderId: movies.rootFolderId
 				})
 				.from(movies)
@@ -706,9 +810,11 @@ export class ManualImportService {
 				folderName: movie.path,
 				namingInfoBase: {
 					title: movie.title,
+					originalTitle: movie.originalTitle ?? undefined,
 					year: movie.year ?? undefined,
 					tmdbId: request.tmdbId,
-					imdbId: movie.imdbId ?? undefined
+					imdbId: movie.imdbId ?? undefined,
+					collectionName: movie.collectionName ?? undefined
 				}
 			};
 		}
@@ -749,8 +855,11 @@ export class ManualImportService {
 			: undefined;
 		const folderName = this.namingService.generateMovieFolderName({
 			title: tmdbMovie.title,
+			originalTitle: tmdbMovie.original_title || undefined,
 			year,
-			tmdbId: request.tmdbId
+			tmdbId: request.tmdbId,
+			imdbId: externalIds.imdb_id ?? undefined,
+			collectionName: tmdbMovie.belongs_to_collection?.name ?? undefined
 		});
 
 		return {
@@ -758,9 +867,11 @@ export class ManualImportService {
 			folderName,
 			namingInfoBase: {
 				title: tmdbMovie.title,
+				originalTitle: tmdbMovie.original_title || undefined,
 				year,
 				tmdbId: request.tmdbId,
-				imdbId: externalIds.imdb_id ?? undefined
+				imdbId: externalIds.imdb_id ?? undefined,
+				collectionName: tmdbMovie.belongs_to_collection?.name ?? undefined
 			}
 		};
 	}
@@ -770,18 +881,22 @@ export class ManualImportService {
 		seriesFolderName: string;
 		useSeasonFolders: boolean;
 		namingInfoBase: MediaNamingInfo;
+		existingSeriesDbId?: string;
+		tmdbSeriesSeasons?: Array<{ season_number: number; episode_count: number }>;
 	}> {
 		if (request.importTarget === 'existing') {
 			const [show] = await db
 				.select({
 					id: series.id,
 					title: series.title,
+					originalTitle: series.originalTitle,
 					year: series.year,
 					path: series.path,
 					imdbId: series.imdbId,
 					tvdbId: series.tvdbId,
 					seasonFolder: series.seasonFolder,
-					rootFolderId: series.rootFolderId
+					rootFolderId: series.rootFolderId,
+					seriesType: series.seriesType
 				})
 				.from(series)
 				.where(eq(series.tmdbId, request.tmdbId))
@@ -809,12 +924,16 @@ export class ManualImportService {
 				rootFolder,
 				seriesFolderName: show.path,
 				useSeasonFolders: show.seasonFolder ?? true,
+				existingSeriesDbId: show.id,
 				namingInfoBase: {
 					title: show.title,
+					originalTitle: show.originalTitle ?? undefined,
 					year: show.year ?? undefined,
 					tmdbId: request.tmdbId,
 					tvdbId: show.tvdbId ?? undefined,
-					imdbId: show.imdbId ?? undefined
+					imdbId: show.imdbId ?? undefined,
+					isAnime: show.seriesType === 'anime',
+					isDaily: show.seriesType === 'daily'
 				}
 			};
 		}
@@ -856,21 +975,26 @@ export class ManualImportService {
 			: undefined;
 		const seriesFolderName = this.namingService.generateSeriesFolderName({
 			title: tvShow.name,
+			originalTitle: tvShow.original_name || undefined,
 			year,
 			tmdbId: request.tmdbId,
-			tvdbId: externalIds.tvdb_id ?? undefined
+			tvdbId: externalIds.tvdb_id ?? undefined,
+			imdbId: externalIds.imdb_id ?? undefined
 		});
 
 		return {
 			rootFolder,
 			seriesFolderName,
 			useSeasonFolders: true,
+			tmdbSeriesSeasons: tvShow.seasons,
 			namingInfoBase: {
 				title: tvShow.name,
+				originalTitle: tvShow.original_name || undefined,
 				year,
 				tmdbId: request.tmdbId,
 				tvdbId: externalIds.tvdb_id ?? undefined,
-				imdbId: externalIds.imdb_id ?? undefined
+				imdbId: externalIds.imdb_id ?? undefined,
+				isAnime: rootFolder.mediaSubType === 'anime' || isAnimeMedia
 			}
 		};
 	}
@@ -894,35 +1018,95 @@ export class ManualImportService {
 		throw new Error('Destination library is required for new imports');
 	}
 
-	private async getEpisodeTitle(
-		tmdbId: number,
-		seasonNumber: number,
-		episodeNumber: number
-	): Promise<string | undefined> {
-		try {
-			const tmdbSeason = await tmdb.getSeason(tmdbId, seasonNumber);
-			return tmdbSeason.episodes?.find((ep) => ep.episode_number === episodeNumber)?.name;
-		} catch {
-			return undefined;
-		}
-	}
-
-	private async getEpisodeTitleCached(
+	private async getEpisodeMeta(
 		tmdbId: number,
 		seasonNumber: number,
 		episodeNumber: number,
-		cache: Map<number, Map<number, string | undefined>>
-	): Promise<string | undefined> {
-		const cachedSeason = cache.get(seasonNumber);
-		if (cachedSeason && cachedSeason.has(episodeNumber)) {
-			return cachedSeason.get(episodeNumber);
+		existingSeriesDbId?: string,
+		tmdbSeriesSeasons?: Array<{ season_number: number; episode_count: number }>
+	): Promise<{ title?: string; absoluteNumber?: number; airDate?: string }> {
+		let absoluteNumber: number | undefined;
+
+		if (existingSeriesDbId) {
+			// Walk all episodes in order (same algorithm as RenamePreviewService.buildAbsoluteEpisodeFallbackMap)
+			// so null absolute numbers are filled in sequentially rather than dropped.
+			const allEps = await db
+				.select({
+					seasonNumber: episodes.seasonNumber,
+					episodeNumber: episodes.episodeNumber,
+					absoluteEpisodeNumber: episodes.absoluteEpisodeNumber
+				})
+				.from(episodes)
+				.where(and(eq(episodes.seriesId, existingSeriesDbId), gt(episodes.seasonNumber, 0)))
+				.orderBy(asc(episodes.seasonNumber), asc(episodes.episodeNumber));
+
+			let lastAbsolute = 0;
+			for (const ep of allEps) {
+				if (ep.absoluteEpisodeNumber != null && ep.absoluteEpisodeNumber > 0) {
+					lastAbsolute = ep.absoluteEpisodeNumber;
+				} else {
+					lastAbsolute++;
+				}
+				if (ep.seasonNumber === seasonNumber && ep.episodeNumber === episodeNumber) {
+					absoluteNumber = lastAbsolute;
+					break;
+				}
+			}
 		}
 
-		const episodeTitle = await this.getEpisodeTitle(tmdbId, seasonNumber, episodeNumber);
-		const seasonCache = cache.get(seasonNumber) ?? new Map<number, string | undefined>();
-		seasonCache.set(episodeNumber, episodeTitle);
+		try {
+			const tmdbSeason = await tmdb.getSeason(tmdbId, seasonNumber);
+			const ep = tmdbSeason.episodes?.find((e) => e.episode_number === episodeNumber);
+
+			// For new series: TMDB absolute_episode_number is the primary source.
+			// If absent, compute from the series season list (already fetched with the show).
+			if (absoluteNumber === undefined) {
+				absoluteNumber = ep?.absolute_episode_number ?? undefined;
+
+				if (absoluteNumber === undefined && tmdbSeriesSeasons) {
+					const priorEpisodeCount = tmdbSeriesSeasons
+						.filter((s) => s.season_number > 0 && s.season_number < seasonNumber)
+						.reduce((sum, s) => sum + s.episode_count, 0);
+					absoluteNumber = priorEpisodeCount + episodeNumber;
+				}
+			}
+
+			return {
+				title: ep?.name,
+				absoluteNumber,
+				airDate: ep?.air_date || undefined
+			};
+		} catch {
+			return { absoluteNumber };
+		}
+	}
+
+	private async getEpisodeMetaCached(
+		tmdbId: number,
+		seasonNumber: number,
+		episodeNumber: number,
+		cache: Map<number, Map<number, { title?: string; absoluteNumber?: number; airDate?: string }>>,
+		existingSeriesDbId?: string,
+		tmdbSeriesSeasons?: Array<{ season_number: number; episode_count: number }>
+	): Promise<{ title?: string; absoluteNumber?: number; airDate?: string }> {
+		const cachedSeason = cache.get(seasonNumber);
+		if (cachedSeason?.has(episodeNumber)) {
+			return cachedSeason.get(episodeNumber)!;
+		}
+
+		const meta = await this.getEpisodeMeta(
+			tmdbId,
+			seasonNumber,
+			episodeNumber,
+			existingSeriesDbId,
+			tmdbSeriesSeasons
+		);
+		const seasonCache =
+			cache.get(seasonNumber) ??
+			new Map<number, { title?: string; absoluteNumber?: number; airDate?: string }>();
+		seasonCache.set(episodeNumber, meta);
 		cache.set(seasonNumber, seasonCache);
-		return episodeTitle;
+		return meta;
 	}
 
 	private async resolveDetectionGroupPaths(pathValue: string): Promise<string[]> {
@@ -1238,7 +1422,7 @@ export class ManualImportService {
 		request: ExecuteManualImportRequest,
 		totalFiles: number,
 		sourceFilePath: string
-	): { seasonNumber: number; episodeNumber: number } | null {
+	): { seasonNumber: number; episodeNumbers: number[] } | null {
 		const resolved = resolveTvEpisodeIdentifier({
 			filePath: sourceFilePath,
 			parsed,
@@ -1248,7 +1432,7 @@ export class ManualImportService {
 		if (resolved?.numbering === 'standard') {
 			return {
 				seasonNumber: resolved.seasonNumber,
-				episodeNumber: resolved.episodeNumbers[0]
+				episodeNumbers: resolved.episodeNumbers
 			};
 		}
 
@@ -1258,25 +1442,67 @@ export class ManualImportService {
 
 		return {
 			seasonNumber: request.seasonNumber ?? 1,
-			episodeNumber: request.episodeNumber ?? 1
+			episodeNumbers: request.episodeNumber != null ? [request.episodeNumber] : [1]
 		};
 	}
 
 	private async transferSourceFile(
 		sourcePath: string,
 		destinationPath: string,
-		preserveSymlinks: boolean
-	): Promise<void> {
+		preserveSymlinks: boolean,
+		importModeOverride?: 'move' | 'copy' | 'symlink'
+	): Promise<{ transferMode: string }> {
 		await ensureDirectory(dirname(destinationPath));
+
+		const settings = await getFileManagementSettings();
+		const effectiveMode = importModeOverride ?? settings.importMode;
+		const canMoveFiles = effectiveMode === 'move';
+		const importMode =
+			effectiveMode === 'symlink'
+				? ImportMode.Symlink
+				: canMoveFiles
+					? ImportMode.Auto
+					: ImportMode.HardlinkOrCopy;
+
+		if (settings.minimumFreeSpaceGb > 0) {
+			const destDir = dirname(destinationPath);
+			const hasSpace = await hasSufficientDiskSpace(destDir, settings.minimumFreeSpaceGb);
+			if (!hasSpace) {
+				throw new Error(
+					`Insufficient disk space on destination: less than ${settings.minimumFreeSpaceGb} GB free`
+				);
+			}
+		}
+
 		const transferResult = await transferFileWithMode(sourcePath, destinationPath, {
-			importMode: ImportMode.HardlinkOrCopy,
-			canMoveFiles: false,
-			preserveSymlinks
+			importMode,
+			canMoveFiles,
+			preserveSymlinks,
+			preferHardlink: settings.preferHardlink
 		});
 
 		if (!transferResult.success) {
 			throw new Error(transferResult.error || 'Failed to transfer source file');
 		}
+
+		const action =
+			transferResult.mode === 'hardlink'
+				? 'Hardlinked'
+				: transferResult.mode === 'move'
+					? 'Moved'
+					: transferResult.mode === 'symlink'
+						? 'Symlinked'
+						: 'Copied';
+		logger.info(
+			{ source: basename(sourcePath), dest: basename(destinationPath), mode: transferResult.mode },
+			`[ManualImport] ${action}: ${basename(sourcePath)}`
+		);
+
+		if (settings.deleteEmptyFolders && transferResult.mode === 'move') {
+			await removeEmptyDirectories(dirname(sourcePath), resolve(dirname(sourcePath), '..'));
+		}
+
+		return { transferMode: transferResult.mode };
 	}
 
 	private async insertUnmatchedImportRecord(input: {
@@ -1330,16 +1556,20 @@ export class ManualImportService {
 		parsed: ReturnType<typeof parseRelease>,
 		namingInfoBase: MediaNamingInfo,
 		seasonNumber: number,
-		episodeNumber: number,
-		episodeTitle?: string
+		episodeNumbers: number[],
+		episodeTitle?: string,
+		absoluteNumber?: number,
+		airDate?: string
 	): Promise<MediaNamingInfo> {
 		const probedInfo = await this.probeMediaInfoForNaming(sourceFilePath);
 		return this.enrichNamingInfo(
 			{
 				...namingInfoBase,
 				seasonNumber,
-				episodeNumbers: [episodeNumber],
-				episodeTitle
+				episodeNumbers,
+				episodeTitle,
+				absoluteNumber,
+				airDate
 			},
 			parsed,
 			sourceFilePath,
@@ -1352,8 +1582,10 @@ export class ManualImportService {
 		height?: number;
 		videoCodec?: string;
 		videoHdrFormat?: string;
+		videoBitDepth?: number;
 		audioCodec?: string;
 		audioChannels?: number;
+		audioLanguages?: string[];
 	} | null> {
 		try {
 			return await mediaInfoService.extractMediaInfo(sourceFilePath, { allowStrmProbe: true });
@@ -1378,8 +1610,10 @@ export class ManualImportService {
 			height?: number;
 			videoCodec?: string;
 			videoHdrFormat?: string;
+			videoBitDepth?: number;
 			audioCodec?: string;
 			audioChannels?: number;
+			audioLanguages?: string[];
 		} | null
 	): MediaNamingInfo {
 		const parsedNamingInfo = releaseToNamingInfo(parsed, sourceFilePath);
@@ -1387,8 +1621,10 @@ export class ManualImportService {
 		const parsedResolution = this.normalizeMetadataToken(parsedNamingInfo.resolution);
 		const parsedCodec = this.normalizeMetadataToken(parsedNamingInfo.codec);
 		const parsedHdr = this.normalizeMetadataToken(parsedNamingInfo.hdr);
+		const parsedBitDepth = this.normalizeMetadataToken(parsedNamingInfo.bitDepth);
 		const parsedAudioCodec = this.normalizeMetadataToken(parsedNamingInfo.audioCodec);
 		const parsedAudioChannels = this.normalizeMetadataToken(parsedNamingInfo.audioChannels);
+		const parsedReleaseGroup = this.normalizeMetadataToken(parsedNamingInfo.releaseGroup);
 
 		return {
 			...parsedNamingInfo,
@@ -1396,11 +1632,22 @@ export class ManualImportService {
 			resolution: parsedResolution ?? this.mapMediaInfoResolution(probedInfo),
 			codec: parsedCodec ?? this.mapMediaInfoCodec(probedInfo?.videoCodec),
 			hdr: parsedHdr ?? this.mapMediaInfoHdr(probedInfo?.videoHdrFormat),
+			bitDepth: parsedBitDepth ?? this.mapMediaInfoBitDepth(probedInfo?.videoBitDepth),
 			audioCodec: parsedAudioCodec ?? this.normalizeMetadataToken(probedInfo?.audioCodec),
 			audioChannels:
 				parsedAudioChannels ?? this.mapMediaInfoAudioChannels(probedInfo?.audioChannels),
+			audioLanguages:
+				probedInfo?.audioLanguages && probedInfo.audioLanguages.length > 0
+					? probedInfo.audioLanguages
+					: parsedNamingInfo.audioLanguages,
+			releaseGroup: parsedReleaseGroup,
 			originalExtension: extname(sourceFilePath)
 		};
+	}
+
+	private mapMediaInfoBitDepth(bitDepth?: number): string | undefined {
+		if (!bitDepth || bitDepth <= 0) return undefined;
+		return `${bitDepth}`;
 	}
 
 	private normalizeMetadataToken(value?: string | null): string | undefined {

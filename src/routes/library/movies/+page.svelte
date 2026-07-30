@@ -11,8 +11,7 @@
 	import BulkQualityProfileModal from '$lib/components/library/BulkQualityProfileModal.svelte';
 	import BulkDeleteModal from '$lib/components/library/BulkDeleteModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
-	import InteractiveSearchModal from '$lib/components/search/InteractiveSearchModal.svelte';
-	import type { Release } from '$lib/components/search/SearchResultRow.svelte';
+	import { MediaSearchModal } from '$lib/components/search';
 	import {
 		Clapperboard,
 		X,
@@ -39,7 +38,6 @@
 		updateMovie,
 		deleteMovie
 	} from '$lib/api/library.js';
-	import { grabRelease } from '$lib/api/downloads.js';
 	import { ApiError } from '$lib/api/client.js';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { createSubtitleProgress } from '$lib/stores/subtitleProgress.svelte';
@@ -136,9 +134,6 @@
 	let selectedMovieForSearch = $state<(typeof data.movies)[number] | null>(null);
 	let autoSearchingIds = new SvelteSet<string>();
 	const searchProgress = createSearchProgress();
-	const defaultScoringProfileId = $derived.by(
-		() => data.qualityProfiles.find((profile) => profile.isDefault)?.id ?? null
-	);
 
 	const selectedCount = $derived(selectedMovies.size);
 
@@ -379,49 +374,6 @@
 		if (!movie) return;
 		selectedMovieForSearch = movie;
 		isSearchModalOpen = true;
-	}
-
-	async function handleGrabRelease(release: Release, streaming?: boolean) {
-		if (!selectedMovieForSearch)
-			return { success: false, error: m.toast_library_movies_failedToGrab() };
-
-		try {
-			const result = await grabRelease({
-				guid: release.guid,
-				downloadUrl: release.downloadUrl,
-				magnetUrl: release.magnetUrl,
-				infoHash: release.infoHash,
-				title: release.title,
-				indexerId: release.indexerId,
-				indexerName: release.indexerName,
-				protocol: release.protocol,
-				size: release.size,
-				movieId: selectedMovieForSearch.id,
-				mediaType: 'movie',
-				quality: release.parsed
-					? {
-							resolution: release.parsed.resolution,
-							source: release.parsed.source,
-							codec: release.parsed.codec,
-							hdr: release.parsed.hdr
-						}
-					: undefined,
-				streamUsenet: streaming,
-				commentsUrl: release.commentsUrl
-			});
-			if (result.success) {
-				toasts.success(m.toast_library_movies_grabbed({ title: release.title }));
-				return { success: true };
-			} else {
-				toasts.error(result.error || m.toast_library_movies_failedToGrab());
-				return { success: false, error: result.error, errorCode: result.errorCode };
-			}
-		} catch (error) {
-			toasts.error(
-				error instanceof ApiError ? error.message : m.toast_library_movies_failedToGrab()
-			);
-			return { success: false, error: m.toast_library_movies_failedToGrab() };
-		}
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -837,13 +789,23 @@
 			</div>
 		{:else if filteredMovies.length === 0 && searchQuery}
 			<!-- Search Empty State -->
-			<div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
-				<Search class="mb-4 h-16 w-16" />
-				<p class="text-2xl font-bold">{m.library_movies_noSearchMatch({ query: searchQuery })}</p>
-				<p class="mt-2">{m.library_movies_tryDifferentSearch()}</p>
-				<button class="btn mt-6 btn-ghost" onclick={() => (searchQuery = '')}>
-					{m.library_movies_clearSearchBtn()}
-				</button>
+			<div class="flex flex-col items-center justify-center py-20 text-center">
+				<div class="opacity-50">
+					<Search class="mb-4 h-16 w-16 mx-auto" />
+					<p class="text-2xl font-bold">{m.library_movies_noSearchMatch({ query: searchQuery })}</p>
+					<p class="mt-2">{m.library_movies_tryDifferentSearch()}</p>
+				</div>
+				<div class="mt-6 flex gap-3">
+					<button class="btn btn-ghost" onclick={() => (searchQuery = '')}>
+						{m.library_movies_clearSearchBtn()}
+					</button>
+					<a
+						href={resolvePath(`/discover?type=movie&q=${encodeURIComponent(searchQuery)}`)}
+						class="btn btn-primary"
+					>
+						Search in Discover
+					</a>
+				</div>
 			</div>
 		{:else if data.movies.length === 0}
 			<!-- Empty State -->
@@ -1099,21 +1061,11 @@
 />
 
 <!-- Interactive Search Modal -->
-{#if selectedMovieForSearch}
-	<InteractiveSearchModal
-		open={isSearchModalOpen}
-		title={selectedMovieForSearch.title}
-		tmdbId={selectedMovieForSearch.tmdbId}
-		imdbId={selectedMovieForSearch.imdbId ?? undefined}
-		year={selectedMovieForSearch.year ?? undefined}
-		mediaType="movie"
-		scoringProfileId={selectedMovieForSearch.scoringProfileId ??
-			defaultScoringProfileId ??
-			undefined}
-		onClose={() => {
-			isSearchModalOpen = false;
-			selectedMovieForSearch = null;
-		}}
-		onGrab={handleGrabRelease}
-	/>
-{/if}
+<MediaSearchModal
+	open={isSearchModalOpen}
+	movieId={selectedMovieForSearch?.id}
+	onClose={() => {
+		isSearchModalOpen = false;
+		selectedMovieForSearch = null;
+	}}
+/>

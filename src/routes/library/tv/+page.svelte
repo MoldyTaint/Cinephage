@@ -11,8 +11,7 @@
 	import BulkQualityProfileModal from '$lib/components/library/BulkQualityProfileModal.svelte';
 	import BulkDeleteModal from '$lib/components/library/BulkDeleteModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
-	import InteractiveSearchModal from '$lib/components/search/InteractiveSearchModal.svelte';
-	import type { Release } from '$lib/components/search/SearchResultRow.svelte';
+	import { MediaSearchModal } from '$lib/components/search';
 	import {
 		Tv,
 		X,
@@ -35,7 +34,6 @@
 		updateSeries,
 		deleteSeries
 	} from '$lib/api/library.js';
-	import { grabRelease } from '$lib/api/downloads.js';
 	import { ApiError } from '$lib/api/client.js';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
@@ -87,9 +85,6 @@
 	let selectedSeriesForSearch = $state<(typeof data.series)[number] | null>(null);
 	let autoSearchingIds = new SvelteSet<string>();
 	const searchProgress = createSearchProgress();
-	const defaultScoringProfileId = $derived.by(
-		() => data.qualityProfiles.find((profile) => profile.isDefault)?.id ?? null
-	);
 
 	const selectedCount = $derived(selectedSeries.size);
 
@@ -298,47 +293,6 @@
 		if (!show) return;
 		selectedSeriesForSearch = show;
 		isSearchModalOpen = true;
-	}
-
-	async function handleGrabRelease(release: Release, streaming?: boolean) {
-		if (!selectedSeriesForSearch)
-			return { success: false, error: m.toast_library_tv_failedToGrab() };
-
-		try {
-			const result = await grabRelease({
-				guid: release.guid,
-				downloadUrl: release.downloadUrl,
-				magnetUrl: release.magnetUrl,
-				infoHash: release.infoHash,
-				title: release.title,
-				indexerId: release.indexerId,
-				indexerName: release.indexerName,
-				protocol: release.protocol,
-				size: release.size,
-				seriesId: selectedSeriesForSearch.id,
-				mediaType: 'tv',
-				quality: release.parsed
-					? {
-							resolution: release.parsed.resolution,
-							source: release.parsed.source,
-							codec: release.parsed.codec,
-							hdr: release.parsed.hdr
-						}
-					: undefined,
-				streamUsenet: streaming,
-				commentsUrl: release.commentsUrl
-			});
-			if (result.success) {
-				toasts.success(m.toast_library_tv_grabbed({ title: release.title }));
-				return { success: true };
-			} else {
-				toasts.error(result.error || m.toast_library_tv_failedToGrab());
-				return { success: false, error: result.error, errorCode: result.errorCode };
-			}
-		} catch (error) {
-			toasts.error(error instanceof ApiError ? error.message : m.toast_library_tv_failedToGrab());
-			return { success: false, error: m.toast_library_tv_failedToGrab() };
-		}
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -746,13 +700,23 @@
 			</div>
 		{:else if filteredSeries.length === 0 && searchQuery}
 			<!-- Search Empty State -->
-			<div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
-				<Search class="mb-4 h-16 w-16" />
-				<p class="text-2xl font-bold">{m.library_tv_noSearchMatch({ query: searchQuery })}</p>
-				<p class="mt-2">{m.library_tv_tryDifferentSearch()}</p>
-				<button class="btn mt-6 btn-ghost" onclick={() => (searchQuery = '')}>
-					{m.library_tv_clearSearchBtn()}
-				</button>
+			<div class="flex flex-col items-center justify-center py-20 text-center">
+				<div class="opacity-50">
+					<Search class="mb-4 h-16 w-16 mx-auto" />
+					<p class="text-2xl font-bold">{m.library_tv_noSearchMatch({ query: searchQuery })}</p>
+					<p class="mt-2">{m.library_tv_tryDifferentSearch()}</p>
+				</div>
+				<div class="mt-6 flex gap-3">
+					<button class="btn btn-ghost" onclick={() => (searchQuery = '')}>
+						{m.library_tv_clearSearchBtn()}
+					</button>
+					<a
+						href={resolvePath(`/discover?type=tv&q=${encodeURIComponent(searchQuery)}`)}
+						class="btn btn-primary"
+					>
+						Search in Discover
+					</a>
+				</div>
 			</div>
 		{:else if data.series.length === 0}
 			<!-- Empty State -->
@@ -910,20 +874,12 @@
 
 <!-- Interactive Search Modal -->
 {#if selectedSeriesForSearch}
-	<InteractiveSearchModal
+	<MediaSearchModal
 		open={isSearchModalOpen}
-		title={selectedSeriesForSearch.title}
-		tmdbId={selectedSeriesForSearch.tmdbId}
-		imdbId={selectedSeriesForSearch.imdbId ?? undefined}
-		year={selectedSeriesForSearch.year ?? undefined}
-		mediaType="tv"
-		scoringProfileId={selectedSeriesForSearch.scoringProfileId ??
-			defaultScoringProfileId ??
-			undefined}
+		seriesId={selectedSeriesForSearch.id}
 		onClose={() => {
 			isSearchModalOpen = false;
 			selectedSeriesForSearch = null;
 		}}
-		onGrab={handleGrabRelease}
 	/>
 {/if}

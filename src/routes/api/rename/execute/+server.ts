@@ -5,6 +5,7 @@ import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { parseBody } from '$lib/server/api/validate.js';
 import { z } from 'zod';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 
 const renameExecuteSchema = z.object({
 	fileIds: z.array(z.string()).min(1, 'fileIds array is required and must not be empty'),
@@ -38,6 +39,13 @@ export const POST: RequestHandler = async (event) => {
 			},
 			'[RenameExecute API] Rename execution complete'
 		);
+
+		if (result.succeeded > 0) {
+			libraryMediaEvents.emitLibraryDataChanged({
+				source: mediaType === 'episode' ? 'series' : 'movie',
+				reason: 'renames-executed'
+			});
+		}
 
 		return json(result);
 	} catch (error) {

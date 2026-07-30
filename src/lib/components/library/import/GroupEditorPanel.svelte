@@ -93,6 +93,13 @@
 	$effect(() => {
 		showMatchList = !selectedMatch && !routeImportContext;
 	});
+
+	let episodeOverrideActive = $state(false);
+	$effect(() => {
+		// Reset override when switching to a different group (track by id)
+		const _id = activeGroup?.id;
+		episodeOverrideActive = false;
+	});
 </script>
 
 {#if activeGroup}
@@ -193,16 +200,63 @@
 							onchange={onSeasonNumberChange}
 						/>
 					</label>
-					<label class="form-control">
-						<span class="label-text text-xs">{m.library_import_episodeLabel()}</span>
-						<input
-							type="number"
-							min="1"
-							class="input-bordered input input-sm w-20"
-							bind:value={episodeNumber}
-							onchange={onEpisodeNumberChange}
-						/>
-					</label>
+					{#if activeGroup?.parsedEpisodes && activeGroup.parsedEpisodes.length > 1 && !episodeOverrideActive}
+						<div class="form-control">
+							<span class="label-text text-xs">{m.library_import_episodeLabel()}</span>
+							<div class="flex h-8 items-center gap-1.5">
+								<div
+									class="flex h-full items-center rounded-md border border-base-300 bg-base-200/60 px-2.5 text-xs text-base-content/70"
+								>
+									E{activeGroup.parsedEpisodes[0]}-E{activeGroup.parsedEpisodes[
+										activeGroup.parsedEpisodes.length - 1
+									]}
+									<span class="ml-1.5 text-base-content/40">(auto)</span>
+								</div>
+								<button
+									type="button"
+									class="btn btn-ghost btn-xs text-base-content/50"
+									onclick={() => (episodeOverrideActive = true)}
+								>
+									Override
+								</button>
+							</div>
+						</div>
+					{:else if activeGroup?.parsedEpisodes && activeGroup.parsedEpisodes.length > 1 && episodeOverrideActive}
+						<div class="form-control">
+							<span class="label-text text-xs">{m.library_import_episodeLabel()}</span>
+							<div class="flex h-8 items-center gap-1.5">
+								<input
+									type="number"
+									min="1"
+									class="input-bordered input input-sm w-20"
+									bind:value={episodeNumber}
+									onchange={onEpisodeNumberChange}
+								/>
+								<button
+									type="button"
+									class="btn btn-ghost btn-xs text-base-content/50"
+									onclick={() => {
+										episodeOverrideActive = false;
+										episodeNumber = activeGroup?.parsedEpisodes?.[0] ?? episodeNumber;
+										onEpisodeNumberChange();
+									}}
+								>
+									Auto
+								</button>
+							</div>
+						</div>
+					{:else}
+						<label class="form-control">
+							<span class="label-text text-xs">{m.library_import_episodeLabel()}</span>
+							<input
+								type="number"
+								min="1"
+								class="input-bordered input input-sm w-20"
+								bind:value={episodeNumber}
+								onchange={onEpisodeNumberChange}
+							/>
+						</label>
+					{/if}
 					{#if canApplyActiveSeasonOverride()}
 						<button type="button" class="btn btn-ghost btn-sm" onclick={onSeasonNumberChange}>
 							{m.action_apply()}
@@ -339,6 +393,11 @@
 					{/if}
 				</div>
 				{#if selectedMatch}
+					{#if !showMatchList}
+						<span class="truncate text-sm font-medium text-base-content/80 flex-1 min-w-0">
+							{selectedMatch.title}{selectedMatch.year ? ` (${selectedMatch.year})` : ''}
+						</span>
+					{/if}
 					<button
 						type="button"
 						class="btn shrink-0 btn-ghost btn-xs"

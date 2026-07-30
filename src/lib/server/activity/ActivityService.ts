@@ -10,8 +10,10 @@ import {
 	settings
 } from '$lib/server/db/schema';
 import { and, desc, gte, inArray, eq, lte, lt, sql, count, or } from 'drizzle-orm';
+import { upsertQueueTombstoneFromQueueItem } from '$lib/server/downloadClients/monitoring/QueueTombstoneService';
+import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
+import { logger } from '$lib/logging';
 import type { SQL } from 'drizzle-orm';
-import { extractReleaseGroup } from '$lib/server/indexers/parser/patterns/releaseGroup';
 import {
 	ActivityDeduplicationService,
 	type ActiveQueueIndex
@@ -67,6 +69,7 @@ interface ActivityQueryResult {
 	total: number;
 	hasMore: boolean;
 	summary: ActivitySummary | null;
+	failedCount: number;
 }
 
 export {
@@ -165,7 +168,7 @@ export class ActivityService {
 			needsActive || needsHistory
 				? this.fetchMoveTasks(scope, filters)
 				: Promise.resolve([] as MoveTaskRecord[]),
-			needsActive
+			needsActive || needsHistory
 				? this.fetchFailedQueueItems()
 				: Promise.resolve(
 						[] as Pick<DownloadQueueRecord, 'id' | 'downloadId' | 'title' | 'addedAt' | 'status'>[]
@@ -177,7 +180,7 @@ export class ActivityService {
 			(needsActive || needsHistory) && !hasJsOnlyFilters
 				? this.countMoveTasks(scope, filters)
 				: Promise.resolve(0),
-			scope === 'active' ? this.countHistoryFailed() : Promise.resolve(0)
+			this.countHistoryFailed()
 		]);
 
 		// Batch fetch all media info
@@ -247,11 +250,26 @@ export class ActivityService {
 
 		const paginated = filtered.slice(pagination.offset, pagination.offset + pagination.limit);
 
+		// Derive hasMore from the data we actually fetched rather than the parallel
+		// SQL COUNT. The two run concurrently and can diverge when the download
+		// monitor writes failed/recovered records between them - COUNT can come back
+		// higher than the fetch, producing hasMore=true with nothing left to load
+		// and causing an infinite load-more loop on the client.
+		//
+		// Limitation: fetchHistoryItems caps at 500 rows. Once filtered.length hits
+		// that cap, hasMore correctly signals true up to offset=450 (with limit=50)
+		// but then becomes false at offset=500 even if the DB holds more records.
+		// The old COUNT-based formula was worse here: it produced hasMore=true on
+		// empty pages, causing a loop. The fetch-cap itself is the real fix needed
+		// for datasets over 500 items.
+		const hasMore = filtered.length > pagination.offset + pagination.limit;
+
 		return {
 			activities: paginated,
 			total,
-			hasMore: pagination.offset + paginated.length < total,
-			summary
+			hasMore,
+			summary,
+			failedCount: historyFailedCount
 		};
 	}
 
@@ -410,18 +428,32 @@ export class ActivityService {
 		const skippedRetryableFailed = 0;
 		let skippedRunningTasks = 0;
 
+		// Collect downloadIds from failed history rows being deleted so we can cascade to queue
+		const failedHistoryDownloadIds = new Set<string>();
+
 		if (historyIdList.length > 0) {
 			// Fetch initial rows to find their dedup group (media link + normalized title)
+			// Also fetch status and downloadId for failed rows so we can cascade-clean queue items
 			const initialRows = await db
 				.select({
 					id: downloadHistory.id,
 					title: downloadHistory.title,
 					movieId: downloadHistory.movieId,
-					seriesId: downloadHistory.seriesId
+					seriesId: downloadHistory.seriesId,
+					status: downloadHistory.status,
+					downloadId: downloadHistory.downloadId,
+					grabbedAt: downloadHistory.grabbedAt
 				})
 				.from(downloadHistory)
 				.where(inArray(downloadHistory.id, historyIdList))
 				.all();
+
+			// Collect downloadIds of failed rows for cascade cleanup
+			for (const row of initialRows) {
+				if (row.status === 'failed' && row.downloadId) {
+					failedHistoryDownloadIds.add(row.downloadId);
+				}
+			}
 
 			// Expand historyIds to include all sibling rows in the same dedup group so
 			// deleting a deduplicated entry removes all underlying DB rows at once
@@ -444,7 +476,9 @@ export class ActivityService {
 						id: downloadHistory.id,
 						title: downloadHistory.title,
 						movieId: downloadHistory.movieId,
-						seriesId: downloadHistory.seriesId
+						seriesId: downloadHistory.seriesId,
+						status: downloadHistory.status,
+						downloadId: downloadHistory.downloadId
 					})
 					.from(downloadHistory)
 					.where(siblingConditions.length === 1 ? siblingConditions[0] : or(...siblingConditions))
@@ -463,6 +497,9 @@ export class ActivityService {
 								normalizeReleaseKey(candidate.title) === targetNormKey);
 						if (sameGroup) {
 							historyIds.add(candidate.id);
+							if (candidate.status === 'failed' && candidate.downloadId) {
+								failedHistoryDownloadIds.add(candidate.downloadId);
+							}
 						}
 					}
 				}
@@ -534,6 +571,29 @@ export class ActivityService {
 				return { deletedDownloadHistory, deletedMonitoringHistory, deletedTaskHistory };
 			});
 
+		// Cascade: clean up failed queue items linked to the deleted history rows
+		if (failedHistoryDownloadIds.size > 0) {
+			const linkedQueueItems = await db
+				.select()
+				.from(downloadQueue)
+				.where(
+					and(
+						eq(downloadQueue.status, 'failed'),
+						inArray(downloadQueue.downloadId, Array.from(failedHistoryDownloadIds))
+					)
+				)
+				.all();
+
+			for (const item of linkedQueueItems) {
+				try {
+					await upsertQueueTombstoneFromQueueItem(item, 'local_remove_without_client_delete');
+					await db.delete(downloadQueue).where(eq(downloadQueue.id, item.id));
+				} catch (_err) {
+					// Best-effort; failures here shouldn't abort the history delete
+				}
+			}
+		}
+
 		return {
 			deletedDownloadHistory,
 			deletedMonitoringHistory,
@@ -545,11 +605,21 @@ export class ActivityService {
 		};
 	}
 
-	async purgeHistoryOlderThan(retentionDays: number): Promise<PurgeHistoryResult> {
+	async purgeHistoryOlderThan(
+		retentionDays: number,
+		options: { removeFromClient?: boolean } = {}
+	): Promise<PurgeHistoryResult> {
 		const normalizedRetentionDays = parseRetentionDays(retentionDays);
 		const cutoffDate = new Date();
 		cutoffDate.setDate(cutoffDate.getDate() - normalizedRetentionDays);
 		const cutoffIso = cutoffDate.toISOString();
+
+		// Fetch failed queue items that are old enough to be purged
+		const failedQueueItems = await db
+			.select()
+			.from(downloadQueue)
+			.where(and(eq(downloadQueue.status, 'failed'), lt(downloadQueue.addedAt, cutoffIso)))
+			.all();
 
 		const { deletedDownloadHistory, deletedMonitoringHistory, deletedTaskHistory } =
 			await db.transaction((tx) => {
@@ -576,6 +646,41 @@ export class ActivityService {
 				return { deletedDownloadHistory, deletedMonitoringHistory, deletedTaskHistory };
 			});
 
+		// Clean up old failed queue items so they can't resurface on the next client sync
+		for (const item of failedQueueItems) {
+			try {
+				if (options.removeFromClient && item.downloadClientId) {
+					const isTorrent = item.protocol === 'torrent';
+					const clientDownloadId = isTorrent
+						? item.infoHash || item.downloadId
+						: item.downloadId || item.infoHash;
+					if (clientDownloadId) {
+						const clientInstance = await getDownloadClientManager().getClientInstance(
+							item.downloadClientId
+						);
+						if (clientInstance) {
+							try {
+								await clientInstance.removeDownload(clientDownloadId, false);
+							} catch (removeErr) {
+								logger.warn(
+									{
+										queueId: item.id,
+										title: item.title,
+										error: removeErr instanceof Error ? removeErr.message : String(removeErr)
+									},
+									'Failed to remove from download client during purge; continuing with local removal'
+								);
+							}
+						}
+					}
+				}
+				await upsertQueueTombstoneFromQueueItem(item, 'local_remove_without_client_delete');
+				await db.delete(downloadQueue).where(eq(downloadQueue.id, item.id));
+			} catch (_err) {
+				// Best-effort; failures here shouldn't abort the purge
+			}
+		}
+
 		return {
 			deletedDownloadHistory,
 			deletedMonitoringHistory,
@@ -585,7 +690,14 @@ export class ActivityService {
 		};
 	}
 
-	async purgeAllHistory(): Promise<PurgeHistoryResult> {
+	async purgeAllHistory(options: { removeFromClient?: boolean } = {}): Promise<PurgeHistoryResult> {
+		// Fetch failed queue items before purging so we can tombstone and delete them
+		const failedQueueItems = await db
+			.select()
+			.from(downloadQueue)
+			.where(eq(downloadQueue.status, 'failed'))
+			.all();
+
 		const { deletedDownloadHistory, deletedMonitoringHistory, deletedTaskHistory } =
 			await db.transaction((tx) => {
 				const deletedDownloadHistory = tx.delete(downloadHistory).run().changes;
@@ -603,6 +715,41 @@ export class ActivityService {
 
 				return { deletedDownloadHistory, deletedMonitoringHistory, deletedTaskHistory };
 			});
+
+		// Clean up failed queue items so they can't resurface on the next client sync
+		for (const item of failedQueueItems) {
+			try {
+				if (options.removeFromClient && item.downloadClientId) {
+					const isTorrent = item.protocol === 'torrent';
+					const clientDownloadId = isTorrent
+						? item.infoHash || item.downloadId
+						: item.downloadId || item.infoHash;
+					if (clientDownloadId) {
+						const clientInstance = await getDownloadClientManager().getClientInstance(
+							item.downloadClientId
+						);
+						if (clientInstance) {
+							try {
+								await clientInstance.removeDownload(clientDownloadId, false);
+							} catch (removeErr) {
+								logger.warn(
+									{
+										queueId: item.id,
+										title: item.title,
+										error: removeErr instanceof Error ? removeErr.message : String(removeErr)
+									},
+									'Failed to remove from download client during purge; continuing with local removal'
+								);
+							}
+						}
+					}
+				}
+				await upsertQueueTombstoneFromQueueItem(item, 'local_remove_without_client_delete');
+				await db.delete(downloadQueue).where(eq(downloadQueue.id, item.id));
+			} catch (_err) {
+				// Best-effort; failures here shouldn't abort the purge
+			}
+		}
 
 		return {
 			deletedDownloadHistory,
@@ -660,7 +807,7 @@ export class ActivityService {
 			episodeIds: history.episodeIds ?? undefined,
 			releaseTitle: history.title,
 			quality: history.quality ?? null,
-			releaseGroup: history.releaseGroup ?? extractReleaseGroup(history.title)?.group ?? null,
+			releaseGroup: history.releaseGroup ?? null,
 			size: history.size ?? null,
 			indexerId: history.indexerId ?? null,
 			indexerName: history.indexerName ?? null,
@@ -1328,20 +1475,13 @@ export class ActivityService {
 			...monitoringItems.filter((m) => m.episodeId).map((m) => m.episodeId!)
 		]);
 
-		// Fetch in parallel
-		const [moviesData, seriesData, episodesData] = await Promise.all([
+		// Fetch movies and episodes in parallel first so we can bridge episode → series
+		const [moviesData, episodesData] = await Promise.all([
 			movieIds.size > 0
 				? db
 						.select({ id: movies.id, title: movies.title, year: movies.year })
 						.from(movies)
 						.where(inArray(movies.id, Array.from(movieIds)))
-						.all()
-				: Promise.resolve([]),
-			seriesIds.size > 0
-				? db
-						.select({ id: series.id, title: series.title, year: series.year })
-						.from(series)
-						.where(inArray(series.id, Array.from(seriesIds)))
 						.all()
 				: Promise.resolve([]),
 			episodeIds.size > 0
@@ -1357,6 +1497,21 @@ export class ActivityService {
 						.all()
 				: Promise.resolve([])
 		]);
+
+		// Include series IDs bridged from episodes whose monitoringHistory row lacks seriesId
+		// (older records written before the source fix was applied)
+		for (const ep of episodesData) {
+			if (ep.seriesId) seriesIds.add(ep.seriesId);
+		}
+
+		const seriesData =
+			seriesIds.size > 0
+				? await db
+						.select({ id: series.id, title: series.title, year: series.year })
+						.from(series)
+						.where(inArray(series.id, Array.from(seriesIds)))
+						.all()
+				: [];
 
 		return {
 			movies: new Map(moviesData.map((m) => [m.id, m])),
@@ -1455,7 +1610,7 @@ export class ActivityService {
 			episodeIds: history.episodeIds ?? undefined,
 			releaseTitle: history.title,
 			quality: history.quality ?? null,
-			releaseGroup: history.releaseGroup ?? extractReleaseGroup(history.title)?.group ?? null,
+			releaseGroup: history.releaseGroup ?? null,
 			size: history.size ?? null,
 			indexerId: history.indexerId ?? null,
 			indexerName: history.indexerName ?? null,

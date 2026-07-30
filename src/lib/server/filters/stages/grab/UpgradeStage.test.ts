@@ -10,7 +10,7 @@ vi.mock('$lib/server/scoring/scorer.js', () => ({
 	isUpgrade: mockIsUpgrade
 }));
 
-vi.mock('$lib/server/monitoring/specifications/utils.js', () => ({
+vi.mock('$lib/server/scoring/utils.js', () => ({
 	buildExistingAttrs: mockBuildExistingAttrs
 }));
 
@@ -153,6 +153,79 @@ describe('UpgradeStage', () => {
 			const result = await stage.evaluate(ctx);
 			expect(result.accepted).toBe(true);
 			expect(ctx.computed.upgradeStatus).toBe('upgrade');
+		});
+	});
+
+	describe('evaluate - multi-quality (movie)', () => {
+		it('accepts as new when candidate targets an empty resolution bucket', async () => {
+			const existing: ExistingFile = {
+				id: 'f4k',
+				relativePath: '/movies/movie.2160p.mkv',
+				quality: { resolution: '2160p' }
+			};
+			const ctx = makeGrabDecisionContext({
+				existingFiles: [existing],
+				desiredQualities: ['2160p', '1080p'],
+				computed: { scoringResult: { resolution: '1080p' } as any }
+			});
+			const result = await stage.evaluate(ctx);
+			expect(result.accepted).toBe(true);
+			expect(ctx.computed.upgradeStatus).toBe('new');
+			expect(mockIsUpgrade).not.toHaveBeenCalled();
+		});
+
+		it('compares against the same-bucket file when the bucket is filled', async () => {
+			const existing: ExistingFile[] = [
+				{
+					id: 'f4k',
+					relativePath: '/movies/movie.2160p.mkv',
+					sceneName: 'Movie.2024.2160p.Remux',
+					quality: { resolution: '2160p' }
+				},
+				{
+					id: 'f1080',
+					relativePath: '/movies/movie.1080p.mkv',
+					sceneName: 'Movie.2024.1080p.WEB-DL',
+					quality: { resolution: '1080p' }
+				}
+			];
+			mockIsUpgrade.mockReturnValue({
+				isUpgrade: true,
+				improvement: 40,
+				existing: { totalScore: 100 },
+				candidate: { totalScore: 140 }
+			});
+
+			const ctx = makeGrabDecisionContext({
+				existingFiles: existing,
+				desiredQualities: ['2160p', '1080p'],
+				computed: { scoringResult: { resolution: '1080p' } as any }
+			});
+			const result = await stage.evaluate(ctx);
+			expect(result.accepted).toBe(true);
+			expect(ctx.computed.upgradeStatus).toBe('upgrade');
+			// The baseline passed to isUpgrade should be the 1080p file
+			expect(mockBuildExistingAttrs).toHaveBeenCalledWith(expect.objectContaining({ id: 'f1080' }));
+		});
+
+		it('falls back to best-file comparison when candidate resolution is outside desired buckets', async () => {
+			const existing: ExistingFile[] = [
+				{ id: 'f4k', relativePath: '/movies/movie.2160p.mkv', quality: { resolution: '2160p' } }
+			];
+			mockIsUpgrade.mockReturnValue({
+				isUpgrade: false,
+				improvement: -100,
+				existing: { totalScore: 300 },
+				candidate: { totalScore: 200 }
+			});
+
+			const ctx = makeGrabDecisionContext({
+				existingFiles: existing,
+				desiredQualities: ['2160p', '1080p'],
+				computed: { scoringResult: { resolution: '720p' } as any }
+			});
+			const result = await stage.evaluate(ctx);
+			expect(result.accepted).toBe(false);
 		});
 	});
 

@@ -81,7 +81,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			scopeParam === 'active' || scopeParam === 'history' ? scopeParam : 'all';
 
 		// Build pagination
-		const limit = Math.min(limitParam ? parseInt(limitParam, 10) : 50, 100);
+		const limit = Math.min(limitParam ? parseInt(limitParam, 10) : 50, 500);
 		const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
 
 		// Get activities from service
@@ -92,7 +92,8 @@ export const GET: RequestHandler = async ({ url }) => {
 			activities: result.activities,
 			total: result.total,
 			hasMore: result.hasMore,
-			summary: result.summary
+			summary: result.summary,
+			failedCount: result.failedCount
 		});
 	} catch (err) {
 		logger.error('Error fetching activity', err instanceof Error ? err : undefined);

@@ -12,6 +12,8 @@
 		description?: string;
 		isBuiltIn: boolean;
 		isDefault?: boolean;
+		minResolution?: string | null;
+		maxResolution?: string | null;
 	}
 
 	interface Props {
@@ -72,7 +74,7 @@
 								: m.common_tvShows().toLowerCase()
 					})}
 				{/if}
-				<a href={resolve('/settings/general/libraries')} class="link"
+				<a href={resolve('/settings/library/libraries')} class="link"
 					>{m.library_add_addOneInSettings()}</a
 				>
 			</span>
@@ -140,9 +142,15 @@
 			{m.library_add_searchImmediately()}
 		</span>
 		<p class="text-xs text-base-content/60">
-			{searchOnAdd
-				? m.library_add_searchImmediatelyDescYes()
-				: m.library_add_searchImmediatelyDescNo()}
+			{#if mediaType === 'movie'}
+				{searchOnAdd
+					? m.library_add_movie_searchImmediatelyDescYes()
+					: m.library_add_movie_searchImmediatelyDescNo()}
+			{:else}
+				{searchOnAdd
+					? m.library_add_searchImmediatelyDescYes()
+					: m.library_add_searchImmediatelyDescNo()}
+			{/if}
 		</p>
 	</div>
 </label>

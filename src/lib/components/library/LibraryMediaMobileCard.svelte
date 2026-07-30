@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { LibraryMovie, LibrarySeries } from '$lib/types/library';
+	import { displayTitle } from '$lib/types/library';
 	import {
 		CheckCircle2,
 		XCircle,
@@ -135,7 +136,7 @@
 
 		<div class="min-w-0 flex-1">
 			<span class="line-clamp-2 text-sm font-medium">
-				{item.title}
+				{displayTitle(item)}
 			</span>
 			{#if itemIsMovie && 'collectionName' in item && item.collectionName}
 				<span class="mt-1 badge badge-outline badge-xs">{item.collectionName}</span>

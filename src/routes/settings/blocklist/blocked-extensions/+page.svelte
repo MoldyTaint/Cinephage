@@ -3,6 +3,7 @@
 	import { updateBlockedExtensions } from '$lib/api/settings.js';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { SettingsPage } from '$lib/components/ui/settings';
+	import * as m from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 
@@ -55,6 +56,10 @@
 		}
 	}
 </script>
+
+<svelte:head>
+	<title>{m.nav_blockedExtensions()}</title>
+</svelte:head>
 
 <SettingsPage
 	title="Blocked Video Extensions"

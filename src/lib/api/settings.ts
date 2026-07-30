@@ -19,7 +19,8 @@ import type {
 	NamingPresetUpdate,
 	NamingPreview,
 	LibraryClassificationUpdate,
-	BackupImport
+	BackupImport,
+	FileManagementSettings
 } from '$lib/validation/schemas.js';
 
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
@@ -130,6 +131,26 @@ export async function getSeriesRenamePreview(seriesId: string) {
 
 export async function executeRename(fileIds: string[], mediaType?: string) {
 	return apiPost('/api/rename/execute', { fileIds, mediaType });
+}
+
+export async function reorganizeFolder(mediaId: string, mediaType: 'movie' | 'series') {
+	return apiPost('/api/rename/reorganize', { mediaId, mediaType });
+}
+
+export async function reorganizeFolderBatch(
+	items: Array<{ mediaId: string; mediaType: 'movie' | 'series' }>
+) {
+	return apiPost<{
+		success: boolean;
+		organized: number;
+		failed: number;
+		results: Array<{
+			mediaId: string;
+			mediaType: 'movie' | 'series';
+			success: boolean;
+			error?: string;
+		}>;
+	}>('/api/rename/reorganize-batch', { items });
 }
 
 export async function getScoringProfiles() {
@@ -457,4 +478,12 @@ export async function seedBlockedKeywords(): Promise<{ added: number }> {
 	return apiPost('/api/settings/blocked-keywords', { seed: true }) as Promise<{
 		added: number;
 	}>;
+}
+
+export async function getFileManagementSettings() {
+	return apiGet<FileManagementSettings>('/api/settings/file-management');
+}
+
+export async function updateFileManagementSettings(payload: FileManagementSettings) {
+	return apiPut('/api/settings/file-management', payload);
 }

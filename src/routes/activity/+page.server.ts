@@ -11,8 +11,7 @@ const ACTIVE_TAB_STATUSES: NonNullable<ActivityFilters['status']>[] = [
 	'all',
 	'downloading',
 	'seeding',
-	'paused',
-	'failed'
+	'paused'
 ];
 const HISTORY_TAB_STATUSES: NonNullable<ActivityFilters['status']>[] = [
 	'all',

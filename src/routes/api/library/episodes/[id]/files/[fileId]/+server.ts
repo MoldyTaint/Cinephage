@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { unlink, rmdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { logger } from '$lib/logging';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 
 /**
  * DELETE /api/library/episodes/[id]/files/[fileId]
@@ -112,6 +113,12 @@ export const DELETE: RequestHandler = async ({ params }) => {
 				}
 			}
 		}
+
+		libraryMediaEvents.emitLibraryDataChanged({
+			source: 'episode',
+			reason: 'episode-file-deleted',
+			entityId: file.seriesId
+		});
 
 		return json({ success: true });
 	} catch (error) {

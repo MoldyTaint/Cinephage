@@ -129,7 +129,14 @@ function mapTransmissionStatus(
 	progress: number,
 	errorCode?: number
 ): TransmissionTorrentStatus {
-	if (typeof errorCode === 'number' && errorCode > 0) {
+	// Transmission error codes:
+	//   1 = tracker warning (transient, e.g. can't reach tracker)
+	//   2 = tracker error  (transient, e.g. HTTP 520, "not registered")
+	//   3 = local error    (persistent, e.g. missing files, bad permissions)
+	// Only code 3 represents a genuinely broken torrent. Tracker errors are
+	// transient and should not override the actual download state — the torrent
+	// may still be downloading from peers (DHT/PEX) or simply paused by the user.
+	if (errorCode === 3) {
 		return 'error';
 	}
 

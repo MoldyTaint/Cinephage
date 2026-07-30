@@ -12,6 +12,7 @@ import {
 	subtitles,
 	subtitleHistory,
 	movies,
+	movieFiles,
 	episodeFiles,
 	rootFolders,
 	series
@@ -356,7 +357,7 @@ class SubtitleScannerService {
 	 */
 	private findAssociatedVideoFileName(subtitleFileName: string): string | undefined {
 		// Remove extension
-		let name = basename(subtitleFileName, extname(subtitleFileName));
+		let name = this.videoBaseName(subtitleFileName);
 
 		// Remove language tags
 		for (const { pattern } of LANGUAGE_PATTERNS) {
@@ -373,6 +374,14 @@ class SubtitleScannerService {
 		name = name.replace(/\.+/g, '.').replace(/\.$/, '');
 
 		return name || undefined;
+	}
+
+	/**
+	 * Compute the video base name (without extension) of a movie file's relative path.
+	 * E.g. "Movie.2024.2160p.mkv" -> "Movie.2024.2160p".
+	 */
+	private videoBaseName(relativePath: string): string {
+		return basename(relativePath, extname(relativePath));
 	}
 
 	/**
@@ -414,6 +423,29 @@ class SubtitleScannerService {
 			});
 			const existingPaths = new Set(existingSubtitles.map((s) => s.relativePath));
 
+			// Load this movie's files so each sidecar can be linked to the specific
+			// quality tier it belongs to (multi-quality support).
+			const movieFilesList = await db
+				.select({ id: movieFiles.id, relativePath: movieFiles.relativePath })
+				.from(movieFiles)
+				.where(eq(movieFiles.movieId, movieId));
+			// Map lowercased video base name -> movie file id. Matching is
+			// case-insensitive because subtitle files commonly differ in case from
+			// their video (e.g. "MOVIE.2024.EN.SRT" next to "Movie.2024.mkv") and
+			// the deployment target is a case-sensitive Linux filesystem. Ambiguous
+			// base names (claimed by more than one file) are excluded so the sidecar
+			// stays unlinked as a safe default rather than guessing.
+			const baseNameToMovieFileId = new Map<string, string>();
+			const ambiguousBaseNames = new Set<string>();
+			for (const mf of movieFilesList) {
+				const baseName = this.videoBaseName(mf.relativePath).toLowerCase();
+				if (baseNameToMovieFileId.has(baseName)) {
+					ambiguousBaseNames.add(baseName);
+				} else {
+					baseNameToMovieFileId.set(baseName, mf.id);
+				}
+			}
+
 			for (const sub of discovered) {
 				try {
 					if (existingPaths.has(sub.relativePath)) {
@@ -421,10 +453,19 @@ class SubtitleScannerService {
 						continue;
 					}
 
+					// Resolve the target movie file for this sidecar by exact
+					// (case-insensitive) base-name match.
+					const lookupKey = sub.videoFileName?.toLowerCase();
+					const movieFileId =
+						lookupKey && !ambiguousBaseNames.has(lookupKey)
+							? baseNameToMovieFileId.get(lookupKey)
+							: undefined;
+
 					// Register the subtitle
 					await db.insert(subtitles).values({
 						id: randomUUID(),
 						movieId,
+						movieFileId,
 						relativePath: sub.relativePath,
 						language: sub.language,
 						isForced: sub.isForced,

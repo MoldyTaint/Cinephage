@@ -5,6 +5,7 @@ import { rootFolderCreateSchema } from '$lib/validation/schemas';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { parseBody } from '$lib/server/api/validate.js';
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring/DownloadMonitorService.js';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 
 /**
  * GET /api/root-folders
@@ -45,6 +46,12 @@ export const POST: RequestHandler = async (event) => {
 	if (validated.blockedVideoExtensions && validated.blockedVideoExtensions.length > 0) {
 		downloadMonitor.checkBlockedExtensions().catch(() => {});
 	}
+
+	libraryMediaEvents.emitLibraryDataChanged({
+		source: 'root-folder',
+		reason: 'root-folder-created',
+		entityId: created.folder.id
+	});
 
 	return json({ success: true, folder: created.folder, scanJobId: created.scanJobId });
 };

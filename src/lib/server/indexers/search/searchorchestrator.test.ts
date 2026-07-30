@@ -11,7 +11,8 @@ import {
 	type TvSearchCriteria,
 	type MovieSearchCriteria,
 	type MusicSearchCriteria,
-	type ReleaseResult
+	type ReleaseResult,
+	type RejectedIndexer
 } from '../types';
 import { createMockIndexer as _createMockIndexer } from '../../../../test/fixtures/indexers.js';
 
@@ -98,6 +99,19 @@ type OrchestratorPrivateApi = {
 	isSeasonOnlyTvSearch(criteria: SearchCriteria): boolean;
 	filterByIdOrTitleMatch(releases: ReleaseResult[], criteria: SearchCriteria): ReleaseResult[];
 	filterOutNonVideoArtifacts(releases: ReleaseResult[], criteria: SearchCriteria): ReleaseResult[];
+	filterIndexers(
+		indexers: IIndexer[],
+		criteria: SearchCriteria,
+		options: {
+			respectEnabled: boolean;
+			respectBackoff: boolean;
+			useTieredSearch: boolean;
+			timeout: number;
+			useCache: boolean;
+			searchSource?: 'interactive' | 'automatic';
+			protocolFilter?: string[];
+		}
+	): { eligible: IIndexer[]; rejected: RejectedIndexer[] };
 };
 
 function privateApi(orchestrator: SearchOrchestrator): OrchestratorPrivateApi {
@@ -1356,5 +1370,106 @@ describe('SearchOrchestrator.filterByCategoryMatch', () => {
 		);
 
 		expect(filtered).toHaveLength(2);
+	});
+});
+
+describe('SearchOrchestrator.filterIndexers protocol filter', () => {
+	const baseOptions = {
+		respectEnabled: false,
+		respectBackoff: false,
+		useTieredSearch: false,
+		timeout: 30000,
+		useCache: false
+	} as const;
+
+	const movieCapabilities: IndexerCapabilities = {
+		...mockCapabilities,
+		categories: new Map([[Category.MOVIES_HD, 'Movies/HD']])
+	};
+
+	function buildStreamingIndexer(): IIndexer {
+		return _createMockIndexer({
+			id: 'streaming-indexer',
+			name: 'StreamingIndexer',
+			protocol: 'streaming',
+			capabilities: movieCapabilities as unknown as Record<string, unknown>,
+			enableAutomaticSearch: true,
+			enableInteractiveSearch: true
+		}) as unknown as IIndexer;
+	}
+
+	function buildTorrentIndexer(): IIndexer {
+		return _createMockIndexer({
+			id: 'torrent-indexer',
+			name: 'TorrentIndexer',
+			protocol: 'torrent',
+			capabilities: movieCapabilities as unknown as Record<string, unknown>,
+			enableAutomaticSearch: true,
+			enableInteractiveSearch: true
+		}) as unknown as IIndexer;
+	}
+
+	it('streaming indexer passes protocol filter in interactive search even when not in allowedProtocols', () => {
+		const orchestrator = new SearchOrchestrator();
+		const streamingIndexer = buildStreamingIndexer();
+		const criteria = createMovieCriteria({ query: 'Test' });
+
+		const result = privateApi(orchestrator).filterIndexers([streamingIndexer], criteria, {
+			...baseOptions,
+			searchSource: 'interactive',
+			protocolFilter: ['torrent', 'usenet']
+		});
+
+		expect(result.eligible).toHaveLength(1);
+		expect(result.eligible[0].protocol).toBe('streaming');
+		expect(result.rejected).toHaveLength(0);
+	});
+
+	it('streaming indexer is still rejected by protocol filter in automatic search', () => {
+		const orchestrator = new SearchOrchestrator();
+		const streamingIndexer = buildStreamingIndexer();
+		const criteria = createMovieCriteria({ query: 'Test' });
+
+		const result = privateApi(orchestrator).filterIndexers([streamingIndexer], criteria, {
+			...baseOptions,
+			searchSource: 'automatic',
+			protocolFilter: ['torrent', 'usenet']
+		});
+
+		expect(result.eligible).toHaveLength(0);
+		expect(result.rejected).toHaveLength(1);
+		expect(result.rejected[0].reason).toBe('protocol');
+	});
+
+	it('torrent indexer is still rejected when not in protocolFilter', () => {
+		const orchestrator = new SearchOrchestrator();
+		const torrentIndexer = buildTorrentIndexer();
+		const criteria = createMovieCriteria({ query: 'Test' });
+
+		const result = privateApi(orchestrator).filterIndexers([torrentIndexer], criteria, {
+			...baseOptions,
+			searchSource: 'interactive',
+			protocolFilter: ['usenet']
+		});
+
+		expect(result.eligible).toHaveLength(0);
+		expect(result.rejected).toHaveLength(1);
+		expect(result.rejected[0].reason).toBe('protocol');
+	});
+
+	it('streaming indexer passes when streaming is in allowedProtocols', () => {
+		const orchestrator = new SearchOrchestrator();
+		const streamingIndexer = buildStreamingIndexer();
+		const criteria = createMovieCriteria({ query: 'Test' });
+
+		const result = privateApi(orchestrator).filterIndexers([streamingIndexer], criteria, {
+			...baseOptions,
+			searchSource: 'automatic',
+			protocolFilter: ['streaming']
+		});
+
+		expect(result.eligible).toHaveLength(1);
+		expect(result.eligible[0].protocol).toBe('streaming');
+		expect(result.rejected).toHaveLength(0);
 	});
 });

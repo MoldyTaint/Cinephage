@@ -10,7 +10,9 @@ export type DownloadClientImplementation =
 	| 'aria2'
 	| 'sabnzbd'
 	| 'nzbget'
-	| 'nntp';
+	| 'nntp'
+	| 'realdebrid'
+	| 'torbox';
 export type DownloadClientHealth = 'healthy' | 'warning' | 'failing';
 export type DownloadPriority = 'normal' | 'high' | 'force';
 export type DownloadInitialState = 'start' | 'pause' | 'force';
@@ -26,10 +28,12 @@ export interface DownloadClientDefinition {
 	name: string;
 	description: string;
 	defaultPort: number;
-	protocol: 'torrent' | 'usenet' | 'nntp';
+	protocol: 'torrent' | 'usenet' | 'nntp' | 'debrid';
 	supportsCategories: boolean;
 	supportsPriority: boolean;
 	supportsSeedingLimits: boolean;
+	/** True when the implementation is a debrid provider that uses an API token instead of host/port. */
+	isDebrid?: boolean;
 }
 
 /**
@@ -50,6 +54,11 @@ export interface DownloadClient {
 	username?: string | null;
 	// Note: password not returned to frontend for security
 	hasPassword: boolean;
+
+	// Debrid provider settings
+	// Note: apiToken not returned to frontend for security
+	hasApiToken: boolean;
+	removeAfterImport: boolean;
 
 	// Categories
 	movieCategory: string;
@@ -85,31 +94,67 @@ export interface DownloadClient {
 }
 
 /**
- * Form data for creating/editing download client
+ * Server-only input for creating/updating a download client.
+ * Debrid clients accept only name, implementation, enabled, priority,
+ * apiToken, removeAfterImport. Non-debrid clients keep the full connection
+ * surface. This is intentionally not the UI form shape.
+ */
+export interface DownloadClientInput {
+	name: string;
+	implementation: DownloadClientImplementation;
+	enabled?: boolean;
+	priority?: number;
+	apiToken?: string | null;
+	removeAfterImport?: boolean;
+	// Non-debrid fields
+	host?: string;
+	port?: number;
+	useSsl?: boolean;
+	urlBase?: string | null;
+	mountMode?: DownloadClientMountMode | null;
+	username?: string | null;
+	password?: string | null;
+	movieCategory?: string;
+	tvCategory?: string;
+	recentPriority?: DownloadPriority;
+	olderPriority?: DownloadPriority;
+	initialState?: DownloadInitialState;
+	seedRatioLimit?: string | null;
+	seedTimeLimit?: number | null;
+	downloadPathLocal?: string | null;
+	downloadPathRemote?: string | null;
+	tempPathLocal?: string | null;
+	tempPathRemote?: string | null;
+}
+
+/**
+ * Form data for creating/editing download client (UI form shape).
  */
 export interface DownloadClientFormData {
 	name: string;
 	implementation: DownloadClientImplementation;
 	enabled: boolean;
-	host: string;
-	port: number;
-	useSsl: boolean;
-	urlBase: string | null;
+	host?: string;
+	port?: number;
+	useSsl?: boolean;
+	urlBase?: string | null;
 	mountMode?: DownloadClientMountMode | null;
-	username: string | null;
-	password: string | null;
-	movieCategory: string;
-	tvCategory: string;
-	recentPriority: DownloadPriority;
-	olderPriority: DownloadPriority;
-	initialState: DownloadInitialState;
-	seedRatioLimit: string | null;
-	seedTimeLimit: number | null;
-	downloadPathLocal: string | null;
-	downloadPathRemote: string | null;
-	tempPathLocal: string | null;
-	tempPathRemote: string | null;
+	username?: string | null;
+	password?: string | null;
+	movieCategory?: string;
+	tvCategory?: string;
+	recentPriority?: DownloadPriority;
+	olderPriority?: DownloadPriority;
+	initialState?: DownloadInitialState;
+	seedRatioLimit?: string | null;
+	seedTimeLimit?: number | null;
+	downloadPathLocal?: string | null;
+	downloadPathRemote?: string | null;
+	tempPathLocal?: string | null;
+	tempPathRemote?: string | null;
 	priority: number;
+	apiToken?: string;
+	removeAfterImport?: boolean;
 }
 
 /**
@@ -148,7 +193,14 @@ export type RootFolderWithSpace = Omit<
 export type RootFolderWithSpaceAndDefault = Omit<
 	Pick<
 		RootFolder,
-		'id' | 'name' | 'path' | 'mediaType' | 'mediaSubType' | 'isDefault' | 'freeSpaceBytes'
+		| 'id'
+		| 'name'
+		| 'path'
+		| 'mediaType'
+		| 'mediaSubType'
+		| 'isDefault'
+		| 'defaultMonitored'
+		| 'freeSpaceBytes'
 	>,
 	'mediaType' | 'mediaSubType'
 > & {
@@ -183,6 +235,9 @@ export interface ConnectionTestResult {
 	success: boolean;
 	error?: string;
 	warnings?: string[];
+	/** Minimal redacted provider identity returned by credential tests. */
+	accountId?: string;
+	accountLabel?: string;
 	// NNTP server greeting (for NNTP connections)
 	greeting?: string;
 	details?: {

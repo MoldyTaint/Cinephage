@@ -6,7 +6,8 @@
  */
 
 import { db } from '$lib/server/db/index.js';
-import { monitoringHistory } from '$lib/server/db/schema.js';
+import { monitoringHistory, episodes } from '$lib/server/db/schema.js';
+import { inArray } from 'drizzle-orm';
 import { monitoringSearchService } from '../search/MonitoringSearchService.js';
 import { logger } from '$lib/logging/index.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
@@ -60,7 +61,8 @@ export async function executeMissingContentTask(
 			{
 				searched: movieResults.summary.searched,
 				grabbed: movieResults.summary.grabbed,
-				errors: movieResults.summary.errors
+				errors: movieResults.summary.errors,
+				rejectionBreakdown: movieResults.summary.rejectionBreakdown
 			},
 			'[MissingContentTask] Missing movies search completed'
 		);
@@ -133,10 +135,28 @@ export async function executeMissingContentTask(
 			{
 				searched: episodeResults.summary.searched,
 				grabbed: episodeResults.summary.grabbed,
-				errors: episodeResults.summary.errors
+				errors: episodeResults.summary.errors,
+				rejectionBreakdown: episodeResults.summary.rejectionBreakdown
 			},
 			'[MissingContentTask] Missing episodes search completed'
 		);
+
+		// Batch-fetch seriesId for episode items so history rows are correctly linked
+		const episodeIds = episodeResults.items
+			.filter((i) => i.itemType === 'episode')
+			.map((i) => i.itemId);
+		const episodeSeriesMap =
+			episodeIds.length > 0
+				? new Map(
+						(
+							await db
+								.select({ id: episodes.id, seriesId: episodes.seriesId })
+								.from(episodes)
+								.where(inArray(episodes.id, episodeIds))
+								.all()
+						).map((e) => [e.id, e.seriesId])
+					)
+				: new Map<string, string>();
 
 		// Record history for each episode (with cancellation checks)
 		if (ctx) {
@@ -147,6 +167,10 @@ export async function executeMissingContentTask(
 					taskHistoryId,
 					taskType: 'missing',
 					episodeId: item.itemType === 'episode' ? item.itemId : undefined,
+					seriesId:
+						item.itemType === 'episode'
+							? (episodeSeriesMap.get(item.itemId) ?? undefined)
+							: undefined,
 					status: item.grabbed
 						? 'grabbed'
 						: item.error
@@ -170,6 +194,10 @@ export async function executeMissingContentTask(
 					taskHistoryId,
 					taskType: 'missing',
 					episodeId: item.itemType === 'episode' ? item.itemId : undefined,
+					seriesId:
+						item.itemType === 'episode'
+							? (episodeSeriesMap.get(item.itemId) ?? undefined)
+							: undefined,
 					status: item.grabbed
 						? 'grabbed'
 						: item.error

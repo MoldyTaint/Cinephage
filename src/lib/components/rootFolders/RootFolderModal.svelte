@@ -21,6 +21,7 @@
 		onClose: () => void;
 		behindSidebarOnDesktop?: boolean;
 		lockScroll?: boolean;
+		symlinkModeEnabled?: boolean;
 		onSave: (data: RootFolderFormData) => void;
 		onValidatePath: (
 			path: string,
@@ -38,6 +39,7 @@
 		onClose,
 		behindSidebarOnDesktop = false,
 		lockScroll = true,
+		symlinkModeEnabled = false,
 		onSave,
 		onValidatePath
 	}: Props = $props();
@@ -239,14 +241,27 @@
 				<span class="text-sm">{m.rootFolders_readOnlyLabel()}</span>
 			</label>
 
-			<label class="flex cursor-pointer items-center gap-3 py-2">
+			<label
+				class="flex cursor-pointer items-center gap-3 py-2 {symlinkModeEnabled ? 'opacity-60' : ''}"
+			>
 				<input
 					type="checkbox"
 					class="checkbox shrink-0 checkbox-sm"
 					bind:checked={preserveSymlinks}
+					disabled={symlinkModeEnabled}
 				/>
 				<span class="text-sm">{m.rootFolders_preserveSymlinksLabel()}</span>
+				{#if symlinkModeEnabled}
+					<span class="badge badge-warning badge-sm"
+						>{m.rootFolders_preserveSymlinksLockedBadge()}</span
+					>
+				{/if}
 			</label>
+			{#if symlinkModeEnabled}
+				<p class="ml-7 text-xs text-base-content/60">
+					{m.rootFolders_preserveSymlinksLockedHint()}
+				</p>
+			{/if}
 
 			<label class="flex cursor-pointer items-center gap-3 py-2">
 				<input

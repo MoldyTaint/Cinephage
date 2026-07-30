@@ -5,7 +5,9 @@ import { toUIDefinition } from '$lib/server/indexers/loader';
 /**
  * GET /api/indexers/definitions
  * Returns all available indexer definitions from the unified YAML-based system.
- * Internal/auto-managed indexers (like streaming) are excluded from this list.
+ * Internal/auto-managed definitions (flagged `internal: true` in their YAML,
+ * e.g. cinephage-stream) are excluded from this list — they are seeded by
+ * their owning subsystem and surfaced on the indexers page as read-only.
  */
 export async function GET() {
 	const manager = await getIndexerManager();
@@ -13,9 +15,9 @@ export async function GET() {
 	// Get all definitions and convert to UI format
 	const allDefinitions = manager.getUnifiedDefinitions();
 
-	// Map to API response format, excluding internal indexers
+	// Map to API response format, excluding internal definitions
 	const definitions = allDefinitions
-		.filter((def) => def.protocol !== 'streaming') // Exclude streaming indexers from public list
+		.filter((def) => !def.internal)
 		.map((def) => {
 			const uiDef = toUIDefinition(def);
 			return {

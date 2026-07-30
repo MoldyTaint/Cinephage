@@ -28,7 +28,7 @@ import type { SearchCriteria } from '$lib/server/indexers/types';
 import type { ScoringProfile } from '$lib/server/scoring/types.js';
 import { getSeriesSearchTitles } from '$lib/server/services/AlternateTitleService.js';
 
-const logger = createChildLogger({ module: 'CascadingSearchStrategy' });
+const logger = createChildLogger({ module: 'CascadingSearchStrategy', logDomain: 'downloads' });
 
 /**
  * Episode data needed for searching
@@ -143,6 +143,23 @@ class CascadingSearchStrategy {
 			uniqueErrors[0];
 
 		return prioritized;
+	}
+
+	/**
+	 * Log a per-rejection-type breakdown for an automated cascading search that
+	 * failed to grab any release. Surfaces why every candidate was rejected in
+	 * a single summary line (per-release detail is logged at debug by GrabService).
+	 */
+	private logRejectionBreakdown(rejectionTypes: string[], context: string): void {
+		if (rejectionTypes.length === 0) return;
+		const breakdown: Record<string, number> = {};
+		for (const type of rejectionTypes) {
+			breakdown[type] = (breakdown[type] ?? 0) + 1;
+		}
+		logger.info(
+			{ totalRejected: rejectionTypes.length, rejectionBreakdown: breakdown },
+			`[CascadingSearch] ${context}`
+		);
 	}
 
 	/**
@@ -457,6 +474,7 @@ class CascadingSearchStrategy {
 			// Find best non-blocklisted season pack
 			const blocklistSpec = new ReleaseBlocklistSpecification({ seriesId: seriesData.id });
 			const grabErrors: string[] = [];
+			const rejectionTypes: string[] = [];
 
 			for (const release of seasonPacks) {
 				const releaseCandidate: ReleaseCandidate = {
@@ -542,8 +560,13 @@ class CascadingSearchStrategy {
 				if (grabError) {
 					grabErrors.push(grabError);
 				}
+				const rejectionType = grabResult.decision?.rejectionType;
+				if (rejectionType) {
+					rejectionTypes.push(rejectionType);
+				}
 			}
 
+			this.logRejectionBreakdown(rejectionTypes, 'season pack grab rejections');
 			return {
 				grabbed: false,
 				error: this.summarizeGrabFailures(grabErrors, 'All season packs rejected or failed to grab')
@@ -616,6 +639,7 @@ class CascadingSearchStrategy {
 			// Find best non-blocklisted release
 			const blocklistSpec = new ReleaseBlocklistSpecification({ seriesId: seriesData.id });
 			const grabErrors: string[] = [];
+			const rejectionTypes: string[] = [];
 
 			for (const release of searchResult.releases) {
 				const releaseCandidate: ReleaseCandidate = {
@@ -729,8 +753,13 @@ class CascadingSearchStrategy {
 				if (grabError) {
 					grabErrors.push(grabError);
 				}
+				const rejectionType = grabResult.decision?.rejectionType;
+				if (rejectionType) {
+					rejectionTypes.push(rejectionType);
+				}
 			}
 
+			this.logRejectionBreakdown(rejectionTypes, 'episode grab rejections');
 			return {
 				found: true,
 				grabbed: false,

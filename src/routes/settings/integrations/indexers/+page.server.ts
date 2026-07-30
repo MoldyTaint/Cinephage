@@ -63,6 +63,7 @@ export const load: PageServerLoad = async () => {
 			enabled: config.enabled,
 			upstreamEnabled: config.upstreamEnabled ?? null,
 			orphaned: config.orphaned ?? false,
+			isBuiltIn: config.isBuiltIn ?? false,
 			baseUrl: displayBaseUrl,
 			alternateUrls: config.alternateUrls,
 			priority: config.priority,
@@ -113,6 +114,7 @@ export const load: PageServerLoad = async () => {
 					autoSync: prowlarrConn.autoSync,
 					syncIntervalHours: prowlarrConn.syncIntervalHours,
 					syncAddNew: prowlarrConn.syncAddNew,
+					useAggregateEndpoint: prowlarrConn.useAggregateEndpoint,
 					lastSyncAt: prowlarrConn.lastSyncAt,
 					lastSyncResult: prowlarrConn.lastSyncResult,
 					lastSyncError: prowlarrConn.lastSyncError

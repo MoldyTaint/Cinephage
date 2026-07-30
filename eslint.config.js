@@ -7,8 +7,15 @@ import { defineConfig } from 'eslint/config';
 import globals from 'globals';
 import ts from 'typescript-eslint';
 import svelteConfig from './svelte.config.js';
+import noEmoji from './eslint-rules/no-emoji.js';
 
 const gitignorePath = fileURLToPath(new URL('./.gitignore', import.meta.url));
+
+// Local plugin housing project-specific rules (e.g. no-emoji).
+const local = {
+	meta: { name: 'cinephage-local' },
+	rules: { 'no-emoji': noEmoji }
+};
 
 export default defineConfig(
 	includeIgnoreFile(gitignorePath),
@@ -17,6 +24,8 @@ export default defineConfig(
 			// External/separate projects
 			'Flyx-main/**',
 			'Cinephage-Streamer/**',
+			// Browser extension asset shipped as-is (loaded by Camoufox, not app code)
+			'src/lib/server/captcha/browser/addon/**',
 			// Build artifacts
 			'.svelte-kit/**'
 		]
@@ -33,6 +42,15 @@ export default defineConfig(
 	...svelte.configs.recommended,
 	prettier,
 	...svelte.configs.prettier,
+	{
+		// Project-specific rules
+		plugins: { local },
+		rules: {
+			// Disallow pictographic emoji in code/comments (see eslint-rules/no-emoji.js).
+			// Svelte template markup is naturally exempt — only JS/TS nodes are checked.
+			'local/no-emoji': 'error'
+		}
+	},
 	{
 		languageOptions: {
 			globals: { ...globals.browser, ...globals.node }

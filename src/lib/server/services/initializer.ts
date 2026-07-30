@@ -17,6 +17,8 @@ import { getNntpManager } from '$lib/server/streaming/usenet/NntpManager';
 import { getExtractionCacheManager } from '$lib/server/streaming/nzb/extraction/ExtractionCacheManager';
 import { getMediaBrowserNotifier } from '$lib/server/notifications/mediabrowser';
 import { getMediaServerStatsSyncService } from '$lib/server/mediaServerStats/MediaServerStatsSyncService.js';
+import { getReconciliationService } from '$lib/server/storage/reconciliation/ReconciliationService.js';
+import { getInsightsService } from '$lib/server/storage/insights/InsightsService.js';
 import { getEpgScheduler } from '$lib/server/livetv/epg';
 import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
 import { getProwlarrSyncScheduler } from '$lib/server/indexers/prowlarr/ProwlarrSyncScheduler.js';
@@ -28,6 +30,8 @@ import { initializeProviderFactory } from '$lib/server/subtitles/providers/Subti
 import { ensureStreamingApiKeyRateLimit } from '$lib/server/auth/index.js';
 import { logCaptureStore } from '$lib/server/logging/log-capture-store.js';
 import { logHistoryService } from '$lib/server/logging/log-history.js';
+import { getCinephageApiService } from '$lib/server/cinephage/CinephageApiService.js';
+import { getDebridPollService } from '$lib/server/downloadClients/debrid/DebridPollService.js';
 
 let initializationPromise: Promise<void> | null = null;
 let initializationStarted = false;
@@ -138,6 +142,12 @@ async function initializeServices(): Promise<void> {
 			const mediaServerStatsSync = getMediaServerStatsSyncService();
 			serviceManager.register(mediaServerStatsSync);
 
+			const reconciliationService = getReconciliationService();
+			serviceManager.register(reconciliationService);
+
+			const insightsService = getInsightsService();
+			serviceManager.register(insightsService);
+
 			const liveTvAccountManager = getLiveTvAccountManager();
 			serviceManager.register(liveTvAccountManager);
 
@@ -158,6 +168,20 @@ async function initializeServices(): Promise<void> {
 
 			const jackettSyncScheduler = getJackettSyncScheduler();
 			serviceManager.register(jackettSyncScheduler);
+
+			// CinephageAPI subsystem — owns api.cinephage.net connection and
+			// feature modules (library-streaming, remote-streaming). Phase 1
+			// ships with zero modules registered — no behavior change yet.
+			const cinephageApiService = getCinephageApiService();
+			serviceManager.register(cinephageApiService);
+
+			// WL-05E: Debrid polling and exactly-once import handoff. A narrowly
+			// scoped background service that polls submitted debrid provider items,
+			// projects status, and invokes map → materialize → finalize exactly
+			// once, including after restart. Only touches protocol='debrid' rows;
+			// generic torrent/usenet monitor debrid exclusion stays intact.
+			const debridPollService = getDebridPollService();
+			serviceManager.register(debridPollService);
 
 			serviceManager.startAll();
 

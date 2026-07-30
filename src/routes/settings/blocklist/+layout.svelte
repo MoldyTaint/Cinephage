@@ -30,7 +30,7 @@
 </script>
 
 <div class="flex min-h-full flex-col">
-	<SettingsTabNav {navItems} />
+	<SettingsTabNav {navItems} ariaLabel={m.settings_blocklist_tabsAriaLabel()} />
 
 	<div class="flex-1">
 		{@render children()}

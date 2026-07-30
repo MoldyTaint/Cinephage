@@ -7,6 +7,7 @@ import { deleteDirectoryWithinRoot } from '$lib/server/filesystem/delete-helpers
 import { logger } from '$lib/logging';
 import { deleteAllAlternateTitles } from '$lib/server/services/index.js';
 import { monitoringSearchService } from '$lib/server/monitoring/search/MonitoringSearchService.js';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 
 /**
  * PATCH /api/library/movies/batch
@@ -73,6 +74,11 @@ export const PATCH: RequestHandler = async ({ request }) => {
 				'[API] Triggered upgrade search on batch profile change for movies'
 			);
 		}
+
+		libraryMediaEvents.emitLibraryDataChanged({
+			source: 'movie',
+			reason: 'batch-updated'
+		});
 
 		return json({
 			success: true,
@@ -191,6 +197,13 @@ export const DELETE: RequestHandler = async ({ request }) => {
 					error: error instanceof Error ? error.message : 'Unknown error'
 				});
 			}
+		}
+
+		if (deletedCount > 0 || removedCount > 0) {
+			libraryMediaEvents.emitLibraryDataChanged({
+				source: 'movie',
+				reason: 'batch-deleted'
+			});
 		}
 
 		return json({

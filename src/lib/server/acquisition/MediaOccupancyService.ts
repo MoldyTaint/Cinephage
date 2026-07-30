@@ -8,6 +8,8 @@ import {
 	movies
 } from '$lib/server/db/schema.js';
 import type { GrabTarget } from '$lib/server/filters/stages/grab/types.js';
+import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
+import type { Resolution } from '$lib/server/indexers/parser/types.js';
 
 type OccupancyReason =
 	| 'movie_already_downloading'
@@ -27,6 +29,8 @@ export interface MediaOccupancyResult {
 
 export interface MediaOccupancyOptions {
 	isUpgrade?: boolean;
+	/** Parsed resolution of the candidate release (enables empty-bucket checks). */
+	candidateResolution?: Resolution;
 }
 
 const BLOCKING_DOWNLOAD_STATUSES = [
@@ -74,6 +78,40 @@ class MediaOccupancyServiceImpl {
 		movieId: string,
 		options: MediaOccupancyOptions
 	): Promise<MediaOccupancyResult> {
+		// Multi-quality bucket-aware path: when a candidate targets a desired
+		// resolution bucket, evaluate occupancy per-slot so another bucket's
+		// active download or existing file does not block an empty bucket.
+		if (options.candidateResolution) {
+			const slot = await this.resolveMovieSlot(movieId, options.candidateResolution);
+			if (slot.isDesiredBucket) {
+				const activeDownload = await this.getBlockingMovieDownload(
+					movieId,
+					options.candidateResolution
+				);
+				if (activeDownload) {
+					return {
+						occupied: true,
+						reason: 'movie_already_downloading',
+						details: { queueItemId: activeDownload.id }
+					};
+				}
+
+				if (options.isUpgrade) {
+					return { occupied: false };
+				}
+
+				if (slot.bucketFilled) {
+					return {
+						occupied: true,
+						reason: 'movie_already_has_file',
+						details: { fileId: slot.bucketFileId }
+					};
+				}
+
+				return { occupied: false };
+			}
+		}
+
 		const activeDownload = await this.getBlockingMovieDownload(movieId);
 		if (activeDownload) {
 			return {
@@ -87,17 +125,21 @@ class MediaOccupancyServiceImpl {
 			return { occupied: false };
 		}
 
-		const existingFile = await db
-			.select({ id: movieFiles.id })
+		const existingFiles = await db
+			.select({
+				id: movieFiles.id,
+				relativePath: movieFiles.relativePath,
+				size: movieFiles.size,
+				quality: movieFiles.quality
+			})
 			.from(movieFiles)
-			.where(eq(movieFiles.movieId, movieId))
-			.limit(1);
+			.where(eq(movieFiles.movieId, movieId));
 
-		if (existingFile.length > 0) {
+		if (existingFiles.length > 0) {
 			return {
 				occupied: true,
 				reason: 'movie_already_has_file',
-				details: { fileId: existingFile[0].id }
+				details: { fileId: existingFiles[0].id }
 			};
 		}
 
@@ -112,6 +154,54 @@ class MediaOccupancyServiceImpl {
 		}
 
 		return { occupied: false };
+	}
+
+	/**
+	 * Resolves whether `candidateResolution` is a desired multi-quality bucket
+	 * for the movie, and whether that bucket is already filled by an existing
+	 * file. Single source of truth for the bucket-aware occupancy decision.
+	 */
+	private async resolveMovieSlot(
+		movieId: string,
+		candidateResolution: Resolution
+	): Promise<{ isDesiredBucket: boolean; bucketFilled: boolean; bucketFileId?: string }> {
+		const movieRows = await db
+			.select({
+				desiredQualities: movies.desiredQualities,
+				scoringProfileId: movies.scoringProfileId
+			})
+			.from(movies)
+			.where(eq(movies.id, movieId))
+			.limit(1);
+
+		const { effective, multiQuality } = await resolveMovieMultiQuality(
+			movieRows[0]?.desiredQualities,
+			movieRows[0]?.scoringProfileId
+		);
+
+		if (!multiQuality || !effective.includes(candidateResolution)) {
+			return { isDesiredBucket: false, bucketFilled: false };
+		}
+
+		const existingFiles = await db
+			.select({
+				id: movieFiles.id,
+				relativePath: movieFiles.relativePath,
+				size: movieFiles.size,
+				quality: movieFiles.quality
+			})
+			.from(movieFiles)
+			.where(eq(movieFiles.movieId, movieId));
+
+		const bucketFile = existingFiles.find(
+			(file) => (file.quality?.resolution as Resolution | undefined) === candidateResolution
+		);
+
+		return {
+			isDesiredBucket: true,
+			bucketFilled: Boolean(bucketFile),
+			bucketFileId: bucketFile?.id
+		};
 	}
 
 	private async checkEpisodes(
@@ -173,12 +263,13 @@ class MediaOccupancyServiceImpl {
 		return { occupied: false };
 	}
 
-	private async getBlockingMovieDownload(movieId: string) {
+	private async getBlockingMovieDownload(movieId: string, resolution?: string) {
 		const activeDownloads = await db
 			.select({
 				id: downloadQueue.id,
 				status: downloadQueue.status,
-				importedAt: downloadQueue.importedAt
+				importedAt: downloadQueue.importedAt,
+				quality: downloadQueue.quality
 			})
 			.from(downloadQueue)
 			.where(
@@ -188,7 +279,19 @@ class MediaOccupancyServiceImpl {
 				)
 			);
 
-		return activeDownloads.find((download) => this.isBlockingDownload(download));
+		return activeDownloads.find((download) => {
+			if (!this.isBlockingDownload(download)) {
+				return false;
+			}
+
+			// A download with no parseable resolution is treated as bucket-unknown,
+			// so it does not match any specific bucket filter below.
+			if (resolution && (download.quality?.resolution ?? undefined) !== resolution) {
+				return false;
+			}
+
+			return true;
+		});
 	}
 
 	private async getBlockingEpisodeDownload(episodeIds: string[]) {

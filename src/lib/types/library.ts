@@ -2,6 +2,11 @@
  * Library types for movies and TV series in the local library
  */
 
+import { pickBestMovieFile } from '$lib/shared/best-file.js';
+
+/** Desired quality tiers selectable for multi-quality mode. */
+export type DesiredQuality = '2160p' | '1080p' | '720p' | '480p';
+
 export interface Subtitle {
 	id: string;
 	language: string;
@@ -87,6 +92,8 @@ export interface LibraryMovie {
 	rootFolderPath: string | null;
 	missingRootFolder?: boolean;
 	scoringProfileId: string | null;
+	/** Desired qualities for multi-quality mode (null/empty = single-quality). */
+	desiredQualities?: DesiredQuality[] | null;
 	monitored: boolean | null;
 	minimumAvailability: string | null;
 	wantsSubtitles: boolean | null;
@@ -101,6 +108,8 @@ export interface LibraryMovie {
 	hasFile: boolean | null;
 	tmdbCollectionId?: number | null;
 	collectionName?: string | null;
+	metadataLanguage?: string | null;
+	preferOriginalTitle?: boolean | null;
 	files: MovieFile[];
 	subtitles?: Subtitle[];
 }
@@ -133,6 +142,8 @@ export interface LibrarySeries {
 	episodeFileCount: number | null;
 	percentComplete: number;
 	totalSize?: number;
+	metadataLanguage?: string | null;
+	preferOriginalTitle?: boolean | null;
 }
 
 export type LibraryItem = LibraryMovie | LibrarySeries;
@@ -177,8 +188,11 @@ export function getBestQualityFromFiles(files: MovieFile[]): {
 		return { quality: null, hdr: null };
 	}
 
-	// Get the first file (typically there's only one)
-	const file = files[0];
+	// Pick the best file (downloaded > strm, then higher resolution, then size)
+	const file = pickBestMovieFile(files);
+	if (!file) {
+		return { quality: null, hdr: null };
+	}
 	return {
 		quality: getQualityDisplay(file.quality),
 		hdr: getHdrDisplay(file.mediaInfo)
@@ -191,4 +205,15 @@ export interface QualityProfileSummary {
 	description: string;
 	isBuiltIn: boolean;
 	isDefault: boolean;
+	minResolution?: string | null;
+	maxResolution?: string | null;
+}
+
+export function displayTitle(item: {
+	title: string;
+	originalTitle?: string | null;
+	preferOriginalTitle?: boolean | null;
+}): string {
+	if (item.preferOriginalTitle && item.originalTitle) return item.originalTitle;
+	return item.title;
 }

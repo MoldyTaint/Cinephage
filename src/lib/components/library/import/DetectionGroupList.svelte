@@ -27,6 +27,8 @@
 		getEffectiveMediaType = (_group: DetectionGroup) => 'movie' as MediaType,
 		formatMediaTypeLabel = (_mediaType: MediaType) => '',
 		canImportGroup = (_group: DetectionGroup) => false,
+		getGroupSelectedMatch = (_group: DetectionGroup) =>
+			null as import('./types.js').MatchResult | null,
 		hasUnknownSeasonItems = (_section: DetectionSection) => false,
 		getSectionSeasonOverride = (_section: DetectionSection) => null as number | null,
 		getSkippableSeasonGroups = (_season: TvSeasonSection) => [] as DetectionGroup[],
@@ -66,6 +68,7 @@
 		getEffectiveMediaType: (group: DetectionGroup) => MediaType;
 		formatMediaTypeLabel: (mediaType: MediaType) => string;
 		canImportGroup: (group: DetectionGroup) => boolean;
+		getGroupSelectedMatch: (group: DetectionGroup) => import('./types.js').MatchResult | null;
 		hasUnknownSeasonItems: (section: DetectionSection) => boolean;
 		getSectionSeasonOverride: (section: DetectionSection) => number | null;
 		getSkippableSeasonGroups: (season: TvSeasonSection) => DetectionGroup[];
@@ -242,6 +245,7 @@
 				<div class="max-h-72 space-y-2 overflow-y-auto pr-1">
 					{#each reviewMovieSections as section (section.id)}
 						{#each section.items as group (group.id)}
+							{@const groupMatch = getGroupSelectedMatch(group)}
 							<div class="rounded-lg border border-base-300 p-2">
 								<div
 									class="flex items-center gap-2 rounded-lg border p-2 sm:p-3 {selectedGroupId ===
@@ -275,6 +279,12 @@
 												<span class="text-success">{m.library_import_ready()}</span>
 											{:else if isGroupPending(group.id)}
 												<span class="text-warning">{m.library_import_needsInput()}</span>
+											{/if}
+											{#if groupMatch}
+												<span>•</span>
+												<span class="max-w-48 truncate font-medium text-base-content/80"
+													>{groupMatch.title}{groupMatch.year ? ` (${groupMatch.year})` : ''}</span
+												>
 											{/if}
 										</div>
 									</button>
@@ -439,6 +449,7 @@
 								<div class="mt-2 max-h-72 space-y-2 overflow-y-auto pr-1">
 									{#each activeReviewSeasonSection?.items ?? activeReviewTvSection.items as group (group.id)}
 										{@const episodeInfo = getGroupEpisodeInfo(group)}
+										{@const groupMatch = getGroupSelectedMatch(group)}
 										<div
 											class="flex items-center gap-2 rounded-lg border p-2 sm:p-3 {selectedGroupId ===
 											group.id
@@ -471,6 +482,14 @@
 														<span class="text-success">{m.library_import_ready()}</span>
 													{:else if isGroupPending(group.id)}
 														<span class="text-warning">{m.library_import_needsInput()}</span>
+													{/if}
+													{#if groupMatch && !episodeInfo}
+														<span>•</span>
+														<span class="max-w-48 truncate font-medium text-base-content/80"
+															>{groupMatch.title}{groupMatch.year
+																? ` (${groupMatch.year})`
+																: ''}</span
+														>
 													{/if}
 													{#if episodeInfo}
 														<span

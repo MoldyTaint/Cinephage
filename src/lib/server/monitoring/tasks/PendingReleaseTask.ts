@@ -14,9 +14,9 @@
 import { db } from '$lib/server/db/index.js';
 import { pendingReleases, movies, series, episodes } from '$lib/server/db/schema.js';
 import { eq, inArray } from 'drizzle-orm';
-import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager.js';
 import { delayProfileService } from '../specifications/DelaySpecification.js';
 import { blocklistService } from '../specifications/BlocklistSpecification.js';
+import { grabService } from '$lib/server/downloads/GrabService.js';
 import { logger } from '$lib/logging/index.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
@@ -281,55 +281,58 @@ async function processRelease(
 }
 
 /**
- * Attempt to grab a pending release
+ * Attempt to grab a pending release via the full GrabService pipeline (with delay skipped).
  */
 async function grabPendingRelease(
 	release: typeof pendingReleases.$inferSelect
 ): Promise<{ success: boolean; error?: string }> {
 	try {
-		const downloadClientManager = await getDownloadClientManager();
-
-		// Get enabled torrent clients (we only support torrent for now)
-		// TODO: Add usenet client support
-		if (release.protocol === 'usenet') {
-			return { success: false, error: 'Usenet downloads not yet supported' };
-		}
-
-		const enabledClients = await downloadClientManager.getEnabledClients();
-		if (enabledClients.length === 0) {
-			return { success: false, error: 'No enabled download clients' };
-		}
-
-		// Use first enabled client
-		const { client, instance } = enabledClients[0];
-		const category = release.movieId ? client.movieCategory || 'movies' : client.tvCategory || 'tv';
-
-		// Build download options
-		const downloadOptions = {
-			magnetUri: release.magnetUrl ?? undefined,
-			downloadUrl: release.downloadUrl ?? undefined,
-			infoHash: release.infoHash ?? undefined,
-			category
-		};
-
-		// Add the download
-		if (release.magnetUrl) {
-			await instance.addDownload({ ...downloadOptions, magnetUri: release.magnetUrl });
-		} else if (release.downloadUrl) {
-			await instance.addDownload({ ...downloadOptions, downloadUrl: release.downloadUrl });
-		} else {
+		if (!release.downloadUrl && !release.magnetUrl) {
 			return { success: false, error: 'No download URL or magnet for release' };
 		}
 
-		logger.info(
-			{
-				title: release.title,
-				client: client.name
-			},
-			'[PendingReleaseTask] Successfully sent to download client'
-		);
+		// Build the grab target from stored IDs
+		let target: import('$lib/server/downloads/grab-types.js').GrabTarget;
+		if (release.movieId) {
+			target = { type: 'movie', movieId: release.movieId };
+		} else if (release.seriesId && release.episodeIds && release.episodeIds.length > 0) {
+			target = { type: 'episode', episodeId: release.episodeIds[0], seriesId: release.seriesId };
+		} else if (release.seriesId) {
+			target = { type: 'series', seriesId: release.seriesId, episodeIds: [] };
+		} else {
+			return { success: false, error: 'No media target for pending release' };
+		}
 
-		return { success: true };
+		const result = await grabService.grab({
+			release: {
+				title: release.title,
+				infoHash: release.infoHash ?? undefined,
+				downloadUrl: release.downloadUrl ?? undefined,
+				magnetUrl: release.magnetUrl ?? undefined,
+				indexerId: release.indexerId ?? undefined,
+				size: release.size ?? undefined,
+				protocol: (release.protocol as 'torrent' | 'usenet' | 'streaming') ?? 'torrent',
+				publishDate: release.publishDate ? new Date(release.publishDate) : undefined
+			},
+			target,
+			options: {
+				force: false,
+				skipBlocklist: false,
+				allowSidegrade: false,
+				isAutomatic: true,
+				skipDelay: true
+			}
+		});
+
+		if (result.success) {
+			logger.info(
+				{ title: release.title },
+				'[PendingReleaseTask] Successfully grabbed pending release'
+			);
+			return { success: true };
+		}
+
+		return { success: false, error: result.decision?.reason ?? result.error ?? 'Grab rejected' };
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
 		return { success: false, error: message };

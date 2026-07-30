@@ -1,6 +1,5 @@
-import type { PageServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
 
-export const load: PageServerLoad = async () => {
-	throw redirect(301, '/settings/integrations/indexers');
+export const load = () => {
+	throw redirect(307, '/settings/integrations/indexers');
 };

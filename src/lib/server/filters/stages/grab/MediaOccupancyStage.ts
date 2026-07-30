@@ -1,6 +1,9 @@
 import { mediaOccupancyService } from '$lib/server/acquisition/MediaOccupancyService.js';
 import type { DecisionStage, StageResult } from '../../types.js';
 import type { GrabDecisionContext } from './types.js';
+import { createChildLogger } from '$lib/logging/index.js';
+
+const logger = createChildLogger({ module: 'MediaOccupancyStage' });
 
 export class MediaOccupancyStage implements DecisionStage<GrabDecisionContext> {
 	name = 'mediaOccupancy';
@@ -11,12 +14,22 @@ export class MediaOccupancyStage implements DecisionStage<GrabDecisionContext> {
 
 	async evaluate(ctx: GrabDecisionContext): Promise<StageResult> {
 		const result = await mediaOccupancyService.check(ctx.target, {
-			isUpgrade: ctx.options.isUpgrade
+			isUpgrade: ctx.options.isUpgrade,
+			candidateResolution: ctx.computed.scoringResult?.resolution
 		});
 
 		if (!result.occupied) {
 			return { accepted: true };
 		}
+
+		logger.debug(
+			{
+				reason: result.reason,
+				target: ctx.target,
+				details: result.details
+			},
+			'[MediaOccupancyStage] Target occupied'
+		);
 
 		return {
 			accepted: false,

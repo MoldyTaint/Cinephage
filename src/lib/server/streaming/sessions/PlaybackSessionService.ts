@@ -1,5 +1,5 @@
 import { logger } from '$lib/logging';
-import { getCinephageApiService } from '../cinephage-api/CinephageApiService';
+import { getLibraryStreamingModule } from '$lib/server/cinephage/modules/library-streaming/LibraryStreamingModule.js';
 import type {
 	PlaybackMediaType,
 	PlaybackSession,
@@ -46,7 +46,7 @@ function isAborted(signal?: AbortSignal): boolean {
 }
 
 export class PlaybackSessionService {
-	private readonly api = getCinephageApiService();
+	private readonly api = getLibraryStreamingModule();
 	private readonly store = getPlaybackSessionStore();
 
 	async createOrReuseSession(params: PlaybackLaunchParams): Promise<{

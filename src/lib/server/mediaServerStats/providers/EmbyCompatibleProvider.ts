@@ -34,6 +34,13 @@ export abstract class EmbyCompatibleProvider implements MediaServerStatsProvider
 		let totalRecordCount = 0;
 		let offset = 0;
 
+		// Maps for episode tmdbId backfill.
+		// Jellyfin doesn't populate ProviderIds.Tmdb on episodes (TMDB identifies
+		// episodes by series_id + season + episode, not standalone IDs). We fix this
+		// by inheriting the parent series' tmdbId after all items are fetched.
+		const seriesTmdbByJfId = new Map<string, number | null>();
+		const episodeParentJfId = new Map<string, string>();
+
 		do {
 			const data = await this.request(
 				`/Users/${userId}/Items?Recursive=true&IncludeItemTypes=${ITEM_TYPES}` +
@@ -48,11 +55,36 @@ export abstract class EmbyCompatibleProvider implements MediaServerStatsProvider
 				const normalized = this.normalizeItem(raw);
 				if (normalized) {
 					items.push(normalized);
+
+					// Capture series tmdbId keyed by Jellyfin internal ID
+					if (raw.Type === 'Series' && raw.Id) {
+						seriesTmdbByJfId.set(String(raw.Id), normalized.tmdbId);
+					}
+					// Capture episode → parent series Jellyfin ID relationship
+					if (raw.Type === 'Episode' && raw.Id && raw.SeriesId) {
+						episodeParentJfId.set(String(raw.Id), String(raw.SeriesId));
+					}
 				}
 			}
 
 			offset += PAGE_SIZE;
 		} while (offset < totalRecordCount);
+
+		// Backfill: episodes with null tmdbId inherit their parent series' tmdbId.
+		// This is the correct attribution — TMDB episode IDs are derived from the
+		// series ID, and the local reconciliation already uses the series tmdbId
+		// for episode matching.
+		for (const item of items) {
+			if (item.itemType === 'episode' && item.tmdbId === null) {
+				const parentJfId = episodeParentJfId.get(item.serverItemId);
+				if (parentJfId) {
+					const seriesTmdb = seriesTmdbByJfId.get(parentJfId);
+					if (seriesTmdb != null) {
+						item.tmdbId = seriesTmdb;
+					}
+				}
+			}
+		}
 
 		const serverItemIds = new Set<string>(items.map((item) => item.serverItemId));
 
@@ -117,6 +149,11 @@ export abstract class EmbyCompatibleProvider implements MediaServerStatsProvider
 
 		const { isHDR, hdrFormat } = this.resolveHDR(videoStream);
 
+		// Movies identify by tmdbId alone; season/episode numbering is meaningless
+		// for them. Some Jellyfin libraries populate IndexNumber/ParentIndexNumber
+		// on movies, which would otherwise corrupt movie matching downstream.
+		const useSeasonEpisode = itemType === 'episode';
+
 		return {
 			serverItemId: String(raw.Id),
 			tmdbId: this.parseIntOrNull(providerIds.Tmdb),
@@ -126,8 +163,8 @@ export abstract class EmbyCompatibleProvider implements MediaServerStatsProvider
 			year: raw.ProductionYear ?? null,
 			itemType,
 			seriesName: raw.SeriesName ?? null,
-			seasonNumber: raw.ParentIndexNumber ?? null,
-			episodeNumber: raw.IndexNumber ?? null,
+			seasonNumber: useSeasonEpisode ? (raw.ParentIndexNumber ?? null) : null,
+			episodeNumber: useSeasonEpisode ? (raw.IndexNumber ?? null) : null,
 			playCount: raw.UserData?.PlayCount ?? 0,
 			lastPlayedDate: raw.UserData?.LastPlayedDate ?? null,
 			playedPercentage: raw.UserData?.PlayedPercentage ?? null,

@@ -120,8 +120,23 @@ import {
  * Version 88: Add root folder scan filters
  * Version 89: Add blocked keywords table
  * Version 90: Add durable library job tables
+ * Version 101: Add Cinephage API subsystem tables (cinephage_api_config, cinephage_api_modules)
+ * Version 102: Add indexers.is_built_in column for system-owned indexer rows
+ * Version 103: Migrate streaming settings JSON to cinephage_api_* tables
+ * Version 104: Drop vestigial indexer_definitions table
+ * Version 105: Add delay_profile_assignment table for per-media delay profile selection
+ * Version 106: Add required_formats to scoring profiles
+ * Version 107: Migrate required formats to entries
+ * Version 108: Add download_queue stalled_since column for stalled torrent tracking
+ * Version 109: Add stalled_orphan tracking table
+ * Version 110: Add storage_items, storage_item_server_links, storage_insights tables for unified storage tracking
+ * Version 111: Add rename_history table for permanent file rename audit trail
+ * Version 123: Add desired_qualities column to movies for multi-quality per-movie support
+ * Version 124: Add movie_file_id to subtitles for per-file subtitle association
+ * Version 125: Add api_token and remove_after_import columns to download_clients (debrid support)
+ * Version 126: Add metadata_language and prefer_original_title columns to movies and series tables
  */
-export const CURRENT_SCHEMA_VERSION = 100;
+export const CURRENT_SCHEMA_VERSION = 126;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -180,23 +195,6 @@ const TABLE_DEFINITIONS: string[] = [
 		"success" integer DEFAULT 1
 	)`,
 
-	`CREATE TABLE IF NOT EXISTS "indexer_definitions" (
-		"id" text PRIMARY KEY NOT NULL,
-		"name" text NOT NULL,
-		"description" text,
-		"protocol" text NOT NULL CHECK ("protocol" IN ('torrent', 'usenet', 'streaming')),
-		"type" text NOT NULL CHECK ("type" IN ('public', 'semi-private', 'private')),
-		"language" text DEFAULT 'en-US',
-		"urls" text NOT NULL,
-		"legacy_urls" text,
-		"settings_schema" text,
-		"capabilities" text NOT NULL,
-		"file_path" text,
-		"file_hash" text,
-		"loaded_at" text NOT NULL,
-		"updated_at" text NOT NULL
-	)`,
-
 	`CREATE TABLE IF NOT EXISTS "scoring_profiles" (
 		"id" text PRIMARY KEY NOT NULL,
 		"name" text NOT NULL,
@@ -219,6 +217,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"max_resolution" text,
 		"allowed_sources" text,
 		"excluded_sources" text,
+		"required_formats" text,
 		"prevent_downgrades" integer DEFAULT 0,
 		"created_at" text,
 		"updated_at" text
@@ -267,6 +266,8 @@ const TABLE_DEFINITIONS: string[] = [
 		"password" text,
 		"url_base" text,
 		"mount_mode" text,
+		"api_token" text,
+		"remove_after_import" integer DEFAULT 0,
 		"movie_category" text DEFAULT 'movies',
 		"tv_category" text DEFAULT 'tv',
 		"recent_priority" text DEFAULT 'normal',
@@ -300,6 +301,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"preserve_symlinks" integer DEFAULT false,
 		"default_monitored" integer DEFAULT true,
 		"free_space_bytes" integer,
+		"total_space_bytes" integer,
 		"last_checked_at" text,
 		"created_at" text
 	)`,
@@ -350,6 +352,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"usenet_delay" integer DEFAULT 0 NOT NULL,
 		"torrent_delay" integer DEFAULT 0 NOT NULL,
 		"quality_delays" text,
+		"quality_profile_id" text REFERENCES "scoring_profiles"("id") ON DELETE SET NULL,
 		"preferred_protocol" text,
 		"tags" text,
 		"bypass_if_highest_quality" integer DEFAULT true,
@@ -382,6 +385,35 @@ const TABLE_DEFINITIONS: string[] = [
 		"value" text NOT NULL
 	)`,
 
+	`CREATE TABLE IF NOT EXISTS "resolution_categories" (
+		"id" text PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+		"label" text NOT NULL,
+		"min_width" integer NOT NULL DEFAULT 0,
+		"min_height" integer NOT NULL DEFAULT 0,
+		"search_terms" text,
+		"is_fallback" integer DEFAULT 0,
+		"created_at" text NOT NULL DEFAULT (datetime('now'))
+	)`,
+	`CREATE TABLE IF NOT EXISTS "duplicate_group_suppression" (
+		"id" text PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+		"library_id" text REFERENCES "libraries"("id") ON DELETE CASCADE,
+		"signature" text NOT NULL,
+		"signature_type" text NOT NULL,
+		"dismissed_at" text NOT NULL DEFAULT (datetime('now')),
+		"created_at" text NOT NULL DEFAULT (datetime('now'))
+	)`,
+	`CREATE TABLE IF NOT EXISTS "library_pattern_config" (
+		"id" text PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+		"library_id" text REFERENCES "libraries"("id") ON DELETE CASCADE,
+		"scope" text NOT NULL,
+		"ignore_defaults_enabled" integer NOT NULL DEFAULT 1,
+		"ignore_user_patterns" text,
+		"bonus_patterns" text,
+		"structure_mode" text,
+		"structure_config" text,
+		"created_at" text NOT NULL DEFAULT (datetime('now')),
+		"updated_at" text NOT NULL DEFAULT (datetime('now'))
+	)`,
 	`CREATE TABLE IF NOT EXISTS "naming_settings" (
 		"key" text PRIMARY KEY NOT NULL,
 		"value" text NOT NULL
@@ -433,12 +465,32 @@ const TABLE_DEFINITIONS: string[] = [
 		"updated_at" text
 	)`,
 
+	// Cinephage API subsystem - singleton config row (id is always 1)
+	`CREATE TABLE IF NOT EXISTS "cinephage_api_config" (
+		"id" integer PRIMARY KEY NOT NULL DEFAULT 1 CHECK ("id" = 1),
+		"enabled" integer DEFAULT 1 NOT NULL,
+		"base_url" text NOT NULL DEFAULT 'https://api.cinephage.net',
+		"version_override" text,
+		"commit_override" text,
+		"updated_at" text
+	)`,
+
+	// Cinephage API subsystem - per-module state (one row per feature module)
+	`CREATE TABLE IF NOT EXISTS "cinephage_api_modules" (
+		"module_id" text PRIMARY KEY NOT NULL,
+		"enabled" integer DEFAULT 1 NOT NULL,
+		"settings" text NOT NULL DEFAULT '{}',
+		"last_error" text,
+		"updated_at" text
+	)`,
+
 	// Tables with foreign keys to root_folders, scoring_profiles, quality_presets
 	`CREATE TABLE IF NOT EXISTS "indexers" (
 		"id" text PRIMARY KEY NOT NULL,
 		"name" text NOT NULL,
 		"definition_id" text NOT NULL,
 		"enabled" integer DEFAULT true,
+		"is_built_in" integer DEFAULT 0 NOT NULL,
 		"base_url" text NOT NULL,
 		"alternate_urls" text,
 		"priority" integer DEFAULT 25,
@@ -486,6 +538,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"library_id" text REFERENCES "libraries"("id") ON DELETE SET NULL,
 		"root_folder_id" text REFERENCES "root_folders"("id") ON DELETE SET NULL,
 		"scoring_profile_id" text REFERENCES "scoring_profiles"("id") ON DELETE SET NULL,
+		"desired_qualities" text,
 		"language_profile_id" text,
 		"monitored" integer DEFAULT true,
 		"minimum_availability" text DEFAULT 'released',
@@ -502,7 +555,9 @@ const TABLE_DEFINITIONS: string[] = [
 		"download_release_type" text,
 		"digital_release_date" text,
 		"physical_release_date" text,
-		"availability_delay" integer NOT NULL DEFAULT 0
+		"availability_delay" integer NOT NULL DEFAULT 0,
+		"metadata_language" text,
+		"prefer_original_title" integer DEFAULT 0
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "movie_files" (
@@ -550,7 +605,9 @@ const TABLE_DEFINITIONS: string[] = [
 		"episode_file_count" integer DEFAULT 0,
 		"wants_subtitles" integer DEFAULT true,
 		"first_air_date" text,
-		"episode_group_id" text
+		"episode_group_id" text,
+		"metadata_language" text,
+		"prefer_original_title" integer DEFAULT 0
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "seasons" (
@@ -837,6 +894,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"id" text PRIMARY KEY NOT NULL,
 		"movie_id" text REFERENCES "movies"("id") ON DELETE CASCADE,
 		"episode_id" text REFERENCES "episodes"("id") ON DELETE CASCADE,
+		"movie_file_id" text REFERENCES "movie_files"("id") ON DELETE SET NULL,
 		"relative_path" text NOT NULL,
 		"language" text NOT NULL,
 		"is_forced" integer DEFAULT false,
@@ -1282,6 +1340,67 @@ const TABLE_DEFINITIONS: string[] = [
 		"keyword_id" integer NOT NULL UNIQUE,
 		"name" text NOT NULL,
 		"created_at" text NOT NULL
+	)`,
+
+	// Storage Items - unified directory of media items across libraries and root folders
+	`CREATE TABLE IF NOT EXISTS "storage_items" (
+		"id" text PRIMARY KEY NOT NULL,
+		"item_type" text NOT NULL,
+		"tmdb_id" integer,
+		"tvdb_id" integer,
+		"imdb_id" text,
+		"title" text NOT NULL,
+		"year" integer,
+		"series_name" text,
+		"season_number" integer,
+		"episode_number" integer,
+		"movie_file_id" text,
+		"episode_file_id" text,
+		"root_folder_id" text,
+		"library_id" text,
+		"source_system" text NOT NULL,
+		"match_confidence" text NOT NULL,
+		"first_seen_at" text NOT NULL,
+		"last_reconciled_at" text
+	)`,
+
+	// Storage Item Server Links - sidecar for multi-server fan-out
+	`CREATE TABLE IF NOT EXISTS "storage_item_server_links" (
+		"storage_item_id" text NOT NULL,
+		"server_id" text NOT NULL,
+		"synced_item_id" text NOT NULL,
+		"last_seen_at" text NOT NULL,
+		PRIMARY KEY ("storage_item_id", "server_id")
+	)`,
+
+	// Storage Insights - cached dismissible findings (orphaned media, dupes, etc.)
+	`CREATE TABLE IF NOT EXISTS "storage_insights" (
+		"id" text PRIMARY KEY NOT NULL,
+		"insight_type" text NOT NULL,
+		"severity" text NOT NULL,
+		"scope" text NOT NULL,
+		"scope_id" text,
+		"title" text NOT NULL,
+		"summary" text,
+		"details_json" text,
+		"reclaimable_bytes" integer,
+		"item_count" integer NOT NULL DEFAULT 0,
+		"first_detected_at" text NOT NULL,
+		"last_detected_at" text NOT NULL,
+		"dismissed_at" text,
+		"dismissed_by" text
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "rename_history" (
+		"id" text PRIMARY KEY NOT NULL,
+		"file_id" text NOT NULL,
+		"media_type" text NOT NULL,
+		"old_path" text NOT NULL,
+		"new_path" text NOT NULL,
+		"success" integer NOT NULL DEFAULT 0,
+		"error" text,
+		"operation" text NOT NULL DEFAULT 'rename',
+		"created_at" text NOT NULL
 	)`
 ];
 
@@ -1289,8 +1408,6 @@ const TABLE_DEFINITIONS: string[] = [
  * Index definitions for performance
  */
 const INDEX_DEFINITIONS: string[] = [
-	`CREATE INDEX IF NOT EXISTS "idx_indexer_definitions_protocol" ON "indexer_definitions" ("protocol")`,
-	`CREATE INDEX IF NOT EXISTS "idx_indexer_definitions_type" ON "indexer_definitions" ("type")`,
 	`CREATE INDEX IF NOT EXISTS "idx_indexers_definition" ON "indexers" ("definition_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_indexers_enabled" ON "indexers" ("enabled")`,
 	`CREATE INDEX IF NOT EXISTS "idx_indexer_status_health" ON "indexer_status" ("health", "is_disabled")`,
@@ -1333,6 +1450,7 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_blocklist_movie" ON "blocklist" ("movie_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_blocklist_series" ON "blocklist" ("series_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_blocklist_infohash" ON "blocklist" ("info_hash")`,
+	`CREATE INDEX IF NOT EXISTS "idx_cinephage_api_modules_enabled" ON "cinephage_api_modules" ("enabled")`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_blocked_media_unique" ON "blocked_media" ("tmdb_id", "media_type")`,
 	`CREATE INDEX IF NOT EXISTS "idx_monitoring_history_task_history" ON "monitoring_history" ("task_history_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_monitoring_history_movie" ON "monitoring_history" ("movie_id")`,
@@ -1340,6 +1458,7 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_monitoring_history_episode" ON "monitoring_history" ("episode_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_subtitles_movie" ON "subtitles" ("movie_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_subtitles_episode" ON "subtitles" ("episode_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_subtitles_movie_file" ON "subtitles" ("movie_file_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_smart_lists_enabled" ON "smart_lists" ("enabled")`,
 	`CREATE INDEX IF NOT EXISTS "idx_smart_lists_next_refresh" ON "smart_lists" ("next_refresh_time")`,
 	`CREATE INDEX IF NOT EXISTS "idx_smart_lists_media_type" ON "smart_lists" ("media_type")`,
@@ -1418,7 +1537,10 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_synced_items_unique" ON "media_server_synced_items" ("server_id", "server_item_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_synced_items_tmdb_id" ON "media_server_synced_items" ("tmdb_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_synced_items_tvdb_id" ON "media_server_synced_items" ("tvdb_id")`,
-	`CREATE INDEX IF NOT EXISTS "idx_synced_items_item_type" ON "media_server_synced_items" ("item_type")`
+	`CREATE INDEX IF NOT EXISTS "idx_synced_items_item_type" ON "media_server_synced_items" ("item_type")`,
+	// Rename history audit indexes
+	`CREATE INDEX IF NOT EXISTS "idx_rename_history_file" ON "rename_history" ("file_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_rename_history_created" ON "rename_history" ("created_at")`
 ];
 
 /**
@@ -1447,7 +1569,7 @@ export function syncSchema(sqlite: Database.Database): void {
 		.run();
 
 	// 2. Backfill records for legacy databases
-	backfillMigrationRecords(sqlite);
+	backfillMigrationRecords(sqlite, MIGRATIONS);
 
 	// 2.5. Detect and fix schema drift (columns missing despite version saying they should exist)
 	detectAndFixSchemaDrift(sqlite);

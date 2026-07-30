@@ -172,6 +172,30 @@ describe('JellyfinStatsProvider', () => {
 		expect(item.subtitleLanguages).toEqual(['eng', 'spa']);
 	});
 
+	it('should drop stray season/episode numbers on movies (covers shared EmbyCompatible base)', async () => {
+		// Some Jellyfin libraries populate IndexNumber/ParentIndexNumber on movies.
+		// Movies identify by tmdbId alone; keeping junk season/episode would split
+		// one film into multiple storage_items rows during reconciliation. This also
+		// covers Emby, which shares the EmbyCompatibleProvider.normalizeItem base.
+		const movieWithJunk = makeJellyfinItem({
+			IndexNumber: 1,
+			ParentIndexNumber: 1
+		});
+
+		mockFetch.mockResolvedValueOnce(mockAdminResponse());
+		mockFetch.mockResolvedValueOnce(
+			mockFetchResponse({ TotalRecordCount: 1, Items: [movieWithJunk] })
+		);
+
+		const provider = new JellyfinStatsProvider(mockConfig);
+		const result = await provider.fetchAllItems();
+
+		const item = result.items[0];
+		expect(item.itemType).toBe('movie');
+		expect(item.seasonNumber).toBeNull();
+		expect(item.episodeNumber).toBeNull();
+	});
+
 	it('should handle missing media info gracefully', async () => {
 		const bareItem = {
 			Id: 'bare-item',
@@ -421,5 +445,108 @@ describe('JellyfinStatsProvider', () => {
 		expect(item.tmdbId).toBe(99999);
 		expect(item.tvdbId).toBe(88888);
 		expect(item.imdbId).toBe('tt9999999');
+	});
+
+	it('should backfill episode tmdbId from parent series when ProviderIds.Tmdb is missing', async () => {
+		// Jellyfin doesn't populate ProviderIds.Tmdb on episodes — only on series.
+		// The provider should inherit the series tmdbId onto episodes via SeriesId.
+		const seriesItem = makeJellyfinItem({
+			Id: 'series-jf-1',
+			Name: 'Breaking Bad',
+			Type: 'Series',
+			ProviderIds: { Tmdb: '1396' }
+		});
+		const episodeItem = makeJellyfinItem({
+			Id: 'episode-jf-1',
+			Name: 'Pilot',
+			Type: 'Episode',
+			SeriesName: 'Breaking Bad',
+			SeriesId: 'series-jf-1',
+			ParentIndexNumber: 1,
+			IndexNumber: 1,
+			ProviderIds: { Tvdb: '3415731' } // No Tmdb key — this is the real Jellyfin behavior
+		});
+
+		mockFetch.mockResolvedValueOnce(mockAdminResponse());
+		mockFetch.mockResolvedValueOnce(
+			mockFetchResponse({ TotalRecordCount: 2, Items: [seriesItem, episodeItem] })
+		);
+
+		const provider = new JellyfinStatsProvider(mockConfig);
+		const result = await provider.fetchAllItems();
+
+		const episode = result.items.find((i) => i.itemType === 'episode');
+		expect(episode).toBeDefined();
+		expect(episode!.tmdbId).toBe(1396); // Inherited from parent series
+	});
+
+	it('should leave episode tmdbId null when no matching series is found', async () => {
+		const orphanEpisode = makeJellyfinItem({
+			Id: 'episode-orphan',
+			Name: 'Mystery Episode',
+			Type: 'Episode',
+			SeriesId: 'nonexistent-series',
+			ProviderIds: {}
+		});
+
+		mockFetch.mockResolvedValueOnce(mockAdminResponse());
+		mockFetch.mockResolvedValueOnce(
+			mockFetchResponse({ TotalRecordCount: 1, Items: [orphanEpisode] })
+		);
+
+		const provider = new JellyfinStatsProvider(mockConfig);
+		const result = await provider.fetchAllItems();
+
+		const episode = result.items.find((i) => i.itemType === 'episode');
+		expect(episode).toBeDefined();
+		expect(episode!.tmdbId).toBeNull();
+	});
+
+	it('should backfill episode tmdbId across different series in one fetch', async () => {
+		// Multiple series with their episodes — verifies the seriesId map correctly
+		// routes each episode to its own parent series
+		const series1 = makeJellyfinItem({
+			Id: 'series-A',
+			Name: 'Show A',
+			Type: 'Series',
+			ProviderIds: { Tmdb: '111' }
+		});
+		const series2 = makeJellyfinItem({
+			Id: 'series-B',
+			Name: 'Show B',
+			Type: 'Series',
+			ProviderIds: { Tmdb: '222' }
+		});
+		const ep1 = makeJellyfinItem({
+			Id: 'ep-A-1',
+			Name: 'A E1',
+			Type: 'Episode',
+			SeriesId: 'series-A',
+			ParentIndexNumber: 1,
+			IndexNumber: 1,
+			ProviderIds: {}
+		});
+		const ep2 = makeJellyfinItem({
+			Id: 'ep-B-1',
+			Name: 'B E1',
+			Type: 'Episode',
+			SeriesId: 'series-B',
+			ParentIndexNumber: 1,
+			IndexNumber: 1,
+			ProviderIds: {}
+		});
+
+		mockFetch.mockResolvedValueOnce(mockAdminResponse());
+		mockFetch.mockResolvedValueOnce(
+			mockFetchResponse({ TotalRecordCount: 4, Items: [series1, series2, ep1, ep2] })
+		);
+
+		const provider = new JellyfinStatsProvider(mockConfig);
+		const result = await provider.fetchAllItems();
+
+		const eps = result.items.filter((i) => i.itemType === 'episode');
+		expect(eps).toHaveLength(2);
+		expect(eps.find((e) => e.serverItemId === 'ep-A-1')!.tmdbId).toBe(111);
+		expect(eps.find((e) => e.serverItemId === 'ep-B-1')!.tmdbId).toBe(222);
 	});
 });

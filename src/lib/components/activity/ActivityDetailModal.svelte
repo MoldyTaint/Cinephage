@@ -12,6 +12,7 @@
 	import {
 		statusConfig,
 		getStatusLabel,
+		supportsQueuePauseResume,
 		formatRelativeTime,
 		getResolutionBadge
 	} from './activity-display-utils.js';
@@ -270,12 +271,12 @@
 				<!-- Queue Actions -->
 				{#if activity.queueItemId}
 					<div class="mt-4 flex flex-wrap gap-2">
-						{#if activity.status === 'downloading' || activity.status === 'seeding'}
+						{#if supportsQueuePauseResume(activity) && (activity.status === 'downloading' || activity.status === 'seeding')}
 							<button class="btn btn-ghost btn-sm" onclick={handlePause} disabled={actionLoading}>
 								<Pause class="h-4 w-4" />
 								{m.action_pause()}
 							</button>
-						{:else if activity.status === 'paused'}
+						{:else if supportsQueuePauseResume(activity) && activity.status === 'paused'}
 							<button class="btn btn-ghost btn-sm" onclick={handleResume} disabled={actionLoading}>
 								<Play class="h-4 w-4" />
 								{m.action_resume()}

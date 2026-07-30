@@ -58,6 +58,7 @@ export const GET: RequestHandler = async () => {
 		upgradeUntilScore: p.upgradeUntilScore ?? -1,
 		minScoreIncrement: p.minScoreIncrement ?? 0,
 		formatScores: p.formatScores ?? {},
+		requiredFormats: p.requiredFormats ?? [],
 		movieMinSizeGb: toNullableNumber(p.movieMinSizeGb),
 		movieMaxSizeGb: toNullableNumber(p.movieMaxSizeGb),
 		episodeMinSizeMb: toNullableNumber(p.episodeMinSizeMb),
@@ -82,6 +83,7 @@ export const GET: RequestHandler = async () => {
 			upgradeUntilScore: p.upgradeUntilScore ?? -1,
 			minScoreIncrement: p.minScoreIncrement ?? 0,
 			formatScores: p.formatScores ?? {},
+			requiredFormats: p.requiredFormats ?? [],
 			movieMinSizeGb: toNullableNumber(p.movieMinSizeGb),
 			movieMaxSizeGb: toNullableNumber(p.movieMaxSizeGb),
 			episodeMinSizeMb: toNullableNumber(p.episodeMinSizeMb),
@@ -163,6 +165,7 @@ export const POST: RequestHandler = async (event) => {
 			upgradeUntilScore: data.upgradeUntilScore,
 			minScoreIncrement: data.minScoreIncrement,
 			formatScores,
+			requiredFormats: data.requiredFormats,
 			movieMinSizeGb: data.movieMinSizeGb,
 			movieMaxSizeGb: data.movieMaxSizeGb,
 			episodeMinSizeMb: data.episodeMinSizeMb,
@@ -226,6 +229,8 @@ export const PUT: RequestHandler = async (event) => {
 		if (updateData.preventDowngrades !== undefined)
 			updateFields.preventDowngrades = updateData.preventDowngrades;
 		if (updateData.formatScores !== undefined) updateFields.formatScores = updateData.formatScores;
+		if (updateData.requiredFormats !== undefined)
+			updateFields.requiredFormats = updateData.requiredFormats;
 		if (updateData.movieMinSizeGb !== undefined)
 			updateFields.movieMinSizeGb = toNullableNumber(updateData.movieMinSizeGb);
 		if (updateData.movieMaxSizeGb !== undefined)
@@ -294,6 +299,8 @@ export const PUT: RequestHandler = async (event) => {
 	if (updateData.minScoreIncrement !== undefined)
 		updateFields.minScoreIncrement = updateData.minScoreIncrement;
 	if (updateData.formatScores !== undefined) updateFields.formatScores = updateData.formatScores;
+	if (updateData.requiredFormats !== undefined)
+		updateFields.requiredFormats = updateData.requiredFormats;
 	if (updateData.movieMinSizeGb !== undefined)
 		updateFields.movieMinSizeGb = updateData.movieMinSizeGb;
 	if (updateData.movieMaxSizeGb !== undefined)

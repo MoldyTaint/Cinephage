@@ -72,6 +72,7 @@ export class YamlIndexerFactory implements IIndexerFactory {
 			enabled: config.enabled,
 			upstreamEnabled: config.upstreamEnabled ?? null,
 			orphaned: config.orphaned ?? false,
+			isBuiltIn: config.isBuiltIn ?? false,
 			baseUrl: config.baseUrl,
 			alternateUrls: config.alternateUrls ?? null,
 			priority: config.priority ?? 25,

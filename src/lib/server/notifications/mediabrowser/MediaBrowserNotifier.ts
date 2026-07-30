@@ -19,6 +19,7 @@ import type { LibraryUpdateType, PendingUpdate, LibraryUpdatePayload } from './t
 // Batching configuration
 const BATCH_DELAY_MS = 5000; // Wait 5 seconds before sending
 const MAX_BATCH_SIZE = 50; // Maximum updates per batch
+const STOP_DRAIN_MAX_MS = 15000; // Maximum time to spend draining on stop()
 
 class MediaBrowserNotifier extends EventEmitter implements BackgroundService {
 	readonly name = 'MediaBrowserNotifier';
@@ -66,17 +67,31 @@ class MediaBrowserNotifier extends EventEmitter implements BackgroundService {
 	}
 
 	/**
-	 * Stop the notifier service
+	 * Stop the notifier service.
+	 * Drains pending update batches with a timeout to prevent
+	 * indefinite blocking during server shutdown.
 	 */
 	async stop(): Promise<void> {
-		// Process any remaining updates before stopping
-		if (this.pendingUpdates.size > 0) {
-			await this.processBatch();
-		}
-
 		if (this.batchTimer) {
 			clearTimeout(this.batchTimer);
 			this.batchTimer = null;
+		}
+
+		// Drain remaining updates with a deadline.
+		const deadline = Date.now() + STOP_DRAIN_MAX_MS;
+		while (this.pendingUpdates.size > 0 && Date.now() < deadline) {
+			await this.processBatch();
+			// Guard against infinite loop if processBatch returns
+			// immediately but doesn't actually drain.
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		}
+
+		if (this.pendingUpdates.size > 0) {
+			logger.warn(
+				{ remaining: this.pendingUpdates.size },
+				'[MediaBrowserNotifier] Stop drain timed out, discarding remaining updates'
+			);
+			this.pendingUpdates.clear();
 		}
 
 		this._status = 'pending';

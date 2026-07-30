@@ -6,7 +6,8 @@ import {
 	fetchJackettIndexers,
 	normalizeJackettUrl,
 	jackettIndexerUrl,
-	isIndexerFromJackett
+	isIndexerFromJackett,
+	extractJackettIndexerId
 } from '$lib/server/indexers/jackett/JackettConnectionService.js';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
 
@@ -50,9 +51,11 @@ export const GET: RequestHandler = async (event) => {
 	const indexers = [];
 	for (const raw of rawIndexers) {
 		const baseUrl = jackettIndexerUrl(base, raw.id);
-		const existing = existingIndexers.find(
-			(e) => isIndexerFromJackett(e.baseUrl, base) && e.baseUrl.replace(/\/+$/, '') === baseUrl
-		);
+		const existing = existingIndexers.find((e) => {
+			if (!isIndexerFromJackett(e, base)) return false;
+			const s = e.settings as Record<string, unknown> | null;
+			return extractJackettIndexerId(e.baseUrl, base, s) === raw.id;
+		});
 		if (existing && existing.name !== raw.name) {
 			await manager.updateIndexer(existing.id, { name: raw.name });
 		}

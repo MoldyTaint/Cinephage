@@ -8,14 +8,20 @@ import { db } from '$lib/server/db';
 import { mediaServerSyncedItems, mediaServerSyncedRuns } from '$lib/server/db/schema';
 import { eq, and, notInArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 
 const DEFAULT_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
-class MediaServerStatsSyncService implements BackgroundService {
+class MediaServerStatsSyncService extends EventEmitter implements BackgroundService {
 	readonly name = 'MediaServerStatsSyncService';
 	private _status: ServiceStatus = 'pending';
 	private _error?: Error;
 	private intervalTimer: NodeJS.Timeout | null = null;
+	// Tracks in-flight syncServer() invocations. When > 0, the dashboard's
+	// "Sync Servers" button should remain in its working state. SSE clients
+	// (/api/media-server-stats/sync/status) read this via currentlySyncing
+	// and subscribe to syncStart/syncStop transitions.
+	private activeSyncCount = 0;
 
 	get status(): ServiceStatus {
 		return this._status;
@@ -23,6 +29,10 @@ class MediaServerStatsSyncService implements BackgroundService {
 
 	get error(): Error | undefined {
 		return this._error;
+	}
+
+	get currentlySyncing(): boolean {
+		return this.activeSyncCount > 0;
 	}
 
 	start(): void {
@@ -67,20 +77,34 @@ class MediaServerStatsSyncService implements BackgroundService {
 	}
 
 	async syncServer(serverId?: string): Promise<void> {
-		const manager = getMediaBrowserManager();
-		let servers = await manager.getEnabledServers();
-
-		if (serverId) {
-			servers = servers.filter((s) => s.id === serverId);
+		// Track overall sync state and emit transitions for SSE clients.
+		const wasSyncing = this.currentlySyncing;
+		this.activeSyncCount++;
+		if (!wasSyncing) {
+			this.emit('syncStart', { timestamp: new Date().toISOString() });
 		}
 
-		if (servers.length === 0) {
-			logger.debug('[MediaServerStatsSync] No enabled servers to sync');
-			return;
-		}
+		try {
+			const manager = getMediaBrowserManager();
+			let servers = await manager.getEnabledServers();
 
-		for (const server of servers) {
-			await this.syncSingleServer(server);
+			if (serverId) {
+				servers = servers.filter((s) => s.id === serverId);
+			}
+
+			if (servers.length === 0) {
+				logger.debug('[MediaServerStatsSync] No enabled servers to sync');
+				return;
+			}
+
+			for (const server of servers) {
+				await this.syncSingleServer(server);
+			}
+		} finally {
+			this.activeSyncCount = Math.max(0, this.activeSyncCount - 1);
+			if (!this.currentlySyncing) {
+				this.emit('syncStop', { timestamp: new Date().toISOString() });
+			}
 		}
 	}
 
@@ -219,6 +243,14 @@ class MediaServerStatsSyncService implements BackgroundService {
 				})
 				.where(eq(mediaServerSyncedRuns.id, runId));
 
+			this.emit('syncComplete', {
+				serverId: server.id,
+				itemsSynced,
+				itemsAdded,
+				itemsUpdated,
+				itemsRemoved
+			});
+
 			logger.info(
 				{
 					serverId: server.id,
@@ -249,6 +281,8 @@ class MediaServerStatsSyncService implements BackgroundService {
 					duration
 				})
 				.where(eq(mediaServerSyncedRuns.id, runId));
+
+			this.emit('syncError', { serverId: server.id, error });
 
 			logger.error(
 				{

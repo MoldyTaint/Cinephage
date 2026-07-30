@@ -305,8 +305,8 @@ export const BUILT_IN_PRESETS: NamingPreset[] = [
 		'generic',
 		'anime-focused',
 		'balanced',
-		'Scene-Style',
-		'Dot-separated naming for users who prefer a scene-inspired look.'
+		'Anime-Focused',
+		'Preserves absolute numbering and richer anime media detail by default.'
 	),
 	buildBuiltInPreset(
 		'generic',

@@ -64,8 +64,10 @@ export const indexerCreateSchema = z.object({
 
 /**
  * Schema for updating an existing indexer.
+ * `.required()` first strips `.default()` wrappers so Zod 4 does not backfill
+ * missing keys with defaults during a partial update. See zod issue #5235.
  */
-export const indexerUpdateSchema = indexerCreateSchema.partial();
+export const indexerUpdateSchema = indexerCreateSchema.required().partial();
 
 /**
  * Schema for testing an indexer connection.
@@ -424,7 +426,9 @@ export const downloadClientImplementationSchema = z.enum([
 	'rtorrent',
 	'aria2',
 	'nzbget',
-	'sabnzbd'
+	'sabnzbd',
+	'realdebrid',
+	'torbox'
 ]);
 
 /**
@@ -437,15 +441,27 @@ export const downloadPrioritySchema = z.enum(['normal', 'high', 'force']);
  */
 export const downloadInitialStateSchema = z.enum(['start', 'pause', 'force']);
 
-/**
- * Schema for creating a new download client.
- */
-export const downloadClientCreateSchema = z.object({
-	name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or less'),
-	implementation: downloadClientImplementationSchema,
-	enabled: z.boolean().default(true),
+const DEBRID_IMPLEMENTATIONS = ['realdebrid', 'torbox'] as const;
+const NON_DEBRID_IMPLEMENTATIONS = [
+	'qbittorrent',
+	'transmission',
+	'deluge',
+	'rtorrent',
+	'aria2',
+	'sabnzbd',
+	'nzbget'
+] as const;
+function isDebridImplementation(implementation: string): boolean {
+	return DEBRID_IMPLEMENTATIONS.includes(implementation as (typeof DEBRID_IMPLEMENTATIONS)[number]);
+}
 
-	// Connection settings
+const downloadClientBaseFields = {
+	name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or less'),
+	enabled: z.boolean().default(true),
+	priority: z.number().int().min(1).max(100).default(1)
+};
+
+const nonDebridDownloadClientFields = {
 	host: z.string().min(1, 'Host is required'),
 	port: z.number().int().min(1, 'Port must be at least 1').max(65535, 'Port must be at most 65535'),
 	useSsl: z.boolean().default(false),
@@ -453,90 +469,115 @@ export const downloadClientCreateSchema = z.object({
 	mountMode: z.enum(['nzbdav', 'altmount']).optional().nullable(),
 	username: z.string().optional().nullable(),
 	password: z.string().optional().nullable(),
-
-	// Category settings
 	movieCategory: z.string().min(1).default('movies'),
 	tvCategory: z.string().min(1).default('tv'),
-
-	// Priority settings
 	recentPriority: downloadPrioritySchema.default('normal'),
 	olderPriority: downloadPrioritySchema.default('normal'),
 	initialState: downloadInitialStateSchema.default('start'),
-
-	// Seeding limits
 	seedRatioLimit: z
 		.string()
 		.regex(/^\d+(\.\d+)?$/, 'Must be a valid decimal number (e.g., "1.0", "2.5")')
 		.optional()
 		.nullable(),
 	seedTimeLimit: z.number().int().min(0).optional().nullable(),
-
-	// Path mapping
 	downloadPathLocal: z.string().optional().nullable(),
 	downloadPathRemote: z.string().optional().nullable(),
 	tempPathLocal: z.string().optional().nullable(),
-	tempPathRemote: z.string().optional().nullable(),
+	tempPathRemote: z.string().optional().nullable()
+};
 
-	priority: z.number().int().min(1).max(100).default(1)
+const debridDownloadClientCreateSchema = z
+	.object({
+		...downloadClientBaseFields,
+		implementation: z.enum(DEBRID_IMPLEMENTATIONS),
+		apiToken: z.string().optional().nullable(),
+		removeAfterImport: z.boolean().default(false)
+	})
+	.strict();
+
+const nonDebridDownloadClientCreateSchema = z
+	.object({
+		...downloadClientBaseFields,
+		implementation: z.enum(NON_DEBRID_IMPLEMENTATIONS),
+		...nonDebridDownloadClientFields,
+		apiToken: z.never().optional(),
+		removeAfterImport: z.never().optional()
+	})
+	.strict();
+
+export const downloadClientCreateSchema = z.union([
+	debridDownloadClientCreateSchema,
+	nonDebridDownloadClientCreateSchema
+]);
+
+export type DownloadClientCreateDiscriminated =
+	| z.infer<typeof debridDownloadClientCreateSchema>
+	| z.infer<typeof nonDebridDownloadClientCreateSchema>;
+const debridDownloadClientUpdateSchema = debridDownloadClientCreateSchema.partial();
+const nonDebridDownloadClientUpdateSchema = nonDebridDownloadClientCreateSchema.partial();
+export const downloadClientUpdateSchema = z.union([
+	debridDownloadClientUpdateSchema,
+	nonDebridDownloadClientUpdateSchema
+]);
+
+const DEBRID_ONLY_UPDATE_FIELDS = ['apiToken', 'removeAfterImport'] as const;
+const NON_DEBRID_ONLY_UPDATE_FIELDS = [
+	'host',
+	'port',
+	'useSsl',
+	'urlBase',
+	'mountMode',
+	'username',
+	'password',
+	'movieCategory',
+	'tvCategory',
+	'recentPriority',
+	'olderPriority',
+	'initialState',
+	'seedRatioLimit',
+	'seedTimeLimit',
+	'downloadPathLocal',
+	'downloadPathRemote',
+	'tempPathLocal',
+	'tempPathRemote'
+] as const;
+
+export function downloadClientUpdateSchemaForImplementation(storedImplementation: string) {
+	const storedIsDebrid = isDebridImplementation(storedImplementation);
+	const forbiddenFields = storedIsDebrid
+		? NON_DEBRID_ONLY_UPDATE_FIELDS
+		: DEBRID_ONLY_UPDATE_FIELDS;
+
+	return downloadClientUpdateSchema.superRefine((data, context) => {
+		if (data.implementation !== undefined && data.implementation !== storedImplementation) {
+			context.addIssue({
+				code: 'custom',
+				message: 'Download client implementation cannot be changed'
+			});
+		}
+		for (const field of forbiddenFields) {
+			if (field in data) {
+				context.addIssue({
+					code: 'custom',
+					path: [field],
+					message: `Field is not valid for ${storedImplementation}`
+				});
+			}
+		}
+	});
+}
+
+export type DownloadClientUpdateDiscriminated =
+	| z.infer<typeof debridDownloadClientUpdateSchema>
+	| z.infer<typeof nonDebridDownloadClientUpdateSchema>;
+
+const debridDownloadClientTestSchema = z.object({
+	implementation: z.enum(DEBRID_IMPLEMENTATIONS),
+	apiToken: z.string().optional().nullable()
 });
 
-/**
- * Schema for updating an existing download client.
- */
-export const downloadClientUpdateSchema = z.object({
-	name: z
-		.string()
-		.min(1, 'Name is required')
-		.max(100, 'Name must be 100 characters or less')
-		.optional(),
-	implementation: downloadClientImplementationSchema.optional(),
-	enabled: z.boolean().optional(),
-
-	// Connection settings
-	host: z.string().min(1, 'Host is required').optional(),
-	port: z
-		.number()
-		.int()
-		.min(1, 'Port must be at least 1')
-		.max(65535, 'Port must be at most 65535')
-		.optional(),
-	useSsl: z.boolean().optional(),
-	urlBase: z.string().max(200).optional().nullable(),
-	mountMode: z.enum(['nzbdav', 'altmount']).optional().nullable(),
-	username: z.string().optional().nullable(),
-	password: z.string().optional().nullable(),
-
-	// Category settings
-	movieCategory: z.string().min(1).optional(),
-	tvCategory: z.string().min(1).optional(),
-
-	// Priority settings
-	recentPriority: downloadPrioritySchema.optional(),
-	olderPriority: downloadPrioritySchema.optional(),
-	initialState: downloadInitialStateSchema.optional(),
-
-	// Seeding limits
-	seedRatioLimit: z
-		.string()
-		.regex(/^\d+(\.\d+)?$/, 'Must be a valid decimal number (e.g., "1.0", "2.5")')
-		.optional()
-		.nullable(),
-	seedTimeLimit: z.number().int().min(0).optional().nullable(),
-
-	// Path mapping
-	downloadPathLocal: z.string().optional().nullable(),
-	downloadPathRemote: z.string().optional().nullable(),
-	tempPathLocal: z.string().optional().nullable(),
-	tempPathRemote: z.string().optional().nullable(),
-
-	priority: z.number().int().min(1).max(100).optional()
-});
-
-/**
- * Schema for testing download client connection.
- */
-export const downloadClientTestSchema = z.object({
-	implementation: downloadClientImplementationSchema,
+const nonDebridDownloadClientTestSchema = z.object({
+	implementation: z.enum(NON_DEBRID_IMPLEMENTATIONS),
 	host: z.string().min(1, 'Host is required'),
 	port: z.number().int().min(1).max(65535),
 	useSsl: z.boolean().default(false),
@@ -545,6 +586,15 @@ export const downloadClientTestSchema = z.object({
 	username: z.string().optional().nullable(),
 	password: z.string().optional().nullable()
 });
+
+export const downloadClientTestSchema = z.union([
+	debridDownloadClientTestSchema,
+	nonDebridDownloadClientTestSchema
+]);
+
+export type DownloadClientTestDiscriminated =
+	| z.infer<typeof debridDownloadClientTestSchema>
+	| z.infer<typeof nonDebridDownloadClientTestSchema>;
 
 // ============================================================
 // Root Folder Schemas
@@ -583,7 +633,7 @@ export const rootFolderCreateSchema = z.object({
 /**
  * Schema for updating a root folder.
  */
-export const rootFolderUpdateSchema = rootFolderCreateSchema.partial();
+export const rootFolderUpdateSchema = rootFolderCreateSchema.required().partial();
 
 // Download Client Type Exports
 export type DownloadClientImplementation = z.infer<typeof downloadClientImplementationSchema>;
@@ -620,16 +670,24 @@ export const libraryCreateSchema = z.object({
 	rootFolderIds: z.array(z.string().uuid()).optional().default([]),
 	defaultRootFolderId: z.string().uuid().optional().nullable(),
 	isDefault: z.boolean().default(false),
-	defaultMonitored: z.boolean().default(true),
 	defaultSearchOnAdd: z.boolean().default(true),
 	defaultWantsSubtitles: z.boolean().default(true),
-	sortOrder: z.number().int().min(0).default(100)
+	sortOrder: z.number().int().min(0).default(100),
+	scanMode: z.enum(['manual', 'scheduled', 'scheduled_daily', 'watch']).default('scheduled'),
+	scanConfig: z
+		.object({
+			intervalMinutes: z.number().int().min(5).optional(),
+			scheduledTime: z.string().optional(),
+			debounceSeconds: z.number().int().min(3).optional()
+		})
+		.nullable()
+		.optional()
 });
 
 /**
  * Schema for updating a library entity.
  */
-export const libraryUpdateSchema = libraryCreateSchema.partial();
+export const libraryUpdateSchema = libraryCreateSchema.required().partial();
 
 /**
  * Schema for updating library classification settings.
@@ -679,7 +737,7 @@ export const subtitleProviderCreateSchema = z.object({
 /**
  * Schema for updating a subtitle provider.
  */
-export const subtitleProviderUpdateSchema = subtitleProviderCreateSchema.partial();
+export const subtitleProviderUpdateSchema = subtitleProviderCreateSchema.required().partial();
 
 /**
  * Schema for testing a subtitle provider.
@@ -743,7 +801,7 @@ export const languageProfileCreateSchema = z.object({
 /**
  * Schema for updating a language profile.
  */
-export const languageProfileUpdateSchema = languageProfileCreateSchema.partial();
+export const languageProfileUpdateSchema = languageProfileCreateSchema.required().partial();
 
 // ============================================================
 // Subtitle Search Schemas
@@ -984,7 +1042,7 @@ export const nntpServerCreateSchema = z.object({
 /**
  * Schema for updating an NNTP server.
  */
-export const nntpServerUpdateSchema = nntpServerCreateSchema.partial();
+export const nntpServerUpdateSchema = nntpServerCreateSchema.required().partial();
 
 /**
  * Schema for testing NNTP connection.
@@ -1001,6 +1059,36 @@ export const nntpServerTestSchema = z.object({
 export type NntpServerCreate = z.infer<typeof nntpServerCreateSchema>;
 export type NntpServerUpdate = z.infer<typeof nntpServerUpdateSchema>;
 export type NntpServerTest = z.infer<typeof nntpServerTestSchema>;
+
+// ============================================================
+// CinephageAPI subsystem schemas
+// ============================================================
+
+/**
+ * Subsystem-level config update. All fields optional — the API accepts
+ * partial updates and the settings panel sends only what changed.
+ */
+export const cinephageSubsystemUpdateSchema = z.object({
+	enabled: z.boolean().optional(),
+	baseUrl: z.string().trim().min(1).optional(),
+	versionOverride: z.string().trim().nullable().optional(),
+	commitOverride: z.string().trim().nullable().optional()
+});
+
+export type CinephageSubsystemUpdate = z.infer<typeof cinephageSubsystemUpdateSchema>;
+
+/**
+ * Per-module config update. Settings is a free-form JSON bag whose shape
+ * is validated by the module's settingsSchema at the server (currently
+ * only library-streaming declares one).
+ */
+export const cinephageModuleUpdateSchema = z.object({
+	moduleId: z.string().min(1),
+	enabled: z.boolean().optional(),
+	settings: z.record(z.string(), z.unknown()).optional()
+});
+
+export type CinephageModuleUpdate = z.infer<typeof cinephageModuleUpdateSchema>;
 
 // ============================================================
 // Media server notification schemas
@@ -1038,7 +1126,7 @@ export const mediaBrowserServerCreateSchema = z.object({
 /**
  * Schema for updating a MediaBrowser server.
  */
-export const mediaBrowserServerUpdateSchema = mediaBrowserServerCreateSchema.partial();
+export const mediaBrowserServerUpdateSchema = mediaBrowserServerCreateSchema.required().partial();
 
 /**
  * Schema for testing a MediaBrowser server connection.
@@ -1443,6 +1531,11 @@ export const episodeUpdateSchema = z
 export const movieUpdateSchema = z.object({
 	monitored: z.boolean().optional(),
 	scoringProfileId: z.string().nullable().optional(),
+	/** Desired qualities for multi-quality mode (null/empty = single-quality). */
+	desiredQualities: z
+		.array(z.enum(['2160p', '1080p', '720p', '480p']))
+		.nullable()
+		.optional(),
 	minimumAvailability: z.string().min(1).optional(),
 	availabilityDelay: z.number().int().min(0).max(365).optional(),
 	providerRefs: z.partialRecord(z.enum(['tmdb', 'anilist', 'mal']), z.string().min(1)).optional(),
@@ -1450,6 +1543,10 @@ export const movieUpdateSchema = z.object({
 	moveFilesOnRootChange: z.boolean().optional(),
 	wantsSubtitles: z.boolean().optional(),
 	languageProfileId: z.string().nullable().optional(),
+	delayProfileId: z.string().nullable().optional(),
+	/** Edit-only: opt-in removal of files for resolutions no longer in
+	 *  desiredQualities. Server recomputes the redundant set authoritatively. */
+	removeUnwantedFiles: z.boolean().optional(),
 	/** Relative folder name within the root folder (e.g. "Brokenwood Mysteries"). Used to
 	 *  correct a drifted DB path without touching files on disk. */
 	folderPath: z
@@ -1458,7 +1555,14 @@ export const movieUpdateSchema = z.object({
 		.refine((v) => !v.includes('..') && !v.startsWith('/'), {
 			message: 'Folder path must be a relative name with no path traversal'
 		})
-		.optional()
+		.optional(),
+	/** Override the TMDB collection assignment for this movie. */
+	tmdbCollectionId: z.number().int().positive().nullable().optional(),
+	collectionName: z.string().min(1).nullable().optional(),
+	/** Per-item TMDB language override (null = inherit global, 'original' = use original_language) */
+	metadataLanguage: z.string().nullable().optional(),
+	/** Display originalTitle instead of localized title in the UI */
+	preferOriginalTitle: z.boolean().optional()
 });
 
 /**
@@ -1473,6 +1577,7 @@ export const seriesUpdateSchema = z.object({
 	rootFolderId: z.string().optional(),
 	wantsSubtitles: z.boolean().optional(),
 	languageProfileId: z.string().nullable().optional(),
+	delayProfileId: z.string().nullable().optional(),
 	/** Relative folder name within the root folder. Used to correct a drifted DB path. */
 	folderPath: z
 		.string()
@@ -1482,7 +1587,11 @@ export const seriesUpdateSchema = z.object({
 		})
 		.optional(),
 	/** TMDB episode group ID for alternate season ordering (null = default TMDB ordering) */
-	episodeGroupId: z.string().nullable().optional()
+	episodeGroupId: z.string().nullable().optional(),
+	/** Per-item TMDB language override (null = inherit global, 'original' = use original_language) */
+	metadataLanguage: z.string().nullable().optional(),
+	/** Display originalTitle instead of localized title in the UI */
+	preferOriginalTitle: z.boolean().optional()
 });
 
 /**
@@ -1528,6 +1637,23 @@ export const libraryScanSchema = z
 /**
  * Schema for manual import execution.
  */
+export const importMethodSchema = z.enum(['move', 'copy', 'symlink']);
+export type ImportMethod = z.infer<typeof importMethodSchema>;
+
+export const fileManagementSchema = z.object({
+	importMode: importMethodSchema.default('move'),
+	preferHardlink: z.boolean().default(true),
+	minimumFreeSpaceGb: z.number().min(0).default(1),
+	deleteEmptyFolders: z.boolean().default(false),
+	recycleEnabled: z.boolean().default(false),
+	extraFileExtensions: z.array(z.string()).default([]),
+	preservePermissions: z.boolean().default(false),
+	chmodFile: z.union([z.string().regex(/^[0-7]{3,4}$/), z.literal('')]).default(''),
+	autoEnabledPreserveSymlinkFolderIds: z.array(z.string()).default([]),
+	defaultImportFolder: z.string().optional()
+});
+export type FileManagementSettings = z.infer<typeof fileManagementSchema>;
+
 export const manualImportSchema = z
 	.object({
 		sourcePath: z.string().min(1).optional(),
@@ -1538,7 +1664,8 @@ export const manualImportSchema = z
 		rootFolderId: z.string().optional(),
 		libraryId: z.string().optional(),
 		seasonNumber: z.number().int().min(0).optional(),
-		episodeNumber: z.number().int().min(1).optional()
+		episodeNumber: z.number().int().min(1).optional(),
+		importMode: importMethodSchema.optional()
 	})
 	.superRefine((value, ctx) => {
 		if (!value.sourcePath && !value.selectedFilePath) {
@@ -1557,6 +1684,11 @@ export const addMovieSchema = z.object({
 	tmdbId: z.number().int().positive(),
 	rootFolderId: z.string().min(1),
 	scoringProfileId: z.string().optional(),
+	/** Desired qualities for multi-quality mode (null/empty = single-quality). */
+	desiredQualities: z
+		.array(z.enum(['2160p', '1080p', '720p', '480p']))
+		.nullable()
+		.optional(),
 	monitored: z.boolean().default(true),
 	minimumAvailability: z.enum(['announced', 'inCinemas', 'released']).default('released'),
 	availabilityDelay: z.number().int().min(0).max(365).default(0),
@@ -1677,24 +1809,18 @@ export const grabRequestSchema = z
 		protocol: z.enum(['torrent', 'usenet', 'streaming']).optional(),
 		categories: z.array(z.number()).optional(),
 		size: z.number().optional(),
+		publishDate: z.string().datetime().optional(),
 		commentsUrl: z.string().optional(),
 		movieId: z.string().optional(),
 		seriesId: z.string().optional(),
 		episodeIds: z.array(z.string()).optional(),
 		seasonNumber: z.number().int().optional(),
 		mediaType: z.enum(['movie', 'tv']),
-		quality: z
-			.object({
-				resolution: z.string().optional(),
-				source: z.string().optional(),
-				codec: z.string().optional(),
-				hdr: z.string().optional()
-			})
-			.optional(),
 		isAutomatic: z.boolean().optional(),
 		isUpgrade: z.boolean().optional(),
 		force: z.boolean().optional(),
-		streamUsenet: z.boolean().optional()
+		streamUsenet: z.boolean().optional(),
+		acquisitionProtocol: z.enum(['default', 'torrent', 'debrid']).optional()
 	})
 	.refine((data) => data.downloadUrl || data.magnetUrl, {
 		message: 'Either downloadUrl or magnetUrl is required',
@@ -1922,6 +2048,7 @@ export const scoringProfileCreateSchema = z.object({
 	upgradeUntilScore: z.number().int().optional(),
 	minScoreIncrement: z.number().int().optional(),
 	formatScores: z.record(z.string(), z.number().int()).optional(),
+	requiredFormats: z.array(z.object({ id: z.string(), op: z.enum(['AND', 'OR']) })).optional(),
 	movieMinSizeGb: z.number().nullable().optional(),
 	movieMaxSizeGb: z.number().nullable().optional(),
 	episodeMinSizeMb: z.number().nullable().optional(),
@@ -1929,7 +2056,7 @@ export const scoringProfileCreateSchema = z.object({
 	isDefault: z.boolean().optional()
 });
 
-export const scoringProfileUpdateSchema = scoringProfileCreateSchema.partial();
+export const scoringProfileUpdateSchema = scoringProfileCreateSchema.required().partial();
 
 export const scoringProfileUpdateBodySchema = scoringProfileUpdateSchema
 	.extend({
@@ -2085,7 +2212,8 @@ export const monitoringSettingsUpdateSchema = z.object({
 	autoReplaceEnabled: z.boolean().optional(),
 	searchOnMonitorEnabled: z.boolean().optional(),
 	stalledDownloadTimeoutMinutes: z.number().min(0).optional(),
-	stalledDownloadProgressThreshold: z.number().min(0).max(100).optional()
+	stalledDownloadProgressThreshold: z.number().min(0).max(100).optional(),
+	stalledDownloadBlocklistHours: z.number().min(0).optional()
 });
 
 // ============================================================================

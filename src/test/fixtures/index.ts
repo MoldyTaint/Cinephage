@@ -44,3 +44,4 @@ export {
 	type TestUserFixture,
 	type TestSessionFixture
 } from './auth.js';
+export * from './storage.js';

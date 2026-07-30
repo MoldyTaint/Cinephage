@@ -501,7 +501,8 @@ export class QualityFilter {
 			allowedSources: (row.allowedSources as Source[] | null) ?? null,
 			excludedSources: (row.excludedSources as Source[] | null) ?? null,
 			allowedProtocols: row.allowedProtocols ?? ['torrent', 'usenet'],
-			formatScores: row.formatScores ?? {}
+			formatScores: row.formatScores ?? {},
+			requiredFormats: row.requiredFormats ?? []
 		};
 	}
 }

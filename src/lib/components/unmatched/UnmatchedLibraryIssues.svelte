@@ -396,7 +396,7 @@
 							{:else}
 								<span class="text-xs text-warning">
 									{m.unmatched_libraryIssues_noMovieFolders()}
-									<a class="ml-1 link" href="/settings/general"
+									<a class="ml-1 link" href="/settings/library/root-folders"
 										>{m.unmatched_libraryIssues_addRootFolder()}</a
 									>
 								</span>
@@ -428,7 +428,7 @@
 							{:else}
 								<span class="text-xs text-warning">
 									{m.unmatched_libraryIssues_noTvFolders()}
-									<a class="ml-1 link" href="/settings/general"
+									<a class="ml-1 link" href="/settings/library/root-folders"
 										>{m.unmatched_libraryIssues_addRootFolder()}</a
 									>
 								</span>

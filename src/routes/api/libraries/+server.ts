@@ -6,6 +6,7 @@ import { parseBody } from '$lib/server/api/validate.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { libraryCreateSchema, libraryMediaTypeSchema } from '$lib/validation/schemas.js';
 import { isAppError } from '$lib/errors';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 
 const listSchema = z.object({
 	mediaType: libraryMediaTypeSchema.optional(),
@@ -45,6 +46,11 @@ export const POST: RequestHandler = async (event) => {
 		const data = await parseBody(event.request, libraryCreateSchema);
 		const service = getLibraryEntityService();
 		const library = await service.createLibrary(data);
+		libraryMediaEvents.emitLibraryDataChanged({
+			source: 'library',
+			reason: 'library-created',
+			entityId: library.id
+		});
 		return json({ success: true, library });
 	} catch (error) {
 		if (isAppError(error)) {

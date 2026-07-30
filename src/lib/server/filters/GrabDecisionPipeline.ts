@@ -16,19 +16,23 @@ import { DuplicateHashStage } from './stages/grab/DuplicateHashStage.js';
 import { MediaOccupancyStage } from './stages/grab/MediaOccupancyStage.js';
 import { BlockedExtensionStage } from './stages/grab/BlockedExtensionStage.js';
 import { UpgradeStage } from './stages/grab/UpgradeStage.js';
+import { DelayStage } from './stages/grab/DelayStage.js';
+import { RequiredFormatsStage } from './stages/grab/RequiredFormatsStage.js';
 
 export class GrabDecisionPipeline {
 	private stages = [
 		new BlocklistStage(),
 		new ScoringStage(),
 		new BannedFormatStage(),
+		new RequiredFormatsStage(),
 		new SizeValidationStage(),
 		new ProtocolStage(),
 		new MinimumScoreStage(),
 		new DuplicateHashStage(),
 		new MediaOccupancyStage(),
 		new BlockedExtensionStage(),
-		new UpgradeStage()
+		new UpgradeStage(),
+		new DelayStage()
 	];
 
 	async evaluate(ctx: GrabDecisionContext, options?: { runAll?: boolean }): Promise<GrabDecision> {
@@ -72,13 +76,15 @@ export class GrabDecisionPipeline {
 		const map: Record<string, RejectionType> = {
 			blocklist: 'blocklisted',
 			bannedFormat: 'banned',
+			requiredFormats: 'missing_required_format',
 			sizeValidation: 'size_rejected',
 			protocol: 'protocol_rejected',
 			minimumScore: 'below_minimum',
 			duplicateHash: 'duplicate_hash',
 			mediaOccupancy: 'media_occupied',
 			blockedExtension: 'blocked_extension',
-			upgrade: 'not_upgrade'
+			upgrade: 'not_upgrade',
+			delay: 'pending_delay'
 		};
 
 		return map[rejectingStage.name];

@@ -63,6 +63,10 @@ import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
 import { tmdb } from '$lib/server/tmdb';
+import { db } from '$lib/server/db/index.js';
+import { movies, series } from '$lib/server/db/schema.js';
+import { eq } from 'drizzle-orm';
+import { blocklistService } from '$lib/server/blocklist/BlocklistService.js';
 import { DANGEROUS_EXTENSIONS, EXECUTABLE_EXTENSIONS } from '$lib/config/constants.js';
 
 /** Options for search orchestration */
@@ -347,7 +351,8 @@ export class SearchOrchestrator {
 		// Filter by season/episode if specified.
 		// Use criteriaWithSource so interactive/automatic behavior is respected.
 		// (season/episode fields are unchanged from original criteria)
-		let filtered = this.filterBySeasonEpisode(deduped, criteriaWithSource);
+		let filtered = await this.filterByBlocklist(deduped, criteriaWithSource);
+		filtered = this.filterBySeasonEpisode(filtered, criteriaWithSource);
 
 		// Filter by category match (reject releases in wrong categories).
 		// Skip for season-only TV searches: the season/episode filter already validated
@@ -535,7 +540,8 @@ export class SearchOrchestrator {
 		}
 
 		// Filter by season/episode if specified
-		let filtered = this.filterBySeasonEpisode(deduped, enrichedCriteria, {
+		let filtered = await this.filterByBlocklist(deduped, enrichedCriteria);
+		filtered = this.filterBySeasonEpisode(filtered, enrichedCriteria, {
 			seasonEpisodeCount,
 			seasonEpisodeCounts
 		});
@@ -824,8 +830,12 @@ export class SearchOrchestrator {
 			}
 
 			// Check protocol filter (from scoring profile's allowedProtocols)
+			// In interactive search, always allow streaming-protocol indexers so their
+			// releases appear as rejected fallback options under "Show Rejected"
 			if (options.protocolFilter && options.protocolFilter.length > 0) {
-				if (!options.protocolFilter.includes(indexer.protocol)) {
+				const isStreamingInInteractive =
+					options.searchSource === 'interactive' && indexer.protocol === 'streaming';
+				if (!isStreamingInInteractive && !options.protocolFilter.includes(indexer.protocol)) {
 					rejected.push({
 						indexerId: indexer.id,
 						indexerName: indexer.name,
@@ -894,7 +904,7 @@ export class SearchOrchestrator {
 	): Promise<ReleaseResult[]> {
 		const allReleases: ReleaseResult[] = [];
 
-		logger.info(
+		logger.debug(
 			{
 				indexerCount: indexers.length,
 				criteria: { type: criteria.searchType, query: criteria.query }
@@ -911,7 +921,7 @@ export class SearchOrchestrator {
 		for (const settled of allSettled) {
 			if (settled.status === 'fulfilled') {
 				const result = settled.value;
-				logger.info(
+				logger.debug(
 					{
 						indexer: result.indexerName,
 						resultCount: result.results.length,
@@ -927,7 +937,7 @@ export class SearchOrchestrator {
 			}
 		}
 
-		logger.info(
+		logger.debug(
 			{
 				totalReleases: allReleases.length
 			},
@@ -990,14 +1000,23 @@ export class SearchOrchestrator {
 			}
 
 			// Execute search with timeout; release concurrency slot when done (success or error)
+			// A per-search AbortController lets us cancel still-in-flight work (and close
+			// any headless browser it spawned) when the timeout wins the race, instead of
+			// leaving it running while the host slot is handed to the next search.
+			const abortController = new AbortController();
+			const searchCriteria: SearchCriteria = { ...criteria, signal: abortController.signal };
+
 			const searchPromise = useTieredSearch
-				? this.executeWithTiering(indexer, criteria)
-				: this.executeSimple(indexer, criteria);
+				? this.executeWithTiering(indexer, searchCriteria)
+				: this.executeSimple(indexer, searchCriteria);
 
 			const { releases, searchMethod } = await Promise.race([
 				searchPromise,
 				this.createTimeoutPromise(timeout)
-			]).finally(() => this.hostConcurrencyLimiter.release(indexer.baseUrl));
+			]).finally(() => {
+				abortController.abort();
+				this.hostConcurrencyLimiter.release(indexer.baseUrl);
+			});
 
 			await this.statusTracker.recordSuccess(indexer.id, Date.now() - startTime);
 
@@ -2232,6 +2251,52 @@ export class SearchOrchestrator {
 	}
 
 	/**
+	 * Filter releases that are in the blocklist (previously blocked due to
+	 * download failures, blocked extensions, or manual actions).
+	 */
+	private async filterByBlocklist(
+		releases: ReleaseResult[],
+		criteria: SearchCriteria
+	): Promise<ReleaseResult[]> {
+		if (releases.length === 0) return releases;
+
+		const searchTmdbId = 'tmdbId' in criteria ? criteria.tmdbId : undefined;
+		let movieId: string | undefined;
+		let seriesId: string | undefined;
+
+		if (isMovieSearch(criteria) && searchTmdbId) {
+			const movie = await db.query.movies.findFirst({
+				where: eq(movies.tmdbId, searchTmdbId),
+				columns: { id: true }
+			});
+			movieId = movie?.id;
+		} else if (isTvSearch(criteria) && searchTmdbId) {
+			const s = await db.query.series.findFirst({
+				where: eq(series.tmdbId, searchTmdbId),
+				columns: { id: true }
+			});
+			seriesId = s?.id;
+		}
+
+		if (!movieId && !seriesId) return releases;
+
+		const { blockedHashes, blockedTitles } = await blocklistService.getBlockedIdentifiers(
+			movieId,
+			seriesId
+		);
+
+		if (blockedHashes.size === 0 && blockedTitles.size === 0) return releases;
+
+		const filtered = releases.filter((release) => {
+			if (release.infoHash && blockedHashes.has(release.infoHash)) return false;
+			if (blockedTitles.has(release.title)) return false;
+			return true;
+		});
+
+		return filtered;
+	}
+
+	/**
 	 * Filter non-video artifacts (soundtracks/scores/audio collections) for movie/TV searches.
 	 * This is a safety net for indexers that mislabel categories or provide incomplete metadata.
 	 */
@@ -2513,7 +2578,7 @@ export class SearchOrchestrator {
 				// Native-Cyrillic trackers (RuTracker, Kinozal, etc.) attach their own
 				// authoritative IDs — mismatch is definitive, not an aggregator artifact.
 				if (releasePrefersNativeCyrillic) return false;
-				logger.info(
+				logger.debug(
 					{
 						releaseTitle: release.title,
 						releaseTmdbId: release.tmdbId,
@@ -2529,7 +2594,7 @@ export class SearchOrchestrator {
 			if (searchImdbId && release.imdbId) {
 				if (release.imdbId === searchImdbId) return true;
 				if (releasePrefersNativeCyrillic) return false;
-				logger.info(
+				logger.debug(
 					{
 						releaseTitle: release.title,
 						releaseImdbId: release.imdbId,
@@ -2563,7 +2628,7 @@ export class SearchOrchestrator {
 			if (isMovieSearch(criteria) && searchYear) {
 				const parsedRelease = getParsed();
 				if (parsedRelease.year && Math.abs(parsedRelease.year - searchYear) > 1) {
-					logger.info(
+					logger.debug(
 						{
 							releaseTitle: release.title,
 							releaseYear: parsedRelease.year,
@@ -2638,7 +2703,7 @@ export class SearchOrchestrator {
 						((isTvSearch(criteria) && !isEpisodeTarget && !isSeasonTarget) ||
 							(isMovieSearch(criteria) && releasePrefersNativeCyrillic));
 					if (allowInteractiveTitleFallback) {
-						logger.info(
+						logger.debug(
 							{
 								releaseTitle: release.title,
 								parsedTitle: parsedRelease.cleanTitle,
@@ -2660,7 +2725,7 @@ export class SearchOrchestrator {
 						containsEachOther:
 							releaseName.includes(expectedName) || expectedName.includes(releaseName)
 					}));
-					logger.info(
+					logger.debug(
 						{
 							releaseTitle: release.title,
 							parsedTitle: parsedRelease.cleanTitle,
@@ -2937,6 +3002,11 @@ export class SearchOrchestrator {
 
 		return criteria;
 	}
+
+	clearCache(): void {
+		this.cache.clear();
+		this.enhancedCache.clear();
+	}
 }
 
 /** Singleton instance */
@@ -2953,4 +3023,9 @@ export function getSearchOrchestrator(): SearchOrchestrator {
 /** Reset the singleton (for testing) */
 export function resetSearchOrchestrator(): void {
 	orchestratorInstance = null;
+}
+
+/** Clear all cached search results (call when indexer config changes). */
+export function clearSearchCache(): void {
+	orchestratorInstance?.clearCache();
 }

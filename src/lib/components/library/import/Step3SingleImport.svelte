@@ -10,6 +10,7 @@
 		mediaType: MediaType;
 		mediaSubType?: string | null;
 		isDefault?: boolean;
+		isDefaultFolder?: boolean;
 		defaultRootFolderId?: string | null;
 		defaultRootFolderPath?: string | null;
 	}
@@ -29,6 +30,7 @@
 		importTarget = $bindable('new' as 'new' | 'existing'),
 		destinationLibrariesForType = [],
 		selectedRootFolder = $bindable(''),
+		importMode = $bindable('move' as 'move' | 'copy' | 'symlink'),
 		loadingRootFolders = false,
 		seasonNumber = 1,
 		episodeNumber = 1,
@@ -49,6 +51,7 @@
 		importTarget: 'new' | 'existing';
 		destinationLibrariesForType: DestinationLibrary[];
 		selectedRootFolder: string;
+		importMode: 'move' | 'copy' | 'symlink';
 		loadingRootFolders: boolean;
 		seasonNumber: number;
 		episodeNumber: number;
@@ -157,6 +160,69 @@
 		</div>
 	{/if}
 
+	<!-- Import Method -->
+	<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
+		<h3 class="font-semibold">{m.library_import_importMethodHeading()}</h3>
+		<div class="mt-3 grid gap-2 sm:grid-cols-3">
+			<label
+				class="flex items-start gap-3 rounded-lg border p-3 transition-colors
+					{importMode === 'move' ? 'border-primary bg-primary/5' : 'border-base-300'}
+					{executingImport ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}"
+			>
+				<input
+					type="radio"
+					name="import-method"
+					class="radio mt-0.5 radio-primary"
+					value="move"
+					bind:group={importMode}
+					disabled={executingImport}
+				/>
+				<div>
+					<div class="font-medium">{m.library_import_importMethodMove()}</div>
+					<div class="text-sm text-base-content/70">{m.library_import_importMethodMoveDesc()}</div>
+				</div>
+			</label>
+			<label
+				class="flex items-start gap-3 rounded-lg border p-3 transition-colors
+					{importMode === 'copy' ? 'border-primary bg-primary/5' : 'border-base-300'}
+					{executingImport ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}"
+			>
+				<input
+					type="radio"
+					name="import-method"
+					class="radio mt-0.5 radio-primary"
+					value="copy"
+					bind:group={importMode}
+					disabled={executingImport}
+				/>
+				<div>
+					<div class="font-medium">{m.library_import_importMethodCopy()}</div>
+					<div class="text-sm text-base-content/70">{m.library_import_importMethodCopyDesc()}</div>
+				</div>
+			</label>
+			<label
+				class="flex items-start gap-3 rounded-lg border p-3 transition-colors
+					{importMode === 'symlink' ? 'border-primary bg-primary/5' : 'border-base-300'}
+					{executingImport ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}"
+			>
+				<input
+					type="radio"
+					name="import-method"
+					class="radio mt-0.5 radio-primary"
+					value="symlink"
+					bind:group={importMode}
+					disabled={executingImport}
+				/>
+				<div>
+					<div class="font-medium">{m.library_import_importMethodSymlink()}</div>
+					<div class="text-sm text-base-content/70">
+						{m.library_import_importMethodSymlinkDesc()}
+					</div>
+				</div>
+			</label>
+		</div>
+	</div>
+
 	<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
 		<h3 class="font-semibold">{m.library_import_summaryHeading()}</h3>
 		{#if selectedMatchContextMismatch && routeImportContext}
@@ -211,7 +277,13 @@
 						{/if}
 					{:else}
 						<span class="text-base-content/60">{m.library_import_summaryEpisode()}</span>
-						S{seasonNumber}E{episodeNumber}
+						{#if activeGroup.parsedEpisodes && activeGroup.parsedEpisodes.length > 1}
+							S{seasonNumber}E{activeGroup.parsedEpisodes[0]}-E{activeGroup.parsedEpisodes[
+								activeGroup.parsedEpisodes.length - 1
+							]}
+						{:else}
+							S{seasonNumber}E{episodeNumber}
+						{/if}
 					{/if}
 				</div>
 			{/if}

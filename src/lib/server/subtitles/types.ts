@@ -287,6 +287,11 @@ export interface SubtitleSearchResult {
 
 	// File info
 	fileSize?: number;
+
+	// Originating movie file when this result came from a per-file search.
+	// Wired into SubtitleDownloadService as a fallback target when no explicit
+	// movieFileId option is supplied.
+	movieFileId?: string;
 }
 
 /**

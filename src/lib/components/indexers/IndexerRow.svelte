@@ -10,7 +10,8 @@
 		GripVertical,
 		ToggleLeft,
 		ToggleRight,
-		Settings
+		Settings,
+		ExternalLink
 	} from 'lucide-svelte';
 	import IndexerStatusBadge from './IndexerStatusBadge.svelte';
 	import type { IndexerWithStatus } from '$lib/types/indexer';
@@ -60,7 +61,8 @@
 	}: Props = $props();
 
 	function isProwlarrIndexer(): boolean {
-		if (!prowlarrBaseUrl) return false;
+		if (!prowlarrBaseUrl || indexer.definitionId !== 'prowlarr') return false;
+		if (indexer.settings?.aggregate === 'true') return true;
 		const base = prowlarrBaseUrl.replace(/\/+$/, '');
 		if (!indexer.baseUrl.startsWith(base + '/')) return false;
 		const suffix = indexer.baseUrl.slice(base.length + 1).replace(/\/+$/, '');
@@ -69,6 +71,7 @@
 
 	function isJackettIndexer(): boolean {
 		if (!jackettBaseUrl) return false;
+		if (indexer.definitionId === 'jackett') return true;
 		const base = jackettBaseUrl.replace(/\/+$/, '');
 		return (
 			indexer.baseUrl.startsWith(base + '/api/v2.0/indexers/') &&
@@ -80,6 +83,15 @@
 		if (url.length <= maxLength) return url;
 		return url.substring(0, maxLength) + '...';
 	}
+
+	const displayUrl = $derived.by(() => {
+		if (indexer.definitionId === 'jackett') {
+			const trackerId = (indexer.settings as Record<string, unknown> | null)?.trackerId;
+			if (typeof trackerId === 'string' && trackerId)
+				return `${indexer.baseUrl.replace(/\/+$/, '')}/api/v2.0/indexers/${trackerId}/results`;
+		}
+		return indexer.baseUrl;
+	});
 </script>
 
 <tr
@@ -123,9 +135,20 @@
 	<!-- Name -->
 	<td>
 		<div class="flex flex-wrap items-center gap-1.5">
-			<button class="link font-bold link-hover" onclick={() => onEdit(indexer)}>
-				{indexer.name}
-			</button>
+			{#if indexer.isBuiltIn}
+				<a
+					href="/settings/system/cinephage"
+					class="link font-bold link-hover inline-flex items-center gap-1"
+				>
+					{indexer.name}
+					<ExternalLink class="h-3 w-3" />
+				</a>
+				<span class="badge badge-xs badge-primary">Managed</span>
+			{:else}
+				<button class="link font-bold link-hover" onclick={() => onEdit(indexer)}>
+					{indexer.name}
+				</button>
+			{/if}
 			{#if isProwlarrIndexer()}
 				<span class="badge badge-xs badge-primary">Prowlarr</span>
 				{#if indexer.orphaned}
@@ -187,9 +210,9 @@
 
 	<!-- URL -->
 	<td class="max-w-50">
-		<div class="tooltip block w-full" data-tip={indexer.baseUrl}>
+		<div class="tooltip block w-full" data-tip={displayUrl}>
 			<span class="block truncate text-sm text-base-content/70">
-				{truncateUrl(indexer.baseUrl)}
+				{truncateUrl(displayUrl)}
 			</span>
 		</div>
 	</td>
@@ -239,16 +262,16 @@
 			<button
 				class="btn btn-ghost btn-xs"
 				onclick={() => onEdit(indexer)}
-				disabled={reorderMode}
-				title="Edit indexer"
+				disabled={reorderMode || indexer.isBuiltIn}
+				title={indexer.isBuiltIn ? 'Managed by Cinephage' : 'Edit indexer'}
 			>
 				<Settings class="h-4 w-4" />
 			</button>
 			<button
 				class="btn text-error btn-ghost btn-xs"
 				onclick={() => onDelete(indexer)}
-				disabled={reorderMode}
-				title="Delete indexer"
+				disabled={reorderMode || indexer.isBuiltIn}
+				title={indexer.isBuiltIn ? 'Built-in indexers cannot be deleted' : 'Delete indexer'}
 			>
 				<Trash2 class="h-4 w-4" />
 			</button>

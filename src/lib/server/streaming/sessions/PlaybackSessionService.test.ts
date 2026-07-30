@@ -4,8 +4,8 @@ const getStreamsMock = vi.fn();
 const getPreferredLanguagesForMovieMock = vi.fn(async () => []);
 const getPreferredLanguagesForSeriesMock = vi.fn(async () => []);
 
-vi.mock('../cinephage-api/CinephageApiService', () => ({
-	getCinephageApiService: () => ({
+vi.mock('$lib/server/cinephage/modules/library-streaming/LibraryStreamingModule', () => ({
+	getLibraryStreamingModule: () => ({
 		getStreams: getStreamsMock
 	})
 }));

@@ -1,9 +1,8 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { X, FolderOpen } from 'lucide-svelte';
+	import { X, FolderOpen, Info } from 'lucide-svelte';
 	import { FolderBrowser } from '$lib/components/library';
 	import { ModalWrapper, ModalFooter } from '$lib/components/ui/modal';
-	import { FormCheckbox } from '$lib/components/ui/form';
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 	import { toasts } from '$lib/stores/toast.svelte';
@@ -27,6 +26,8 @@
 		path?: string | null;
 		episodeGroupId?: string | null;
 		id?: string | null;
+		metadataLanguage?: string | null;
+		preferOriginalTitle?: boolean | null;
 	}
 
 	interface QualityProfileOption {
@@ -46,10 +47,16 @@
 		genres?: Array<{ id?: number; name?: string }> | null;
 	}
 
+	interface DelayProfileOption {
+		id: string;
+		name: string;
+	}
+
 	interface Props {
 		open: boolean;
 		series: SeriesData;
 		qualityProfiles: QualityProfileOption[];
+		delayProfiles: DelayProfileOption[];
 		rootFolders: RootFolder[];
 		saving: boolean;
 		onClose: () => void;
@@ -59,6 +66,7 @@
 	export interface SeriesEditData {
 		monitored: boolean;
 		scoringProfileId: string | null;
+		delayProfileId: string | null;
 		rootFolderId: string | null;
 		moveFilesOnRootChange: boolean;
 		seasonFolder: boolean;
@@ -66,13 +74,25 @@
 		seriesType: 'standard' | 'anime' | 'daily';
 		folderPath?: string;
 		episodeGroupId?: string | null;
+		metadataLanguage?: string | null;
+		preferOriginalTitle?: boolean;
 	}
 
-	let { open, series, qualityProfiles, rootFolders, saving, onClose, onSave }: Props = $props();
+	let {
+		open,
+		series,
+		qualityProfiles,
+		delayProfiles,
+		rootFolders,
+		saving,
+		onClose,
+		onSave
+	}: Props = $props();
 
 	// Form state (defaults only, effect syncs from props)
 	let monitored = $state(true);
 	let qualityProfileId = $state('');
+	let delayProfileId = $state<string | null>(null);
 	let rootFolderId = $state('');
 	let seasonFolder = $state(true);
 	let wantsSubtitles = $state(true);
@@ -93,6 +113,8 @@
 		}>
 	>([]);
 	let episodeGroupsLoading = $state(false);
+	let metadataLanguage = $state<string | null>(null);
+	let preferOriginalTitle = $state(false);
 
 	const requiredMediaSubType = $derived(
 		enforceAnimeSubtype ? (detectedAnime ? ('anime' as const) : ('standard' as const)) : undefined
@@ -220,6 +242,7 @@
 				series.scoringProfileId && series.scoringProfileId !== defaultProfileId
 					? series.scoringProfileId
 					: '';
+			delayProfileId = (series as { delayProfileId?: string | null }).delayProfileId ?? null;
 			rootFolderId = series.rootFolderId ?? '';
 			seasonFolder = series.seasonFolder ?? true;
 			wantsSubtitles = series.wantsSubtitles ?? true;
@@ -231,6 +254,8 @@
 			detectedAnime = false;
 			folderPath = series.path ?? '';
 			episodeGroupOption = series.episodeGroupId ?? '';
+			metadataLanguage = series.metadataLanguage ?? null;
+			preferOriginalTitle = series.preferOriginalTitle === true;
 			void loadAnimeRoutingContext(series.tmdbId);
 			if (series.id) {
 				void loadEpisodeGroups(series.id);
@@ -281,9 +306,6 @@
 	// Get profile data for labels/description
 	let defaultProfile = $derived(qualityProfiles.find((p) => p.isDefault));
 	let nonDefaultProfiles = $derived(qualityProfiles.filter((p) => p.id !== defaultProfile?.id));
-	let currentProfile = $derived(
-		qualityProfiles.find((p) => p.id === qualityProfileId) ?? defaultProfile
-	);
 
 	const folderPathChanged = $derived(folderPath.trim() !== (series.path ?? '').trim());
 	const resolvedFolderPath = $derived(
@@ -296,13 +318,16 @@
 		onSave({
 			monitored,
 			scoringProfileId: qualityProfileId || null,
+			delayProfileId,
 			rootFolderId: rootFolderId || null,
 			moveFilesOnRootChange,
 			seasonFolder,
 			wantsSubtitles,
 			seriesType,
 			...(folderPathChanged && folderPath.trim() ? { folderPath: folderPath.trim() } : {}),
-			episodeGroupId: episodeGroupOption || null
+			episodeGroupId: episodeGroupOption || null,
+			metadataLanguage,
+			preferOriginalTitle
 		});
 	}
 </script>
@@ -325,216 +350,305 @@
 	</div>
 
 	<!-- Form -->
-	<div class="space-y-4">
-		<!-- Monitored -->
-		<FormCheckbox
-			bind:checked={monitored}
-			label={m.common_monitored()}
-			description={m.library_seriesEdit_monitoredDesc()}
-			variant="toggle"
-		/>
-
-		<!-- Season Folder -->
-		<FormCheckbox
-			bind:checked={seasonFolder}
-			label={m.library_seriesEdit_seasonFolders()}
-			description={m.library_seriesEdit_seasonFoldersDesc()}
-			variant="toggle"
-			color="secondary"
-		/>
-
-		<!-- Wants Subtitles -->
-		<FormCheckbox
-			bind:checked={wantsSubtitles}
-			label={m.library_seriesEdit_autoDownloadSubtitles()}
-			description={m.library_seriesEdit_autoDownloadSubtitlesDesc()}
-			variant="toggle"
-		/>
-
-		<!-- Series Type -->
-		<div class="form-control">
-			<label class="label" for="series-type">
-				<span class="label-text font-medium">{m.library_seriesEdit_seriesType()}</span>
-			</label>
-			<select
-				id="series-type"
-				bind:value={seriesType}
-				class="select-bordered select w-full select-sm"
+	<div class="space-y-6">
+		<!-- Monitoring -->
+		<section>
+			<h4
+				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/50"
 			>
-				{#each seriesTypeOptions as option (option.value)}
-					<option value={option.value}>{option.label}</option>
-				{/each}
-			</select>
-			<div class="label">
-				<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/60">
-					{seriesTypeOptions.find((option) => option.value === seriesType)?.description}
-				</span>
-			</div>
-		</div>
-
-		<!-- Episode Ordering -->
-		<div class="form-control">
-			<label class="label" for="episode-group">
-				<span class="label-text font-medium">Episode Ordering</span>
-			</label>
-			{#if episodeGroupsLoading}
-				<select id="episode-group" disabled class="select-bordered select w-full select-sm">
-					<option>Loading...</option>
-				</select>
-			{:else}
-				<select
-					id="episode-group"
-					bind:value={episodeGroupOption}
-					class="select-bordered select w-full select-sm"
-				>
-					{#each episodeGroupOptions as option (option.value)}
-						<option value={option.value}>
-							{option.label}
-							{#if option.type}
-								({option.type})
-							{/if}
-						</option>
-					{/each}
-				</select>
-			{/if}
-			<div class="label">
-				<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/60">
-					Alternative episode ordering from TMDB episode groups. Switching will rebuild all seasons
-					and episodes.
-				</span>
-			</div>
-		</div>
-
-		<!-- Quality Profile -->
-		<div class="form-control">
-			<label class="label" for="series-quality-profile">
-				<span class="label-text font-medium">{m.library_seriesEdit_qualityProfile()}</span>
-			</label>
-			<select
-				id="series-quality-profile"
-				bind:value={qualityProfileId}
-				class="select-bordered select w-full select-sm"
-			>
-				<option value="">{defaultProfile?.name ?? m.common_default()} ({m.common_default()})</option
-				>
-				{#each nonDefaultProfiles as profile (profile.id)}
-					<option value={profile.id}>{profile.name}</option>
-				{/each}
-			</select>
-			<div class="label">
-				<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/60">
-					{#if currentProfile}
-						{currentProfile.description}
-					{:else}
-						{m.library_seriesEdit_qualityProfileDesc()}
-					{/if}
-				</span>
-			</div>
-		</div>
-
-		<!-- Root Folder -->
-		<div class="form-control">
-			<label class="label" for="series-root-folder">
-				<span class="label-text font-medium">{m.library_seriesEdit_rootFolder()}</span>
-			</label>
-			<select
-				id="series-root-folder"
-				bind:value={rootFolderId}
-				class="select-bordered select w-full select-sm"
-			>
-				{#if !rootFolderId}
-					<option value="" disabled>{m.common_notSet()}</option>
-				{/if}
-				{#if selectedRootFolderOutOfPolicy && selectedRootFolderObj}
-					<option value={selectedRootFolderObj.id}>{selectedRootFolderObj.path} (current)</option>
-				{/if}
-				{#each eligibleRootFolders as folder (folder.id)}
-					<option value={folder.id}>
-						{folder.path}
-						{#if folder.freeSpaceBytes}
-							({formatBytes(folder.freeSpaceBytes)} {m.library_seriesEdit_free()})
-						{/if}
-					</option>
-				{/each}
-			</select>
-			<div class="label">
-				<span class="label-text-alt wrap-break-word whitespace-normal text-base-content/60">
-					{m.library_seriesEdit_rootFolderDesc()}
-				</span>
-			</div>
-			{#if enforceAnimeSubtype}
-				<div class="text-xs text-base-content/70">
-					Anime root folder enforcement is enabled. New folder selections are limited to <strong
-						>{requiredMediaSubType === 'anime' ? 'Anime' : 'Standard'}
-					</strong> root folders for this series.
-				</div>
-			{/if}
-		</div>
-
-		{#if canMoveExistingFiles}
-			<FormCheckbox
-				bind:checked={moveFilesOnRootChange}
-				onchange={() => {
-					moveOptionTouched = true;
-				}}
-				label="Move existing files to new root folder"
-				description="Moves the existing series folder after saving. Same-disk moves are instant; cross-disk moves copy then delete."
-				variant="toggle"
-				color="warning"
-			/>
-		{/if}
-
-		<!-- Folder path correction -->
-		{#if series.path}
-			<div class="form-control">
-				<label class="label" for="series-folder-path">
-					<span class="label-text font-medium">Folder name</span>
-				</label>
-				{#if showFolderPicker}
-					<FolderBrowser
-						value={selectedRootFolderObj?.path ?? '/'}
-						onSelect={(selected) => {
-							const root = selectedRootFolderObj?.path ?? '';
-							folderPath =
-								root && selected.startsWith(root + '/')
-									? selected.slice(root.length + 1)
-									: selected;
-							showFolderPicker = false;
-						}}
-						onCancel={() => (showFolderPicker = false)}
-					/>
-				{:else}
-					<div class="join w-full">
+				Monitoring
+			</h4>
+			<div class="space-y-3">
+				<div class="grid grid-cols-2 gap-3">
+					<label class="label cursor-pointer">
+						<span class="label-text text-xs text-base-content/80">{m.common_monitored()}</span>
 						<input
-							id="series-folder-path"
-							type="text"
-							class="input-bordered input input-sm join-item flex-1 font-mono"
-							bind:value={folderPath}
+							type="checkbox"
+							class="toggle toggle-primary toggle-sm"
+							bind:checked={monitored}
 						/>
-						<button
-							type="button"
-							class="btn join-item border border-base-300 btn-ghost btn-sm"
-							onclick={() => (showFolderPicker = true)}
-							title="Browse folders"
+					</label>
+					<label class="label cursor-pointer">
+						<span class="label-text text-xs text-base-content/80"
+							>{m.library_seriesEdit_autoDownloadSubtitles()}</span
 						>
-							<FolderOpen class="h-4 w-4" />
-						</button>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary toggle-sm"
+							bind:checked={wantsSubtitles}
+						/>
+					</label>
+				</div>
+				<div class="form-control w-full">
+					<label class="label py-0.5" for="series-quality-profile">
+						<span class="label-text text-xs text-base-content/80"
+							>{m.library_seriesEdit_qualityProfile()}</span
+						>
+					</label>
+					<select
+						id="series-quality-profile"
+						bind:value={qualityProfileId}
+						class="select-bordered select w-full select-sm"
+					>
+						<option value=""
+							>{defaultProfile?.name ?? m.common_default()} ({m.common_default()})</option
+						>
+						{#each nonDefaultProfiles as profile (profile.id)}
+							<option value={profile.id}>{profile.name}</option>
+						{/each}
+					</select>
+				</div>
+				<div class="grid grid-cols-2 gap-3">
+					<div class="form-control w-full">
+						<label class="label py-0.5" for="series-type">
+							<span class="label-text text-xs text-base-content/80"
+								>{m.library_seriesEdit_seriesType()}</span
+							>
+						</label>
+						<select
+							id="series-type"
+							bind:value={seriesType}
+							class="select-bordered select w-full select-sm"
+						>
+							{#each seriesTypeOptions as option (option.value)}
+								<option value={option.value}>{option.label}</option>
+							{/each}
+						</select>
 					</div>
-					{#if resolvedFolderPath}
-						<p class="mt-1 font-mono text-xs text-base-content/50">{resolvedFolderPath}</p>
+					<div class="form-control w-full">
+						<label class="label py-0.5" for="episode-group">
+							<span class="label-text text-xs text-base-content/80">Episode Ordering</span>
+						</label>
+						{#if episodeGroupsLoading}
+							<select id="episode-group" disabled class="select-bordered select w-full select-sm">
+								<option>Loading...</option>
+							</select>
+						{:else}
+							<select
+								id="episode-group"
+								bind:value={episodeGroupOption}
+								class="select-bordered select w-full select-sm"
+							>
+								{#each episodeGroupOptions as option (option.value)}
+									<option value={option.value}>
+										{option.label}
+										{#if option.type}({option.type}){/if}
+									</option>
+								{/each}
+							</select>
+						{/if}
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<!-- Scheduling -->
+		{#if delayProfiles.length > 0}
+			<section>
+				<h4
+					class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/50"
+				>
+					Scheduling
+				</h4>
+				<div class="form-control w-full">
+					<label class="label py-0.5" for="series-delay-profile">
+						<span class="label-text text-xs text-base-content/80">Delay Profile</span>
+					</label>
+					<select
+						id="series-delay-profile"
+						bind:value={delayProfileId}
+						class="select-bordered select w-full select-sm"
+					>
+						<option value={null}>None</option>
+						{#each delayProfiles as profile (profile.id)}
+							<option value={profile.id}>{profile.name}</option>
+						{/each}
+					</select>
+				</div>
+			</section>
+		{/if}
+
+		<!-- Files -->
+		<section>
+			<h4
+				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/50"
+			>
+				Files
+			</h4>
+			<div class="space-y-3">
+				<label class="label cursor-pointer">
+					<span class="label-text text-xs text-base-content/80"
+						>{m.library_seriesEdit_seasonFolders()}</span
+					>
+					<input
+						type="checkbox"
+						class="toggle toggle-primary toggle-sm"
+						bind:checked={seasonFolder}
+					/>
+				</label>
+
+				<div class="form-control w-full">
+					<label class="label py-0.5" for="series-root-folder">
+						<span class="label-text text-xs text-base-content/80"
+							>{m.library_seriesEdit_rootFolder()}</span
+						>
+					</label>
+					<select
+						id="series-root-folder"
+						bind:value={rootFolderId}
+						class="select-bordered select w-full select-sm"
+					>
+						{#if !rootFolderId}
+							<option value="" disabled>{m.common_notSet()}</option>
+						{/if}
+						{#if selectedRootFolderOutOfPolicy && selectedRootFolderObj}
+							<option value={selectedRootFolderObj.id}
+								>{selectedRootFolderObj.path} (current)</option
+							>
+						{/if}
+						{#each eligibleRootFolders as folder (folder.id)}
+							<option value={folder.id}>
+								{folder.path}
+								{#if folder.freeSpaceBytes}
+									({formatBytes(folder.freeSpaceBytes)} {m.library_seriesEdit_free()})
+								{/if}
+							</option>
+						{/each}
+					</select>
+					{#if enforceAnimeSubtype}
+						<div class="text-xs text-base-content/70 mt-1">
+							Limited to <strong>{requiredMediaSubType === 'anime' ? 'Anime' : 'Standard'}</strong> root
+							folders.
+						</div>
 					{/if}
-					<p class="mt-1 text-xs text-base-content/60">
-						Folder name relative to the root folder. Edit only if the name on disk no longer
-						matches; saving will update the database and trigger a rescan to re-link existing files.
-					</p>
-					{#if folderPathChanged}
-						<p class="mt-1 text-xs text-warning">
-							Folder name changed. A rescan will run automatically after saving.
-						</p>
-					{/if}
+				</div>
+
+				{#if canMoveExistingFiles}
+					<label class="label cursor-pointer">
+						<span class="label-text text-warning text-xs"
+							>Move existing files to new root folder</span
+						>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary toggle-sm"
+							bind:checked={moveFilesOnRootChange}
+							onchange={() => {
+								moveOptionTouched = true;
+							}}
+						/>
+					</label>
+				{/if}
+
+				{#if series.path}
+					<div class="form-control w-full">
+						<label class="label py-0.5" for="series-folder-path">
+							<span class="flex items-center gap-1 label-text text-xs text-base-content/80">
+								Folder name
+								<span
+									class="tooltip tooltip-right"
+									data-tip="Folder name relative to the root folder. Edit only if the name on disk no longer matches; saving will update the database and trigger a rescan to re-link existing files."
+								>
+									<Info class="h-3 w-3 text-base-content/40" />
+								</span>
+							</span>
+						</label>
+						{#if showFolderPicker}
+							<FolderBrowser
+								value={selectedRootFolderObj?.path ?? '/'}
+								onSelect={(selected) => {
+									const root = selectedRootFolderObj?.path ?? '';
+									folderPath =
+										root && selected.startsWith(root + '/')
+											? selected.slice(root.length + 1)
+											: selected;
+									showFolderPicker = false;
+								}}
+								onCancel={() => (showFolderPicker = false)}
+							/>
+						{:else}
+							<div class="join w-full">
+								<input
+									id="series-folder-path"
+									type="text"
+									class="input-bordered input input-sm join-item flex-1 font-mono"
+									bind:value={folderPath}
+								/>
+								<button
+									type="button"
+									class="btn join-item border border-base-300 btn-ghost btn-sm"
+									onclick={() => (showFolderPicker = true)}
+									title="Browse"
+								>
+									<FolderOpen class="h-4 w-4" />
+								</button>
+							</div>
+						{/if}
+						{#if resolvedFolderPath}
+							<p class="mt-1 font-mono text-xs text-base-content/50">{resolvedFolderPath}</p>
+						{/if}
+						{#if folderPathChanged}
+							<p class="mt-1 text-xs text-warning">
+								Folder name changed. A rescan will run after saving.
+							</p>
+						{/if}
+					</div>
 				{/if}
 			</div>
-		{/if}
+		</section>
+
+		<!-- Metadata -->
+		<section>
+			<h4
+				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/50"
+			>
+				Metadata
+			</h4>
+			<div class="grid grid-cols-2 gap-3">
+				<div class="form-control w-full">
+					<label class="label py-0.5" for="series-metadata-language">
+						<span class="label-text text-xs text-base-content/80">Language</span>
+					</label>
+					<select
+						id="series-metadata-language"
+						bind:value={metadataLanguage}
+						class="select-bordered select w-full select-sm"
+					>
+						<option value={null}>Inherit Global</option>
+						<option value="original">Original Language</option>
+						<option value="ar-SA">Arabic</option>
+						<option value="zh-CN">Chinese (zh-CN)</option>
+						<option value="zh-TW">Chinese (zh-TW)</option>
+						<option value="da-DK">Danish</option>
+						<option value="nl-NL">Dutch</option>
+						<option value="en-US">English</option>
+						<option value="fi-FI">Finnish</option>
+						<option value="fr-FR">French</option>
+						<option value="de-DE">German</option>
+						<option value="he-IL">Hebrew</option>
+						<option value="hi-IN">Hindi</option>
+						<option value="it-IT">Italian</option>
+						<option value="ja-JP">Japanese</option>
+						<option value="ko-KR">Korean</option>
+						<option value="no-NO">Norwegian</option>
+						<option value="pl-PL">Polish</option>
+						<option value="pt-BR">Portuguese</option>
+						<option value="ru-RU">Russian</option>
+						<option value="es-ES">Spanish</option>
+						<option value="sv-SE">Swedish</option>
+						<option value="th-TH">Thai</option>
+						<option value="tr-TR">Turkish</option>
+					</select>
+				</div>
+				<label class="label cursor-pointer">
+					<span class="label-text text-xs text-base-content/80">Prefer Original Title</span>
+					<input
+						type="checkbox"
+						class="toggle toggle-primary toggle-sm"
+						bind:checked={preferOriginalTitle}
+					/>
+				</label>
+			</div>
+		</section>
 	</div>
 
 	<!-- Actions -->

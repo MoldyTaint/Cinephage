@@ -30,7 +30,7 @@
 </script>
 
 <svelte:head>
-	<title>{m.settings_streaming_pageTitle()}</title>
+	<title>{m.nav_streaming()}</title>
 </svelte:head>
 
 <SettingsPage

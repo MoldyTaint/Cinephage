@@ -1,6 +1,5 @@
 import { redirect } from '@sveltejs/kit';
-import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async () => {
-	throw redirect(302, '/settings/system/general');
+export const load = () => {
+	throw redirect(307, '/settings/system/general');
 };

@@ -4,7 +4,8 @@ export type ActivityRefreshAction =
 	| 'purge_all'
 	| 'purge_older_than_retention'
 	| 'delete_selected'
-	| 'media_move';
+	| 'media_move'
+	| 'download_recovered';
 
 export interface ActivityRefreshPayload {
 	action: ActivityRefreshAction;

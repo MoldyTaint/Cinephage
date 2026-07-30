@@ -10,6 +10,7 @@
 		mediaType: MediaType;
 		mediaSubType?: string | null;
 		isDefault?: boolean;
+		isDefaultFolder?: boolean;
 		defaultRootFolderId?: string | null;
 		defaultRootFolderPath?: string | null;
 	}
@@ -23,6 +24,7 @@
 		activeImportSeasonSection = null,
 		hasMultipleImportTvSeries = false,
 		importMediaFilter = $bindable('all' as QueueMediaFilter),
+		importMode = $bindable('move' as 'move' | 'copy' | 'symlink'),
 		bulkDestinationBySectionId = {},
 		selectedImportGroupCount = 0,
 		selectedNeedsInputCount = 0,
@@ -51,6 +53,7 @@
 		activeImportSeasonSection: TvSeasonSection | null;
 		hasMultipleImportTvSeries: boolean;
 		importMediaFilter: QueueMediaFilter;
+		importMode: 'move' | 'copy' | 'symlink';
 		bulkDestinationBySectionId: Record<string, string>;
 		selectedImportGroupCount: number;
 		selectedNeedsInputCount: number;
@@ -382,6 +385,69 @@
 				{/if}
 			</div>
 		{/if}
+	</div>
+
+	<!-- Import Method -->
+	<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">
+		<h3 class="font-semibold">{m.library_import_importMethodHeading()}</h3>
+		<div class="mt-3 grid gap-2 sm:grid-cols-3">
+			<label
+				class="flex items-start gap-3 rounded-lg border p-3 transition-colors
+					{importMode === 'move' ? 'border-primary bg-primary/5' : 'border-base-300'}
+					{executingImport ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}"
+			>
+				<input
+					type="radio"
+					name="bulk-import-method"
+					class="radio mt-0.5 radio-primary"
+					value="move"
+					bind:group={importMode}
+					disabled={executingImport}
+				/>
+				<div>
+					<div class="font-medium">{m.library_import_importMethodMove()}</div>
+					<div class="text-sm text-base-content/70">{m.library_import_importMethodMoveDesc()}</div>
+				</div>
+			</label>
+			<label
+				class="flex items-start gap-3 rounded-lg border p-3 transition-colors
+					{importMode === 'copy' ? 'border-primary bg-primary/5' : 'border-base-300'}
+					{executingImport ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}"
+			>
+				<input
+					type="radio"
+					name="bulk-import-method"
+					class="radio mt-0.5 radio-primary"
+					value="copy"
+					bind:group={importMode}
+					disabled={executingImport}
+				/>
+				<div>
+					<div class="font-medium">{m.library_import_importMethodCopy()}</div>
+					<div class="text-sm text-base-content/70">{m.library_import_importMethodCopyDesc()}</div>
+				</div>
+			</label>
+			<label
+				class="flex items-start gap-3 rounded-lg border p-3 transition-colors
+					{importMode === 'symlink' ? 'border-primary bg-primary/5' : 'border-base-300'}
+					{executingImport ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}"
+			>
+				<input
+					type="radio"
+					name="bulk-import-method"
+					class="radio mt-0.5 radio-primary"
+					value="symlink"
+					bind:group={importMode}
+					disabled={executingImport}
+				/>
+				<div>
+					<div class="font-medium">{m.library_import_importMethodSymlink()}</div>
+					<div class="text-sm text-base-content/70">
+						{m.library_import_importMethodSymlinkDesc()}
+					</div>
+				</div>
+			</label>
+		</div>
 	</div>
 
 	{#if selectedNeedsInputCount > 0}

@@ -14,6 +14,7 @@ import { deleteDirectoryWithinRoot } from '$lib/server/filesystem/delete-helpers
 import { logger } from '$lib/logging';
 import { deleteAllAlternateTitles } from '$lib/server/services/index.js';
 import { monitoringSearchService } from '$lib/server/monitoring/search/MonitoringSearchService.js';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 
 /**
  * PATCH /api/library/series/batch
@@ -91,6 +92,11 @@ export const PATCH: RequestHandler = async ({ request }) => {
 				.set({ monitored: updates.monitored })
 				.where(inArray(episodes.seriesId, seriesIds));
 		}
+
+		libraryMediaEvents.emitLibraryDataChanged({
+			source: 'series',
+			reason: 'batch-updated'
+		});
 
 		return json({
 			success: true,
@@ -221,6 +227,13 @@ export const DELETE: RequestHandler = async ({ request }) => {
 					error: error instanceof Error ? error.message : 'Unknown error'
 				});
 			}
+		}
+
+		if (deletedCount > 0 || removedCount > 0) {
+			libraryMediaEvents.emitLibraryDataChanged({
+				source: 'series',
+				reason: 'batch-deleted'
+			});
 		}
 
 		return json({
