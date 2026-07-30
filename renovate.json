@@ -10,7 +10,8 @@
 	"timezone": "UTC",
 	"labels": ["Dependencies"],
 	"assignees": ["MoldyTaint"],
-	"baseBranchPatterns": ["dev"],
+	"baseBranches": ["dev"],
+	"automergeType": "pr",
 	"packageRules": [
 		{
 			"description": "Automerge patch and minor npm updates after 3-day stability window",
