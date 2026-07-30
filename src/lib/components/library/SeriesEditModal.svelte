@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { X, FolderOpen } from 'lucide-svelte';
+	import { X, FolderOpen, Info } from 'lucide-svelte';
 	import { FolderBrowser } from '$lib/components/library';
 	import { ModalWrapper, ModalFooter } from '$lib/components/ui/modal';
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
@@ -361,7 +361,7 @@
 			<div class="space-y-3">
 				<div class="grid grid-cols-2 gap-3">
 					<label class="label cursor-pointer">
-						<span class="label-text text-xs text-base-content/60">{m.common_monitored()}</span>
+						<span class="label-text text-xs text-base-content/80">{m.common_monitored()}</span>
 						<input
 							type="checkbox"
 							class="toggle toggle-primary toggle-sm"
@@ -369,7 +369,7 @@
 						/>
 					</label>
 					<label class="label cursor-pointer">
-						<span class="label-text text-xs text-base-content/60"
+						<span class="label-text text-xs text-base-content/80"
 							>{m.library_seriesEdit_autoDownloadSubtitles()}</span
 						>
 						<input
@@ -381,7 +381,7 @@
 				</div>
 				<div class="form-control w-full">
 					<label class="label py-0.5" for="series-quality-profile">
-						<span class="label-text text-xs text-base-content/60"
+						<span class="label-text text-xs text-base-content/80"
 							>{m.library_seriesEdit_qualityProfile()}</span
 						>
 					</label>
@@ -401,7 +401,7 @@
 				<div class="grid grid-cols-2 gap-3">
 					<div class="form-control w-full">
 						<label class="label py-0.5" for="series-type">
-							<span class="label-text text-xs text-base-content/60"
+							<span class="label-text text-xs text-base-content/80"
 								>{m.library_seriesEdit_seriesType()}</span
 							>
 						</label>
@@ -417,7 +417,7 @@
 					</div>
 					<div class="form-control w-full">
 						<label class="label py-0.5" for="episode-group">
-							<span class="label-text text-xs text-base-content/60">Episode Ordering</span>
+							<span class="label-text text-xs text-base-content/80">Episode Ordering</span>
 						</label>
 						{#if episodeGroupsLoading}
 							<select id="episode-group" disabled class="select-bordered select w-full select-sm">
@@ -452,14 +452,14 @@
 				</h4>
 				<div class="form-control w-full">
 					<label class="label py-0.5" for="series-delay-profile">
-						<span class="label-text text-xs text-base-content/60">Delay Profile</span>
+						<span class="label-text text-xs text-base-content/80">Delay Profile</span>
 					</label>
 					<select
 						id="series-delay-profile"
 						bind:value={delayProfileId}
 						class="select-bordered select w-full select-sm"
 					>
-						<option value={null}>None (global default)</option>
+						<option value={null}>None</option>
 						{#each delayProfiles as profile (profile.id)}
 							<option value={profile.id}>{profile.name}</option>
 						{/each}
@@ -477,7 +477,7 @@
 			</h4>
 			<div class="space-y-3">
 				<label class="label cursor-pointer">
-					<span class="label-text text-xs text-base-content/60"
+					<span class="label-text text-xs text-base-content/80"
 						>{m.library_seriesEdit_seasonFolders()}</span
 					>
 					<input
@@ -489,7 +489,7 @@
 
 				<div class="form-control w-full">
 					<label class="label py-0.5" for="series-root-folder">
-						<span class="label-text text-xs text-base-content/60"
+						<span class="label-text text-xs text-base-content/80"
 							>{m.library_seriesEdit_rootFolder()}</span
 						>
 					</label>
@@ -542,7 +542,15 @@
 				{#if series.path}
 					<div class="form-control w-full">
 						<label class="label py-0.5" for="series-folder-path">
-							<span class="label-text text-xs text-base-content/60">Folder name</span>
+							<span class="flex items-center gap-1 label-text text-xs text-base-content/80">
+								Folder name
+								<span
+									class="tooltip tooltip-right"
+									data-tip="Folder name relative to the root folder. Edit only if the name on disk no longer matches; saving will update the database and trigger a rescan to re-link existing files."
+								>
+									<Info class="h-3 w-3 text-base-content/40" />
+								</span>
+							</span>
 						</label>
 						{#if showFolderPicker}
 							<FolderBrowser
@@ -598,7 +606,7 @@
 			<div class="grid grid-cols-2 gap-3">
 				<div class="form-control w-full">
 					<label class="label py-0.5" for="series-metadata-language">
-						<span class="label-text text-xs text-base-content/60">Language</span>
+						<span class="label-text text-xs text-base-content/80">Language</span>
 					</label>
 					<select
 						id="series-metadata-language"
@@ -632,7 +640,7 @@
 					</select>
 				</div>
 				<label class="label cursor-pointer">
-					<span class="label-text text-xs text-base-content/60">Prefer Original Title</span>
+					<span class="label-text text-xs text-base-content/80">Prefer Original Title</span>
 					<input
 						type="checkbox"
 						class="toggle toggle-primary toggle-sm"
