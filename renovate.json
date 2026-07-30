@@ -10,7 +10,7 @@
 	"timezone": "UTC",
 	"labels": ["Dependencies"],
 	"assignees": ["MoldyTaint"],
-	"baseBranches": ["dev"],
+	"baseBranchPatterns": ["dev"],
 	"automergeType": "pr",
 	"packageRules": [
 		{
