@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, FolderOpen, Search } from 'lucide-svelte';
+	import { X, FolderOpen, Search, Layers, Trash2, Pencil, Info } from 'lucide-svelte';
 	import { FolderBrowser } from '$lib/components/library';
 	import type { LibraryMovie, DesiredQuality } from '$lib/types/library';
 	import { ModalWrapper, ModalFooter } from '$lib/components/ui/modal';
@@ -368,7 +368,7 @@
 			<div class="space-y-3">
 				<div class="grid grid-cols-2 gap-3">
 					<label class="label cursor-pointer">
-						<span class="label-text text-xs text-base-content/60">{m.common_monitored()}</span>
+						<span class="label-text text-xs text-base-content/80">{m.common_monitored()}</span>
 						<input
 							type="checkbox"
 							class="toggle toggle-primary toggle-sm"
@@ -376,7 +376,7 @@
 						/>
 					</label>
 					<label class="label cursor-pointer">
-						<span class="label-text text-xs text-base-content/60"
+						<span class="label-text text-xs text-base-content/80"
 							>{m.library_editMovie_autoDownloadSubtitles()}</span
 						>
 						<input
@@ -389,7 +389,7 @@
 				<div class="grid grid-cols-2 gap-3">
 					<div class="form-control w-full">
 						<label class="label py-0.5" for="movie-quality-profile">
-							<span class="label-text text-xs text-base-content/60"
+							<span class="label-text text-xs text-base-content/80"
 								>{m.common_qualityProfile()}</span
 							>
 						</label>
@@ -409,9 +409,9 @@
 						</select>
 					</div>
 					<div class="form-control w-full">
-						<label class="label py-0.5">
-							<span class="label-text text-xs text-base-content/60">Desired Qualities</span>
-						</label>
+						<div class="label py-0.5">
+							<span class="label-text text-xs text-base-content/80">Desired Qualities</span>
+						</div>
 						<div class="flex flex-wrap gap-1.5 pt-0.5">
 							{#each resolutionOptions as option (option.value)}
 								<button
@@ -452,14 +452,14 @@
 			<div class="grid grid-cols-3 gap-3">
 				<div class="form-control w-full">
 					<label class="label py-0.5" for="movie-delay-profile">
-						<span class="label-text text-xs text-base-content/60">Delay Profile</span>
+						<span class="label-text text-xs text-base-content/80">Delay Profile</span>
 					</label>
 					<select
 						id="movie-delay-profile"
 						bind:value={delayProfileId}
 						class="select-bordered select w-full select-sm"
 					>
-						<option value={null}>None (global default)</option>
+						<option value={null}>None</option>
 						{#each delayProfiles as profile (profile.id)}
 							<option value={profile.id}>{profile.name}</option>
 						{/each}
@@ -467,7 +467,7 @@
 				</div>
 				<div class="form-control w-full">
 					<label class="label py-0.5" for="movie-min-availability">
-						<span class="label-text text-xs text-base-content/60"
+						<span class="label-text text-xs text-base-content/80"
 							>{m.library_minimumAvailability()}</span
 						>
 					</label>
@@ -483,7 +483,7 @@
 				</div>
 				<div class="form-control w-full">
 					<label class="label py-0.5" for="movie-availability-delay">
-						<span class="label-text text-xs text-base-content/60"
+						<span class="label-text text-xs text-base-content/80"
 							>{m.library_availabilityDelay_label()}</span
 						>
 					</label>
@@ -496,7 +496,7 @@
 							max="365"
 							bind:value={availabilityDelay}
 						/>
-						<span class="text-xs text-base-content/60">{m.library_availabilityDelay_unit()}</span>
+						<span class="text-xs text-base-content/80">{m.library_availabilityDelay_unit()}</span>
 					</div>
 				</div>
 			</div>
@@ -510,122 +510,127 @@
 				Files
 			</h4>
 			<div class="space-y-3">
-				<div class="grid grid-cols-2 gap-3">
-					<div class="form-control w-full">
-						<label class="label py-0.5" for="movie-root-folder">
-							<span class="label-text text-xs text-base-content/60">{m.common_rootFolder()}</span>
-						</label>
-						<select
-							id="movie-root-folder"
-							bind:value={rootFolderId}
-							class="select-bordered select w-full select-sm"
-						>
-							{#if !rootFolderId}
-								<option value="" disabled>{m.common_notSet()}</option>
-							{/if}
-							{#if selectedRootFolderOutOfPolicy && selectedRootFolderObj}
-								<option value={selectedRootFolderObj.id}
-									>{selectedRootFolderObj.path} (current)</option
-								>
-							{/if}
-							{#each eligibleRootFolders as folder (folder.id)}
-								<option value={folder.id}>
-									{folder.path}
-									{#if folder.freeSpaceBytes}
-										({m.library_add_rootFolderFree({ free: formatBytes(folder.freeSpaceBytes) })})
-									{/if}
-								</option>
-							{/each}
-						</select>
-						{#if enforceAnimeSubtype}
-							<div class="text-xs text-base-content/70 mt-1">
-								Limited to <strong>{requiredMediaSubType === 'anime' ? 'Anime' : 'Standard'}</strong
-								> root folders.
-							</div>
+				<div class="form-control w-full">
+					<label class="label py-0.5" for="movie-root-folder">
+						<span class="label-text text-xs text-base-content/80">{m.common_rootFolder()}</span>
+					</label>
+					<select
+						id="movie-root-folder"
+						bind:value={rootFolderId}
+						class="select-bordered select w-full select-sm"
+					>
+						{#if !rootFolderId}
+							<option value="" disabled>{m.common_notSet()}</option>
 						{/if}
-					</div>
-					<div class="form-control w-full">
-						<label class="label py-0.5">
-							<span class="label-text text-xs text-base-content/60">Collection</span>
-						</label>
-						{#if collectionSearchOpen}
-							<div class="rounded-lg border border-base-300 bg-base-200 p-2 space-y-1.5">
-								<div class="relative">
-									<input
-										type="text"
-										placeholder="Search TMDB collections..."
-										class="input input-xs w-full rounded-full border-base-content/20 bg-base-100 pl-8 pr-7"
-										bind:value={collectionQuery}
-										oninput={handleCollectionQueryInput}
-									/>
-									<Search
-										class="pointer-events-none absolute top-1/2 left-2.5 h-3 w-3 -translate-y-1/2 text-base-content/40"
-									/>
-									{#if collectionQuery}
-										<button
-											type="button"
-											class="absolute top-1/2 right-1.5 -translate-y-1/2 text-base-content/40 hover:text-base-content text-xs"
-											onclick={() => {
-												collectionQuery = '';
-												collectionResults = [];
-											}}>x</button
-										>
-									{/if}
-								</div>
-								{#if collectionResults.length > 0}
-									<ul class="max-h-32 overflow-y-auto space-y-0.5">
-										{#each collectionResults as col (col.id)}
-											<li>
-												<button
-													type="button"
-													class="flex w-full items-center gap-1.5 rounded p-1 text-left text-xs hover:bg-base-300"
-													onclick={() => pickCollection(col.id, col.name)}
-												>
-													<span class="truncate">{col.name}</span>
-												</button>
-											</li>
-										{/each}
-									</ul>
-								{/if}
-								<button
-									type="button"
-									class="btn btn-ghost btn-xs w-full"
-									onclick={() => {
-										collectionSearchOpen = false;
-										collectionQuery = '';
-										collectionResults = [];
-									}}>Cancel</button
-								>
-							</div>
-						{:else}
-							<div
-								class="flex items-center gap-1.5 rounded border border-base-300 bg-base-200 px-2 py-1.5 text-xs"
+						{#if selectedRootFolderOutOfPolicy && selectedRootFolderObj}
+							<option value={selectedRootFolderObj.id}
+								>{selectedRootFolderObj.path} (current)</option
 							>
-								<span
-									class="min-w-0 flex-1 truncate {collectionName
-										? ''
-										: 'italic text-base-content/40'}"
-								>
-									{collectionName ?? 'No collection'}
-								</span>
-								{#if collectionName}
+						{/if}
+						{#each eligibleRootFolders as folder (folder.id)}
+							<option value={folder.id}>
+								{folder.path}
+								{#if folder.freeSpaceBytes}
+									({m.library_add_rootFolderFree({ free: formatBytes(folder.freeSpaceBytes) })})
+								{/if}
+							</option>
+						{/each}
+					</select>
+					{#if enforceAnimeSubtype}
+						<div class="mt-1 text-xs text-base-content/70">
+							Limited to <strong>{requiredMediaSubType === 'anime' ? 'Anime' : 'Standard'}</strong> root
+							folders.
+						</div>
+					{/if}
+				</div>
+				<div class="form-control w-full">
+					<div class="label py-0.5">
+						<span class="label-text text-xs text-base-content/80">Collection</span>
+					</div>
+					{#if collectionSearchOpen}
+						<div class="space-y-1.5 rounded-lg border border-base-300 bg-base-200 p-2">
+							<div class="relative">
+								<input
+									type="text"
+									placeholder="Search TMDB collections..."
+									class="input input-xs w-full rounded-full border-base-content/20 bg-base-100 pl-8 pr-7"
+									bind:value={collectionQuery}
+									oninput={handleCollectionQueryInput}
+								/>
+								<Search
+									class="pointer-events-none absolute top-1/2 left-2.5 h-3 w-3 -translate-y-1/2 text-base-content/40"
+								/>
+								{#if collectionQuery}
 									<button
 										type="button"
-										class="text-error hover:underline text-xs"
+										class="absolute top-1/2 right-1.5 -translate-y-1/2 text-base-content/40 hover:text-base-content text-xs"
 										onclick={() => {
-											collectionId = null;
-											collectionName = null;
+											collectionQuery = '';
+											collectionResults = [];
 										}}>x</button
 									>
 								{/if}
+							</div>
+							{#if collectionResults.length > 0}
+								<ul class="max-h-32 space-y-0.5 overflow-y-auto">
+									{#each collectionResults as col (col.id)}
+										<li>
+											<button
+												type="button"
+												class="flex w-full items-center gap-1.5 rounded p-1 text-left text-xs hover:bg-base-300"
+												onclick={() => pickCollection(col.id, col.name)}
+											>
+												<span class="truncate">{col.name}</span>
+											</button>
+										</li>
+									{/each}
+								</ul>
+							{/if}
+							<button
+								type="button"
+								class="btn btn-ghost btn-xs w-full"
+								onclick={() => {
+									collectionSearchOpen = false;
+									collectionQuery = '';
+									collectionResults = [];
+								}}>Cancel</button
+							>
+						</div>
+					{:else}
+						<div
+							class="flex items-center gap-2 rounded-lg border border-base-300 bg-base-200 px-3 py-2 text-sm"
+						>
+							<Layers class="h-4 w-4 shrink-0 text-primary" />
+							<span
+								class="min-w-0 flex-1 truncate {collectionName
+									? ''
+									: 'italic text-base-content/40'}"
+							>
+								{collectionName ?? 'No collection'}
+							</span>
+							{#if collectionName}
 								<button
 									type="button"
-									class="btn btn-ghost btn-xs text-xs h-auto min-h-0 py-0"
-									onclick={openCollectionSearch}>change</button
+									class="btn btn-ghost btn-xs text-error"
+									onclick={() => {
+										collectionId = null;
+										collectionName = null;
+									}}
+									title="Remove collection"
 								>
-							</div>
-						{/if}
-					</div>
+									<Trash2 class="h-3.5 w-3.5" />
+								</button>
+							{/if}
+							<button
+								type="button"
+								class="btn btn-ghost btn-xs"
+								onclick={openCollectionSearch}
+								title="Change collection"
+							>
+								<Pencil class="h-3.5 w-3.5" />
+							</button>
+						</div>
+					{/if}
 				</div>
 
 				{#if canMoveExistingFiles}
@@ -647,7 +652,15 @@
 				{#if movie.path}
 					<div class="form-control w-full">
 						<label class="label py-0.5" for="movie-folder-path">
-							<span class="label-text text-xs text-base-content/60">Folder name</span>
+							<span class="flex items-center gap-1 label-text text-xs text-base-content/80">
+								Folder name
+								<span
+									class="tooltip tooltip-right"
+									data-tip="Folder name relative to the root folder. Edit only if the name on disk no longer matches; saving will update the database and trigger a rescan to re-link existing files."
+								>
+									<Info class="h-3 w-3 text-base-content/40" />
+								</span>
+							</span>
 						</label>
 						{#if showFolderPicker}
 							<FolderBrowser
@@ -703,7 +716,7 @@
 			<div class="grid grid-cols-2 gap-3">
 				<div class="form-control w-full">
 					<label class="label py-0.5" for="movie-metadata-language">
-						<span class="label-text text-xs text-base-content/60">Language</span>
+						<span class="label-text text-xs text-base-content/80">Language</span>
 					</label>
 					<select
 						id="movie-metadata-language"
@@ -737,7 +750,7 @@
 					</select>
 				</div>
 				<label class="label cursor-pointer">
-					<span class="label-text text-xs text-base-content/60">Prefer Original Title</span>
+					<span class="label-text text-xs text-base-content/80">Prefer Original Title</span>
 					<input
 						type="checkbox"
 						class="toggle toggle-primary toggle-sm"
