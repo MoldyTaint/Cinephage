@@ -85,8 +85,8 @@
 	>
 		<div
 			bind:this={modalBoxRef}
-			class="modal-box max-h-[90vh] wrap-break-word {flexContent
-				? 'flex flex-col overflow-hidden'
+			class="modal-box max-h-dvh sm:max-h-[90dvh] wrap-break-word {flexContent
+				? 'flex flex-col overflow-hidden modal-flex-content'
 				: 'overflow-x-hidden overflow-y-auto'} {maxWidthClasses[maxWidth]}"
 		>
 			{@render children()}
@@ -101,3 +101,24 @@
 		></button>
 	</div>
 {/if}
+
+<style>
+	/*
+	 * On small landscape screens (phones), release the flex lock so the entire modal
+	 * scrolls as one unit. This avoids the fixed-header + tiny/inaccessible results
+	 * view problem when viewport height < 600px.
+	 */
+	@media (orientation: landscape) and (max-height: 600px) {
+		:global(.modal-flex-content) {
+			display: block !important;
+			overflow-y: auto !important;
+			overflow-x: hidden !important;
+		}
+		/* Remove flex grow/shrink constraints from all direct children */
+		:global(.modal-flex-content > *) {
+			flex: none !important;
+			min-height: auto !important;
+			overflow: visible !important;
+		}
+	}
+</style>
