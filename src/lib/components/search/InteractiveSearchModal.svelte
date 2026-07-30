@@ -546,7 +546,7 @@
 		{blockedIds}
 	/>
 
-	<div class="modal-action shrink-0 border-t border-base-300 pt-3">
+	<div class="modal-action mt-0 shrink-0 border-t border-base-300 pt-3">
 		<button class="btn" onclick={onClose}>Close</button>
 	</div>
 </ModalWrapper>

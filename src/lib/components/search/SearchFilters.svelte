@@ -26,7 +26,7 @@
 	}: Props = $props();
 </script>
 
-<div class="mb-3 flex flex-wrap items-center gap-2 sm:gap-4">
+<div class="mb-1 flex flex-wrap items-center gap-2 sm:mb-3 sm:gap-4">
 	<div class="form-control w-full sm:w-auto">
 		<input
 			type="text"

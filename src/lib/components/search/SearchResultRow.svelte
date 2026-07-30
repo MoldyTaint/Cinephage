@@ -206,176 +206,301 @@
 		: 'border-base-300'} {release.rejected ? 'opacity-50' : ''}"
 >
 	<!-- Main row - always visible -->
-	<div class="flex items-center gap-3 p-3">
-		<!-- Score - inline with title -->
-		{#if release.totalScore !== undefined}
-			<span
-				class="shrink-0 rounded px-1.5 py-0.5 text-sm font-semibold {getScoreColor(
-					release.totalScore
-				)}"
-				title={m.search_qualityScore()}
-			>
-				{release.totalScore}
-			</span>
-		{/if}
+	<div class="p-3">
+		<!-- Mobile layout: two compact lines -->
+		<div class="sm:hidden">
+			<!-- Line 1: score + title + grab + expand -->
+			<div class="flex items-center gap-2">
+				{#if release.totalScore !== undefined}
+					<span
+						class="shrink-0 rounded px-1.5 py-0.5 text-sm font-semibold {getScoreColor(
+							release.totalScore
+						)}"
+						title={m.search_qualityScore()}
+					>
+						{release.totalScore}
+					</span>
+				{/if}
+				<p class="min-w-0 flex-1 truncate text-sm font-medium" title={release.title}>
+					{release.title}
+				</p>
+				<div class="flex shrink-0 items-center gap-1">
+					{#if blocked}
+						<span class="badge gap-1 badge-warning badge-sm"><Ban size={10} /></span>
+					{:else if grabbed}
+						<span class="badge gap-1 badge-success badge-sm"><Check size={10} /></span>
+					{:else if error}
+						<span class="badge gap-1 badge-error badge-sm" title={error}><X size={10} /></span>
+					{:else}
+						{#if release.protocol === 'usenet' && showUsenetStreamButton}
+							<button
+								class="btn btn-xs btn-accent"
+								onclick={handleStream}
+								disabled={grabbing || streaming || !canUsenetStream}
+								title={canUsenetStream
+									? m.search_stream()
+									: (usenetStreamUnavailableReason ?? m.search_unavailable())}
+							>
+								{#if streaming}
+									<Loader2 size={12} class="animate-spin" />
+								{:else}
+									<Play size={12} />
+								{/if}
+							</button>
+						{/if}
+						<button
+							class="btn btn-xs btn-primary"
+							onclick={handleGrab}
+							disabled={grabbing || streaming}
+						>
+							{#if grabbing}
+								<Loader2 size={12} class="animate-spin" />
+							{:else}
+								<Download size={12} />
+							{/if}
+						</button>
+					{/if}
+					<button
+						class="btn btn-ghost btn-xs"
+						onclick={() => (expanded = !expanded)}
+						title={expanded ? m.search_collapseDetails() : m.search_expandDetails()}
+					>
+						{#if expanded}
+							<ChevronUp size={12} />
+						{:else}
+							<ChevronDown size={12} />
+						{/if}
+					</button>
+				</div>
+			</div>
 
-		<!-- Title and tags -->
-		<div class="min-w-0 flex-1">
-			<p class="truncate text-sm font-medium" title={release.title}>
-				{release.title}
-			</p>
-			<div class="mt-1 flex flex-wrap items-center gap-1.5">
+			<!-- Line 2: quality badges only -->
+			<div class="mt-1.5 flex flex-wrap items-center gap-1.5">
 				{#each getQualityTags() as tag (tag)}
-					<span class="badge badge-sm badge-primary">{tag}</span>
+					<span class="badge badge-xs badge-primary">{tag}</span>
 				{/each}
 				{#if release.parsed?.releaseGroup && isKnownBadge(release.parsed.releaseGroup)}
-					<span class="badge badge-ghost badge-sm">{release.parsed.releaseGroup}</span>
+					<span class="badge badge-ghost badge-xs">{release.parsed.releaseGroup}</span>
 				{/if}
 				{#if release.torrent?.freeleech || release.torrent?.downloadFactor === 0}
-					<span class="badge badge-sm badge-success">{m.search_freeleechBadge()}</span>
+					<span class="badge badge-xs badge-success">{m.search_freeleechBadge()}</span>
 				{/if}
 				{#if release.rejected && release.rejections?.length}
-					<span class="badge badge-sm badge-error gap-1" title={release.rejections.join('\n')}>
-						<Ban size={10} />
+					<span class="badge badge-xs badge-error gap-1" title={release.rejections.join('\n')}>
+						<Ban size={8} />
 						{release.rejectionReason || release.rejections[0]}
-						{#if release.rejections.length > 1}
-							+{release.rejections.length - 1}
-						{/if}
+						{#if release.rejections.length > 1}+{release.rejections.length - 1}{/if}
 					</span>
 				{/if}
 			</div>
+
+			<!-- Line 3: metadata + secondary actions -->
+			<div class="mt-1 flex items-center gap-2 text-xs text-base-content/50">
+				<span class="h-1.5 w-1.5 shrink-0 rounded-full {getProtocolColor()}"></span>
+				<span class="truncate">{release.indexerName}</span>
+				{#if release.size > 0}<span class="shrink-0">{formatBytes(release.size)}</span>{/if}
+				{#if release.protocol === 'torrent' && release.seeders !== undefined}
+					<span class="text-success">↑{release.seeders}</span>
+				{/if}
+				<span>{formatAge(release.publishDate)}</span>
+				<div class="ml-auto flex shrink-0 items-center gap-0.5 border-l border-base-300 pl-2">
+					{#if onBlock && !blocked}
+						<button
+							class="btn btn-ghost btn-xs text-error/70 hover:text-error"
+							onclick={() => onBlock(release)}
+							title={m.search_blockRelease()}
+						>
+							<Ban size={13} />
+						</button>
+					{/if}
+					{#if release.commentsUrl}
+						<a
+							href={release.commentsUrl}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="btn btn-ghost btn-xs text-base-content/60 hover:text-base-content"
+							title={m.search_viewComments()}
+						>
+							<ExternalLink size={13} />
+						</a>
+					{/if}
+				</div>
+			</div>
 		</div>
 
-		<!-- Quick stats -->
-		<div class="hidden shrink-0 items-center gap-4 text-xs sm:flex">
-			<!-- Indexer -->
-			<div class="flex items-center gap-1.5">
-				<span class="h-2 w-2 rounded-full {getProtocolColor()}"></span>
-				<span class="text-base-content/60">{release.indexerName}</span>
-				{#if indexerSource === 'prowlarr'}
-					<span class="badge badge-xs badge-primary">Prowlarr</span>
-				{:else if indexerSource === 'jackett'}
-					<span class="badge badge-xs badge-secondary">Jackett</span>
-				{/if}
-			</div>
-
-			<!-- Size -->
-			{#if release.size > 0}
-				<div class="flex items-center gap-1 text-base-content/60">
-					<HardDrive size={12} />
-					<span>{formatBytes(release.size)}</span>
-				</div>
+		<!-- Desktop layout -->
+		<div class="hidden items-center gap-3 sm:flex">
+			<!-- Score - inline with title -->
+			{#if release.totalScore !== undefined}
+				<span
+					class="shrink-0 rounded px-1.5 py-0.5 text-sm font-semibold {getScoreColor(
+						release.totalScore
+					)}"
+					title={m.search_qualityScore()}
+				>
+					{release.totalScore}
+				</span>
 			{/if}
 
-			<!-- Seeders/Leechers -->
-			{#if release.protocol === 'torrent'}
-				{@const availability = getTorrentAvailabilityText()}
-				{#if availability}
-					<div class="flex items-center gap-1">
-						<ArrowUpCircle size={12} class="text-success" />
-						<span class="text-success">{availability.seeders}</span>
-						<span class="text-base-content/30">/</span>
-						<ArrowDownCircle size={12} class="text-error" />
-						<span class="text-error">{availability.leechers}</span>
+			<!-- Title and tags -->
+			<div class="min-w-0 flex-1">
+				<p class="truncate text-sm font-medium" title={release.title}>
+					{release.title}
+				</p>
+				<div class="mt-1 flex flex-wrap items-center gap-1.5">
+					{#each getQualityTags() as tag (tag)}
+						<span class="badge badge-sm badge-primary">{tag}</span>
+					{/each}
+					{#if release.parsed?.releaseGroup && isKnownBadge(release.parsed.releaseGroup)}
+						<span class="badge badge-ghost badge-sm">{release.parsed.releaseGroup}</span>
+					{/if}
+					{#if release.torrent?.freeleech || release.torrent?.downloadFactor === 0}
+						<span class="badge badge-sm badge-success">{m.search_freeleechBadge()}</span>
+					{/if}
+					{#if release.rejected && release.rejections?.length}
+						<span class="badge badge-sm badge-error gap-1" title={release.rejections.join('\n')}>
+							<Ban size={10} />
+							{release.rejectionReason || release.rejections[0]}
+							{#if release.rejections.length > 1}
+								+{release.rejections.length - 1}
+							{/if}
+						</span>
+					{/if}
+				</div>
+			</div>
+
+			<!-- Quick stats -->
+			<div class="shrink-0 flex items-center gap-4 text-xs">
+				<!-- Indexer -->
+				<div class="flex items-center gap-1.5">
+					<span class="h-2 w-2 rounded-full {getProtocolColor()}"></span>
+					<span class="text-base-content/60">{release.indexerName}</span>
+					{#if indexerSource === 'prowlarr'}
+						<span class="badge badge-xs badge-primary">Prowlarr</span>
+					{:else if indexerSource === 'jackett'}
+						<span class="badge badge-xs badge-secondary">Jackett</span>
+					{/if}
+				</div>
+
+				<!-- Size -->
+				{#if release.size > 0}
+					<div class="flex items-center gap-1 text-base-content/60">
+						<HardDrive size={12} />
+						<span>{formatBytes(release.size)}</span>
 					</div>
 				{/if}
-			{/if}
 
-			<!-- Age -->
-			<div class="flex items-center gap-1 text-base-content/60">
-				<Calendar size={12} />
-				<span>{formatAge(release.publishDate)}</span>
+				<!-- Seeders/Leechers -->
+				{#if release.protocol === 'torrent'}
+					{@const availability = getTorrentAvailabilityText()}
+					{#if availability}
+						<div class="flex items-center gap-1">
+							<ArrowUpCircle size={12} class="text-success" />
+							<span class="text-success">{availability.seeders}</span>
+							<span class="text-base-content/30">/</span>
+							<ArrowDownCircle size={12} class="text-error" />
+							<span class="text-error">{availability.leechers}</span>
+						</div>
+					{/if}
+				{/if}
+
+				<!-- Age -->
+				<div class="flex items-center gap-1 text-base-content/60">
+					<Calendar size={12} />
+					<span>{formatAge(release.publishDate)}</span>
+				</div>
 			</div>
-		</div>
 
-		<!-- Actions -->
-		<div class="flex shrink-0 items-center gap-1">
-			{#if blocked}
-				<span class="badge gap-1 badge-warning">
-					<Ban size={12} />
-					{m.search_releaseBlocked()}
-				</span>
-			{/if}
-			{#if grabbed}
-				<span class="badge gap-1 badge-success">
-					<Check size={12} />
-					{m.search_grabbedBadge()}
-				</span>
-			{:else if error}
-				<span class="badge gap-1 badge-error" title={error}>
-					<X size={12} />
-					{m.search_failedBadge()}
-				</span>
-			{:else if !blocked}
-				{#if release.protocol === 'usenet' && showUsenetStreamButton}
+			<!-- Actions -->
+			<div class="flex shrink-0 items-center gap-1">
+				{#if blocked}
+					<span class="badge gap-1 badge-warning">
+						<Ban size={12} />
+						{m.search_releaseBlocked()}
+					</span>
+				{/if}
+				{#if grabbed}
+					<span class="badge gap-1 badge-success">
+						<Check size={12} />
+						{m.search_grabbedBadge()}
+					</span>
+				{:else if error}
+					<span class="badge gap-1 badge-error" title={error}>
+						<X size={12} />
+						{m.search_failedBadge()}
+					</span>
+				{:else if !blocked}
+					{#if release.protocol === 'usenet' && showUsenetStreamButton}
+						<button
+							class="btn btn-sm btn-accent"
+							onclick={handleStream}
+							disabled={grabbing || streaming || !canUsenetStream}
+							title={canUsenetStream
+								? m.search_stream()
+								: (usenetStreamUnavailableReason ?? m.search_unavailable())}
+						>
+							{#if streaming}
+								<Loader2 size={14} class="animate-spin" />
+							{:else}
+								<Play size={14} />
+							{/if}
+						</button>
+					{/if}
 					<button
-						class="btn btn-sm btn-accent"
-						onclick={handleStream}
-						disabled={grabbing || streaming || !canUsenetStream}
-						title={canUsenetStream
-							? m.search_stream()
-							: (usenetStreamUnavailableReason ?? m.search_unavailable())}
+						class="btn btn-sm btn-primary"
+						onclick={handleGrab}
+						disabled={grabbing || streaming}
 					>
-						{#if streaming}
+						{#if grabbing}
 							<Loader2 size={14} class="animate-spin" />
 						{:else}
-							<Play size={14} />
+							<Download size={14} />
 						{/if}
 					</button>
 				{/if}
+
+				{#if onBlock && !blocked}
+					<button
+						class="btn btn-ghost btn-sm text-error"
+						onclick={() => onBlock(release)}
+						title={m.search_blockRelease()}
+					>
+						<Ban size={14} />
+					</button>
+				{/if}
+
+				{#if release.commentsUrl}
+					<a
+						href={release.commentsUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="btn btn-ghost btn-sm"
+						title={m.search_viewComments()}
+					>
+						<ExternalLink size={14} />
+					</a>
+				{/if}
+
+				<!-- Expand toggle -->
 				<button
-					class="btn btn-sm btn-primary"
-					onclick={handleGrab}
-					disabled={grabbing || streaming}
+					class="btn btn-ghost btn-sm"
+					onclick={() => (expanded = !expanded)}
+					title={expanded ? m.search_collapseDetails() : m.search_expandDetails()}
 				>
-					{#if grabbing}
-						<Loader2 size={14} class="animate-spin" />
+					{#if expanded}
+						<ChevronUp size={14} />
 					{:else}
-						<Download size={14} />
+						<ChevronDown size={14} />
 					{/if}
 				</button>
-			{/if}
-
-			{#if onBlock && !blocked}
-				<button
-					class="btn btn-ghost btn-sm"
-					onclick={() => onBlock(release)}
-					title={m.search_blockRelease()}
-				>
-					<Ban size={14} />
-				</button>
-			{/if}
-
-			{#if release.commentsUrl}
-				<a
-					href={release.commentsUrl}
-					target="_blank"
-					rel="noopener noreferrer"
-					class="btn btn-ghost btn-sm"
-					title={m.search_viewComments()}
-				>
-					<ExternalLink size={14} />
-				</a>
-			{/if}
-
-			<!-- Expand toggle -->
-			<button
-				class="btn btn-ghost btn-sm"
-				onclick={() => (expanded = !expanded)}
-				title={expanded ? m.search_collapseDetails() : m.search_expandDetails()}
-			>
-				{#if expanded}
-					<ChevronUp size={14} />
-				{:else}
-					<ChevronDown size={14} />
-				{/if}
-			</button>
+			</div>
 		</div>
 	</div>
 
 	<!-- Expanded content -->
 	{#if expanded}
 		<div class="border-t border-base-300 bg-base-100 p-4">
+			<p class="mb-3 break-all text-xs text-base-content/70 sm:hidden">{release.title}</p>
 			<!-- Score breakdown section -->
 			{#if release.scoringResult?.breakdown}
 				<div class="mb-4">
