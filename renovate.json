@@ -3,16 +3,19 @@
 	"extends": [
 		"config:recommended",
 		"group:allNonMajor",
-		":semanticCommitTypeAll(chore)",
-		":dependencyDashboard"
+		":semanticCommitTypeAll(chore)"
 	],
-	"schedule": ["before 6am on Monday"],
 	"timezone": "UTC",
 	"labels": ["Dependencies"],
 	"assignees": ["MoldyTaint"],
-	"baseBranches": ["dev"],
+	"baseBranchPatterns": ["dev"],
 	"automergeType": "pr",
 	"packageRules": [
+		{
+			"description": "Schedule all dependency and CI updates to Monday mornings only",
+			"matchManagers": ["npm", "github-actions"],
+			"schedule": ["before 6am on Monday"]
+		},
 		{
 			"description": "Automerge patch and minor npm updates after 3-day stability window",
 			"matchUpdateTypes": ["patch", "minor"],
