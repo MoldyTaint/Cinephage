@@ -81,7 +81,7 @@
 		"@better-auth/api-key": "^1.6.16",
 		"better-auth": "^1.6.10",
 		"adm-zip": "^0.5.16",
-		"better-sqlite3": "^12.9.0",
+		"better-sqlite3": "^13.0.0",
 		"camoufox-js": "^0.11.0",
 		"cheerio": "^1.2.0",
 		"chokidar": "^5.0.0",
