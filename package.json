@@ -71,7 +71,7 @@
 	"overrides": {
 		"cookie": "^0.7.0",
 		"devalue": "^5.7.1",
-		"undici": "^7.28.0"
+		"undici": "^8.0.0"
 	},
 	"optionalDependencies": {
 		"@rollup/rollup-linux-arm64-gnu": "^4.61.1",
