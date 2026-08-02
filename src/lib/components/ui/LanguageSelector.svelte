@@ -20,7 +20,8 @@
 	const languageNames: Record<string, string> = {
 		en: 'English',
 		de: 'Deutsch',
-		es: 'Español'
+		es: 'Español',
+		ru: 'Русский'
 	};
 
 	const currentLanguageName = $derived(languageNames[currentLocale] ?? currentLocale);
