@@ -783,6 +783,7 @@ export class MediaMatcherService {
 						rootFolderId: rootFolder.id,
 						hasFile: true,
 						monitored: rootFolder.defaultMonitored ?? true,
+						scoringProfileId: owningLibrary.qualityProfileId,
 						languageProfileId: wantsSubtitles ? defaultProfileId : null,
 						wantsSubtitles
 					})
@@ -951,6 +952,7 @@ export class MediaMatcherService {
 						rootFolderId: rootFolder.id,
 						seriesType: rootFolder.mediaSubType === 'anime' || animeSignal ? 'anime' : 'standard',
 						monitored: rootFolder.defaultMonitored ?? true,
+						scoringProfileId: owningLibrary.qualityProfileId,
 						languageProfileId: wantsSubtitles ? defaultProfileId : null,
 						wantsSubtitles
 					})

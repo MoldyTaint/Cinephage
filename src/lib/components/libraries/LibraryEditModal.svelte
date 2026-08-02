@@ -1,10 +1,11 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
 	import { AlertCircle } from 'lucide-svelte';
+	import { onMount } from 'svelte';
 	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { invalidateAll } from '$app/navigation';
-	import { createLibrary, updateLibrary } from '$lib/api/settings.js';
+	import { createLibrary, updateLibrary, getScoringProfiles } from '$lib/api/settings.js';
 	import type { LibraryCreate, LibraryUpdate } from '$lib/validation/schemas.js';
 	import type { RootFolderMediaType, RootFolderMediaSubType } from '$lib/types/downloadClient';
 
@@ -25,6 +26,7 @@
 		rootFolders?: LibraryRootFolderRef[];
 		defaultSearchOnAdd?: boolean | null;
 		defaultWantsSubtitles?: boolean | null;
+		qualityProfileId?: string | null;
 	};
 
 	type RootFolderRef = {
@@ -35,6 +37,11 @@
 		mediaSubType?: string;
 	};
 
+	type ProfileRef = {
+		id: string;
+		name: string;
+	};
+
 	type LibraryFormData = {
 		name: string;
 		mediaType: RootFolderMediaType;
@@ -42,6 +49,7 @@
 		rootFolderIds: string[];
 		defaultSearchOnAdd: boolean;
 		defaultWantsSubtitles: boolean;
+		qualityProfileId: string | null;
 	};
 
 	interface Props {
@@ -60,10 +68,25 @@
 		mediaSubType: 'standard',
 		rootFolderIds: [],
 		defaultSearchOnAdd: true,
-		defaultWantsSubtitles: false
+		defaultWantsSubtitles: false,
+		qualityProfileId: null
 	});
 	let librarySaving = $state(false);
 	let librarySaveError = $state<string | null>(null);
+	let availableProfiles = $state<ProfileRef[]>([]);
+
+	onMount(() => {
+		void (async () => {
+			try {
+				const data = (await getScoringProfiles()) as unknown as {
+					profiles?: Array<{ id: string; name: string }>;
+				};
+				availableProfiles = (data.profiles ?? []).map((p) => ({ id: p.id, name: p.name }));
+			} catch {
+				availableProfiles = [];
+			}
+		})();
+	});
 
 	const isCreateMode = $derived(libraryId === null);
 	const editingLibrary = $derived(
@@ -90,7 +113,8 @@
 				mediaSubType: 'standard',
 				rootFolderIds: [],
 				defaultSearchOnAdd: true,
-				defaultWantsSubtitles: false
+				defaultWantsSubtitles: false,
+				qualityProfileId: null
 			};
 			librarySaveError = null;
 		} else if (libraryId) {
@@ -102,7 +126,8 @@
 					mediaSubType: library.mediaSubType,
 					rootFolderIds: library.rootFolders?.map((f) => f.id) ?? [],
 					defaultSearchOnAdd: library.defaultSearchOnAdd ?? true,
-					defaultWantsSubtitles: library.defaultWantsSubtitles ?? false
+					defaultWantsSubtitles: library.defaultWantsSubtitles ?? false,
+					qualityProfileId: library.qualityProfileId ?? null
 				};
 				librarySaveError = null;
 			}
@@ -193,6 +218,22 @@
 				>
 					<option value="standard">{m.settings_general_standard()}</option>
 					<option value="anime">{m.settings_general_badgeAnime()}</option>
+				</select>
+			</div>
+
+			<div class="form-control">
+				<label class="label py-1" for="status-library-quality-profile">
+					<span class="label-text">{m.common_qualityProfile()}</span>
+				</label>
+				<select
+					id="status-library-quality-profile"
+					class="select-bordered select select-sm"
+					bind:value={libraryForm.qualityProfileId}
+				>
+					<option value="">{m.common_default()}</option>
+					{#each availableProfiles as profile (profile.id)}
+						<option value={profile.id}>{profile.name}</option>
+					{/each}
 				</select>
 			</div>
 

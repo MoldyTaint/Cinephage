@@ -198,12 +198,10 @@ export class SmartListService {
 			presetId: updates.presetId ?? existing.presetId ?? undefined,
 			presetSettings:
 				((updates.presetSettings ?? existing.presetSettings) as
-					| Record<string, unknown>
-					| undefined) ?? undefined,
+					Record<string, unknown> | undefined) ?? undefined,
 			externalSourceConfig:
 				((updates.externalSourceConfig ?? existing.externalSourceConfig) as
-					| SmartListExternalSourceConfig
-					| undefined) ?? undefined
+					SmartListExternalSourceConfig | undefined) ?? undefined
 		});
 
 		const [result] = await db
@@ -798,8 +796,13 @@ export class SmartListService {
 			const monitored = list.autoAddMonitored ?? true;
 			const wantsSubtitles = list.wantsSubtitles ?? true;
 			const shouldSearch = _searchOnAdd && monitored;
+			const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
+				list.rootFolderId,
+				item.mediaType === 'movie' ? 'movie' : 'tv'
+			);
 			const scoringProfileId = await getEffectiveScoringProfileId(
-				list.scoringProfileId ?? undefined
+				list.scoringProfileId ?? undefined,
+				owningLibrary
 			);
 
 			if (item.mediaType === 'movie') {
@@ -1359,8 +1362,13 @@ export class SmartListService {
 		);
 
 		// Get effective scoring profile
+		const autoAddOwningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
+			list.rootFolderId,
+			mediaType
+		);
 		const effectiveProfileId = await getEffectiveScoringProfileId(
-			list.scoringProfileId ?? undefined
+			list.scoringProfileId ?? undefined,
+			autoAddOwningLibrary
 		);
 		const shouldSearch = list.autoAddBehavior === 'add_and_search';
 		const monitored = list.autoAddMonitored ?? true;

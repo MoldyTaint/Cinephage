@@ -35,6 +35,7 @@ export interface LibraryEntity {
 	defaultRootFolderPath: string | null;
 	defaultSearchOnAdd: boolean;
 	defaultWantsSubtitles: boolean;
+	qualityProfileId: string | null;
 	sortOrder: number;
 	scanMode?: string | null;
 	createdAt: string;
@@ -49,6 +50,7 @@ export interface CreateLibraryInput {
 	isDefault?: boolean;
 	defaultSearchOnAdd?: boolean;
 	defaultWantsSubtitles?: boolean;
+	qualityProfileId?: string | null;
 	sortOrder?: number;
 	scanMode?: string;
 	scanConfig?: Record<string, unknown> | null;
@@ -306,6 +308,7 @@ export class LibraryEntityService {
 				defaultRootFolderId: libraries.defaultRootFolderId,
 				defaultSearchOnAdd: libraries.defaultSearchOnAdd,
 				defaultWantsSubtitles: libraries.defaultWantsSubtitles,
+				qualityProfileId: libraries.qualityProfileId,
 				sortOrder: libraries.sortOrder,
 				scanMode: libraries.scanMode,
 				createdAt: libraries.createdAt,
@@ -377,6 +380,7 @@ export class LibraryEntityService {
 					null,
 				defaultSearchOnAdd: row.defaultSearchOnAdd ?? true,
 				defaultWantsSubtitles: row.defaultWantsSubtitles ?? true,
+				qualityProfileId: row.qualityProfileId ?? null,
 				sortOrder: row.sortOrder ?? 0,
 				createdAt: row.createdAt ?? '',
 				updatedAt: row.updatedAt ?? ''
@@ -765,6 +769,7 @@ export class LibraryEntityService {
 			defaultRootFolderId: null,
 			defaultSearchOnAdd: input.defaultSearchOnAdd ?? true,
 			defaultWantsSubtitles: input.defaultWantsSubtitles ?? true,
+			qualityProfileId: input.qualityProfileId || null,
 			sortOrder: nextSortOrder,
 			scanMode: input.scanMode ?? 'scheduled',
 			scanConfig: input.scanConfig ?? null,
@@ -841,6 +846,9 @@ export class LibraryEntityService {
 		}
 		if (updates.defaultWantsSubtitles !== undefined) {
 			updateData.defaultWantsSubtitles = updates.defaultWantsSubtitles;
+		}
+		if (updates.qualityProfileId !== undefined) {
+			updateData.qualityProfileId = updates.qualityProfileId || null;
 		}
 		if (updates.sortOrder !== undefined) {
 			updateData.sortOrder = updates.sortOrder;
