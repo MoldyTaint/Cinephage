@@ -1,5 +1,5 @@
 import { opendir } from 'node:fs/promises';
-import { join, dirname, relative } from 'node:path';
+import { join, dirname, relative, extname } from 'node:path';
 import { stat } from 'node:fs/promises';
 import { isVideoFile } from '$lib/server/library/media-info.js';
 import { DOWNLOAD } from '$lib/config/constants';
@@ -54,7 +54,13 @@ const DEFAULT_OPTIONS: ScannerOptions = {
 function shouldExcludeFolderLegacy(name: string, customPatterns: string[]): boolean {
 	if (EXCLUDED_FOLDER_PATTERNS.some((pattern) => pattern.test(name))) return true;
 	const lower = name.toLowerCase();
-	return customPatterns.some((p) => p.toLowerCase() === lower);
+	if (customPatterns.some((p) => p.toLowerCase() === lower)) return true;
+	// Skip directories whose name is exactly a video-file pattern (e.g. "matrix.mkv/").
+	// isVideoFile() uses path.extname(), which only tests the LAST extension, so
+	// "my.mkv.assets" (ext: .assets) and "render.mp4_temp" (ext: .mp4_temp) are
+	// NOT excluded — only names whose final segment is a recognised video extension.
+	const folderExt = extname(name).toLowerCase();
+	return folderExt.length > 1 && isVideoFile(name);
 }
 
 function shouldExcludeFileLegacy(

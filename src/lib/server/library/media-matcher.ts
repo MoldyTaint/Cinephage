@@ -27,11 +27,8 @@ import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/Subti
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { logger } from '$lib/logging/index.js';
 import { parseRelease, extractExternalIds } from '$lib/server/indexers/parser/ReleaseParser.js';
-import {
-	resolveTvEpisodeIdentifier,
-	extractSeasonFromPath,
-	getMediaParseStem
-} from './tv-episode-resolver.js';
+import { getMediaParseStem } from './media-utils.js';
+import { resolveTvEpisodeIdentifier, extractSeasonFromPath } from './tv-episode-resolver.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 
