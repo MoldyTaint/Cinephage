@@ -31,11 +31,8 @@ import {
 	getRootFolderOverlapMessage
 } from '$lib/server/filesystem/root-folder-overlap.js';
 import { libraryMediaEvents } from './LibraryMediaEvents.js';
-import {
-	getMediaParseStem,
-	matchEpisodesByIdentifier,
-	resolveTvEpisodeIdentifier
-} from './tv-episode-resolver.js';
+import { getMediaParseStem } from './media-utils.js';
+import { matchEpisodesByIdentifier, resolveTvEpisodeIdentifier } from './tv-episode-resolver.js';
 import { StreamingDiskScanner } from './jobs/StreamingDiskScanner.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });

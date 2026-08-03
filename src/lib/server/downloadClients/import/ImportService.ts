@@ -68,8 +68,8 @@ import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.
 import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import { getMediaParseStem } from '$lib/server/library/media-utils.js';
 import {
-	getMediaParseStem,
 	matchEpisodesByIdentifier,
 	matchEpisodesFromQueueContext as matchEpisodesFromQueueContextShared,
 	resolveEpisodeIdentifierWithFallback as resolveEpisodeIdentifierWithFallbackShared,
