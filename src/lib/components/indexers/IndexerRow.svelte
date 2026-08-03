@@ -138,7 +138,7 @@
 			{#if indexer.isBuiltIn}
 				<a
 					href="/settings/system/cinephage"
-					class="link font-bold link-hover inline-flex items-center gap-1"
+					class="inline-flex link items-center gap-1 font-bold link-hover"
 				>
 					{indexer.name}
 					<ExternalLink class="h-3 w-3" />
@@ -268,7 +268,7 @@
 				<Settings class="h-4 w-4" />
 			</button>
 			<button
-				class="btn text-error btn-ghost btn-xs"
+				class="btn btn-ghost text-error btn-xs"
 				onclick={() => onDelete(indexer)}
 				disabled={reorderMode || indexer.isBuiltIn}
 				title={indexer.isBuiltIn ? 'Built-in indexers cannot be deleted' : 'Delete indexer'}

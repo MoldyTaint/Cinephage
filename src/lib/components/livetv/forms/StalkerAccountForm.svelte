@@ -108,7 +108,7 @@
 				<input
 					id="portal-url"
 					type="url"
-					class="input-bordered input input-sm w-full pr-8"
+					class="input-bordered input w-full pr-8 input-sm"
 					class:input-error={portalUrl.length > 0 && !isUrlValid()}
 					value={portalUrl}
 					oninput={(e) => onPortalUrlChange(e.currentTarget.value)}
@@ -140,7 +140,7 @@
 				<input
 					id="mac-address"
 					type="text"
-					class="input-bordered input input-sm w-full pr-8 font-mono"
+					class="input-bordered input w-full pr-8 font-mono input-sm"
 					class:input-error={macAddress.length > 0 && !isMacValid}
 					value={macAddress}
 					oninput={handleMacInput}
@@ -175,7 +175,7 @@
 				<input
 					id="epg-url"
 					type="url"
-					class="input-bordered input input-sm w-full pr-8"
+					class="input-bordered input w-full pr-8 input-sm"
 					class:input-error={epgUrl.length > 0 && !isEpgUrlValid()}
 					value={epgUrl}
 					oninput={(e) => onEpgUrlChange(e.currentTarget.value)}

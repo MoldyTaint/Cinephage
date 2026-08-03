@@ -255,10 +255,7 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 						const year = localRow?.year ?? serverItems[0]?.year ?? null;
 						const seriesName = serverItems[0]?.seriesName ?? null;
 						const itemType = (localRow?.itemType ?? serverItems[0]?.itemType ?? 'movie') as
-							| 'movie'
-							| 'episode'
-							| 'series'
-							| 'season';
+							'movie' | 'episode' | 'series' | 'season';
 						const tmdbId = localRow?.tmdbId ?? serverItems[0]?.tmdbId ?? null;
 						const tvdbId = serverItems[0]?.tvdbId ?? null;
 						const imdbId = serverItems[0]?.imdbId ?? null;

@@ -31,12 +31,12 @@
 	onkeydown={(e) => {
 		if (e.key === 'Enter') onOpen();
 	}}
-	class={`w-full text-left rounded-lg border p-4 ${severityBadgeClass(insight.severity)} transition-colors hover:bg-base-300/30 cursor-pointer`}
+	class={`w-full rounded-lg border p-4 text-left ${severityBadgeClass(insight.severity)} cursor-pointer transition-colors hover:bg-base-300/30`}
 >
 	<div class="flex items-start justify-between gap-3">
 		<div class="min-w-0 flex-1">
 			<div class="flex items-center gap-2">
-				<span class="badge badge-sm border-none {severityBadgeClass(insight.severity)}">
+				<span class="badge border-none badge-sm {severityBadgeClass(insight.severity)}">
 					{insightTypeLabel(insight.insightType)}
 				</span>
 				{#if insight.reclaimableBytes}

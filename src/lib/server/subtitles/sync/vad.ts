@@ -244,7 +244,7 @@ export async function extractSpeechSegments(
 		try {
 			await execFileAsync(opts.ffmpegPath, ffmpegArgs, { timeout: timeoutMs });
 		} catch (error) {
-			throw new Error(getFriendlyFfmpegError(error));
+			throw new Error(getFriendlyFfmpegError(error), { cause: error });
 		}
 
 		// Stream PCM data and compute VAD incrementally

@@ -18,12 +18,7 @@ const logger = createChildLogger({ module: 'CaptchaHandler' });
 
 /** Types of captchas that can be detected */
 export type CaptchaType =
-	| 'recaptcha-v2'
-	| 'recaptcha-v3'
-	| 'hcaptcha'
-	| 'turnstile'
-	| 'image'
-	| 'unknown';
+	'recaptcha-v2' | 'recaptcha-v3' | 'hcaptcha' | 'turnstile' | 'image' | 'unknown';
 
 /** Result of captcha detection */
 export interface CaptchaDetectionResult {

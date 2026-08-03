@@ -258,7 +258,7 @@
 			<div class="flex items-center gap-2">
 				{#if anySyncing}
 					<button
-						class="btn btn-outline btn-sm btn-error"
+						class="btn btn-outline btn-error btn-sm"
 						onclick={handleCancel}
 						disabled={cancelRequestedAll}
 					>
@@ -271,7 +271,7 @@
 						{/if}
 					</button>
 				{/if}
-				<button class="btn btn-sm btn-primary" onclick={onSync} disabled={anySyncing}>
+				<button class="btn btn-primary btn-sm" onclick={onSync} disabled={anySyncing}>
 					{#if syncingAll}
 						<Loader2 class="h-4 w-4 animate-spin" />
 						{m.livetv_epgStatusPanel_syncingAll()}

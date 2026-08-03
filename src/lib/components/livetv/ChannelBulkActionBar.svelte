@@ -136,7 +136,7 @@
 
 				<!-- Remove Button -->
 				<button
-					class="btn gap-1.5 text-error btn-ghost btn-sm hover:bg-error/10"
+					class="btn gap-1.5 btn-ghost text-error btn-sm hover:bg-error/10"
 					onclick={onRemove}
 					disabled={loading}
 					title="Remove from lineup"

@@ -103,7 +103,7 @@
 			<div class="min-w-0 flex-1">
 				<div class="flex items-center gap-2">
 					<span
-						class={`badge badge-sm border-none ${insight ? severityBadgeClass(insight.severity) : ''}`}
+						class={`badge border-none badge-sm ${insight ? severityBadgeClass(insight.severity) : ''}`}
 					>
 						{insight ? insightTypeLabel(insight.insightType) : ''}
 					</span>
@@ -166,7 +166,7 @@
 							<div class="flex items-center gap-2">
 								{#if item.badges}
 									{#each item.badges as badge (badge.label + badge.tone)}
-										<span class={`badge badge-sm border ${badgeToneColor(badge.tone)}`}>
+										<span class={`badge border badge-sm ${badgeToneColor(badge.tone)}`}>
 											{badge.label}
 										</span>
 									{/each}
@@ -177,7 +177,7 @@
 								{#if item.href}
 									<a
 										href={resolvePath(item.href)}
-										class="btn btn-ghost btn-xs gap-1"
+										class="btn gap-1 btn-ghost btn-xs"
 										onclick={onClose}
 									>
 										Open
@@ -195,7 +195,7 @@
 						</span>
 						<div class="join">
 							<button
-								class="join-item btn btn-ghost btn-xs"
+								class="btn join-item btn-ghost btn-xs"
 								disabled={page <= 1}
 								onclick={() => handlePageChange(page - 1)}
 							>
@@ -205,10 +205,10 @@
 								{@const isActive = btn === page}
 								{@const isEllipsis = btn === '...'}
 								{#if isEllipsis}
-									<button class="join-item btn btn-ghost btn-xs" disabled> ... </button>
+									<button class="btn join-item btn-ghost btn-xs" disabled> ... </button>
 								{:else}
 									<button
-										class="join-item btn btn-ghost btn-xs"
+										class="btn join-item btn-ghost btn-xs"
 										class:btn-active={isActive}
 										onclick={() => handlePageChange(btn)}
 									>
@@ -217,7 +217,7 @@
 								{/if}
 							{/each}
 							<button
-								class="join-item btn btn-ghost btn-xs"
+								class="btn join-item btn-ghost btn-xs"
 								disabled={page >= totalPages}
 								onclick={() => handlePageChange(page + 1)}
 							>
@@ -243,7 +243,7 @@
 					'health-issues': '/settings/monitoring/status/folders'
 				}}
 				{@const footerLink = links[insight.insightType] ?? '/settings/monitoring/status/insights'}
-				<a href={resolvePath(footerLink)} class="link link-hover text-sm">
+				<a href={resolvePath(footerLink)} class="link text-sm link-hover">
 					View all in {insightTypeLabel(insight.insightType)}
 				</a>
 			{/if}

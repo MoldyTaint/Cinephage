@@ -53,7 +53,7 @@
 			{@const selected = desiredQualities.includes(option.value)}
 			<button
 				type="button"
-				class="btn btn-sm border border-base-300 {selected ? 'btn-primary' : 'btn-ghost'}"
+				class="btn border border-base-300 btn-sm {selected ? 'btn-primary' : 'btn-ghost'}"
 				class:btn-disabled={!allowed}
 				class:opacity-50={!allowed}
 				aria-pressed={selected}

@@ -153,7 +153,7 @@
 			<p class="text-base-content/70">{m.dashboard_subtitle()}</p>
 		</div>
 		<div class="flex items-center gap-2">
-			<a href={resolve('/discover')} class="btn gap-2 btn-sm btn-primary sm:w-auto">
+			<a href={resolve('/discover')} class="btn gap-2 btn-primary btn-sm sm:w-auto">
 				<Plus class="h-4 w-4" />
 				{m.dashboard_addContent()}
 			</a>

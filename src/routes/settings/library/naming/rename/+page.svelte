@@ -153,8 +153,8 @@
 			mediaType
 		}));
 
-		let organized = 0;
-		let failed = 0;
+		let organized: number;
+		let failed: number;
 
 		try {
 			const result = await reorganizeFolderBatch(items);
@@ -259,7 +259,7 @@
 					{m.action_refresh()}
 				</button>
 				<button
-					class="btn gap-2 btn-sm btn-primary"
+					class="btn gap-2 btn-primary btn-sm"
 					onclick={executeRenames}
 					disabled={executing || selectedIds.size === 0}
 				>
@@ -393,7 +393,7 @@
 		</div>
 
 		<!-- Tabs -->
-		<div role="tablist" class="tabs-boxed mb-4 tabs flex w-full flex-wrap gap-1">
+		<div role="tablist" class="tabs-boxed tabs mb-4 flex w-full flex-wrap gap-1">
 			<button
 				type="button"
 				role="tab"
@@ -443,7 +443,7 @@
 				>
 			</button>
 			<button
-				class="btn gap-2 btn-sm btn-ghost"
+				class="btn gap-2 btn-ghost btn-sm"
 				onclick={reorganizeFolders}
 				disabled={reorganizing || selectedIds.size === 0 || !preview}
 			>
@@ -629,7 +629,7 @@
 				{/if}
 			{:else}
 				<!-- Empty State -->
-				<div class="text-center py-16 text-base-content/60">
+				<div class="py-16 text-center text-base-content/60">
 					{#if activeTab === 'willChange'}
 						<div class="flex flex-col items-center gap-3">
 							<CheckCircle class="h-12 w-12 text-success" />

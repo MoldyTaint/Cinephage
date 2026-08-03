@@ -30,12 +30,12 @@
 							<div class="flex items-center gap-2">
 								<span class="font-medium text-base-content">{folder.name}</span>
 								{#if folder.accessible === false}
-									<span class="badge badge-xs border-error/30 bg-error/10 text-error">
+									<span class="badge border-error/30 bg-error/10 badge-xs text-error">
 										inaccessible
 									</span>
 								{/if}
 								{#if folder.readOnly}
-									<span class="badge badge-xs border-info/30 bg-info/10 text-info">
+									<span class="badge border-info/30 bg-info/10 badge-xs text-info">
 										read-only
 									</span>
 								{/if}

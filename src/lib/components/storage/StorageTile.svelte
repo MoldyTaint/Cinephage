@@ -53,7 +53,7 @@
 				<div class={`rounded-lg p-1.5 ${iconClass}`}>
 					<Icon class="h-4 w-4" />
 				</div>
-				<span class="text-xs font-medium uppercase tracking-wide text-base-content/50">{label}</span
+				<span class="text-xs font-medium tracking-wide text-base-content/50 uppercase">{label}</span
 				>
 			</div>
 			{#if statusDot}

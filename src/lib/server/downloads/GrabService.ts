@@ -115,8 +115,8 @@ class GrabServiceImpl {
 
 	private async resolveTarget(request: GrabRequest): Promise<ResolvedContext> {
 		const { target } = request;
-		let profileId: string | null = null;
-		let rootFolderId: string | null = null;
+		let profileId: string | null;
+		let rootFolderId: string | null;
 		let mediaPath: string | undefined;
 		let movieId: string | undefined;
 		let seriesId: string | undefined;
@@ -132,7 +132,6 @@ class GrabServiceImpl {
 			rootFolderId = movie.rootFolderId;
 			mediaPath = movie.path ?? undefined;
 			movieId = movie.id;
-			mediaType = 'movie';
 			movieDesiredQualities = movie.desiredQualities ?? undefined;
 		} else {
 			seriesId = 'seriesId' in target ? target.seriesId : undefined;

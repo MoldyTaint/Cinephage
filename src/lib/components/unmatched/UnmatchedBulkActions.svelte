@@ -30,21 +30,21 @@
 				</span>
 			</div>
 			<div class="flex flex-wrap gap-2">
-				<button class="btn text-primary-content btn-ghost btn-sm" onclick={selectAll}>
+				<button class="btn btn-ghost text-primary-content btn-sm" onclick={selectAll}>
 					{m.unmatched_bulkActions_selectAll()}
 				</button>
-				<button class="btn text-primary-content btn-ghost btn-sm" onclick={clearSelection}>
+				<button class="btn btn-ghost text-primary-content btn-sm" onclick={clearSelection}>
 					<X class="h-4 w-4" />
 					{m.unmatched_bulkActions_clear()}
 				</button>
 				<div
 					class="divider mx-0 divider-horizontal before:bg-primary-content/30 after:bg-primary-content/30"
 				></div>
-				<button class="btn btn-sm btn-neutral" onclick={onMatch}>
+				<button class="btn btn-neutral btn-sm" onclick={onMatch}>
 					<Link class="h-4 w-4" />
 					{m.unmatched_bulkActions_matchSelected()}
 				</button>
-				<button class="btn text-primary-content btn-ghost btn-sm" onclick={onDelete}>
+				<button class="btn btn-ghost text-primary-content btn-sm" onclick={onDelete}>
 					<Trash2 class="h-4 w-4" />
 					{m.unmatched_bulkActions_delete()}
 				</button>

@@ -75,9 +75,7 @@ export async function refreshMovieMetadata(movieId: string): Promise<void> {
 		if (typeof adult === 'boolean') updateData.adult = adult;
 
 		const belongsToCollection = d.belongs_to_collection as
-			| { id: number; name: string }
-			| null
-			| undefined;
+			{ id: number; name: string } | null | undefined;
 		if (belongsToCollection !== undefined) {
 			updateData.tmdbCollectionId = belongsToCollection?.id ?? null;
 			updateData.collectionName = belongsToCollection?.name ?? null;

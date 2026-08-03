@@ -221,7 +221,7 @@
 			</button>
 		{/if}
 		<button
-			class="btn shrink-0 gap-1 btn-ghost btn-xs btn-error"
+			class="btn shrink-0 gap-1 btn-ghost btn-error btn-xs"
 			onclick={() => onDelete(item.id)}
 			disabled={isLoading}
 		>

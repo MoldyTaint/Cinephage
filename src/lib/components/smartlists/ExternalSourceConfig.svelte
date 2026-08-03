@@ -323,7 +323,7 @@
 							id={setting.name}
 							value={presetSettings[setting.name] ?? setting.default}
 							oninput={(e) => handleSettingChange(setting.name, e.currentTarget.value)}
-							class="input-bordered input input-sm w-full"
+							class="input-bordered input w-full input-sm"
 						/>
 					{/if}
 
@@ -397,7 +397,7 @@
 					value={customUrl || ''}
 					oninput={(e) => handleCustomUrlChange(e.currentTarget.value)}
 					placeholder="https://example.com/movies.json"
-					class="input-bordered input input-sm w-full"
+					class="input-bordered input w-full input-sm"
 				/>
 				<p class="mt-1 text-xs text-base-content/60">
 					{m.smartlists_customUrlConfig_urlDescription()}
@@ -416,8 +416,7 @@
 					value={headersText}
 					oninput={(e) => handleHeadersChange(e.currentTarget.value)}
 					placeholder={`{\n  "Authorization": "Bearer token"\n}`}
-					class="textarea-bordered textarea h-24 font-mono text-xs"
-				></textarea>
+					class="textarea-bordered textarea h-24 font-mono text-xs"></textarea>
 				<p class="mt-1 text-xs text-base-content/60">
 					{m.smartlists_customUrlConfig_headersDescription()}
 				</p>

@@ -101,7 +101,7 @@
 							</button>
 							<button
 								type="button"
-								class="btn text-error btn-ghost btn-xs"
+								class="btn btn-ghost text-error btn-xs"
 								onclick={() => onRemove(backup.id)}
 								title={m.livetv_channelEditModal_remove()}
 							>

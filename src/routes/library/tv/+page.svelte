@@ -553,7 +553,7 @@
 					<input
 						type="text"
 						placeholder={m.library_tv_searchPlaceholder()}
-						class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+						class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 input-md placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 						bind:value={searchQuery}
 					/>
 					{#if searchQuery}
@@ -587,7 +587,7 @@
 						<ChevronDown class="hidden h-3 w-3 sm:block" />
 					</div>
 					<ul
-						class="dropdown-content menu z-50 mt-2 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl"
+						class="menu dropdown-content z-50 mt-2 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl"
 					>
 						<li>
 							<button onclick={handleMonitorAll}>
@@ -658,7 +658,7 @@
 				<input
 					type="text"
 					placeholder={m.library_tv_searchPlaceholder()}
-					class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+					class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 input-md placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 					bind:value={searchQuery}
 				/>
 				{#if searchQuery}
@@ -702,7 +702,7 @@
 			<!-- Search Empty State -->
 			<div class="flex flex-col items-center justify-center py-20 text-center">
 				<div class="opacity-50">
-					<Search class="mb-4 h-16 w-16 mx-auto" />
+					<Search class="mx-auto mb-4 h-16 w-16" />
 					<p class="text-2xl font-bold">{m.library_tv_noSearchMatch({ query: searchQuery })}</p>
 					<p class="mt-2">{m.library_tv_tryDifferentSearch()}</p>
 				</div>

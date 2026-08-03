@@ -198,12 +198,10 @@ export class SmartListService {
 			presetId: updates.presetId ?? existing.presetId ?? undefined,
 			presetSettings:
 				((updates.presetSettings ?? existing.presetSettings) as
-					| Record<string, unknown>
-					| undefined) ?? undefined,
+					Record<string, unknown> | undefined) ?? undefined,
 			externalSourceConfig:
 				((updates.externalSourceConfig ?? existing.externalSourceConfig) as
-					| SmartListExternalSourceConfig
-					| undefined) ?? undefined
+					SmartListExternalSourceConfig | undefined) ?? undefined
 		});
 
 		const [result] = await db

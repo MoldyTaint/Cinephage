@@ -943,8 +943,7 @@
 			if (searchProgress.results) {
 				const issue = getPrimaryAutoSearchIssue(searchProgress.results);
 				const itemResult = searchProgress.results.results?.[0] as
-					| { found?: boolean; grabbed?: boolean; releaseName?: string; error?: string }
-					| undefined;
+					{ found?: boolean; grabbed?: boolean; releaseName?: string; error?: string } | undefined;
 				autoSearchEpisodeResults.set(episode.id, {
 					found: itemResult?.found ?? false,
 					grabbed: itemResult?.grabbed ?? false,
@@ -986,8 +985,7 @@
 			if (searchProgress.results) {
 				const issue = getPrimaryAutoSearchIssue(searchProgress.results);
 				const itemResult = searchProgress.results.results?.[0] as
-					| { found?: boolean; grabbed?: boolean; releaseName?: string; error?: string }
-					| undefined;
+					{ found?: boolean; grabbed?: boolean; releaseName?: string; error?: string } | undefined;
 				autoSearchSeasonResults.set(season.id, {
 					found: itemResult?.found ?? false,
 					grabbed: itemResult?.grabbed ?? false,
@@ -1028,8 +1026,7 @@
 			if (searchProgress.results) {
 				const issue = getPrimaryAutoSearchIssue(searchProgress.results);
 				const results = searchProgress.results.results as
-					| Array<{ found?: boolean; grabbed?: boolean }>
-					| undefined;
+					Array<{ found?: boolean; grabbed?: boolean }> | undefined;
 				missingSearchResult = searchProgress.results.summary ?? {
 					searched: results?.length ?? 0,
 					found: results?.filter((r) => r.found).length ?? 0,

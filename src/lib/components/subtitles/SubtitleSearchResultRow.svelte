@@ -88,14 +88,14 @@
 			</button>
 		{:else if error}
 			<div class="tooltip tooltip-error" data-tip={error}>
-				<button class="btn gap-1 btn-sm btn-error" onclick={() => onDownload(result)}>
+				<button class="btn gap-1 btn-error btn-sm" onclick={() => onDownload(result)}>
 					<AlertCircle size={14} />
 					Retry
 				</button>
 			</div>
 		{:else}
 			<button
-				class="btn gap-1 btn-sm btn-primary"
+				class="btn gap-1 btn-primary btn-sm"
 				onclick={() => onDownload(result)}
 				disabled={downloading}
 			>

@@ -203,7 +203,9 @@ function addDualFullWithRating(
 
 	if (dualSegs.length === 0 || ratingBuf.segments.length === 0) return dualSegs;
 
+	// eslint-disable-next-line no-useless-assignment
 	let dualSeg = dualSegs[0];
+	// eslint-disable-next-line no-useless-assignment
 	let ratSeg = ratingBuf.segments[0];
 
 	while (di < dualSegs.length && ri < ratingBuf.segments.length) {

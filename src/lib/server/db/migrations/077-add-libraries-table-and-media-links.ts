@@ -82,17 +82,13 @@ export const migration_v077: MigrationDefinition = {
 		const now = new Date().toISOString();
 
 		const movieStandardRoot = getRootFolder.get('movie', 'standard') as
-			| { id: string; default_monitored: number | null }
-			| undefined;
+			{ id: string; default_monitored: number | null } | undefined;
 		const movieAnimeRoot = getRootFolder.get('movie', 'anime') as
-			| { id: string; default_monitored: number | null }
-			| undefined;
+			{ id: string; default_monitored: number | null } | undefined;
 		const tvStandardRoot = getRootFolder.get('tv', 'standard') as
-			| { id: string; default_monitored: number | null }
-			| undefined;
+			{ id: string; default_monitored: number | null } | undefined;
 		const tvAnimeRoot = getRootFolder.get('tv', 'anime') as
-			| { id: string; default_monitored: number | null }
-			| undefined;
+			{ id: string; default_monitored: number | null } | undefined;
 
 		const upsertLibrary = sqlite.prepare(`
 			INSERT INTO "libraries" (

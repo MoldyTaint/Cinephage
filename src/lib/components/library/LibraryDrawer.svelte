@@ -58,7 +58,7 @@
 					<span class="text-sm font-medium text-base-content/60">
 						{m.action_filter()}
 					</span>
-					<button class="btn text-error btn-ghost btn-xs" onclick={onClearFilters}>
+					<button class="btn btn-ghost text-error btn-xs" onclick={onClearFilters}>
 						<X class="h-3 w-3" />
 						{m.library_controls_clearAllFilters()}
 					</button>

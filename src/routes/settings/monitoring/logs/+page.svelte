@@ -627,7 +627,7 @@
 					/>
 					<input
 						type="text"
-						class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+						class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 						bind:value={search}
 						placeholder="Search message, source, path, payload…"
 					/>
@@ -636,7 +636,7 @@
 				<!-- Domain -->
 				<div class="w-full sm:w-48">
 					<select
-						class="select w-full border-base-content/20 select-sm transition-all duration-200 hover:bg-base-200 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+						class="select w-full border-base-content/20 transition-all duration-200 select-sm hover:bg-base-200 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 						bind:value={selectedDomain}
 					>
 						<option value="all">All domains</option>
@@ -694,14 +694,14 @@
 					<span class="h-5 w-px shrink-0 bg-base-300"></span>
 					<input
 						type="datetime-local"
-						class="input input-sm w-44 rounded-full border-base-content/20 bg-base-200/60 px-3 text-xs transition-all hover:bg-base-200 focus:border-primary/50 focus:outline-none"
+						class="input w-44 rounded-full border-base-content/20 bg-base-200/60 px-3 text-xs transition-all input-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
 						bind:value={from}
 						title="From"
 						oninput={() => (activeQuickRange = null)}
 					/>
 					<input
 						type="datetime-local"
-						class="input input-sm w-44 rounded-full border-base-content/20 bg-base-200/60 px-3 text-xs transition-all hover:bg-base-200 focus:border-primary/50 focus:outline-none"
+						class="input w-44 rounded-full border-base-content/20 bg-base-200/60 px-3 text-xs transition-all input-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
 						bind:value={to}
 						title="To"
 						oninput={() => (activeQuickRange = null)}
@@ -724,7 +724,7 @@
 
 				<!-- Retention dropdown -->
 				<div class="dropdown">
-					<button class="btn gap-1.5 text-xs btn-ghost btn-sm" aria-label="Log retention settings">
+					<button class="btn gap-1.5 btn-ghost text-xs btn-sm" aria-label="Log retention settings">
 						<CalendarSync class="h-3.5 w-3.5" />
 						<span class="font-mono">{retentionDays}d</span>
 					</button>
@@ -745,7 +745,7 @@
 									type="number"
 									min="1"
 									max={maxRetentionDays}
-									class="input-bordered input input-xs w-20"
+									class="input-bordered input w-20 input-xs"
 									bind:value={retentionDays}
 								/>
 								<span class="text-xs text-base-content/60">days</span>
@@ -758,7 +758,7 @@
 								</button>
 							</div>
 							<button
-								class="btn w-full btn-xs btn-primary"
+								class="btn w-full btn-primary btn-xs"
 								onclick={saveRetentionDays}
 								disabled={retentionSaving}
 							>
@@ -772,20 +772,20 @@
 				</div>
 
 				<!-- Refresh (shows spinner inline while loading) -->
-				<button class="btn text-xs btn-ghost btn-sm" onclick={refreshCurrentView}>
+				<button class="btn btn-ghost text-xs btn-sm" onclick={refreshCurrentView}>
 					{#if historyLoading}
 						<Loader2 class="h-3.5 w-3.5 animate-spin" />
 					{/if}
 					Refresh
 				</button>
 
-				<button class="btn text-xs btn-ghost btn-sm" onclick={downloadHistoryLogs}>
+				<button class="btn btn-ghost text-xs btn-sm" onclick={downloadHistoryLogs}>
 					<Download class="h-3.5 w-3.5" />
 					<span class="sm:inline">Export</span>
 				</button>
 
 				<button
-					class="btn text-xs btn-ghost btn-sm text-error"
+					class="btn btn-ghost text-xs text-error btn-sm"
 					onclick={() => (clearConfirmOpen = true)}
 					disabled={clearingLogs}
 				>
@@ -798,7 +798,7 @@
 				</button>
 
 				{#if hasActiveFilters}
-					<button class="btn gap-1 text-error btn-ghost btn-xs" onclick={resetFilters}>
+					<button class="btn gap-1 btn-ghost text-error btn-xs" onclick={resetFilters}>
 						<X class="h-3 w-3" />
 						Clear filters
 					</button>
@@ -810,13 +810,13 @@
 				<div class="flex flex-col gap-2 border-t border-base-300 px-3 py-3 sm:hidden">
 					<input
 						type="datetime-local"
-						class="input-bordered input input-sm w-full"
+						class="input-bordered input w-full input-sm"
 						bind:value={from}
 						oninput={() => (activeQuickRange = null)}
 					/>
 					<input
 						type="datetime-local"
-						class="input-bordered input input-sm w-full"
+						class="input-bordered input w-full input-sm"
 						bind:value={to}
 						oninput={() => (activeQuickRange = null)}
 					/>
@@ -861,7 +861,7 @@
 						No logs matched the current filters. Clear filters or wait for new matching entries.
 					</div>
 				{:else}
-					<table class="table-pin-rows table w-full table-sm">
+					<table class="table table-pin-rows w-full table-sm">
 						<thead>
 							<tr
 								class="bg-base-200/90 text-[10px] tracking-[0.12em] text-base-content/50 uppercase"
@@ -947,7 +947,7 @@
 				</div>
 				<div class="flex items-center gap-2">
 					{#if showJumpToLatest}
-						<button class="btn btn-xs btn-primary" onclick={jumpToLatest}>
+						<button class="btn btn-primary btn-xs" onclick={jumpToLatest}>
 							{#if pendingLiveCount > 0}
 								Jump to latest ({pendingLiveCount} new)
 							{:else}

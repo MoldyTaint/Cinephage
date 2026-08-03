@@ -164,7 +164,7 @@
 						</span>
 					</span>
 					<button
-						class="btn btn-outline btn-sm gap-1"
+						class="btn gap-1 btn-outline btn-sm"
 						onclick={handleFetchRelease}
 						disabled={fetchingRelease}
 					>
@@ -191,7 +191,7 @@
 								<span class="label-text text-sm">{m.settings_cinephage_versionOverride()}</span>
 								<input
 									type="text"
-									class="input input-bordered input-sm w-full"
+									class="input-bordered input w-full input-sm"
 									placeholder="Auto-detect"
 									bind:value={config.versionOverride}
 								/>
@@ -200,12 +200,12 @@
 								<span class="label-text text-sm">{m.settings_cinephage_commitOverride()}</span>
 								<input
 									type="text"
-									class="input input-bordered input-sm w-full"
+									class="input-bordered input w-full input-sm"
 									placeholder="Auto-detect"
 									bind:value={config.commitOverride}
 								/>
 							</label>
-							<button class="btn btn-sm btn-outline" onclick={handleSaveOverrides}>
+							<button class="btn btn-outline btn-sm" onclick={handleSaveOverrides}>
 								{m.settings_cinephage_saveSettings()}
 							</button>
 						</div>
@@ -261,7 +261,7 @@
 									<span class="label-text text-sm">{m.settings_cinephage_externalHost()}</span>
 									<input
 										type="text"
-										class="input input-bordered input-sm"
+										class="input-bordered input input-sm"
 										placeholder="192.168.1.100:3000"
 										disabled={!config.enabled}
 										value={(mod.settings.externalHost as string) || ''}

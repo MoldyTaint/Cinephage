@@ -227,7 +227,7 @@
 			return true;
 		} catch (e) {
 			if (e instanceof ApiError) {
-				throw new Error(getResponseErrorMessage(e.response, fallback));
+				throw new Error(getResponseErrorMessage(e.response, fallback), { cause: e });
 			}
 			throw e;
 		}
@@ -529,7 +529,7 @@
 			<Download class="h-4 w-4" />
 			{data.prowlarrConnection ? 'Prowlarr' : 'Connect Prowlarr'}
 		</button>
-		<button class="btn gap-2 btn-sm btn-primary" onclick={openAddModal}>
+		<button class="btn gap-2 btn-primary btn-sm" onclick={openAddModal}>
 			<Plus class="h-4 w-4" />
 			{m.settings_integrations_indexers_addButton()}
 		</button>

@@ -654,8 +654,8 @@
 					<code>cat=</code> filter). Selecting categories restricts searches to only those.
 				</p>
 				<div class="mb-3 flex gap-2">
-					<button type="button" class="btn btn-xs btn-ghost" onclick={selectAll}>Select All</button>
-					<button type="button" class="btn btn-xs btn-ghost" onclick={clearAll}>Clear</button>
+					<button type="button" class="btn btn-ghost btn-xs" onclick={selectAll}>Select All</button>
+					<button type="button" class="btn btn-ghost btn-xs" onclick={clearAll}>Clear</button>
 				</div>
 				<div class="space-y-3">
 					{#each categoryTree as group (group.id)}
@@ -672,24 +672,24 @@
 							>
 								<input
 									type="checkbox"
-									class="checkbox checkbox-sm checkbox-primary shrink-0"
+									class="checkbox shrink-0 checkbox-sm checkbox-primary"
 									checked={allChildrenChecked}
 									indeterminate={someChildrenChecked}
 									onchange={() => toggleParent(group)}
 								/>
-								<span class="font-medium text-sm">{group.name}</span>
+								<span class="text-sm font-medium">{group.name}</span>
 								<span class="text-xs text-base-content/40">({group.id})</span>
 							</label>
 							<!-- Children grid -->
 							{#if group.children.length > 0}
-								<div class="ml-6 mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 sm:grid-cols-3">
+								<div class="mt-1 ml-6 grid grid-cols-2 gap-x-4 gap-y-0.5 sm:grid-cols-3">
 									{#each group.children as child (child.id)}
 										<label
 											class="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-base-300"
 										>
 											<input
 												type="checkbox"
-												class="checkbox checkbox-xs checkbox-primary shrink-0"
+												class="checkbox shrink-0 checkbox-xs checkbox-primary"
 												checked={selectedIds.has(child.id)}
 												onchange={() => toggleChild(group.id, child.id, group.children)}
 											/>

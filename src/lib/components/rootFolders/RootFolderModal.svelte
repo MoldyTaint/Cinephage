@@ -196,7 +196,7 @@
 						<input
 							id="path"
 							type="text"
-							class="input-bordered input input-sm join-item flex-1"
+							class="input-bordered input join-item flex-1 input-sm"
 							bind:value={path}
 							placeholder={m.rootFolders_pathPlaceholder()}
 						/>
@@ -252,7 +252,7 @@
 				/>
 				<span class="text-sm">{m.rootFolders_preserveSymlinksLabel()}</span>
 				{#if symlinkModeEnabled}
-					<span class="badge badge-warning badge-sm"
+					<span class="badge badge-sm badge-warning"
 						>{m.rootFolders_preserveSymlinksLockedBadge()}</span
 					>
 				{/if}
