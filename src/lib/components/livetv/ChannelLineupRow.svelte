@@ -157,7 +157,7 @@
 			<div class="flex items-center justify-center gap-1">
 				<input
 					type="number"
-					class="input-bordered input input-xs w-14 text-center font-mono"
+					class="input-bordered input w-14 text-center font-mono input-xs"
 					bind:value={editValue}
 					onblur={handleSaveNumber}
 					onkeydown={handleKeydown}
@@ -208,7 +208,7 @@
 			<div class="flex items-center gap-1">
 				<input
 					type="text"
-					class="input-bordered input input-xs w-full max-w-xs"
+					class="input-bordered input w-full max-w-xs input-xs"
 					bind:value={editValue}
 					onblur={handleSaveName}
 					onkeydown={handleKeydown}
@@ -287,7 +287,7 @@
 				<Pencil class="h-3.5 w-3.5" />
 			</button>
 			<button
-				class="btn text-error btn-ghost btn-xs hover:bg-error/10"
+				class="btn btn-ghost text-error btn-xs hover:bg-error/10"
 				onclick={onRemove}
 				title={m.livetv_channelLineupRow_removeFromLineup()}
 			>

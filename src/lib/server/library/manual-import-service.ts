@@ -33,7 +33,10 @@ import {
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { getMediaParseStem } from '$lib/server/library/media-utils.js';
-import { extractSeasonFromPath, resolveTvEpisodeIdentifier } from '$lib/server/library/tv-episode-resolver.js';
+import {
+	extractSeasonFromPath,
+	resolveTvEpisodeIdentifier
+} from '$lib/server/library/tv-episode-resolver.js';
 
 interface SourceMediaFile {
 	path: string;

@@ -23,7 +23,7 @@ export async function executeLibraryReconcileTask(
 	const executedAt = new Date();
 	logger.info('[LibraryReconcileTask] Starting library reconciliation');
 
-	let reconciled = 0;
+	let reconciled: number;
 
 	try {
 		ctx?.checkCancelled();

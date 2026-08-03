@@ -40,8 +40,7 @@ export class GrabDecisionPipeline {
 
 		const upgradeStageResult = audit.stages.find((s) => s.name === 'upgrade');
 		const upgradeStats = upgradeStageResult?.result?.details?.upgradeStats as
-			| UpgradeStats
-			| undefined;
+			UpgradeStats | undefined;
 
 		const rejectionType = !audit.finalResult.accepted ? this.mapRejectionType(audit) : undefined;
 

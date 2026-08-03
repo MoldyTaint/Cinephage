@@ -112,7 +112,7 @@ export function createSearchProgress() {
 					let buffer = '';
 					let eventType = '';
 					let eventData: unknown = null;
-					let completed = false;
+					const completed = false;
 
 					while (true) {
 						const { done, value } = await reader.read();
@@ -137,7 +137,6 @@ export function createSearchProgress() {
 								handleEvent(eventType, eventData);
 
 								if (eventType === 'search:completed') {
-									completed = true;
 									state.isActive = false;
 									results = eventData as SearchResults;
 									resolve(results);
@@ -145,7 +144,6 @@ export function createSearchProgress() {
 								}
 
 								if (eventType === 'search:error') {
-									completed = true;
 									state.isActive = false;
 									results = eventData as SearchResults;
 									reject(new Error(results.error || 'Search failed'));

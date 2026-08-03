@@ -238,7 +238,7 @@
 				<input
 					type="text"
 					placeholder={m.activity_filters_searchPlaceholder()}
-					class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+					class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 input-md placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 					value={searchValue}
 					oninput={(e) => onSearchInput(e.currentTarget.value)}
 				/>
@@ -281,7 +281,7 @@
 					</button>
 				{/each}
 				{#if filters.startDate || filters.endDate}
-					<button class="btn join-item btn-ghost btn-sm btn-error" onclick={clearDateRange}>
+					<button class="btn join-item btn-ghost btn-error btn-sm" onclick={clearDateRange}>
 						<X class="h-3 w-3" />
 					</button>
 				{/if}
@@ -388,7 +388,7 @@
 				<input
 					type="text"
 					placeholder={m.activity_filters_filterByGroup()}
-					class="input-bordered input input-sm w-full"
+					class="input-bordered input w-full input-sm"
 					value={releaseGroupValue}
 					oninput={(e) => onReleaseGroupInput(e.currentTarget.value)}
 				/>
@@ -415,7 +415,7 @@
 						onchange={(e) => updateFilter('endDate', e.currentTarget.value || undefined)}
 					/>
 					{#if filters.startDate || filters.endDate}
-						<button class="btn btn-ghost btn-sm btn-error" onclick={clearDateRange}>
+						<button class="btn btn-ghost btn-error btn-sm" onclick={clearDateRange}>
 							<X class="h-4 w-4" />
 						</button>
 					{/if}

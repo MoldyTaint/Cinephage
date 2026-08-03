@@ -49,7 +49,7 @@
 			{m.action_test()}
 		</button>
 
-		<button class="btn gap-1 text-error btn-ghost btn-sm" onclick={onDelete} disabled={loading}>
+		<button class="btn gap-1 btn-ghost text-error btn-sm" onclick={onDelete} disabled={loading}>
 			{#if loading}
 				<Loader2 class="h-4 w-4 animate-spin" />
 			{:else}

@@ -181,7 +181,7 @@
 			</div>
 			{#if stats.movies.total > 0}
 				<progress
-					class="progress progress-primary h-1"
+					class="progress h-1 progress-primary"
 					value={stats.movies.withFile}
 					max={stats.movies.total}
 				></progress>
@@ -233,7 +233,7 @@
 			</div>
 			{#if stats.episodes.total > 0}
 				<progress
-					class="progress progress-secondary h-1"
+					class="progress h-1 progress-secondary"
 					value={stats.episodes.withFile}
 					max={stats.episodes.total}
 				></progress>
@@ -266,7 +266,7 @@
 				{downloadSummary}
 			</div>
 			{#if stats.activeDownloads > 0 && stats.downloadAvgProgress > 0}
-				<progress class="progress progress-accent h-1" value={stats.downloadAvgProgress} max="100"
+				<progress class="progress h-1 progress-accent" value={stats.downloadAvgProgress} max="100"
 				></progress>
 			{:else}
 				<div class="h-1"></div>
@@ -421,7 +421,7 @@
 			</div>
 			{#if storageCapacity > 0}
 				<progress
-					class="progress progress-info h-1"
+					class="progress h-1 progress-info"
 					value={stats.storage.totalBytes}
 					max={storageCapacity}
 				></progress>

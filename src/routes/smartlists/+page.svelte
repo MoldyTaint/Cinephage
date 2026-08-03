@@ -208,7 +208,7 @@
 				{m.smartlists_subtitle()}
 			</p>
 		</div>
-		<button class="btn gap-2 btn-sm btn-primary sm:w-auto" onclick={navigateToCreate}>
+		<button class="btn gap-2 btn-primary btn-sm sm:w-auto" onclick={navigateToCreate}>
 			<Plus class="h-4 w-4" />
 			{m.smartlists_createButton()}
 		</button>
@@ -348,7 +348,7 @@
 								{m.action_edit()}
 							</a>
 							<button
-								class="btn gap-1 btn-outline btn-sm btn-error"
+								class="btn gap-1 btn-outline btn-error btn-sm"
 								onclick={() => openDeleteModal(list)}
 								disabled={deletingIds.has(list.id)}
 								title={m.action_delete()}
@@ -383,7 +383,7 @@
 								<Edit class="h-4 w-4" />
 							</a>
 							<button
-								class="btn btn-ghost btn-sm btn-error"
+								class="btn btn-ghost btn-error btn-sm"
 								onclick={() => openDeleteModal(list)}
 								disabled={deletingIds.has(list.id)}
 								title={m.action_delete()}

@@ -124,7 +124,7 @@
 						<div class="flex min-w-18 shrink-0 items-start justify-end gap-1">
 							{#if profile.id !== 'streamer'}
 								<button
-									class="btn h-8 w-8 min-w-8 p-0 btn-ghost btn-xs"
+									class="btn h-8 w-8 min-w-8 btn-ghost p-0 btn-xs"
 									onclick={() => onEdit(profile)}
 									title="Edit"
 								>
@@ -133,7 +133,7 @@
 							{/if}
 							{#if !profile.isBuiltIn}
 								<button
-									class="btn h-8 w-8 min-w-8 p-0 text-error btn-ghost btn-xs"
+									class="btn h-8 w-8 min-w-8 btn-ghost p-0 text-error btn-xs"
 									onclick={() => onDelete(profile)}
 									title="Delete"
 								>
@@ -261,7 +261,7 @@
 								{/if}
 								{#if !profile.isBuiltIn}
 									<button
-										class="btn text-error btn-ghost btn-sm"
+										class="btn btn-ghost text-error btn-sm"
 										onclick={() => onDelete(profile)}
 										title="Delete"
 									>

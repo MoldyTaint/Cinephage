@@ -52,8 +52,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		const offsetParam = url.searchParams.get('offset');
 		const sortField = url.searchParams.get('sort') as ActivitySortOptions['field'] | null;
 		const sortDirection = url.searchParams.get('direction') as
-			| ActivitySortOptions['direction']
-			| null;
+			ActivitySortOptions['direction'] | null;
 
 		// Build filters
 		const filters: ActivityFilters = {

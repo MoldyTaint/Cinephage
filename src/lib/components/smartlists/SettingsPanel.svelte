@@ -110,7 +110,7 @@
 							bind:value={itemLimit}
 							min="1"
 							max="1000"
-							class="input-bordered input input-sm w-full"
+							class="input-bordered input w-full input-sm"
 						/>
 					</div>
 				</div>

@@ -105,7 +105,7 @@
 				>
 			</div>
 			<progress
-				class="progress progress-primary w-full"
+				class="progress w-full progress-primary"
 				value={layoutState.scanProgress.filesProcessed}
 				max={layoutState.scanProgress.filesFound || 1}
 			></progress>
@@ -113,7 +113,7 @@
 	{:else if layoutState.scanInProgress}
 		<div class="card mb-4 bg-base-200 p-4">
 			<div class="flex items-center gap-2 text-sm text-base-content/70">
-				<span class="loading loading-spinner loading-sm"></span>
+				<span class="loading loading-sm loading-spinner"></span>
 				<span>Starting scan...</span>
 			</div>
 		</div>

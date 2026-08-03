@@ -15,13 +15,7 @@
 	// Backup & Restore State
 	// =====================
 	type BackupSectionId =
-		| 'system'
-		| 'profiles'
-		| 'downloads'
-		| 'indexers'
-		| 'subtitles'
-		| 'integrations'
-		| 'liveTv';
+		'system' | 'profiles' | 'downloads' | 'indexers' | 'subtitles' | 'integrations' | 'liveTv';
 
 	interface BackupSectionPreview {
 		id: BackupSectionId;

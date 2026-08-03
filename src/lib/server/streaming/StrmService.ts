@@ -529,7 +529,7 @@ export class StrmService {
 		episode?: number;
 	} | null {
 		const trimmedUrl = url.trim();
-		let pathToParse = trimmedUrl;
+		let pathToParse: string;
 
 		if (/^https?:\/\//i.test(trimmedUrl)) {
 			try {

@@ -31,7 +31,7 @@ export abstract class EmbyCompatibleProvider implements MediaServerStatsProvider
 	async fetchAllItems(): Promise<SyncResult> {
 		const userId = await this.getAdminUserId();
 		const items: SyncedMediaItem[] = [];
-		let totalRecordCount = 0;
+		let totalRecordCount: number;
 		let offset = 0;
 
 		// Maps for episode tmdbId backfill.

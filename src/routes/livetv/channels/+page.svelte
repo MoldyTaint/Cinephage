@@ -96,8 +96,8 @@
 	let editModalSaving = $state(false);
 	let editModalError = $state<string | null>(null);
 	let editModalRef:
-		| { refreshBackups: () => void; setEpgSourceChannelId: (id: string | null) => void }
-		| undefined = $state(undefined);
+		{ refreshBackups: () => void; setEpgSourceChannelId: (id: string | null) => void } | undefined =
+		$state(undefined);
 
 	let categoryModalOpen = $state(false);
 
@@ -959,7 +959,7 @@
 				</div>
 			{:else}
 				<button
-					class="btn gap-1 btn-sm btn-primary"
+					class="btn gap-1 btn-primary btn-sm"
 					onclick={downloadLogos}
 					disabled={downloadingLogos}
 					title={m.livetv_channels_downloadLogosTitle()}
@@ -1011,7 +1011,7 @@
 										type="text"
 										readonly
 										value={getM3uUrl()}
-										class="input-bordered input input-sm flex-1 font-mono text-xs"
+										class="input-bordered input flex-1 font-mono text-xs input-sm"
 									/>
 									<button
 										class="btn btn-ghost btn-sm"
@@ -1040,7 +1040,7 @@
 										type="text"
 										readonly
 										value={getEpgUrl()}
-										class="input-bordered input input-sm flex-1 font-mono text-xs"
+										class="input-bordered input flex-1 font-mono text-xs input-sm"
 									/>
 									<button
 										class="btn btn-ghost btn-sm"
@@ -1066,7 +1066,7 @@
 					</div>
 				{/if}
 			</div>
-			<button class="btn w-full btn-sm btn-primary sm:w-auto" onclick={openChannelBrowser}>
+			<button class="btn w-full btn-primary btn-sm sm:w-auto" onclick={openChannelBrowser}>
 				<Search class="h-4 w-4" />
 				{m.livetv_channels_browseChannels()}
 			</button>
@@ -1081,7 +1081,7 @@
 			<input
 				type="text"
 				placeholder={m.livetv_channels_searchPlaceholder()}
-				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+				class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				bind:value={channelSearch}
 			/>
 		</div>

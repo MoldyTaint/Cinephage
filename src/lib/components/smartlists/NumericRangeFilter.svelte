@@ -67,7 +67,7 @@
 			min={minMin}
 			max={minMax}
 			{step}
-			class="input-bordered input input-sm w-full"
+			class="input-bordered input w-full input-sm"
 			oninput={handleMinInput}
 		/>
 	</div>
@@ -85,7 +85,7 @@
 			min={maxMin}
 			max={maxMax}
 			{step}
-			class="input-bordered input input-sm w-full"
+			class="input-bordered input w-full input-sm"
 			oninput={handleMaxInput}
 		/>
 	</div>

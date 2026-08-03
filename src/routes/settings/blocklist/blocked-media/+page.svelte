@@ -134,7 +134,7 @@
 			<input
 				type="text"
 				placeholder={m.blockedMedia_searchPlaceholder()}
-				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+				class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				bind:value={filters.search}
 			/>
 		</div>
@@ -150,14 +150,14 @@
 		</span>
 		{#if selectedIds.size > 0}
 			<span class="text-sm text-base-content/60">{selectedIds.size} selected</span>
-			<button class="btn gap-1.5 btn-sm btn-error" onclick={() => (confirmBulkUnblockOpen = true)}>
+			<button class="btn gap-1.5 btn-error btn-sm" onclick={() => (confirmBulkUnblockOpen = true)}>
 				<Trash2 class="h-3.5 w-3.5" />
 				{m.blockedMedia_unblock()}
 			</button>
 		{/if}
 		{#if entries.length > 0}
 			<button
-				class="btn gap-1.5 btn-ghost btn-sm btn-error sm:ml-auto"
+				class="btn gap-1.5 btn-ghost btn-error btn-sm sm:ml-auto"
 				onclick={() => (confirmUnblockAllOpen = true)}
 			>
 				<Trash2 class="h-3.5 w-3.5" /> Remove all

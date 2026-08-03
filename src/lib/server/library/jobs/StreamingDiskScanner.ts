@@ -76,9 +76,12 @@ function shouldExcludeFileLegacy(
 		if (blockedExtensions.includes(ext)) return true;
 	}
 
+	// Only check directory segments — the final part is the filename itself,
+	// not a directory, so shouldExcludeFolderLegacy must not test it (our
+	// video-extension check would otherwise exclude every .mkv/.mp4 file).
 	const pathParts = filePath.split('/');
-	for (const part of pathParts) {
-		if (shouldExcludeFolderLegacy(part, customPatterns)) return true;
+	for (let i = 0; i < pathParts.length - 1; i++) {
+		if (shouldExcludeFolderLegacy(pathParts[i], customPatterns)) return true;
 	}
 
 	return false;

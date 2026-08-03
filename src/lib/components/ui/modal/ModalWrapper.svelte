@@ -77,7 +77,7 @@
 
 {#if open}
 	<div
-		class="modal-open modal {behindSidebarOnDesktop ? 'modal-under-sidebar' : ''}"
+		class="modal modal-open {behindSidebarOnDesktop ? 'modal-under-sidebar' : ''}"
 		role="dialog"
 		aria-modal="true"
 		aria-labelledby={labelledBy}
@@ -85,8 +85,8 @@
 	>
 		<div
 			bind:this={modalBoxRef}
-			class="modal-box max-h-dvh sm:max-h-[90dvh] wrap-break-word {flexContent
-				? 'flex flex-col overflow-hidden modal-flex-content'
+			class="modal-box max-h-dvh wrap-break-word sm:max-h-[90dvh] {flexContent
+				? 'modal-flex-content flex flex-col overflow-hidden'
 				: 'overflow-x-hidden overflow-y-auto'} {maxWidthClasses[maxWidth]}"
 		>
 			{@render children()}

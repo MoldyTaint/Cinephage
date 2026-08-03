@@ -95,7 +95,7 @@
 		</div>
 		<div class="flex flex-col gap-2">
 			<button class="btn btn-ghost btn-xs" onclick={onMatch}> {m.unmatched_file_match()} </button>
-			<button class="btn text-error btn-ghost btn-xs" onclick={onDelete}>
+			<button class="btn btn-ghost text-error btn-xs" onclick={onDelete}>
 				{m.unmatched_file_delete()}
 			</button>
 		</div>

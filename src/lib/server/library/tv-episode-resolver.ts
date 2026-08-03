@@ -35,7 +35,6 @@ interface EpisodeRecordLike {
 	airDate?: string | null;
 }
 
-
 export function extractSeasonFromPath(pathValue: string): number | undefined {
 	const normalizedPath = resolve(pathValue).replace(/\\/g, '/');
 

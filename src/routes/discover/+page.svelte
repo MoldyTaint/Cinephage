@@ -537,7 +537,7 @@
 					<input
 						type="text"
 						placeholder={m.discover_searchPlaceholder()}
-						class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+						class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 input-md placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 						value={searchQuery}
 						oninput={handleSearchInput}
 						onkeydown={(e) => e.key === 'Escape' && clearSearch()}
@@ -578,7 +578,7 @@
 								{selectedCertification}
 							</div>
 						{/if}
-						<button class="btn text-error btn-ghost btn-xs" onclick={resetFilters}
+						<button class="btn btn-ghost text-error btn-xs" onclick={resetFilters}
 							>{m.action_clear()}</button
 						>
 					</div>
@@ -613,7 +613,7 @@
 				</button>
 
 				<button
-					class="btn gap-2 shadow-lg shadow-primary/20 btn-sm btn-primary"
+					class="btn gap-2 shadow-lg shadow-primary/20 btn-primary btn-sm"
 					onclick={() => (isFilterOpen = true)}
 				>
 					<svg
@@ -652,7 +652,7 @@
 				<input
 					type="text"
 					placeholder={m.discover_searchPlaceholder()}
-					class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+					class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 input-md placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 					value={searchQuery}
 					oninput={handleSearchInput}
 					onkeydown={(e) => e.key === 'Escape' && clearSearch()}

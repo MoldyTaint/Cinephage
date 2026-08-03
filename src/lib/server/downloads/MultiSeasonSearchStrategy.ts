@@ -1035,6 +1035,7 @@ export class MultiSeasonSearchStrategy {
 			const startSeason = sortedSeasons[i];
 
 			// Try to extend the range
+			// eslint-disable-next-line no-useless-assignment
 			let endSeason = startSeason;
 			let totalMissing = 0;
 			let totalEpisodes = 0;

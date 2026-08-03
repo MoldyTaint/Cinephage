@@ -207,7 +207,7 @@ export function selectAdminUser(db, options) {
 	}
 
 	/** @type {AdminUser[]} */
-	let matches = admins;
+	let matches;
 	if (options.userId) {
 		matches = admins.filter((user) => user.id === options.userId);
 	} else if (options.email) {

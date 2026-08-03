@@ -68,8 +68,7 @@ const DEBRID_CANONICAL_ENDPOINTS: Record<string, { host: string; port: number }>
 };
 
 type StoredDebridTokenResult =
-	| { success: true; apiToken: string }
-	| { success: false; error: string };
+	{ success: true; apiToken: string } | { success: false; error: string };
 
 function parsePositiveIntEnv(name: string, fallback: number): number {
 	const value = process.env[name];

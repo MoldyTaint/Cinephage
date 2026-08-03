@@ -333,7 +333,7 @@
 									<input
 										id="portalUrl"
 										type="url"
-										class="input-bordered input input-sm flex-1"
+										class="input-bordered input flex-1 input-sm"
 										bind:value={newPortalUrl}
 										placeholder={m.livetv_portalScanModal_portalUrlPlaceholder()}
 									/>
@@ -460,7 +460,7 @@
 						<input
 							id="macCount"
 							type="number"
-							class="input-bordered input input-sm w-32"
+							class="input-bordered input w-32 input-sm"
 							bind:value={macCount}
 							min="1"
 							max="10000"
@@ -482,7 +482,7 @@
 						<input
 							id="macStart"
 							type="text"
-							class="input-bordered input input-sm font-mono"
+							class="input-bordered input font-mono input-sm"
 							class:input-error={macRangeStart && !isValidMac(macRangeStart)}
 							value={macRangeStart}
 							oninput={(e) => handleMacInput(e, 'start')}
@@ -498,7 +498,7 @@
 						<input
 							id="macEnd"
 							type="text"
-							class="input-bordered input input-sm font-mono"
+							class="input-bordered input font-mono input-sm"
 							class:input-error={macRangeEnd && !isValidMac(macRangeEnd)}
 							value={macRangeEnd}
 							oninput={(e) => handleMacInput(e, 'end')}
@@ -532,8 +532,7 @@
 						id="importMacs"
 						class="textarea-bordered textarea h-32 font-mono text-sm"
 						bind:value={importedMacs}
-						placeholder={m.livetv_portalScanModal_macAddressesPlaceholder()}
-					></textarea>
+						placeholder={m.livetv_portalScanModal_macAddressesPlaceholder()}></textarea>
 					<div class="label py-1">
 						<span class="label-text-alt text-xs">
 							{m.livetv_portalScanModal_macAddressesHint()}

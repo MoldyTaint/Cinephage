@@ -903,9 +903,9 @@
 				{@const col = data.collection}
 				<div class="mt-4 hidden rounded-xl bg-base-200 md:mt-6 md:block">
 					<!-- Header -->
-					<div class="flex items-center justify-between p-4 md:p-6 pb-3">
+					<div class="flex items-center justify-between p-4 pb-3 md:p-6">
 						<div class="flex items-center gap-2">
-							<Layers class="h-4 w-4 text-primary shrink-0" />
+							<Layers class="h-4 w-4 shrink-0 text-primary" />
 							<h2 class="text-lg font-semibold">
 								Part of <span class="text-primary">{col.name}</span>
 							</h2>
@@ -913,7 +913,7 @@
 						<div class="flex items-center gap-1">
 							{#if trackedMissingFile.length > 0}
 								<button
-									class="btn btn-ghost btn-sm gap-2"
+									class="btn gap-2 btn-ghost btn-sm"
 									onclick={handleCollectionSearch}
 									disabled={collectionSearching}
 									title="Search for missing movies in this collection"
@@ -927,7 +927,7 @@
 							{/if}
 							{#if trackedMissingSubtitles.length > 0}
 								<button
-									class="btn btn-ghost btn-sm gap-2"
+									class="btn gap-2 btn-ghost btn-sm"
 									onclick={handleCollectionSubtitleAutoSearch}
 									disabled={collectionSubtitleAutoSearching}
 									title="Auto-download missing subtitles for movies in this collection"
@@ -943,7 +943,7 @@
 					</div>
 
 					<!-- Parts grid -->
-					<div class="px-4 md:px-6 pb-4">
+					<div class="px-4 pb-4 md:px-6">
 						<div class="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
 							{#each collectionParts as part (part.tmdbId)}
 								{#if part.inLibrary && part.movieId}
@@ -1049,7 +1049,7 @@
 
 					<!-- Bottom panel: per-movie add or track-all -->
 					{#if addingPart || missingParts.length > 0}
-						<div class="border-t border-base-300 px-4 md:px-6 py-4">
+						<div class="border-t border-base-300 px-4 py-4 md:px-6">
 							{#if addingPart}
 								<!-- Per-movie add panel -->
 								<div class="space-y-4">
@@ -1079,15 +1079,15 @@
 													<opt.Icon class="h-4 w-4" />
 												</div>
 												<div class="min-w-0">
-													<p class="text-sm font-semibold leading-tight">{opt.label}</p>
-													<p class="mt-0.5 text-xs text-base-content/55 leading-snug">{opt.desc}</p>
+													<p class="text-sm leading-tight font-semibold">{opt.label}</p>
+													<p class="mt-0.5 text-xs leading-snug text-base-content/55">{opt.desc}</p>
 												</div>
 											</button>
 										{/each}
 									</div>
 									<div class="flex gap-2">
 										<button
-											class="btn btn-primary btn-sm gap-2"
+											class="btn gap-2 btn-primary btn-sm"
 											onclick={handleAddPart}
 											disabled={addingPartLoading}
 										>
@@ -1103,12 +1103,12 @@
 								</div>
 							{:else if !trackPanelOpen}
 								<button
-									class="btn btn-primary btn-sm gap-2"
+									class="btn gap-2 btn-primary btn-sm"
 									onclick={() => (trackPanelOpen = true)}
 								>
 									<Plus class="h-4 w-4" />
 									Add collection
-									<span class="badge badge-primary-content badge-sm"
+									<span class="badge-primary-content badge badge-sm"
 										>{missingParts.length} missing</span
 									>
 								</button>
@@ -1138,8 +1138,8 @@
 													<opt.Icon class="h-4 w-4" />
 												</div>
 												<div class="min-w-0">
-													<p class="text-sm font-semibold leading-tight">{opt.label}</p>
-													<p class="mt-0.5 text-xs text-base-content/55 leading-snug">{opt.desc}</p>
+													<p class="text-sm leading-tight font-semibold">{opt.label}</p>
+													<p class="mt-0.5 text-xs leading-snug text-base-content/55">{opt.desc}</p>
 												</div>
 											</button>
 										{/each}
@@ -1147,7 +1147,7 @@
 
 									<div class="flex gap-2">
 										<button
-											class="btn btn-primary btn-sm gap-2"
+											class="btn gap-2 btn-primary btn-sm"
 											onclick={handleTrackCollection}
 											disabled={tracking}
 										>
@@ -1259,16 +1259,16 @@
 				{@const col = data.collection}
 				<div class="rounded-xl bg-base-200 md:hidden">
 					<div class="flex items-center justify-between p-4 pb-3">
-						<div class="flex items-center gap-2 min-w-0">
-							<Layers class="h-4 w-4 text-primary shrink-0" />
-							<h2 class="text-base font-semibold truncate">
+						<div class="flex min-w-0 items-center gap-2">
+							<Layers class="h-4 w-4 shrink-0 text-primary" />
+							<h2 class="truncate text-base font-semibold">
 								Part of <span class="text-primary">{col.name}</span>
 							</h2>
 						</div>
-						<div class="flex items-center gap-1 shrink-0">
+						<div class="flex shrink-0 items-center gap-1">
 							{#if trackedMissingFile.length > 0}
 								<button
-									class="btn btn-ghost btn-sm gap-2"
+									class="btn gap-2 btn-ghost btn-sm"
 									onclick={handleCollectionSearch}
 									disabled={collectionSearching}
 									title="Search for missing movies in this collection"
@@ -1282,7 +1282,7 @@
 							{/if}
 							{#if trackedMissingSubtitles.length > 0}
 								<button
-									class="btn btn-ghost btn-sm gap-2"
+									class="btn gap-2 btn-ghost btn-sm"
 									onclick={handleCollectionSubtitleAutoSearch}
 									disabled={collectionSubtitleAutoSearching}
 									title="Auto-download missing subtitles for movies in this collection"
@@ -1427,15 +1427,15 @@
 													<opt.Icon class="h-4 w-4" />
 												</div>
 												<div class="min-w-0">
-													<p class="text-sm font-semibold leading-tight">{opt.label}</p>
-													<p class="mt-0.5 text-xs text-base-content/55 leading-snug">{opt.desc}</p>
+													<p class="text-sm leading-tight font-semibold">{opt.label}</p>
+													<p class="mt-0.5 text-xs leading-snug text-base-content/55">{opt.desc}</p>
 												</div>
 											</button>
 										{/each}
 									</div>
 									<div class="flex gap-2">
 										<button
-											class="btn btn-primary btn-sm flex-1 gap-2"
+											class="btn flex-1 gap-2 btn-primary btn-sm"
 											onclick={handleAddPart}
 											disabled={addingPartLoading}
 										>
@@ -1451,12 +1451,12 @@
 								</div>
 							{:else if !trackPanelOpen}
 								<button
-									class="btn btn-primary btn-sm w-full gap-2"
+									class="btn w-full gap-2 btn-primary btn-sm"
 									onclick={() => (trackPanelOpen = true)}
 								>
 									<Plus class="h-4 w-4" />
 									Add collection
-									<span class="badge badge-primary-content badge-sm"
+									<span class="badge-primary-content badge badge-sm"
 										>{missingParts.length} missing</span
 									>
 								</button>
@@ -1485,15 +1485,15 @@
 													<opt.Icon class="h-4 w-4" />
 												</div>
 												<div class="min-w-0">
-													<p class="text-sm font-semibold leading-tight">{opt.label}</p>
-													<p class="mt-0.5 text-xs text-base-content/55 leading-snug">{opt.desc}</p>
+													<p class="text-sm leading-tight font-semibold">{opt.label}</p>
+													<p class="mt-0.5 text-xs leading-snug text-base-content/55">{opt.desc}</p>
 												</div>
 											</button>
 										{/each}
 									</div>
 									<div class="flex gap-2">
 										<button
-											class="btn btn-primary btn-sm flex-1 gap-2"
+											class="btn flex-1 gap-2 btn-primary btn-sm"
 											onclick={handleTrackCollection}
 											disabled={tracking}
 										>

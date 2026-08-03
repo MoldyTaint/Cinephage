@@ -209,7 +209,7 @@
 		</button>
 		{#if entries.length > 0}
 			<button
-				class="btn gap-1 btn-ghost btn-sm btn-error"
+				class="btn gap-1 btn-ghost btn-error btn-sm"
 				onclick={() => (confirmRemoveAllOpen = true)}
 			>
 				<Trash2 class="h-4 w-4" />
@@ -226,7 +226,7 @@
 			<input
 				type="text"
 				placeholder={m.blocklist_searchPlaceholder()}
-				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+				class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				bind:value={filters.search}
 			/>
 		</div>
