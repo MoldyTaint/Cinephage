@@ -997,7 +997,8 @@ export const namingConfigUpdateSchema = z.object({
 	mediaServerIdFormat: mediaServerIdFormatSchema.optional(),
 	includeQuality: z.boolean().optional(),
 	includeMediaInfo: z.boolean().optional(),
-	includeReleaseGroup: z.boolean().optional()
+	includeReleaseGroup: z.boolean().optional(),
+	useSpecialsFolder: z.boolean().optional()
 });
 
 export const namingPresetSelectionSchema = z.object({

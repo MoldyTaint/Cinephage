@@ -3197,6 +3197,8 @@
 	"settings_naming_savedCustomSource": "Saved custom source",
 	"settings_naming_savePreset": "Save Preset",
 	"settings_naming_seasonFolder": "Season Folder",
+	"settings_naming_useSpecialsFolder": "Use 'Specials' folder for season 0",
+	"settings_naming_useSpecialsFolderHelp": "Places specials in a 'Specials' folder instead of 'Season 00'. Run a rename job after changing this to move existing files.",
 	"settings_naming_seasonFolderFormat": "Season Folder Format",
 	"settings_naming_selectCustomPreset": "Select a custom preset…",
 	"settings_naming_seriesFolder": "Series Folder",

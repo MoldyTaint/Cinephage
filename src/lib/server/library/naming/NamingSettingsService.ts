@@ -35,7 +35,8 @@ const KEY_MAP: Record<string, keyof NamingConfig> = {
 	media_server_id_format: 'mediaServerIdFormat',
 	include_quality: 'includeQuality',
 	include_media_info: 'includeMediaInfo',
-	include_release_group: 'includeReleaseGroup'
+	include_release_group: 'includeReleaseGroup',
+	use_specials_folder: 'useSpecialsFolder'
 };
 
 const PRESET_KEY_MAP = {
@@ -59,7 +60,12 @@ const REVERSE_PRESET_KEY_MAP: Record<keyof NamingPresetSelection, string> = Obje
 /**
  * Boolean settings that need special handling
  */
-const BOOLEAN_KEYS = new Set(['include_quality', 'include_media_info', 'include_release_group']);
+const BOOLEAN_KEYS = new Set([
+	'include_quality',
+	'include_media_info',
+	'include_release_group',
+	'use_specials_folder'
+]);
 
 /**
  * Helper to set a config value by key

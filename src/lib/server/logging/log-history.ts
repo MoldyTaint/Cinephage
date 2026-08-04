@@ -432,7 +432,12 @@ class LogHistoryService {
 	}
 
 	private rotateIfNeeded(filePath: string): void {
-		if (this.currentFilePath === filePath && this.stream) {
+		if (
+			this.currentFilePath === filePath &&
+			this.stream &&
+			!this.stream.destroyed &&
+			this.stream.writable
+		) {
 			return;
 		}
 

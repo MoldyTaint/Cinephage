@@ -2939,6 +2939,8 @@
 	"settings_naming_savedCustomSource": "Fuente personalizada guardada",
 	"settings_naming_savePreset": "Guardar preajuste",
 	"settings_naming_seasonFolder": "Carpeta de temporada",
+	"settings_naming_useSpecialsFolder": "Usar carpeta 'Specials' para la temporada 0",
+	"settings_naming_useSpecialsFolderHelp": "Coloca los especiales en una carpeta 'Specials' en lugar de 'Season 00'. Ejecuta un trabajo de renombrado tras cambiar esto para mover los archivos existentes.",
 	"settings_naming_seasonFolderFormat": "Formato de carpeta de temporada",
 	"settings_naming_selectCustomPreset": "Selecciona un preajuste personalizado…",
 	"settings_naming_seriesFolder": "Carpeta de serie",

@@ -2939,6 +2939,8 @@
 	"settings_naming_savedCustomSource": "Gespeicherte benutzerdefinierte Quelle",
 	"settings_naming_savePreset": "Voreinstellung speichern",
 	"settings_naming_seasonFolder": "Staffel-Ordner",
+	"settings_naming_useSpecialsFolder": "'Specials'-Ordner für Staffel 0 verwenden",
+	"settings_naming_useSpecialsFolderHelp": "Legt Specials in einem 'Specials'-Ordner statt in 'Season 00' ab. Nach dieser Änderung einen Umbenennungs-Job ausführen, um vorhandene Dateien zu verschieben.",
 	"settings_naming_seasonFolderFormat": "Staffel-Ordner-Format",
 	"settings_naming_selectCustomPreset": "Benutzerdefinierte Voreinstellung auswählen...",
 	"settings_naming_seriesFolder": "Serien-Ordner",
