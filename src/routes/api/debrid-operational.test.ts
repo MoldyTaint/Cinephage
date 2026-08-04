@@ -103,7 +103,7 @@ interface ProviderState {
 const scenarios: Scenario[] = [
 	{
 		provider: 'realdebrid',
-		clientName: 'Acceptance Real-Debrid',
+		clientName: 'Acceptance RD',
 		token: 'ACCEPTANCE_REAL_DEBRID_TOKEN_000001',
 		providerItemId: 'ACCEPTANCE-RD-PROVIDER-1',
 		infoHash: '1111111111111111111111111111111111111111',
