@@ -31,10 +31,13 @@ const EXCLUDED_FOLDER_PATTERNS = [
 	/^featurettes?$/i,
 	/^behind[\s._-]?the[\s._-]?scenes?$/i,
 	/^deleted[\s._-]?scenes?$/i,
-	/^specials?$/i,
 	/^subs?$/i,
 	/^subtitles?$/i
 ];
+
+// Patterns only excluded at shallow depth (≤1 from root). At depth ≥2 the
+// same name is a valid TV season folder (e.g. a show's own Specials/ dir).
+const SHALLOW_EXCLUDED_FOLDER_PATTERNS = [/^specials?$/i];
 
 const SAMPLE_PATTERNS = [/\bsample\b/i];
 
@@ -114,7 +117,7 @@ export class StreamingDiskScanner {
 		}
 	}
 
-	private shouldExcludeFolder(name: string): boolean {
+	private shouldExcludeFolder(name: string, depth: number): boolean {
 		const { patterns, customExcludedFolders } = this.options;
 		if (patterns) {
 			// Folder-level ignore: test with trailing slash so directory
@@ -122,6 +125,7 @@ export class StreamingDiskScanner {
 			const relPath = name + '/';
 			return matchIgnore(relPath, patterns);
 		}
+		if (depth >= 1 && SHALLOW_EXCLUDED_FOLDER_PATTERNS.some((p) => p.test(name))) return false;
 		return shouldExcludeFolderLegacy(name, customExcludedFolders);
 	}
 
@@ -143,7 +147,8 @@ export class StreamingDiskScanner {
 
 	private async *walkDirectory(
 		rootPath: string,
-		currentPath: string
+		currentPath: string,
+		depth = 0
 	): AsyncGenerator<DiscoveredFile> {
 		let dirHandle: Awaited<ReturnType<typeof opendir>>;
 		try {
@@ -164,9 +169,9 @@ export class StreamingDiskScanner {
 			const fullPath = join(currentPath, entry.name);
 
 			if (entry.isDirectory()) {
-				if (this.shouldExcludeFolder(entry.name)) continue;
+				if (this.shouldExcludeFolder(entry.name, depth)) continue;
 
-				yield* this.walkDirectory(rootPath, fullPath);
+				yield* this.walkDirectory(rootPath, fullPath, depth + 1);
 			} else if (entry.isFile() || entry.isSymbolicLink()) {
 				if (!isVideoFile(entry.name)) continue;
 

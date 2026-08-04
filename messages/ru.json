@@ -3196,6 +3196,8 @@
 	"settings_naming_savedCustomSource": "Сохранённый пользовательский источник",
 	"settings_naming_savePreset": "Сохранить пресет",
 	"settings_naming_seasonFolder": "Папка сезона",
+	"settings_naming_useSpecialsFolder": "Использовать папку 'Specials' для сезона 0",
+	"settings_naming_useSpecialsFolderHelp": "Помещает спецэпизоды в папку 'Specials' вместо 'Season 00'. После изменения запустите задание переименования для перемещения существующих файлов.",
 	"settings_naming_seasonFolderFormat": "Формат папки сезона",
 	"settings_naming_selectCustomPreset": "Выберите пользовательский пресет…",
 	"settings_naming_seriesFolder": "Папка сериала",

@@ -38,6 +38,11 @@ interface EpisodeRecordLike {
 export function extractSeasonFromPath(pathValue: string): number | undefined {
 	const normalizedPath = resolve(pathValue).replace(/\\/g, '/');
 
+	// "Specials" folder name is treated as season 0.
+	if (/(?:^|\/)specials?(?:\/|$)/i.test(normalizedPath)) {
+		return 0;
+	}
+
 	// First pass: match season as a complete path segment boundary
 	// e.g. /Season 1/, /s01/, /Season.1/
 	const segmentPatterns = [

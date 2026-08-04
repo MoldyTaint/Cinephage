@@ -83,6 +83,7 @@ export interface NamingConfig {
 	includeQuality: boolean;
 	includeMediaInfo: boolean;
 	includeReleaseGroup: boolean;
+	useSpecialsFolder: boolean;
 }
 
 /**
@@ -116,7 +117,8 @@ export const DEFAULT_NAMING_CONFIG: NamingConfig = {
 	mediaServerIdFormat: 'plex',
 	includeQuality: true,
 	includeMediaInfo: true,
-	includeReleaseGroup: true
+	includeReleaseGroup: true,
+	useSpecialsFolder: false
 };
 
 /**
@@ -188,6 +190,9 @@ export class NamingService {
 	 * Generate a season folder name
 	 */
 	generateSeasonFolderName(seasonNumber: number): string {
+		if (seasonNumber === 0 && this.config.useSpecialsFolder) {
+			return 'Specials';
+		}
 		return this.formatName(this.config.seasonFolderFormat, {
 			title: '',
 			seasonNumber
