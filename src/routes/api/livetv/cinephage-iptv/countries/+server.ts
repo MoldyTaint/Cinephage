@@ -8,6 +8,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { logger } from '$lib/logging';
 import { getStreamingIndexerSettings } from '$lib/server/streaming/settings.js';
+import { getCinephageCore } from '$lib/server/cinephage/core/CinephageCore.js';
 
 const CINEPHAGE_API_BASE = 'https://api.cinephage.net';
 const CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -52,6 +53,10 @@ async function fetchCinephageCountries(): Promise<CinephageCountry[]> {
 
 	if (!response.ok) {
 		if (response.status === 401) {
+			// The gateway rejected our identity (likely stale release pair).
+			// Kick off a self-heal refresh so the next request authenticates
+			// with the latest release.
+			void getCinephageCore().refreshLatestIdentity(true);
 			throw new Error('Cinephage API rejected authentication');
 		}
 		if (response.status === 429) {

@@ -24,6 +24,7 @@ interface CreatePlaybackSessionInput {
 	requestHeaders: Record<string, string>;
 	subtitles?: PlaybackSessionSubtitle[];
 	attempts: PlaybackSessionAttempt[];
+	sourceExpiresAt?: number;
 }
 
 export class PlaybackSessionStore {
@@ -56,6 +57,7 @@ export class PlaybackSessionStore {
 			subtitles: input.subtitles ? [...input.subtitles] : [],
 			createdAt: now,
 			expiresAt: now + SESSION_TTL_MS,
+			sourceExpiresAt: input.sourceExpiresAt,
 			lastAccessedAt: now,
 			attempts: [...input.attempts],
 			resourceIdsByKey: {},
@@ -84,6 +86,13 @@ export class PlaybackSessionStore {
 
 		const session = this.getSession(token);
 		if (!session) {
+			return null;
+		}
+
+		// The underlying source URL/signature expired (e.g. CDN token), so a
+		// reused session would serve a dead stream — force a re-resolve.
+		if (session.sourceExpiresAt !== undefined && Date.now() / 1000 > session.sourceExpiresAt) {
+			this.deleteSession(token);
 			return null;
 		}
 

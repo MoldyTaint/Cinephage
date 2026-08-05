@@ -11,6 +11,8 @@ import { getServerIdentity, type CinephageServerIdentity } from './version.js';
  * Responsibilities:
  *   - Hold the shared IndexerHttp instance (rate-limited, retrying)
  *   - Resolve the running server's identity (version + commit) for headers
+ *   - Auto-sync the identity to the latest published release, because the
+ *     api.cinephage.net gateway only accepts the newest release pair
  *   - Expose request() that auto-injects base URL + X-Cinephage-* headers
  *
  * This is the canonical replacement for the four duplicated API clients that
@@ -22,9 +24,22 @@ import { getServerIdentity, type CinephageServerIdentity } from './version.js';
 export class CinephageCore {
 	private readonly http: IndexerHttp;
 	private readonly settings: CinephageSettingsService;
+	private readonly githubApiBase: string;
 
-	constructor(settings: CinephageSettingsService = getCinephageSettingsService()) {
+	/** Keep the identity within this window before refreshing it again. */
+	static readonly IDENTITY_SYNC_TTL_MS = 6 * 60 * 60 * 1000;
+	/** Minimum gap between forced refreshes (e.g. 401 self-heal) to avoid hammering GitHub. */
+	static readonly IDENTITY_SYNC_MIN_INTERVAL_MS = 60 * 1000;
+
+	private lastSyncAttempt = 0;
+	private syncInFlight: Promise<void> | null = null;
+
+	constructor(
+		settings: CinephageSettingsService = getCinephageSettingsService(),
+		options: { githubApiBase?: string } = {}
+	) {
 		this.settings = settings;
+		this.githubApiBase = options.githubApiBase ?? 'https://api.github.com';
 		// Synthetic indexerId for rate-limit keying — this client is shared
 		// across all modules and doesn't correspond to a real indexer row.
 		this.http = createIndexerHttp({
@@ -55,14 +70,16 @@ export class CinephageCore {
 	}
 
 	/**
-	 * Resolved server identity (version + commit). Applies override fields
-	 * from settings, then falls back to APP_VERSION / APP_COMMIT env vars.
+	 * Resolved server identity (version + commit). Resolution per field:
+	 * manual override → auto-synced latest release → APP_VERSION/APP_COMMIT.
 	 */
 	async getIdentity(): Promise<CinephageServerIdentity> {
 		const config = await this.settings.getConfig();
 		return getServerIdentity({
 			versionOverride: config.versionOverride,
-			commitOverride: config.commitOverride
+			commitOverride: config.commitOverride,
+			latestVersion: config.autoUpdate ? config.latestVersion : null,
+			latestCommit: config.autoUpdate ? config.latestCommit : null
 		});
 	}
 
@@ -86,6 +103,64 @@ export class CinephageCore {
 	}
 
 	/**
+	 * Refresh the auto-synced identity to the latest published release.
+	 *
+	 * The api.cinephage.net gateway only accepts the newest release pair, so
+	 * stale identities fail every authenticated call with HTTP 401. Call this
+	 * with force=true from 401 handlers to self-heal; the regular TTL keeps
+	 * the identity fresh in the background.
+	 *
+	 * Deduplicates concurrent runs; forced refreshes respect a minimum
+	 * interval to avoid hammering the GitHub API.
+	 */
+	async refreshLatestIdentity(force = false): Promise<void> {
+		if (this.syncInFlight) {
+			return this.syncInFlight;
+		}
+
+		const config = await this.settings.getConfig();
+		if (!config.enabled || !config.autoUpdate) {
+			return;
+		}
+
+		const now = Date.now();
+		if (!force && now - this.lastSyncAttempt < CinephageCore.IDENTITY_SYNC_TTL_MS) {
+			return;
+		}
+		if (force && now - this.lastSyncAttempt < CinephageCore.IDENTITY_SYNC_MIN_INTERVAL_MS) {
+			return;
+		}
+		this.lastSyncAttempt = now;
+
+		this.syncInFlight = this.fetchAndPersistLatestIdentity().finally(() => {
+			this.syncInFlight = null;
+		});
+		return this.syncInFlight;
+	}
+
+	/**
+	 * Flip the stored auto-synced version between its 'v'-prefixed and bare
+	 * forms. The api.cinephage.net gateway has historically validated the
+	 * release pair in both formats, so a 401 can be healed by toggling and
+	 * retrying before falling back to a full re-sync.
+	 *
+	 * Returns the identity using the toggled format, or null when no
+	 * auto-synced identity exists (nothing to toggle).
+	 */
+	async toggleVersionFormat(): Promise<CinephageServerIdentity | null> {
+		const config = await this.settings.getConfig();
+		if (!config.autoUpdate || !config.latestVersion) {
+			return null;
+		}
+
+		const toggled = config.latestVersion.startsWith('v')
+			? config.latestVersion.slice(1)
+			: `v${config.latestVersion}`;
+		await this.settings.updateConfig({ latestVersion: toggled });
+		return this.getIdentity();
+	}
+
+	/**
 	 * Issue a GET request to a path under the configured base URL with the
 	 * X-Cinephage-* auth headers automatically injected. Callers pass a path
 	 * like '/api/v1/iptv/countries'; the base URL prefix is added here.
@@ -101,6 +176,67 @@ export class CinephageCore {
 			headers: { Accept: 'application/json', ...authHeaders, ...(init?.headers ?? {}) },
 			signal: init?.signal
 		});
+	}
+
+	/**
+	 * Fetch the latest release from GitHub and persist it as the auto-synced
+	 * identity (version without the 'v' prefix + 7-char commit short-SHA —
+	 * exactly the format the api.cinephage.net gateway validates).
+	 */
+	private async fetchAndPersistLatestIdentity(): Promise<void> {
+		try {
+			const releaseResponse = await fetch(
+				`${this.githubApiBase}/repos/MoldyTaint/Cinephage/releases/latest`,
+				{
+					headers: { Accept: 'application/vnd.github+json' },
+					signal: AbortSignal.timeout(15_000)
+				}
+			);
+			if (!releaseResponse.ok) {
+				throw new Error(`GitHub releases/latest returned HTTP ${releaseResponse.status}`);
+			}
+
+			const release = (await releaseResponse.json()) as { tag_name?: string };
+			const tagName = release.tag_name;
+			if (!tagName) {
+				throw new Error('GitHub releases/latest returned no tag_name');
+			}
+
+			const commitResponse = await fetch(
+				`${this.githubApiBase}/repos/MoldyTaint/Cinephage/commits/${encodeURIComponent(tagName)}`,
+				{
+					headers: { Accept: 'application/vnd.github+json' },
+					signal: AbortSignal.timeout(15_000)
+				}
+			);
+			if (!commitResponse.ok) {
+				throw new Error(`GitHub commits/${tagName} returned HTTP ${commitResponse.status}`);
+			}
+
+			const commitData = (await commitResponse.json()) as { sha?: string };
+			const commitSha = commitData.sha;
+			if (!commitSha) {
+				throw new Error(`GitHub commits/${tagName} returned no sha`);
+			}
+
+			const version = tagName;
+			const commit = commitSha.slice(0, 7);
+
+			await this.settings.updateConfig({ latestVersion: version, latestCommit: commit });
+
+			logger.info(
+				{ version, commit, tag: tagName },
+				'Cinephage identity auto-synced to latest release'
+			);
+		} catch (error) {
+			logger.warn(
+				{
+					err: error instanceof Error ? error.message : String(error),
+					lastSyncAttempt: this.lastSyncAttempt
+				},
+				'Cinephage identity sync failed — keeping last known identity'
+			);
+		}
 	}
 }
 

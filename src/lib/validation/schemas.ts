@@ -1134,7 +1134,8 @@ export const cinephageSubsystemUpdateSchema = z.object({
 	enabled: z.boolean().optional(),
 	baseUrl: z.string().trim().min(1).optional(),
 	versionOverride: z.string().trim().nullable().optional(),
-	commitOverride: z.string().trim().nullable().optional()
+	commitOverride: z.string().trim().nullable().optional(),
+	autoUpdate: z.boolean().optional()
 });
 
 export type CinephageSubsystemUpdate = z.infer<typeof cinephageSubsystemUpdateSchema>;

@@ -49,6 +49,9 @@ describe('CinephageSettingsService', () => {
 			expect(config.baseUrl).toBe('https://api.cinephage.net');
 			expect(config.versionOverride).toBeNull();
 			expect(config.commitOverride).toBeNull();
+			expect(config.autoUpdate).toBe(true);
+			expect(config.latestVersion).toBeNull();
+			expect(config.latestCommit).toBeNull();
 		});
 
 		it('returns stored values when config row exists', async () => {
@@ -56,6 +59,13 @@ describe('CinephageSettingsService', () => {
 			const config = await service.getConfig();
 			expect(config.enabled).toBe(false);
 			expect(config.versionOverride).toBe('v9.9.9');
+		});
+
+		it('persists the auto-synced latest identity', async () => {
+			await service.updateConfig({ latestVersion: '0.15.0', latestCommit: '8167446' });
+			const config = await service.getConfig();
+			expect(config.latestVersion).toBe('0.15.0');
+			expect(config.latestCommit).toBe('8167446');
 		});
 	});
 

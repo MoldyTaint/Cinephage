@@ -80,6 +80,15 @@ export class CinephageApiService {
 			'CinephageAPI subsystem starting'
 		);
 
+		// Keep the gateway identity fresh: the api.cinephage.net gateway only
+		// accepts the newest release pair, so sync to the latest at boot.
+		// Best-effort and non-blocking — readiness does not wait on GitHub.
+		if (config.enabled) {
+			void this.core.refreshLatestIdentity().then(() => {
+				logger.debug('Cinephage identity sync completed at boot');
+			});
+		}
+
 		// Register built-in feature modules (library-streaming, future modules).
 		// Idempotent — skips modules that are already registered.
 		registerBuiltinModules(this.registry);

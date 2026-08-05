@@ -1991,6 +1991,14 @@ export const cinephageApiConfig = sqliteTable('cinephage_api_config', {
 	// APP_VERSION / APP_COMMIT env vars (baked into the Docker image at build).
 	versionOverride: text('version_override'),
 	commitOverride: text('commit_override'),
+	// Auto-synced identity: the latest published release pair. The
+	// api.cinephage.net gateway only accepts the newest release, so a
+	// background sync keeps latest_version/latest_commit fresh. When
+	// autoUpdate is enabled and no manual override is set, these take
+	// precedence over APP_VERSION / APP_COMMIT.
+	autoUpdate: integer('auto_update', { mode: 'boolean' }).notNull().default(true),
+	latestVersion: text('latest_version'),
+	latestCommit: text('latest_commit'),
 	updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
 });
 

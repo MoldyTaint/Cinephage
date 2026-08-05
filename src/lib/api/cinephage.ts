@@ -12,6 +12,9 @@ export interface CinephageSubsystemState {
 		baseUrl: string;
 		versionOverride: string | null;
 		commitOverride: string | null;
+		autoUpdate: boolean;
+		latestVersion: string | null;
+		latestCommit: string | null;
 	};
 	identity: {
 		version: string;
