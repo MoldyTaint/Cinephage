@@ -10,7 +10,6 @@
 
 import { isCloudflareProtected } from './CloudflareDetection';
 import { captchaSolverSettingsService, getCaptchaSolver } from '$lib/server/captcha';
-import { CookieStore } from '../auth/CookieStore';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
@@ -25,8 +24,6 @@ export interface CloudflareFetchOptions {
 	skipBrowserFallback?: boolean;
 	/** Response encoding (default: UTF-8) */
 	encoding?: string;
-	/** Stored session cookies to inject when using the browser fallback */
-	cookies?: Record<string, string>;
 }
 
 export interface CloudflareFetchResult {
@@ -54,8 +51,7 @@ export async function cloudflareFetch(
 		body,
 		timeout = 30000,
 		skipBrowserFallback = false,
-		encoding = 'UTF-8',
-		cookies
+		encoding = 'UTF-8'
 	} = options;
 
 	// Try normal fetch first
@@ -112,10 +108,7 @@ export async function cloudflareFetch(
 					url,
 					method,
 					body,
-					timeout: Math.ceil(timeout / 1000),
-					cookies: cookies
-						? CookieStore.toPlaywrightCookies(cookies, new URL(url).hostname)
-						: undefined
+					timeout: Math.ceil(timeout / 1000)
 				});
 
 				if (browserResult.success) {
