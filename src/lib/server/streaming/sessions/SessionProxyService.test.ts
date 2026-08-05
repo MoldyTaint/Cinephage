@@ -253,3 +253,99 @@ describe('SessionProxyService.renderLaunchMedia', () => {
 		expect(playlist).toContain(`${BASE_URL}/api/streaming/session/${session.token}/segment/`);
 	});
 });
+
+describe('SessionProxyService.renderHeadResponse', () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		resolveAndValidateUrlMock.mockResolvedValue({ safe: true });
+		const { getPlaybackSessionStore } = await import('./session-store');
+		getPlaybackSessionStore().clear();
+	});
+
+	async function createSession(sourceType: 'mp4' | 'hls' | 'dash') {
+		const { getPlaybackSessionStore } = await import('./session-store');
+		return getPlaybackSessionStore().createSession({
+			mediaType: 'movie',
+			tmdbId: 541134,
+			entryUrl: `https://cdn.example.com/stream.${sourceType === 'dash' ? 'mpd' : sourceType === 'hls' ? 'm3u8' : 'mp4'}`,
+			sourceType,
+			requestHeaders: {},
+			attempts: []
+		});
+	}
+
+	it('probes the upstream with HEAD and returns status without a body', async () => {
+		fetchWithTimeoutMock.mockResolvedValue(
+			new Response(null, {
+				status: 200,
+				headers: {
+					'Content-Type': 'video/mp4',
+					'Content-Length': '12345',
+					'Accept-Ranges': 'bytes'
+				}
+			})
+		);
+
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const session = await createSession('mp4');
+
+		const response = await getSessionProxyService().renderHeadResponse(
+			session,
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`)
+		);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('Content-Type')).toBe('video/mp4');
+		expect(response.headers.get('Content-Length')).toBe('12345');
+		expect(response.headers.get('Accept-Ranges')).toBe('bytes');
+		expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+		expect(await response.text()).toBe('');
+
+		const [, upstreamInit] = fetchWithTimeoutMock.mock.calls[0];
+		expect(upstreamInit.method).toBe('HEAD');
+	});
+
+	it('sets the manifest content type for hls sources', async () => {
+		fetchWithTimeoutMock.mockResolvedValue(new Response(null, { status: 200 }));
+
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const session = await createSession('hls');
+
+		const response = await getSessionProxyService().renderHeadResponse(
+			session,
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`)
+		);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('Content-Type')).toBe('application/vnd.apple.mpegurl');
+	});
+
+	it('sets the dash content type for dash sources', async () => {
+		fetchWithTimeoutMock.mockResolvedValue(new Response(null, { status: 200 }));
+
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const session = await createSession('dash');
+
+		const response = await getSessionProxyService().renderHeadResponse(
+			session,
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`)
+		);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('Content-Type')).toBe('application/dash+xml');
+	});
+
+	it('forwards the upstream status on failure', async () => {
+		fetchWithTimeoutMock.mockResolvedValue(new Response(null, { status: 404 }));
+
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const session = await createSession('mp4');
+
+		const response = await getSessionProxyService().renderHeadResponse(
+			session,
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`)
+		);
+
+		expect(response.status).toBe(404);
+	});
+});

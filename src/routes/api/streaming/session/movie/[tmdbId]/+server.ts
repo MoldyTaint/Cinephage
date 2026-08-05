@@ -2,13 +2,26 @@ import type { RequestHandler } from './$types';
 import {
 	getBaseUrlAsync,
 	getPlaybackSessionService,
-	getSessionProxyService
+	getSessionProxyService,
+	type PlaybackSession
 } from '$lib/server/streaming';
 
 function errorResponse(message: string, code: string, status: number): Response {
 	return new Response(JSON.stringify({ error: message, code }), {
 		status,
 		headers: { 'Content-Type': 'application/json' }
+	});
+}
+
+async function resolveMovieSession(
+	tmdbId: string
+): Promise<{ session: PlaybackSession | null; error?: string; invalid?: boolean }> {
+	if (!tmdbId || !/^\d+$/.test(tmdbId)) {
+		return { session: null, error: undefined, invalid: true };
+	}
+	return getPlaybackSessionService().createOrReuseSession({
+		tmdbId: parseInt(tmdbId, 10),
+		type: 'movie'
 	});
 }
 
@@ -22,32 +35,39 @@ function errorResponse(message: string, code: string, status: number): Response 
  * playlist (identified by Content-Type).
  */
 export const GET: RequestHandler = async ({ params, request, url }) => {
-	const tmdbId = params.tmdbId;
-	if (!tmdbId || !/^\d+$/.test(tmdbId)) {
+	const { session, error, invalid } = await resolveMovieSession(params.tmdbId);
+	if (invalid) {
 		return errorResponse('Invalid TMDB ID', 'INVALID_PARAM', 400);
 	}
-
-	const baseUrl = await getBaseUrlAsync(request);
-	const apiKey = url.searchParams.get('api_key') || request.headers.get('x-api-key') || undefined;
-	const playbackSessions = getPlaybackSessionService();
-	const proxyService = getSessionProxyService();
-
-	const { session, error } = await playbackSessions.createOrReuseSession({
-		tmdbId: parseInt(tmdbId, 10),
-		type: 'movie'
-	});
-
 	if (!session) {
 		return errorResponse(error || 'No playable stream found', 'PLAYBACK_UNAVAILABLE', 503);
 	}
 
-	return await proxyService.renderLaunchMedia(session, baseUrl, apiKey, request);
+	const baseUrl = await getBaseUrlAsync(request);
+	const apiKey = url.searchParams.get('api_key') || request.headers.get('x-api-key') || undefined;
+
+	return await getSessionProxyService().renderLaunchMedia(session, baseUrl, apiKey, request);
 };
 
-export const HEAD: RequestHandler = async ({ params, request, url }) => {
-	const response = await GET({ params, request, url } as Parameters<RequestHandler>[0]);
+export const HEAD: RequestHandler = async ({ params, request }) => {
+	const { session, error, invalid } = await resolveMovieSession(params.tmdbId);
+	if (invalid) {
+		return errorResponse('Invalid TMDB ID', 'INVALID_PARAM', 400);
+	}
+	if (!session) {
+		return errorResponse(error || 'No playable stream found', 'PLAYBACK_UNAVAILABLE', 503);
+	}
+
+	return await getSessionProxyService().renderHeadResponse(session, request);
+};
+
+export const OPTIONS: RequestHandler = async () => {
 	return new Response(null, {
-		status: response.status,
-		headers: response.headers
+		status: 200,
+		headers: {
+			'Access-Control-Allow-Origin': '*',
+			'Access-Control-Allow-Methods': 'GET, OPTIONS, HEAD',
+			'Access-Control-Allow-Headers': 'Range, Content-Type'
+		}
 	});
 };

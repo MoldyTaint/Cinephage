@@ -137,7 +137,11 @@ async function readBodyWithLimit(response: Response, maxBytes: number): Promise<
 	return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
 }
 
-async function fetchUpstream(url: string, headers: Record<string, string>): Promise<Response> {
+async function fetchUpstream(
+	url: string,
+	headers: Record<string, string>,
+	method: 'GET' | 'HEAD' = 'GET'
+): Promise<Response> {
 	let currentUrl = url;
 	let redirectCount = 0;
 	const visitedUrls = new Set<string>();
@@ -157,6 +161,7 @@ async function fetchUpstream(url: string, headers: Record<string, string>): Prom
 			currentUrl,
 			{
 				headers,
+				method,
 				redirect: 'manual'
 			},
 			30_000
@@ -377,6 +382,30 @@ ${segmentUrl.toString()}
 
 	async renderDirectResponse(session: PlaybackSession, request: Request): Promise<Response> {
 		return this.renderBinaryResponse(session, session.entryUrl, request, 'video/mp4');
+	}
+
+	/**
+	 * Answer a HEAD probe from a media server without streaming the body.
+	 * Probes the upstream entry URL with a HEAD request and forwards its
+	 * status and the relevant headers (Content-Length, Content-Type, CORS).
+	 */
+	async renderHeadResponse(session: PlaybackSession, request: Request): Promise<Response> {
+		const response = await fetchUpstream(
+			session.entryUrl,
+			buildUpstreamHeaders(session, request),
+			'HEAD'
+		);
+		const contentType =
+			session.sourceType === 'dash'
+				? 'application/dash+xml'
+				: session.sourceType === 'mp4'
+					? 'video/mp4'
+					: 'application/vnd.apple.mpegurl';
+
+		return new Response(null, {
+			status: response.status,
+			headers: buildStreamingResponseHeaders(response, contentType)
+		});
 	}
 
 	async renderSubtitlePlaylist(
