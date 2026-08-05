@@ -147,6 +147,8 @@ export interface BrowserFetchRequest {
 	 * (e.g. to replay via an impersonating HTTP client) should set this.
 	 */
 	returnOnlyCookies?: boolean;
+	/** Cookies to inject into the browser context before navigation (e.g. tracker session cookies). */
+	cookies?: Cookie[];
 }
 
 /**

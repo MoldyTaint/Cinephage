@@ -2151,7 +2151,6 @@
 	"profiles_movieMaxSize_label": "Film Max (GB)",
 	"profiles_movieMinSize_label": "Film Min (GB)",
 	"profiles_noFormatsMatchSearch": "Keine Formate entsprechen deiner Suche",
-	"profiles_preventDowngrades_label": "Auflösungs-Downgrades verhindern",
 	"profiles_scoredCount": "{count} bewertet",
 	"profiles_searchFormats": "Formate suchen...",
 	"profiles_seasonPackSizeInfo": "Für Staffelpakete wird die durchschnittliche Größe pro Episode berechnet.",
@@ -4134,5 +4133,6 @@
 	"acquisition_torrent": "Torrent",
 	"acquisition_debrid": "Debrid",
 	"acquisition_debridUnavailableReason": "Fügen Sie einen Debrid-Client mit API-Token hinzu und aktivieren Sie ihn, um Debrid zu verwenden.",
-	"acquisition_defaultPreference": "Standardmäßiger Torrent-Bezug"
+	"acquisition_defaultPreference": "Standardmäßiger Torrent-Bezug",
+	"settings_filters_anyPreference": "Beliebig (keine Präferenz)"
 }

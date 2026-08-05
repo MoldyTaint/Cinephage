@@ -2684,8 +2684,12 @@ export class SearchOrchestrator {
 				} else if (isUnmappableLocalizedTitle) {
 					// Interactive searches should not blank out results when title validation
 					// is impossible due to script mismatch (e.g. Cyrillic-only tracker titles).
+					// Automatic searches get the same escape when the release comes from a
+					// native-Cyrillic tracker (RuTracker, Kinozal, …) — otherwise auto-grab
+					// can never pick up releases it found.
 					titleMatch =
-						isInteractiveSearch && (isTvSearch(criteria) || releasePrefersNativeCyrillic);
+						(isInteractiveSearch || releasePrefersNativeCyrillic) &&
+						(isTvSearch(criteria) || releasePrefersNativeCyrillic);
 				}
 
 				// Year check: only applies when both the search criteria and the parsed
@@ -2694,15 +2698,21 @@ export class SearchOrchestrator {
 
 				if (!titleMatch || !yearMatch) {
 					// Interactive fallback for localized/transliterated indexer titles that
-					// don't match stored title variants yet, while still enforcing year.
+					// don't match stored title variants yet. The year is allowed within ±1
+					// (festival vs. wide release — matches the hard year check above).
+					// Automatic searches are included when the release comes from a
+					// native-Cyrillic tracker: its bracketed year is authoritative, so a
+					// script-mismatched title + in-range year is a trustworthy match.
 					// Keep this strict for targeted TV lookups (season/episode).
-					const allowInteractiveTitleFallback =
-						isInteractiveSearch &&
-						yearMatch &&
+					const fallbackYearMatch =
+						!searchYear || !parsedRelease.year || Math.abs(parsedRelease.year - searchYear) <= 1;
+					const allowTitleFallback =
+						(isInteractiveSearch || releasePrefersNativeCyrillic) &&
+						fallbackYearMatch &&
 						!releaseHasAnyId &&
 						((isTvSearch(criteria) && !isEpisodeTarget && !isSeasonTarget) ||
 							(isMovieSearch(criteria) && releasePrefersNativeCyrillic));
-					if (allowInteractiveTitleFallback) {
+					if (allowTitleFallback) {
 						logger.debug(
 							{
 								releaseTitle: release.title,
