@@ -345,6 +345,157 @@ describe('ReconciliationService', () => {
 		expect(episodeNumbers).toEqual([1, 2]);
 	});
 
+	it('marks every episode of a multi-episode file as present when the server reports the file once', async () => {
+		await testDb.db
+			.insert(series)
+			.values(createSeries({ id: 'series-multi-srv', tmdbId: 801, title: 'Multi Ep Show' }));
+		await testDb.db.insert(episodes).values(
+			createEpisode({
+				id: 'ms-ep-1',
+				seriesId: 'series-multi-srv',
+				seasonNumber: 2,
+				episodeNumber: 12
+			}) as typeof episodes.$inferInsert
+		);
+		await testDb.db.insert(episodes).values(
+			createEpisode({
+				id: 'ms-ep-2',
+				seriesId: 'series-multi-srv',
+				seasonNumber: 2,
+				episodeNumber: 13
+			}) as typeof episodes.$inferInsert
+		);
+		await testDb.db.insert(episodeFiles).values(
+			createEpisodeFile({
+				id: 'ef-multi-srv',
+				seriesId: 'series-multi-srv',
+				seasonNumber: 2,
+				episodeIds: ['ms-ep-1', 'ms-ep-2']
+			}) as typeof episodeFiles.$inferInsert
+		);
+		// Server reports the physical file once, under the first episode number only.
+		await testDb.db.insert(mediaServerSyncedItems).values(
+			createMediaServerItem({
+				id: 'msi-multi',
+				serverId: 'srv-1',
+				serverItemId: 'jf-multi',
+				tmdbId: 801,
+				title: 'Multi Ep Show',
+				itemType: 'episode',
+				seriesName: 'Multi Ep Show',
+				seasonNumber: 2,
+				episodeNumber: 12
+			})
+		);
+
+		const service = getReconciliationService();
+		await service.reconcile();
+
+		const items = await testDb.db.select().from(storageItems);
+		expect(items).toHaveLength(2);
+		for (const item of items) {
+			expect(item.sourceSystem).toBe('both');
+			expect(item.episodeFileId).toBe('ef-multi-srv');
+		}
+
+		const links = await testDb.db.select().from(storageItemServerLinks);
+		expect(links).toHaveLength(2);
+		expect(links.every((l) => l.syncedItemId === 'msi-multi')).toBe(true);
+	});
+
+	it('marks every episode of a multi-episode file as present when the server reports only the last episode', async () => {
+		await testDb.db
+			.insert(series)
+			.values(createSeries({ id: 'series-multi-last', tmdbId: 802, title: 'Multi Ep Show' }));
+		await testDb.db.insert(episodes).values(
+			createEpisode({
+				id: 'ml-ep-1',
+				seriesId: 'series-multi-last',
+				seasonNumber: 2,
+				episodeNumber: 12
+			}) as typeof episodes.$inferInsert
+		);
+		await testDb.db.insert(episodes).values(
+			createEpisode({
+				id: 'ml-ep-2',
+				seriesId: 'series-multi-last',
+				seasonNumber: 2,
+				episodeNumber: 13
+			}) as typeof episodes.$inferInsert
+		);
+		await testDb.db.insert(episodeFiles).values(
+			createEpisodeFile({
+				id: 'ef-multi-last',
+				seriesId: 'series-multi-last',
+				seasonNumber: 2,
+				episodeIds: ['ml-ep-1', 'ml-ep-2']
+			}) as typeof episodeFiles.$inferInsert
+		);
+		// Some servers report the last episode number of the range as IndexNumber.
+		await testDb.db.insert(mediaServerSyncedItems).values(
+			createMediaServerItem({
+				id: 'msi-multi-last',
+				serverId: 'srv-1',
+				serverItemId: 'jf-multi-last',
+				tmdbId: 802,
+				title: 'Multi Ep Show',
+				itemType: 'episode',
+				seriesName: 'Multi Ep Show',
+				seasonNumber: 2,
+				episodeNumber: 13
+			})
+		);
+
+		const service = getReconciliationService();
+		await service.reconcile();
+
+		const items = await testDb.db.select().from(storageItems);
+		expect(items).toHaveLength(2);
+		for (const item of items) {
+			expect(item.sourceSystem).toBe('both');
+		}
+	});
+
+	it('keeps multi-episode rows local-only when the file is absent from the server', async () => {
+		await testDb.db
+			.insert(series)
+			.values(createSeries({ id: 'series-multi-absent', tmdbId: 803, title: 'Multi Ep Show' }));
+		await testDb.db.insert(episodes).values(
+			createEpisode({
+				id: 'ma-ep-1',
+				seriesId: 'series-multi-absent',
+				seasonNumber: 2,
+				episodeNumber: 12
+			}) as typeof episodes.$inferInsert
+		);
+		await testDb.db.insert(episodes).values(
+			createEpisode({
+				id: 'ma-ep-2',
+				seriesId: 'series-multi-absent',
+				seasonNumber: 2,
+				episodeNumber: 13
+			}) as typeof episodes.$inferInsert
+		);
+		await testDb.db.insert(episodeFiles).values(
+			createEpisodeFile({
+				id: 'ef-multi-absent',
+				seriesId: 'series-multi-absent',
+				seasonNumber: 2,
+				episodeIds: ['ma-ep-1', 'ma-ep-2']
+			}) as typeof episodeFiles.$inferInsert
+		);
+
+		const service = getReconciliationService();
+		await service.reconcile();
+
+		const items = await testDb.db.select().from(storageItems);
+		expect(items).toHaveLength(2);
+		for (const item of items) {
+			expect(item.sourceSystem).toBe('local');
+		}
+		expect(await testDb.db.select().from(storageItemServerLinks)).toHaveLength(0);
+	});
+
 	it('links a single storage_items row to multiple media servers', async () => {
 		await testDb.db.insert(mediaBrowserServers).values({
 			id: 'srv-2',

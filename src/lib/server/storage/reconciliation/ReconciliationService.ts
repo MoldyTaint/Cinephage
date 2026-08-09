@@ -211,6 +211,70 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 					serverByKey.get(key)!.push(s);
 				}
 
+				// File-granularity server coverage: media servers report one item
+				// per physical file, so a combined file (e.g. S02E12-E13) appears
+				// under a single episode number. Without this, every episode after
+				// the first in the range would have no 1:1 server counterpart and
+				// be flagged as "missing from your media server". A server episode
+				// item (series tmdbId + season + episode number) covers a local file
+				// whose episodeIds include that number.
+				const filesByTmdbSeason = new Map<
+					string,
+					Array<{ fileId: string; episodeNumbers: Set<number> }>
+				>();
+				for (const row of localRows) {
+					if (
+						row.itemType !== 'episode' ||
+						!row.episodeFileId ||
+						row.tmdbId === null ||
+						row.seasonNumber === null ||
+						row.episodeNumber === null
+					) {
+						continue;
+					}
+					const seasonKey = `${row.tmdbId}:${row.seasonNumber}`;
+					let files = filesByTmdbSeason.get(seasonKey);
+					if (!files) {
+						files = [];
+						filesByTmdbSeason.set(seasonKey, files);
+					}
+					let fileEntry = files.find((f) => f.fileId === row.episodeFileId);
+					if (!fileEntry) {
+						fileEntry = { fileId: row.episodeFileId, episodeNumbers: new Set() };
+						files.push(fileEntry);
+					}
+					fileEntry.episodeNumbers.add(row.episodeNumber);
+				}
+				const serverItemsByFile = new Map<
+					string,
+					Array<typeof mediaServerSyncedItems.$inferSelect>
+				>();
+				for (const s of serverItemRows) {
+					if (
+						s.itemType !== 'episode' ||
+						s.tmdbId === null ||
+						s.seasonNumber === null ||
+						s.episodeNumber === null
+					) {
+						continue;
+					}
+					const files = filesByTmdbSeason.get(`${s.tmdbId}:${s.seasonNumber}`);
+					if (!files) {
+						continue;
+					}
+					for (const file of files) {
+						if (!file.episodeNumbers.has(s.episodeNumber)) {
+							continue;
+						}
+						const arr = serverItemsByFile.get(file.fileId);
+						if (arr) {
+							arr.push(s);
+						} else {
+							serverItemsByFile.set(file.fileId, [s]);
+						}
+					}
+				}
+
 				// Existing rows indexed by logical key
 				const existingByKey = new Map<string, typeof storageItems.$inferSelect>();
 				for (const item of existingItems) {
@@ -238,7 +302,13 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 				for (const key of allKeys) {
 					try {
 						const localRow = desired.get(key) ?? null;
-						const serverItems = serverByKey.get(key) ?? [];
+						let serverItems = serverByKey.get(key) ?? [];
+						// Fall back to file-granularity coverage for episodes of a
+						// multi-episode file: the file exists on the server under a
+						// sibling episode number, so this episode is satisfied too.
+						if (serverItems.length === 0 && localRow?.episodeFileId) {
+							serverItems = serverItemsByFile.get(localRow.episodeFileId) ?? [];
+						}
 						const existing = existingByKey.get(key);
 
 						// Preserve any pre-existing row even if this iteration later
