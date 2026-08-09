@@ -91,8 +91,8 @@ export async function getAutoSearchPreflightIssue(
 	if (needsTorrent && !(hasTorrent || hasDebrid) && !needsUsenet) {
 		return {
 			code: 'NO_DOWNLOAD_CLIENT',
-			message: 'No torrent download client is enabled',
-			suggestion: 'Enable a torrent client in Settings > Integrations > Download Clients.'
+			message: 'No torrent or debrid download client is enabled',
+			suggestion: 'Enable a torrent or debrid client in Settings > Integrations > Download Clients.'
 		};
 	}
 
@@ -118,6 +118,7 @@ export async function getAutoSearchPreflightIssue(
 	return {
 		code: 'NO_DOWNLOAD_CLIENT',
 		message: 'No download client is enabled',
-		suggestion: 'Enable a torrent or usenet client in Settings > Integrations > Download Clients.'
+		suggestion:
+			'Enable a torrent, debrid, or usenet client in Settings > Integrations > Download Clients.'
 	};
 }
