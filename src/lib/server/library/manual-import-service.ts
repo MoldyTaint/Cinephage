@@ -1431,8 +1431,9 @@ export class ManualImportService {
 
 		if (resolved?.numbering === 'standard') {
 			return {
-				seasonNumber: resolved.seasonNumber,
-				episodeNumbers: resolved.episodeNumbers
+				seasonNumber: request.seasonNumber ?? resolved.seasonNumber,
+				episodeNumbers:
+					request.episodeNumber != null ? [request.episodeNumber] : resolved.episodeNumbers
 			};
 		}
 
