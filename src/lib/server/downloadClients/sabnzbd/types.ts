@@ -268,7 +268,11 @@ export interface SabnzbdServer {
  */
 export interface SabnzbdConfig {
 	misc: SabnzbdMisc;
-	categories: SabnzbdCategory[];
+	/**
+	 * Available categories. Optional because SABnzbd 5.x omits this field from
+	 * get_config responses; use the get_cats endpoint instead.
+	 */
+	categories?: SabnzbdCategory[];
 	servers?: SabnzbdServer[];
 }
 

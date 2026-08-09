@@ -97,7 +97,8 @@ export class SABnzbdClient implements IDownloadClient {
 		return (
 			message.includes('unknown mode') ||
 			message.includes('bad request') ||
-			message.includes('not found')
+			message.includes('not found') ||
+			message.includes('not implemented')
 		);
 	}
 
@@ -250,7 +251,7 @@ export class SABnzbdClient implements IDownloadClient {
 			return baseDir;
 		}
 
-		const category = sabConfig.categories.find(
+		const category = (sabConfig.categories ?? []).find(
 			(c) => c.name.toLowerCase() === item.category?.toLowerCase()
 		);
 		let outputDir = baseDir;
@@ -323,7 +324,28 @@ export class SABnzbdClient implements IDownloadClient {
 
 			// Get config for additional details
 			const sabConfig = await this.proxy.getConfig();
-			const categories = sabConfig.categories.map((c) => c.name);
+			// SABnzbd 5.x omits categories from get_config; fall back to the
+			// lightweight get_cats endpoint (see issue #482).
+			let categories: string[];
+			if (sabConfig.categories && sabConfig.categories.length > 0) {
+				categories = sabConfig.categories.map((c) => c.name);
+			} else {
+				try {
+					categories = await this.proxy.getCategories();
+				} catch (catError) {
+					if (!this.isOptionalDiagnosticsError(catError)) {
+						throw catError;
+					}
+
+					logger.warn(
+						{
+							error: catError instanceof Error ? catError.message : String(catError)
+						},
+						'[SABnzbd] categories endpoint not supported, skipping'
+					);
+					categories = [];
+				}
+			}
 
 			let fullStatus: SabnzbdFullStatus | null = null;
 			try {
@@ -841,7 +863,9 @@ export class SABnzbdClient implements IDownloadClient {
 	async ensureCategory(name: string, _savePath?: string): Promise<void> {
 		try {
 			const config = await this.proxy.getConfig();
-			const exists = config.categories.some((c) => c.name.toLowerCase() === name.toLowerCase());
+			const exists = (config.categories ?? []).some(
+				(c) => c.name.toLowerCase() === name.toLowerCase()
+			);
 
 			if (!exists) {
 				logger.warn(

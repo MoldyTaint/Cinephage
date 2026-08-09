@@ -19,6 +19,7 @@ vi.mock('./SABnzbdProxy', () => {
 		getConfig = vi.fn();
 		getFullStatus = vi.fn();
 		getWarnings = vi.fn();
+		getCategories = vi.fn();
 
 		constructor() {
 			SABnzbdProxy.instances.push(this);
@@ -35,6 +36,7 @@ function getProxyInstance() {
 		getConfig: ReturnType<typeof vi.fn>;
 		getFullStatus: ReturnType<typeof vi.fn>;
 		getWarnings: ReturnType<typeof vi.fn>;
+		getCategories: ReturnType<typeof vi.fn>;
 	};
 }
 
@@ -148,5 +150,91 @@ describe('SABnzbdClient mount-mode compatibility', () => {
 
 		expect(result.success).toBe(false);
 		expect(result.error).toContain('500');
+	});
+
+	it('falls back to get_cats when get_config omits categories (SAB 5.x, issue #482)', async () => {
+		const client = new SABnzbdClient({
+			host: 'localhost',
+			port: 8080,
+			useSsl: false,
+			apiKey: 'key',
+			implementation: 'sabnzbd'
+		});
+		const proxy = getProxyInstance();
+		proxy.getVersion.mockResolvedValue('5.0.4');
+		// SABnzbd 5.x get_config response has no `categories` key at all.
+		proxy.getConfig.mockResolvedValue({ misc: { complete_dir: '/complete' } });
+		proxy.getFullStatus.mockResolvedValue({
+			diskspace1: '0',
+			diskspace2: '0',
+			diskspacetotal1: '0',
+			diskspacetotal2: '0'
+		});
+		proxy.getWarnings.mockResolvedValue([]);
+		proxy.getCategories.mockResolvedValue(['movies', 'tv', 'audio', 'software']);
+
+		const result = await client.test();
+
+		expect(result.success).toBe(true);
+		expect(result.details?.categories).toEqual(['movies', 'tv', 'audio', 'software']);
+		expect(proxy.getCategories).toHaveBeenCalled();
+	});
+
+	it('uses get_config categories when present and skips get_cats', async () => {
+		const client = new SABnzbdClient({
+			host: 'localhost',
+			port: 8080,
+			useSsl: false,
+			apiKey: 'key',
+			implementation: 'sabnzbd'
+		});
+		const proxy = getProxyInstance();
+		proxy.getVersion.mockResolvedValue('4.5');
+		proxy.getConfig.mockResolvedValue({
+			categories: [
+				{ name: 'movies', dir: '/complete/movies' },
+				{ name: 'tv', dir: '/complete/tv' }
+			],
+			misc: { complete_dir: '/complete' }
+		});
+		proxy.getFullStatus.mockResolvedValue({
+			diskspace1: '0',
+			diskspace2: '0',
+			diskspacetotal1: '0',
+			diskspacetotal2: '0'
+		});
+		proxy.getWarnings.mockResolvedValue([]);
+
+		const result = await client.test();
+
+		expect(result.success).toBe(true);
+		expect(result.details?.categories).toEqual(['movies', 'tv']);
+		expect(proxy.getCategories).not.toHaveBeenCalled();
+	});
+
+	it('succeeds with empty categories when both get_config and get_cats omit them', async () => {
+		const client = new SABnzbdClient({
+			host: 'localhost',
+			port: 8080,
+			useSsl: false,
+			apiKey: 'key',
+			implementation: 'sabnzbd'
+		});
+		const proxy = getProxyInstance();
+		proxy.getVersion.mockResolvedValue('5.0.4');
+		proxy.getConfig.mockResolvedValue({ misc: { complete_dir: '/complete' } });
+		proxy.getFullStatus.mockResolvedValue({
+			diskspace1: '0',
+			diskspace2: '0',
+			diskspacetotal1: '0',
+			diskspacetotal2: '0'
+		});
+		proxy.getWarnings.mockResolvedValue([]);
+		proxy.getCategories.mockResolvedValue([]);
+
+		const result = await client.test();
+
+		expect(result.success).toBe(true);
+		expect(result.details?.categories).toEqual([]);
 	});
 });
