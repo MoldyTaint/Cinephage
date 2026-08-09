@@ -102,6 +102,7 @@ Dynamic content discovery with auto-add to library. Import from IMDb, Trakt, TMD
 
 - File watching and auto-import
 - Multi-indexer search with deduplication
+- Built-in Cardigann-compatible tracker definitions, including NoNaMe Club
 - 6 subtitle providers, 80+ languages
 - 7 automated monitoring tasks
 - Jellyfin/Emby notifications

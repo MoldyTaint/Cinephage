@@ -17,6 +17,7 @@ export const RUSSIAN_TRACKER_NAMES = [
 	'rutor',
 	'nnmclub',
 	'nnm-club',
+	'noname club',
 	'rustorka'
 ];
 

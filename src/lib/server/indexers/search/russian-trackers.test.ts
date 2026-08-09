@@ -40,6 +40,7 @@ describe('russian-trackers', () => {
 			expect(RUSSIAN_TRACKER_NAMES).toContain('kinozal');
 			expect(RUSSIAN_TRACKER_NAMES).toContain('rutor');
 			expect(RUSSIAN_TRACKER_NAMES).toContain('nnmclub');
+			expect(RUSSIAN_TRACKER_NAMES).toContain('noname club');
 		});
 	});
 
@@ -118,6 +119,14 @@ describe('russian-trackers', () => {
 			const indexer = makeIndexer({
 				name: 'RuTracker',
 				baseUrl: 'https://rutracker.org'
+			});
+			expect(prefersNativeCyrillicTitles(indexer)).toBe(true);
+		});
+
+		it('should return true for NoNaMe Club by display name', () => {
+			const indexer = makeIndexer({
+				name: 'NoNaMe Club',
+				baseUrl: 'https://nnmclub.to'
 			});
 			expect(prefersNativeCyrillicTitles(indexer)).toBe(true);
 		});
