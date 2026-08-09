@@ -38,7 +38,10 @@ export const load: PageServerLoad = async () => {
 			enabled: config.enabled,
 			baseUrl: config.baseUrl,
 			versionOverride: config.versionOverride,
-			commitOverride: config.commitOverride
+			commitOverride: config.commitOverride,
+			autoUpdate: config.autoUpdate,
+			latestVersion: config.latestVersion,
+			latestCommit: config.latestCommit
 		},
 		identity: {
 			version: identity.version,

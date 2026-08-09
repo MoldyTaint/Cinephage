@@ -139,7 +139,7 @@
 			<button type="button" class="btn btn-ghost btn-sm" onclick={onCancel}>
 				{m.action_cancel()}
 			</button>
-			<button type="button" class="btn gap-1 btn-sm btn-primary" onclick={handleSelect}>
+			<button type="button" class="btn gap-1 btn-primary btn-sm" onclick={handleSelect}>
 				<Check class="h-4 w-4" />
 				{m.library_folderBrowser_selectFolder()}
 			</button>

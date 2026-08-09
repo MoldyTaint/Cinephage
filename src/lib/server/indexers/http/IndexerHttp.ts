@@ -25,6 +25,7 @@ import { getRateLimitRegistry, getHostRateLimiter } from '../ratelimit';
 import type { RateLimitConfig } from '../ratelimit/types';
 import { captchaSolverSettingsService, getCaptchaSolver } from '$lib/server/captcha';
 import { CloudflareBypassError } from '$lib/errors';
+import { CookieStore } from '../auth/CookieStore';
 import { decodeBuffer } from './EncodingUtils';
 
 /** HTTP request options */
@@ -310,7 +311,13 @@ export class IndexerHttp {
 							method: options.method,
 							body: options.body?.toString(),
 							timeout: Math.max(options.timeout / 1000, 60),
-							signal: options.signal
+							signal: options.signal,
+							// Inject stored session cookies so the browser request is
+							// authenticated (e.g. tracker auth cookies from AuthManager).
+							cookies: CookieStore.toPlaywrightCookies(
+								Object.fromEntries(this.getCookieJar()),
+								host
+							)
 						});
 
 						if (fetchResult.success) {

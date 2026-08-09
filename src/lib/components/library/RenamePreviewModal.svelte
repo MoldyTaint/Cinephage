@@ -301,7 +301,7 @@
 					</div>
 
 					{#if preview.missingCollectionData}
-						<div class="alert alert-warning mb-4">
+						<div class="mb-4 alert alert-warning">
 							<AlertTriangle class="h-4 w-4 shrink-0" />
 							<div class="min-w-0 flex-1 text-sm">
 								<p class="font-medium">No collection data</p>

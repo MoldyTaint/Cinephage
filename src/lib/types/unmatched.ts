@@ -26,12 +26,7 @@ export interface SuggestedMatch {
 }
 
 export type UnmatchedReason =
-	| 'no_match'
-	| 'low_confidence'
-	| 'multiple_matches'
-	| 'rejected'
-	| 'parse_error'
-	| 'manual_review';
+	'no_match' | 'low_confidence' | 'multiple_matches' | 'rejected' | 'parse_error' | 'manual_review';
 
 export interface UnmatchedFolder {
 	folderPath: string;

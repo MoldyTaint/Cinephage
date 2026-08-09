@@ -10,6 +10,7 @@ import { isPngWrappedSegment, stripPngWrapper } from '../utils/png-wrapper';
 import type { PlaybackSession } from '../types';
 import { getPlaybackSessionStore } from './session-store';
 import { rewriteSessionPlaylist } from './playlist-rewriter';
+import { rewriteDashManifest } from './dash-rewriter';
 
 const streamLog = { logDomain: 'streams' as const };
 const DEFAULT_USER_AGENT =
@@ -136,7 +137,11 @@ async function readBodyWithLimit(response: Response, maxBytes: number): Promise<
 	return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
 }
 
-async function fetchUpstream(url: string, headers: Record<string, string>): Promise<Response> {
+async function fetchUpstream(
+	url: string,
+	headers: Record<string, string>,
+	method: 'GET' | 'HEAD' = 'GET'
+): Promise<Response> {
 	let currentUrl = url;
 	let redirectCount = 0;
 	const visitedUrls = new Set<string>();
@@ -156,6 +161,7 @@ async function fetchUpstream(url: string, headers: Record<string, string>): Prom
 			currentUrl,
 			{
 				headers,
+				method,
 				redirect: 'manual'
 			},
 			30_000
@@ -189,11 +195,101 @@ export class SessionProxyService {
 		apiKey: string | undefined,
 		_request: Request
 	): Promise<Response> {
+		if (session.sourceType === 'dash') {
+			return this.renderDashManifestResponse(session, baseUrl, apiKey);
+		}
+
 		if (session.sourceType === 'mp4') {
 			return this.renderMp4AsHlsPlaylist(session, baseUrl, apiKey);
 		}
 
 		return this.renderPlaylistResponse(session, session.entryUrl, baseUrl, apiKey, true);
+	}
+
+	/**
+	 * Serve a session launch for .strm consumers (media servers) at a path
+	 * without a `.m3u` suffix. Jellyfin refuses to remux any HTTP source whose
+	 * path contains `.m3u` (MediaSourceManager.SupportsDirectStream), so the
+	 * entry URL must be extension-less or progressive.
+	 *
+	 * Source-aware: mp4 sources are streamed as the real progressive mp4
+	 * (Range passthrough, upstream headers), while true HLS sources get the
+	 * rewritten playlist — the response Content-Type identifies the format.
+	 */
+	async renderLaunchMedia(
+		session: PlaybackSession,
+		baseUrl: string,
+		apiKey: string | undefined,
+		request: Request
+	): Promise<Response> {
+		if (session.sourceType === 'dash') {
+			return this.renderDashManifestResponse(session, baseUrl, apiKey);
+		}
+
+		if (session.sourceType === 'mp4') {
+			return this.renderDirectResponse(session, request);
+		}
+
+		return this.renderPlaylistResponse(session, session.entryUrl, baseUrl, apiKey, true);
+	}
+
+	/**
+	 * Serve a DASH source's MPD, rewritten through the session so segments are
+	 * fetched via our proxy (which attaches the signed session headers, e.g.
+	 * CloudFront cookies). Served as application/dash+xml — the content type
+	 * identifies the manifest, no .m3u path involved.
+	 */
+	private async renderDashManifestResponse(
+		session: PlaybackSession,
+		baseUrl: string,
+		apiKey: string | undefined
+	): Promise<Response> {
+		const response = await fetchUpstream(session.entryUrl, buildUpstreamHeaders(session));
+		if (!response.ok) {
+			return new Response(JSON.stringify({ error: `Upstream error: ${response.status}` }), {
+				status: response.status,
+				headers: { 'Content-Type': 'application/json' }
+			});
+		}
+
+		const mpd = await readBodyWithLimit(response, MAX_TEXT_RESPONSE_BYTES);
+		const rewritten = rewriteDashManifest({
+			mpd,
+			mpdUrl: session.entryUrl,
+			baseUrl,
+			session,
+			apiKey,
+			registerResource: (url, kind, extension) => {
+				const resource = this.store.registerResource(session.token, url, kind, extension);
+				if (!resource) {
+					throw new Error('Unable to register playback resource');
+				}
+				return resource.id;
+			}
+		});
+
+		return new Response(rewritten, {
+			status: 200,
+			headers: {
+				'Content-Type': 'application/dash+xml',
+				'Access-Control-Allow-Origin': '*',
+				'Access-Control-Allow-Methods': 'GET, OPTIONS',
+				'Access-Control-Allow-Headers': 'Range, Content-Type',
+				'Cache-Control': 'no-cache'
+			}
+		});
+	}
+
+	/**
+	 * Stream a DASH segment/init resource reconstructed from the session's
+	 * MPD-relative path. Session headers (CloudFront cookies) are attached.
+	 */
+	async renderDashResource(
+		session: PlaybackSession,
+		upstreamUrl: string,
+		request: Request
+	): Promise<Response> {
+		return this.renderBinaryResponse(session, upstreamUrl, request);
 	}
 
 	private async renderMp4AsHlsPlaylist(
@@ -286,6 +382,30 @@ ${segmentUrl.toString()}
 
 	async renderDirectResponse(session: PlaybackSession, request: Request): Promise<Response> {
 		return this.renderBinaryResponse(session, session.entryUrl, request, 'video/mp4');
+	}
+
+	/**
+	 * Answer a HEAD probe from a media server without streaming the body.
+	 * Probes the upstream entry URL with a HEAD request and forwards its
+	 * status and the relevant headers (Content-Length, Content-Type, CORS).
+	 */
+	async renderHeadResponse(session: PlaybackSession, request: Request): Promise<Response> {
+		const response = await fetchUpstream(
+			session.entryUrl,
+			buildUpstreamHeaders(session, request),
+			'HEAD'
+		);
+		const contentType =
+			session.sourceType === 'dash'
+				? 'application/dash+xml'
+				: session.sourceType === 'mp4'
+					? 'video/mp4'
+					: 'application/vnd.apple.mpegurl';
+
+		return new Response(null, {
+			status: response.status,
+			headers: buildStreamingResponseHeaders(response, contentType)
+		});
 	}
 
 	async renderSubtitlePlaylist(

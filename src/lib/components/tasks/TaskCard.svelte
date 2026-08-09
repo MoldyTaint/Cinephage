@@ -166,7 +166,7 @@
 		<div class="flex items-center gap-1">
 			{#if isRunning}
 				<button
-					class="btn gap-1 text-error btn-ghost btn-xs"
+					class="btn gap-1 btn-ghost text-error btn-xs"
 					onclick={cancelTask}
 					disabled={isCancelling}
 				>
@@ -177,7 +177,7 @@
 					{/if}
 				</button>
 			{:else}
-				<button class="btn gap-1 btn-xs btn-primary" onclick={runTask} disabled={!task.enabled}>
+				<button class="btn gap-1 btn-primary btn-xs" onclick={runTask} disabled={!task.enabled}>
 					{m.action_run()}
 				</button>
 			{/if}

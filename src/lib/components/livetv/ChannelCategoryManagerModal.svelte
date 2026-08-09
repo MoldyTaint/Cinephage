@@ -249,7 +249,7 @@
 		<div class="flex gap-2">
 			<input
 				type="text"
-				class="input-bordered input input-sm flex-1"
+				class="input-bordered input flex-1 input-sm"
 				placeholder={m.livetv_channelCategoryManagerModal_categoryNamePlaceholder()}
 				bind:value={newName}
 				onkeydown={(e) => e.key === 'Enter' && addCategory()}
@@ -267,7 +267,7 @@
 				{/each}
 			</div>
 			<button
-				class="btn btn-sm btn-primary"
+				class="btn btn-primary btn-sm"
 				onclick={addCategory}
 				disabled={!newName.trim() || isAdding}
 			>
@@ -316,7 +316,7 @@
 						<div class="flex flex-1 items-center gap-2">
 							<input
 								type="text"
-								class="input-bordered input input-sm flex-1"
+								class="input-bordered input flex-1 input-sm"
 								bind:value={editingName}
 								onkeydown={(e) => {
 									if (e.key === 'Enter') saveEdit();
@@ -343,7 +343,7 @@
 								<X class="h-3.5 w-3.5" />
 							</button>
 							<button
-								class="btn btn-xs btn-primary"
+								class="btn btn-primary btn-xs"
 								onclick={saveEdit}
 								disabled={!editingName.trim() || savingId === cat.id}
 							>
@@ -379,7 +379,7 @@
 						</button>
 
 						<button
-							class="btn text-error btn-ghost btn-xs hover:bg-error/10"
+							class="btn btn-ghost text-error btn-xs hover:bg-error/10"
 							onclick={() => requestDeleteCategory(cat)}
 							disabled={deletingId === cat.id}
 						>

@@ -32,9 +32,9 @@ import {
 } from '$lib/server/library/LibraryAddService.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+import { getMediaParseStem } from '$lib/server/library/media-utils.js';
 import {
 	extractSeasonFromPath,
-	getMediaParseStem,
 	resolveTvEpisodeIdentifier
 } from '$lib/server/library/tv-episode-resolver.js';
 

@@ -166,7 +166,7 @@
 				<div class="flex flex-col gap-2">
 					<span>{m.settings_system_noApiKeys()}</span>
 					<button
-						class="btn w-fit btn-sm btn-primary"
+						class="btn w-fit btn-primary btn-sm"
 						onclick={generateApiKeys}
 						disabled={generatingKeys}
 					>
@@ -407,7 +407,7 @@
 
 			<div class="mt-4 flex justify-end">
 				<button
-					class="btn w-full gap-2 btn-sm btn-primary sm:w-auto"
+					class="btn w-full gap-2 btn-primary btn-sm sm:w-auto"
 					onclick={saveExternalUrl}
 					disabled={isSavingUrl}
 				>

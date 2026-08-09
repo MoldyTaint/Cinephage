@@ -107,8 +107,6 @@ export const DEFAULT_BONUS_FOLDER_NAMES: string[] = [
 	'Behind the Scenes',
 	'Deleted Scenes',
 	'Interviews',
-	'Specials',
-	'Season 00',
 	'Extras',
 	'Trailers',
 	'Featurettes',

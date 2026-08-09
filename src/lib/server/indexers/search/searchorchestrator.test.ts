@@ -899,6 +899,102 @@ describe('SearchOrchestrator.filterByIdOrTitleMatch', () => {
 		const filtered = privateApi(orchestrator).filterByIdOrTitleMatch(releases, criteria);
 		expect(filtered).toHaveLength(0);
 	});
+
+	it('keeps interactive movie results from native-Cyrillic trackers when the release year is within ±1', () => {
+		const releases = [
+			createRelease({
+				title: 'Военная машина [2016, США, боевик, BDRip 1080p]',
+				indexerName: 'RuTracker.org'
+			})
+		];
+
+		const criteria = createMovieCriteria({
+			searchSource: 'interactive',
+			query: 'War Machine',
+			searchTitles: ['War Machine'],
+			year: 2017
+		});
+
+		const filtered = privateApi(orchestrator).filterByIdOrTitleMatch(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toContain('Военная машина');
+	});
+
+	it('keeps automatic movie results from native-Cyrillic trackers when the year matches', () => {
+		const releases = [
+			createRelease({
+				title: 'Военная машина [2017, США, боевик, BDRip 1080p]',
+				indexerName: 'RuTracker.org'
+			})
+		];
+
+		const criteria = createMovieCriteria({
+			searchSource: 'automatic',
+			query: 'War Machine',
+			searchTitles: ['War Machine'],
+			year: 2017
+		});
+
+		const filtered = privateApi(orchestrator).filterByIdOrTitleMatch(releases, criteria);
+		expect(filtered).toHaveLength(1);
+	});
+
+	it('keeps automatic movie results from native-Cyrillic trackers when the release year is within ±1', () => {
+		const releases = [
+			createRelease({
+				title: 'Военная машина [2016, США, боевик, BDRip 1080p]',
+				indexerName: 'RuTracker.org'
+			})
+		];
+
+		const criteria = createMovieCriteria({
+			searchSource: 'automatic',
+			query: 'War Machine',
+			searchTitles: ['War Machine'],
+			year: 2017
+		});
+
+		const filtered = privateApi(orchestrator).filterByIdOrTitleMatch(releases, criteria);
+		expect(filtered).toHaveLength(1);
+	});
+
+	it('rejects native-Cyrillic movie results when the release year is off by more than 1', () => {
+		const releases = [
+			createRelease({
+				title: 'Военная машина [2014, США, боевик, BDRip 1080p]',
+				indexerName: 'RuTracker.org'
+			})
+		];
+
+		const criteria = createMovieCriteria({
+			searchSource: 'automatic',
+			query: 'War Machine',
+			searchTitles: ['War Machine'],
+			year: 2017
+		});
+
+		const filtered = privateApi(orchestrator).filterByIdOrTitleMatch(releases, criteria);
+		expect(filtered).toHaveLength(0);
+	});
+
+	it('keeps automatic TV results from native-Cyrillic trackers for whole-series lookups within ±1 year', () => {
+		const releases = [
+			createRelease({
+				title: 'Ночной агент [2025, США, боевик, WEB-DL 1080p]',
+				indexerName: 'RuTracker.org'
+			})
+		];
+
+		const criteria = createTvCriteria({
+			searchSource: 'automatic',
+			query: 'The Night Agent',
+			searchTitles: ['The Night Agent'],
+			year: 2026
+		});
+
+		const filtered = privateApi(orchestrator).filterByIdOrTitleMatch(releases, criteria);
+		expect(filtered).toHaveLength(1);
+	});
 });
 
 describe('SearchOrchestrator.filterOutNonVideoArtifacts', () => {

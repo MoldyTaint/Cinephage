@@ -135,8 +135,9 @@ import {
  * Version 124: Add movie_file_id to subtitles for per-file subtitle association
  * Version 125: Add api_token and remove_after_import columns to download_clients (debrid support)
  * Version 126: Add metadata_language and prefer_original_title columns to movies and series tables
+ * Version 127: Add cinephage_api_config identity auto-sync columns (latest_version, latest_commit, auto_update)
  */
-export const CURRENT_SCHEMA_VERSION = 126;
+export const CURRENT_SCHEMA_VERSION = 127;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -472,6 +473,9 @@ const TABLE_DEFINITIONS: string[] = [
 		"base_url" text NOT NULL DEFAULT 'https://api.cinephage.net',
 		"version_override" text,
 		"commit_override" text,
+		"auto_update" integer DEFAULT 1 NOT NULL,
+		"latest_version" text,
+		"latest_commit" text,
 		"updated_at" text
 	)`,
 

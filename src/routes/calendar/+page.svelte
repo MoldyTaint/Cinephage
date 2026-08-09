@@ -523,7 +523,7 @@
 
 				<!-- Save -->
 				<div class="flex justify-end border-t border-base-300 pt-3">
-					<button class="btn btn-sm btn-primary" onclick={savePreferences} disabled={savingPrefs}>
+					<button class="btn btn-primary btn-sm" onclick={savePreferences} disabled={savingPrefs}>
 						{savingPrefs ? m.common_saving() : m.action_save()}
 					</button>
 				</div>
@@ -807,7 +807,7 @@
 											<span class="badge badge-sm badge-primary">{m.calendar_inLibrary()}</span>
 										{:else}
 											<button
-												class="btn gap-1 px-2 btn-ghost btn-xs"
+												class="btn gap-1 btn-ghost px-2 btn-xs"
 												onclick={() => openAddModal(movie)}
 											>
 												<Plus class="h-3.5 w-3.5" />

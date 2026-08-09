@@ -6,7 +6,7 @@ import { getServiceManager } from '$lib/server/services/service-manager.js';
 import { resolveAppVersion } from '$lib/server/version.js';
 
 export const GET: RequestHandler = async () => {
-	let databaseReady = false;
+	let databaseReady: boolean;
 
 	try {
 		await db.select().from(settings).limit(1);

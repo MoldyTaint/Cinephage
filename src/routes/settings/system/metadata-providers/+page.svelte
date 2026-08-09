@@ -122,7 +122,7 @@
 					{m.settings_integrations_notConfigured()}
 				</div>
 			{/if}
-			<button onclick={openTmdbModal} class="btn gap-1 btn-sm btn-primary">
+			<button onclick={openTmdbModal} class="btn gap-1 btn-primary btn-sm">
 				{data.tmdb.hasApiKey ? m.action_update() : m.action_configure()}
 				<ChevronRight class="h-4 w-4" />
 			</button>
@@ -163,7 +163,7 @@
 					Disabled
 				</div>
 			{/if}
-			<button onclick={openEnrichmentModal} class="btn gap-1 btn-sm btn-primary">
+			<button onclick={openEnrichmentModal} class="btn gap-1 btn-primary btn-sm">
 				Configure
 				<ChevronRight class="h-4 w-4" />
 			</button>

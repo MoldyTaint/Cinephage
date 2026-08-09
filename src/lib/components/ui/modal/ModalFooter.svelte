@@ -34,7 +34,7 @@
 <div class="modal-action mt-6 flex-wrap gap-2 border-t border-base-300 pt-4">
 	{#if showDelete && onDelete}
 		<button
-			class="btn mr-auto text-error btn-ghost"
+			class="btn mr-auto btn-ghost text-error"
 			onclick={onDelete}
 			disabled={deleting || saving}
 		>

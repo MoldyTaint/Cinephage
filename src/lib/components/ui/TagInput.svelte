@@ -65,7 +65,7 @@
 		 inset box-shadow with --color-primary — applied via :focus-within since the div
 		 itself is never directly focused (only the inner <input> is). -->
 	<div
-		class="input input-sm flex flex-wrap items-center gap-1 focus-within:border-transparent focus-within:[box-shadow:inset_0_0_0_2px_var(--color-primary,oklch(var(--p)))] focus-within:[outline:none]"
+		class="input flex flex-wrap items-center gap-1 input-sm focus-within:border-transparent focus-within:[box-shadow:inset_0_0_0_2px_var(--color-primary,oklch(var(--p)))] focus-within:[outline:none]"
 		style="height: auto; min-height: var(--size, 2rem); padding-block: 0.25rem;"
 	>
 		{#each values as tag, i (tag)}

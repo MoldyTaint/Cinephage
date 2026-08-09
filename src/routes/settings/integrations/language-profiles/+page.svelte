@@ -277,7 +277,7 @@
 		</div>
 
 		<div class="mt-4 flex justify-stretch sm:justify-end">
-			<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={handleSaveSettings}>
+			<button class="btn w-full gap-2 btn-primary btn-sm sm:w-auto" onclick={handleSaveSettings}>
 				<CheckCircle size={16} />
 				{m.settings_integrations_languageProfiles_saveSettings()}
 			</button>
@@ -287,7 +287,7 @@
 	<!-- Profiles List -->
 	<SettingsSection title={m.settings_integrations_languageProfiles_profiles()} variant="flat">
 		{#snippet actions()}
-			<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={openAddModal}>
+			<button class="btn w-full gap-2 btn-primary btn-sm sm:w-auto" onclick={openAddModal}>
 				<Plus class="h-4 w-4" />
 				{m.settings_integrations_languageProfiles_addProfile()}
 			</button>
@@ -360,7 +360,7 @@
 										<Pencil class="h-4 w-4" />
 									</button>
 									<button
-										class="btn text-error btn-ghost btn-sm"
+										class="btn btn-ghost text-error btn-sm"
 										onclick={() => confirmDelete(profile)}
 										aria-label={m.settings_integrations_languageProfiles_deleteProfile()}
 									>
@@ -472,7 +472,7 @@
 						</label>
 
 						<button
-							class="btn text-error btn-ghost btn-sm"
+							class="btn btn-ghost text-error btn-sm"
 							onclick={() => removeLanguage(i)}
 							disabled={formLanguages.length === 1}
 							aria-label={m.settings_integrations_languageProfiles_removeLanguage()}

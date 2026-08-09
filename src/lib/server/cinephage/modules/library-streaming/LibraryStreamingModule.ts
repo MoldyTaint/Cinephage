@@ -58,6 +58,9 @@ interface CinephageApiResponse {
 	result?: { streams?: unknown[]; sources?: unknown[] };
 	meta?: Record<string, unknown>;
 	error?: { details?: { limit?: number; resetAt?: string }; message?: string };
+	requiresProxy?: boolean;
+	expiresAt?: number;
+	deliveryType?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -74,14 +77,24 @@ function getFirstString(...values: unknown[]): string | undefined {
 function normalizeStreamType(value: string | undefined, url: string): StreamType {
 	const normalized = value?.toLowerCase();
 	if (normalized === 'mp4') return 'mp4';
+	if (normalized === 'dash' || url.includes('.mpd')) return 'dash';
 	if (normalized === 'm3u8' || normalized === 'hls') return normalized;
-	return url.includes('.mp4') ? 'mp4' : 'm3u8';
+	return url.includes('.mp4') ? 'mp4' : url.includes('.mpd') ? 'dash' : 'hls';
 }
 
 function normalizeSubtitles(value: unknown): StreamSubtitle[] | undefined {
 	if (!Array.isArray(value)) return undefined;
 	const subtitles: StreamSubtitle[] = [];
 	for (const entry of value) {
+		// The Cinephage API returns plain signed SRT URLs for some providers.
+		if (typeof entry === 'string' && entry.trim().length > 0) {
+			subtitles.push({
+				url: entry.trim(),
+				label: 'und',
+				language: 'und'
+			});
+			continue;
+		}
 		if (!isRecord(entry)) continue;
 		const url = getFirstString(entry.url, entry.file, entry.src);
 		if (!url) continue;
@@ -150,7 +163,12 @@ function normalizeSource(entry: unknown, apiBaseUrl: string): StreamSource | nul
 		headers,
 		provider,
 		subtitles: normalizeSubtitles(entry.subtitles ?? entry.tracks),
-		status: 'working'
+		status: 'working',
+		requiresProxy: entry.requiresProxy === true,
+		expiresAt:
+			typeof entry.expiresAt === 'number' && Number.isFinite(entry.expiresAt)
+				? entry.expiresAt
+				: undefined
 	};
 }
 
@@ -283,19 +301,37 @@ export class LibraryStreamingModule extends BaseCinephageModule {
 		}
 
 		try {
-			const response = await this.core.getHttpClient().get(url.toString(), {
+			let response = await this.core.getHttpClient().get(url.toString(), {
 				headers: { Accept: 'application/json', ...(await this.core.getAuthHeaders()) },
 				signal: params.signal
 			});
 
+			if (response.status === 401) {
+				// The gateway has historically flipped between accepting the
+				// 'v'-prefixed and bare version formats. Toggle the stored
+				// format and retry once before falling back to a re-sync.
+				const toggled = await this.core.toggleVersionFormat();
+				if (toggled?.isConfigured) {
+					response = await this.core.getHttpClient().get(url.toString(), {
+						headers: { Accept: 'application/json', ...(await this.core.getAuthHeaders()) },
+						signal: params.signal
+					});
+				}
+			}
+
+			if (response.status === 401) {
+				// Gateway still rejects our identity (likely stale release
+				// pair). Kick off a self-heal refresh so the next request
+				// authenticates with the latest release.
+				void this.core.refreshLatestIdentity(true);
+				return {
+					success: false,
+					sources: [],
+					error: 'Cinephage API rejected authentication. Verify the configured version and commit.'
+				};
+			}
+
 			switch (response.status) {
-				case 401:
-					return {
-						success: false,
-						sources: [],
-						error:
-							'Cinephage API rejected authentication. Verify the configured version and commit.'
-					};
 				case 403:
 					return {
 						success: false,

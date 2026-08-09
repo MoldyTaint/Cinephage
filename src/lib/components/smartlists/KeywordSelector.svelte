@@ -65,7 +65,7 @@
 			bind:value={query}
 			oninput={handleInput}
 			placeholder={m.smartlists_filter_keywordsPlaceholder()}
-			class="input-bordered input input-sm w-full"
+			class="input-bordered input w-full input-sm"
 		/>
 		{#if searching}
 			<Loader2 class="absolute top-2 right-3 h-4 w-4 animate-spin" />
@@ -79,7 +79,7 @@
 					<div class="flex gap-1">
 						<button
 							type="button"
-							class="btn btn-xs btn-success"
+							class="btn btn-success btn-xs"
 							onclick={() => addKeyword(keyword, false)}
 							title={m.smartlists_filter_include()}
 						>
@@ -87,7 +87,7 @@
 						</button>
 						<button
 							type="button"
-							class="btn btn-xs btn-error"
+							class="btn btn-error btn-xs"
 							onclick={() => addKeyword(keyword, true)}
 							title={m.smartlists_filter_exclude()}
 						>

@@ -89,7 +89,7 @@
 		</div>
 	{:else if helpText}
 		<div class="label py-1">
-			<span class="label-text-alt text-xs text-base-content/60">{helpText}</span>
+			<span class="label-text-alt text-xs whitespace-normal text-base-content/60">{helpText}</span>
 		</div>
 	{/if}
 </div>

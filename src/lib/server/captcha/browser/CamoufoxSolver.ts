@@ -453,7 +453,7 @@ export async function browserFetch(
 
 		detachAbort = attachAbort(request.signal, camoufoxManager, managed);
 
-		const { page } = managed;
+		const { page, context } = managed;
 
 		// Block heavy media, and rewrite the initial GET into a POST when needed.
 		await setupPageInterception(page, {
@@ -463,6 +463,12 @@ export async function browserFetch(
 					? { url: request.url, body: request.body, contentType: request.contentType }
 					: undefined
 		});
+
+		// Inject any pre-existing session cookies (e.g. tracker auth cookies stored
+		// by AuthManager) so the browser request is authenticated from the start.
+		if (request.cookies && request.cookies.length > 0) {
+			await camoufoxManager.addCookies(context, request.cookies);
+		}
 
 		// Deep links (e.g. /search/…) get a much stricter Cloudflare challenge than
 		// the site root and frequently never clear on their own. Warming up on the

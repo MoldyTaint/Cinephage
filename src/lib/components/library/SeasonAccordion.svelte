@@ -309,7 +309,7 @@
 			</button>
 
 			<!-- Action buttons -->
-			<div class="flex shrink-0 items-center gap-2 mx-auto sm:mx-0 sm:ml-auto">
+			<div class="mx-auto flex shrink-0 items-center gap-2 sm:mx-0 sm:ml-auto">
 				<!-- Season monitor toggle -->
 				<button
 					class="btn btn-ghost btn-sm {season.monitored

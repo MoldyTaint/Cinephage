@@ -513,6 +513,24 @@ export class RenamePreviewService {
 					}
 				}
 
+				// Clean up empty season subdirectories left behind when files moved
+				// between season folders within the same series folder (e.g. Season 00
+				// -> Specials). The series-level parent path is unchanged so
+				// applyFolderRename never runs, but the old season dir may now be empty.
+				const oldSeasonDirs = new Set<string>();
+				for (const item of items) {
+					const matched = groupResult.find((r) => r.fileId === item.fileId);
+					if (!matched?.success) continue;
+					const oldSeasonDir = dirname(item.currentFullPath);
+					const newSeasonDir = dirname(item.newFullPath);
+					if (oldSeasonDir !== newSeasonDir) {
+						oldSeasonDirs.add(oldSeasonDir);
+					}
+				}
+				for (const dir of oldSeasonDirs) {
+					await this.tryRemoveEmptyDir(dir);
+				}
+
 				return groupResult;
 			})
 		);

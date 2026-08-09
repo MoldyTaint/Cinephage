@@ -85,7 +85,14 @@ export const POST: RequestHandler = async (event) => {
 	}
 
 	const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
-	const effectiveProfileId = await getEffectiveScoringProfileId(scoringProfileId);
+	const collectionOwningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
+		rootFolderId,
+		'movie'
+	);
+	const effectiveProfileId = await getEffectiveScoringProfileId(
+		scoringProfileId,
+		collectionOwningLibrary
+	);
 	const namingConfig = namingSettingsService.getConfigSync();
 	const langCodes = [
 		...new Set([

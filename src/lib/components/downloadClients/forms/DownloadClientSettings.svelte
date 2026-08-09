@@ -245,7 +245,7 @@
 					<input
 						id="downloadPathLocal"
 						type="text"
-						class="input-bordered input input-sm join-item flex-1"
+						class="input-bordered input join-item flex-1 input-sm"
 						bind:value={downloadPathLocal}
 						placeholder="/mnt/downloads"
 					/>
@@ -294,7 +294,7 @@
 						<input
 							id="tempPathLocal"
 							type="text"
-							class="input-bordered input input-sm join-item flex-1"
+							class="input-bordered input join-item flex-1 input-sm"
 							bind:value={tempPathLocal}
 							placeholder="/mnt/incomplete"
 						/>

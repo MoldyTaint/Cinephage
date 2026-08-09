@@ -38,6 +38,7 @@
 		mediaType: 'movie' | 'tv';
 		defaultSearchOnAdd: boolean;
 		defaultWantsSubtitles: boolean;
+		qualityProfileId?: string | null;
 		rootFolders: Array<{ id: string }>;
 	}
 
@@ -382,7 +383,14 @@
 
 			selectedRootFolder = getRecommendedRootFolderId(filteredRootFolders) ?? '';
 
-			const defaultProfileId = profilesData.defaultProfileId;
+			const libraryProfileId = selectedRootFolderLibrary?.qualityProfileId;
+			const libraryProfileIsValid =
+				libraryProfileId !== undefined &&
+				libraryProfileId !== null &&
+				scoringProfiles.some((p) => p.id === libraryProfileId);
+			const defaultProfileId = libraryProfileIsValid
+				? libraryProfileId
+				: profilesData.defaultProfileId;
 			const defaultProfile =
 				(defaultProfileId && scoringProfiles.find((p) => p.id === defaultProfileId)) ??
 				scoringProfiles.find((p) => p.isDefault) ??

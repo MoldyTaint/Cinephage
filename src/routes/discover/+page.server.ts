@@ -46,8 +46,10 @@ export const load: PageServerLoad = async ({ url }) => {
 		});
 		if (filtersRow?.value) {
 			const globalFilters = JSON.parse(filtersRow.value);
-			if (globalFilters?.language && typeof globalFilters.language === 'string') {
-				withOriginalLanguage = globalFilters.language.toLowerCase().split('-')[0] || null;
+			const globalLanguage =
+				typeof globalFilters?.language === 'string' ? globalFilters.language.trim() : '';
+			if (globalLanguage && globalLanguage.toLowerCase() !== 'any') {
+				withOriginalLanguage = globalLanguage.toLowerCase().split('-')[0] || null;
 			}
 		}
 	}

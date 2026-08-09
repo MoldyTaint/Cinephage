@@ -210,4 +210,112 @@ describe('LibraryStreamingModule', () => {
 			delete process.env.APP_COMMIT;
 		});
 	});
+
+	describe('getStreams', () => {
+		function createFakeCore(httpGet: ReturnType<typeof vi.fn>) {
+			return {
+				getBaseUrl: vi.fn().mockResolvedValue('https://api.cinephage.net'),
+				getIdentity: vi.fn().mockResolvedValue({
+					version: 'v0.15.0',
+					commit: '8167446',
+					isConfigured: true
+				}),
+				getAuthHeaders: vi.fn().mockResolvedValue({
+					'X-Cinephage-Version': 'v0.15.0',
+					'X-Cinephage-Commit': '8167446'
+				}),
+				getHttpClient: vi.fn().mockReturnValue({ get: httpGet }),
+				toggleVersionFormat: vi.fn().mockResolvedValue(null),
+				refreshLatestIdentity: vi.fn().mockResolvedValue(undefined)
+			};
+		}
+
+		it('normalizes a dash source with string subtitles, requiresProxy and expiresAt', async () => {
+			const httpGet = vi.fn().mockResolvedValue({
+				status: 200,
+				body: JSON.stringify({
+					url: 'https://cdn.example.com/dash/abc_0_0_1080_h265_884/index.mpd',
+					provider: 'Vidlink',
+					quality: '1080p',
+					protocol: 'dash',
+					headers: {
+						Cookie: 'CloudFront-Policy=xyz;CloudFront-Signature=abc;CloudFront-Key-Pair-Id=K1'
+					},
+					subtitles: ['https://cdn.example.com/sub/en.srt?signed'],
+					requiresProxy: true,
+					expiresAt: 1786206904
+				})
+			});
+
+			const mod = new LibraryStreamingModule(settings, createFakeCore(httpGet) as never);
+			const result = await mod.getStreams({ tmdbId: 27205, type: 'movie' });
+
+			expect(result.success).toBe(true);
+			expect(result.sources).toHaveLength(1);
+			const source = result.sources[0];
+			expect(source.type).toBe('dash');
+			expect(source.requiresProxy).toBe(true);
+			expect(source.expiresAt).toBe(1786206904);
+			expect(source.headers?.Cookie).toContain('CloudFront-Policy=xyz');
+			expect(source.subtitles).toEqual([
+				{ url: 'https://cdn.example.com/sub/en.srt?signed', label: 'und', language: 'und' }
+			]);
+		});
+
+		it('toggles the version format and retries once on 401', async () => {
+			const httpGet = vi
+				.fn()
+				.mockResolvedValueOnce({
+					status: 401,
+					body: JSON.stringify({ error: { message: 'Invalid or missing authentication' } })
+				})
+				.mockResolvedValueOnce({
+					status: 200,
+					body: JSON.stringify({
+						url: 'https://cdn.example.com/master.m3u8',
+						provider: 'Vidlink',
+						quality: '1080p',
+						protocol: 'hls',
+						headers: {}
+					})
+				});
+
+			const core = createFakeCore(httpGet);
+			core.toggleVersionFormat = vi.fn().mockResolvedValue({
+				version: '0.15.0',
+				commit: '8167446',
+				isConfigured: true
+			});
+
+			const mod = new LibraryStreamingModule(settings, core as never);
+			const result = await mod.getStreams({ tmdbId: 603, type: 'movie' });
+
+			expect(httpGet).toHaveBeenCalledTimes(2);
+			expect(core.toggleVersionFormat).toHaveBeenCalledTimes(1);
+			expect(result.success).toBe(true);
+			expect(result.sources[0].type).toBe('hls');
+		});
+
+		it('falls back to an identity refresh when the 401 retry also fails', async () => {
+			const httpGet = vi.fn().mockResolvedValue({
+				status: 401,
+				body: JSON.stringify({ error: { message: 'Invalid or missing authentication' } })
+			});
+
+			const core = createFakeCore(httpGet);
+			core.toggleVersionFormat = vi.fn().mockResolvedValue({
+				version: '0.15.0',
+				commit: '8167446',
+				isConfigured: true
+			});
+
+			const mod = new LibraryStreamingModule(settings, core as never);
+			const result = await mod.getStreams({ tmdbId: 603, type: 'movie' });
+
+			expect(httpGet).toHaveBeenCalledTimes(2);
+			expect(core.refreshLatestIdentity).toHaveBeenCalledWith(true);
+			expect(result.success).toBe(false);
+			expect(result.error).toContain('rejected authentication');
+		});
+	});
 });

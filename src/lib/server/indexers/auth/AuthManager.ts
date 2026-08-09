@@ -10,6 +10,11 @@ import { FilterEngine } from '../engine/FilterEngine';
 import { SelectorEngine } from '../engine/SelectorEngine';
 import { CookieStore } from './CookieStore';
 import { decodeBuffer } from '../http/EncodingUtils';
+import { isCloudflareProtected, CloudflareProtectedError } from '../http/CloudflareDetection';
+import { captchaSolverSettingsService, getCaptchaSolver } from '$lib/server/captcha';
+import { createChildLogger } from '$lib/logging';
+
+const authLogger = createChildLogger({ logDomain: 'indexers' as const });
 
 export interface AuthContext {
 	indexerId: string;
@@ -226,55 +231,23 @@ export class AuthManager {
 			Referer: context.baseUrl
 		};
 
-		if (Object.keys(requestCookies).length > 0) {
-			headers['Cookie'] = CookieStore.buildCookieHeader(requestCookies);
-		}
-
 		if (login.headers) {
 			for (const [key, values] of Object.entries(login.headers)) {
 				headers[key] = this.templateEngine.expand(values[0]);
 			}
 		}
 
-		// Execute request with manual redirect to capture cookies from 302 response
-		let response = await fetch(loginUrl, {
+		const result = await this.requestWithCloudflareFallback(loginUrl, {
 			method: 'POST',
 			headers,
 			body: formData,
-			redirect: 'manual'
+			requestCookies,
+			encoding: context.encoding
 		});
 
-		// Extract cookies from the initial response (important for 302 redirects with Set-Cookie)
-		const extracted = CookieStore.extractCookiesFromResponse(response);
-		this.cookies = CookieStore.mergeCookies(requestCookies, extracted.cookies);
+		this.cookies = result.cookies;
 
-		// Handle manual redirect if we got a 302/301
-		if (response.status === 302 || response.status === 301) {
-			const location = response.headers.get('location');
-			if (location) {
-				const redirectUrl = this.resolveUrl(location, context.baseUrl);
-
-				// Follow redirect with captured cookies
-				response = await fetch(redirectUrl, {
-					method: 'GET',
-					headers: {
-						Referer: loginUrl,
-						Cookie: CookieStore.buildCookieHeader(this.cookies)
-					},
-					redirect: 'manual'
-				});
-
-				// Extract any additional cookies from redirect response
-				const redirectExtracted = CookieStore.extractCookiesFromResponse(response);
-				this.cookies = CookieStore.mergeCookies(this.cookies, redirectExtracted.cookies);
-			}
-		}
-
-		// Check for errors - decode with proper encoding
-		const arrayBuffer = await response.arrayBuffer();
-		const buffer = Buffer.from(arrayBuffer);
-		const { text: content } = decodeBuffer(buffer, context.encoding);
-		const error = this.checkLoginError(response, content, login);
+		const error = this.checkLoginError(result.status, result.content, login);
 		if (error) {
 			return { success: false, cookies: this.cookies, error };
 		}
@@ -298,29 +271,16 @@ export class AuthManager {
 			requestCookies = CookieStore.mergeCookies(requestCookies, loginCookies);
 		}
 
-		// Fetch login page
-		const pageHeaders: Record<string, string> = {
-			Referer: context.baseUrl
-		};
-
-		if (Object.keys(requestCookies).length > 0) {
-			pageHeaders['Cookie'] = CookieStore.buildCookieHeader(requestCookies);
-		}
-
-		const pageResponse = await fetch(loginUrl, {
+		// Fetch login page (Cloudflare-aware: falls back to browser when challenged)
+		const pageResult = await this.requestWithCloudflareFallback(loginUrl, {
 			method: 'GET',
-			headers: pageHeaders,
-			redirect: this.definition.followredirect ? 'follow' : 'manual'
+			headers: { Referer: context.baseUrl },
+			requestCookies,
+			encoding: context.encoding
 		});
 
-		// Update cookies from page response
-		const pageExtracted = CookieStore.extractCookiesFromResponse(pageResponse);
-		this.cookies = CookieStore.mergeCookies(requestCookies, pageExtracted.cookies);
-
-		// Decode page content with proper encoding
-		const pageArrayBuffer = await pageResponse.arrayBuffer();
-		const pageBuffer = Buffer.from(pageArrayBuffer);
-		const { text: pageContent } = decodeBuffer(pageBuffer, context.encoding);
+		this.cookies = pageResult.cookies;
+		const pageContent = pageResult.content;
 		const $ = cheerio.load(pageContent);
 
 		// Find form
@@ -415,52 +375,26 @@ export class AuthManager {
 			Referer: loginUrl
 		};
 
-		if (Object.keys(this.cookies).length > 0) {
-			submitHeaders['Cookie'] = CookieStore.buildCookieHeader(this.cookies);
-		}
-
 		if (login.headers) {
 			for (const [key, values] of Object.entries(login.headers)) {
 				submitHeaders[key] = this.templateEngine.expand(values[0]);
 			}
 		}
 
-		// Submit form - DON'T follow redirects so we can capture cookies from 302 response
-		const submitResponse = await fetch(submitUrl, {
+		// Submit form (Cloudflare-aware: the browser fallback rewrites the initial GET
+		// into a POST and captures session cookies from the response).
+		const submitResult = await this.requestWithCloudflareFallback(submitUrl, {
 			method: 'POST',
 			headers: submitHeaders,
 			body: formData,
-			redirect: 'manual'
+			requestCookies: this.cookies,
+			encoding: context.encoding
 		});
 
-		// Update cookies from submit response (BEFORE following redirect)
-		const submitExtracted = CookieStore.extractCookiesFromResponse(submitResponse);
-		this.cookies = CookieStore.mergeCookies(this.cookies, submitExtracted.cookies);
-
-		// If we got a redirect, follow it manually
-		let finalResponse = submitResponse;
-		if (submitResponse.status >= 300 && submitResponse.status < 400) {
-			const redirectUrl = submitResponse.headers.get('location');
-			if (redirectUrl) {
-				const resolvedRedirectUrl = this.resolveUrl(redirectUrl, submitUrl);
-				finalResponse = await fetch(resolvedRedirectUrl, {
-					method: 'GET',
-					headers: {
-						Referer: submitUrl,
-						Cookie: CookieStore.buildCookieHeader(this.cookies)
-					}
-				});
-				// Extract any additional cookies from the redirect target
-				const redirectExtracted = CookieStore.extractCookiesFromResponse(finalResponse);
-				this.cookies = CookieStore.mergeCookies(this.cookies, redirectExtracted.cookies);
-			}
-		}
+		this.cookies = submitResult.cookies;
 
 		// Check for errors - decode with proper encoding
-		const finalArrayBuffer = await finalResponse.arrayBuffer();
-		const finalBuffer = Buffer.from(finalArrayBuffer);
-		const { text: finalContent } = decodeBuffer(finalBuffer, context.encoding);
-		const error = this.checkLoginError(finalResponse, finalContent, login);
+		const error = this.checkLoginError(submitResult.status, submitResult.content, login);
 		if (error) {
 			return { success: false, cookies: this.cookies, error };
 		}
@@ -539,22 +473,18 @@ export class AuthManager {
 			}
 		}
 
-		// Execute request
-		const response = await fetch(url.toString(), {
+		// Execute request (Cloudflare-aware)
+		const result = await this.requestWithCloudflareFallback(url.toString(), {
 			method: 'GET',
 			headers,
-			redirect: 'follow'
+			requestCookies: this.cookies,
+			encoding: context.encoding
 		});
 
-		// Extract cookies
-		const getExtracted = CookieStore.extractCookiesFromResponse(response);
-		this.cookies = getExtracted.cookies;
+		this.cookies = result.cookies;
 
 		// Check for errors - decode with proper encoding
-		const arrayBuffer = await response.arrayBuffer();
-		const buffer = Buffer.from(arrayBuffer);
-		const { text: content } = decodeBuffer(buffer, context.encoding);
-		const error = this.checkLoginError(response, content, login);
+		const error = this.checkLoginError(result.status, result.content, login);
 		if (error) {
 			return { success: false, cookies: this.cookies, error };
 		}
@@ -589,22 +519,18 @@ export class AuthManager {
 			}
 		}
 
-		// Execute request
-		const response = await fetch(url, {
+		// Execute request (Cloudflare-aware)
+		const result = await this.requestWithCloudflareFallback(url, {
 			method: 'GET',
 			headers,
-			redirect: 'follow'
+			requestCookies: this.cookies,
+			encoding: context.encoding
 		});
 
-		// Extract cookies
-		const oneUrlExtracted = CookieStore.extractCookiesFromResponse(response);
-		this.cookies = oneUrlExtracted.cookies;
+		this.cookies = result.cookies;
 
 		// Check for errors - decode with proper encoding
-		const arrayBuffer = await response.arrayBuffer();
-		const buffer = Buffer.from(arrayBuffer);
-		const { text: content } = decodeBuffer(buffer, context.encoding);
-		const error = this.checkLoginError(response, content, login);
+		const error = this.checkLoginError(result.status, result.content, login);
 		if (error) {
 			return { success: false, cookies: this.cookies, error };
 		}
@@ -680,9 +606,9 @@ export class AuthManager {
 	/**
 	 * Check for login errors in response.
 	 */
-	private checkLoginError(response: Response, content: string, login: LoginBlock): string | null {
+	private checkLoginError(status: number, content: string, login: LoginBlock): string | null {
 		// Check HTTP status
-		if (response.status === 401) {
+		if (status === 401) {
 			return 'Unauthorized (401)';
 		}
 
@@ -720,6 +646,129 @@ export class AuthManager {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Perform a login request with Cloudflare awareness.
+	 *
+	 * Tries a plain fetch first (with manual redirect following so session cookies
+	 * from 302 responses are captured). If the response looks like a Cloudflare
+	 * challenge and the captcha solver (Camoufox browser) is available, retries
+	 * through the browser — which both passes the challenge and returns the
+	 * session cookies set by the site.
+	 */
+	private async requestWithCloudflareFallback(
+		url: string,
+		options: {
+			method: 'GET' | 'POST';
+			headers?: Record<string, string>;
+			body?: URLSearchParams | string;
+			requestCookies?: Record<string, string>;
+			encoding?: string;
+			maxRedirects?: number;
+		}
+	): Promise<{ status: number; content: string; cookies: Record<string, string>; url: string }> {
+		const { maxRedirects = 5 } = options;
+		const encoding = options.encoding ?? 'UTF-8';
+
+		let currentUrl = url;
+		let currentCookies = { ...(options.requestCookies ?? {}) };
+		let requestMethod: 'GET' | 'POST' = options.method;
+		let requestBody: URLSearchParams | string | undefined = options.body;
+
+		for (let redirects = 0; redirects <= maxRedirects; redirects++) {
+			const headers = { ...(options.headers ?? {}) };
+			if (Object.keys(currentCookies).length > 0) {
+				headers['Cookie'] = CookieStore.buildCookieHeader(currentCookies);
+			}
+
+			const response = await fetch(currentUrl, {
+				method: requestMethod,
+				headers,
+				body: requestBody,
+				redirect: 'manual'
+			});
+
+			const arrayBuffer = await response.arrayBuffer();
+			const { text: content } = decodeBuffer(Buffer.from(arrayBuffer), encoding);
+			const status = response.status;
+
+			const extracted = CookieStore.extractCookiesFromResponse(response);
+			currentCookies = CookieStore.mergeCookies(currentCookies, extracted.cookies);
+
+			// Cloudflare challenge → browser fallback
+			if (isCloudflareProtected(status, response.headers, content)) {
+				const host = new URL(currentUrl).hostname;
+				const solver = getCaptchaSolver();
+				const captchaEnabled = captchaSolverSettingsService.isEnabled();
+
+				if (!captchaEnabled) {
+					authLogger.info(
+						{ host, url: currentUrl },
+						'[AuthManager] Cloudflare detected, captcha solver disabled'
+					);
+					throw new CloudflareProtectedError(host, status);
+				}
+
+				if (solver.isAvailable()) {
+					authLogger.info(
+						{ host, url: currentUrl },
+						'[AuthManager] Cloudflare detected, fetching through browser'
+					);
+
+					const browserResult = await solver.fetch({
+						url: currentUrl,
+						method: requestMethod,
+						body: typeof requestBody === 'string' ? requestBody : requestBody?.toString(),
+						timeout: 60,
+						cookies: CookieStore.toPlaywrightCookies(currentCookies, host)
+					});
+
+					if (browserResult.success) {
+						const browserCookies = CookieStore.toCookieRecord(browserResult.cookies ?? []);
+						currentCookies = CookieStore.mergeCookies(currentCookies, browserCookies);
+						authLogger.info(
+							{
+								host,
+								status: browserResult.status,
+								cookieCount: Object.keys(browserCookies).length
+							},
+							'[AuthManager] Browser login request succeeded'
+						);
+						return {
+							status: browserResult.status,
+							content: browserResult.body,
+							cookies: currentCookies,
+							url: browserResult.url
+						};
+					}
+
+					authLogger.warn(
+						{ host, error: browserResult.error },
+						'[AuthManager] Browser login request failed'
+					);
+				}
+
+				// Report the challenge explicitly instead of surfacing a misleading
+				// "Form not found" error downstream.
+				throw new CloudflareProtectedError(host, status);
+			}
+
+			// Follow redirects manually to capture Set-Cookie from 302 responses.
+			if (status >= 300 && status < 400) {
+				const location = response.headers.get('location');
+				if (location) {
+					currentUrl = this.resolveUrl(location, currentUrl);
+					requestMethod = 'GET';
+					requestBody = undefined;
+					continue;
+				}
+			}
+
+			return { status, content, cookies: currentCookies, url: response.url };
+		}
+
+		throw new Error(`Too many redirects during login request to ${url}`);
 	}
 
 	/**

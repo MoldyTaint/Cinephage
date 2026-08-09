@@ -108,7 +108,7 @@ export class LibraryWatcherService extends EventEmitter {
 			depth: 10,
 			awaitWriteFinish: {
 				stabilityThreshold: 2000,
-				pollInterval: 100
+				pollInterval: 500
 			},
 			ignored: [/(^|[/\\])\../, /node_modules/, /@eaDir/, /#recycle/i, /\$RECYCLE\.BIN/i]
 		});

@@ -219,7 +219,7 @@ export const POST: RequestHandler = async (event) => {
 				.reduce((sum, s) => sum + (s.episode_count ?? 0), 0) ?? 0;
 
 		// Get the effective scoring profile (shared logic)
-		const effectiveProfileId = await getEffectiveScoringProfileId(scoringProfileId);
+		const effectiveProfileId = await getEffectiveScoringProfileId(scoringProfileId, owningLibrary);
 
 		// Get the language profile if subtitles wanted (shared logic)
 		const languageProfileId = await getLanguageProfileId(wantsSubtitles, tmdbId);

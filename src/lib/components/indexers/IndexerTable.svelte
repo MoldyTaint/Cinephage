@@ -388,7 +388,7 @@
 						<Settings class="h-4 w-4" />
 					</button>
 					<button
-						class="btn text-error btn-ghost btn-xs"
+						class="btn btn-ghost text-error btn-xs"
 						onclick={() => onDelete(indexer)}
 						disabled={reorderMode}
 						title="Delete indexer"

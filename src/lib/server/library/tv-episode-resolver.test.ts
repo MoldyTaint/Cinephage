@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { getMediaParseStem } from './media-utils';
 import {
 	extractSeasonFromPath,
-	getMediaParseStem,
 	matchEpisodesByIdentifier,
 	resolveTvEpisodeIdentifier
 } from './tv-episode-resolver';

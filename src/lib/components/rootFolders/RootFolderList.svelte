@@ -133,7 +133,7 @@
 											<Settings class="h-4 w-4" />
 										</button>
 										<button
-											class="btn btn-square text-error btn-ghost btn-sm"
+											class="btn btn-square btn-ghost text-error btn-sm"
 											onclick={() => onDelete(folder)}
 											title={m.action_delete()}
 										>

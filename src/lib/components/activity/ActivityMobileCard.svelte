@@ -218,7 +218,7 @@
 			{/if}
 
 			<button
-				class="btn btn-ghost btn-xs btn-error"
+				class="btn btn-ghost btn-error btn-xs"
 				onclick={() => onQueueAction('remove')}
 				disabled={isQueueActionLoading}
 			>

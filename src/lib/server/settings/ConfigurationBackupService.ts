@@ -81,13 +81,7 @@ type TableName =
 	| 'smartLists';
 
 export type BackupSectionName =
-	| 'system'
-	| 'profiles'
-	| 'downloads'
-	| 'indexers'
-	| 'subtitles'
-	| 'integrations'
-	| 'liveTv';
+	'system' | 'profiles' | 'downloads' | 'indexers' | 'subtitles' | 'integrations' | 'liveTv';
 
 export interface ConfigurationBackupSectionManifest {
 	id: BackupSectionName;

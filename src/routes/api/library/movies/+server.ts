@@ -221,7 +221,7 @@ export const POST: RequestHandler = async (event) => {
 		const { imdbId } = await fetchMovieExternalIds(tmdbId);
 
 		// Get the effective scoring profile (shared logic)
-		const effectiveProfileId = await getEffectiveScoringProfileId(scoringProfileId);
+		const effectiveProfileId = await getEffectiveScoringProfileId(scoringProfileId, owningLibrary);
 
 		// Get the language profile if subtitles wanted (shared logic)
 		const languageProfileId = await getLanguageProfileId(wantsSubtitles, tmdbId);

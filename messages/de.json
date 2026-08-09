@@ -2151,7 +2151,6 @@
 	"profiles_movieMaxSize_label": "Film Max (GB)",
 	"profiles_movieMinSize_label": "Film Min (GB)",
 	"profiles_noFormatsMatchSearch": "Keine Formate entsprechen deiner Suche",
-	"profiles_preventDowngrades_label": "Auflösungs-Downgrades verhindern",
 	"profiles_scoredCount": "{count} bewertet",
 	"profiles_searchFormats": "Formate suchen...",
 	"profiles_seasonPackSizeInfo": "Für Staffelpakete wird die durchschnittliche Größe pro Episode berechnet.",
@@ -2939,6 +2938,8 @@
 	"settings_naming_savedCustomSource": "Gespeicherte benutzerdefinierte Quelle",
 	"settings_naming_savePreset": "Voreinstellung speichern",
 	"settings_naming_seasonFolder": "Staffel-Ordner",
+	"settings_naming_useSpecialsFolder": "'Specials'-Ordner für Staffel 0 verwenden",
+	"settings_naming_useSpecialsFolderHelp": "Legt Specials in einem 'Specials'-Ordner statt in 'Season 00' ab. Nach dieser Änderung einen Umbenennungs-Job ausführen, um vorhandene Dateien zu verschieben.",
 	"settings_naming_seasonFolderFormat": "Staffel-Ordner-Format",
 	"settings_naming_selectCustomPreset": "Benutzerdefinierte Voreinstellung auswählen...",
 	"settings_naming_seriesFolder": "Serien-Ordner",
@@ -4132,5 +4133,6 @@
 	"acquisition_torrent": "Torrent",
 	"acquisition_debrid": "Debrid",
 	"acquisition_debridUnavailableReason": "Fügen Sie einen Debrid-Client mit API-Token hinzu und aktivieren Sie ihn, um Debrid zu verwenden.",
-	"acquisition_defaultPreference": "Standardmäßiger Torrent-Bezug"
+	"acquisition_defaultPreference": "Standardmäßiger Torrent-Bezug",
+	"settings_filters_anyPreference": "Beliebig (keine Präferenz)"
 }

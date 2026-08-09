@@ -410,7 +410,7 @@
 						<button
 							transition:fade={{ duration: 150 }}
 							onclick={() => scrollCarousel('left')}
-							class="absolute -left-2 top-1/2 z-10 -translate-y-1/2 rounded-full bg-base-100/80 p-1 shadow backdrop-blur-sm hover:bg-base-100"
+							class="absolute top-1/2 -left-2 z-10 -translate-y-1/2 rounded-full bg-base-100/80 p-1 shadow backdrop-blur-sm hover:bg-base-100"
 						>
 							<ChevronLeft size={18} />
 						</button>
@@ -419,7 +419,7 @@
 						<button
 							transition:fade={{ duration: 150 }}
 							onclick={() => scrollCarousel('right')}
-							class="absolute -right-2 top-1/2 z-10 -translate-y-1/2 rounded-full bg-base-100/80 p-1 shadow backdrop-blur-sm hover:bg-base-100"
+							class="absolute top-1/2 -right-2 z-10 -translate-y-1/2 rounded-full bg-base-100/80 p-1 shadow backdrop-blur-sm hover:bg-base-100"
 						>
 							<ChevronRight size={18} />
 						</button>
@@ -427,12 +427,12 @@
 					<div
 						bind:this={carouselContainer}
 						onscroll={handleCarouselScroll}
-						class="flex gap-3 overflow-x-auto pb-1 scrollbar-none"
+						class="flex scrollbar-none gap-3 overflow-x-auto pb-1"
 					>
 						{#each mediaItems as item (item.type === 'video' ? item.data.key : item.data.file_path)}
 							{#if item.type === 'video'}
 								<button
-									class="group shrink-0 w-36 text-left"
+									class="group w-36 shrink-0 text-left"
 									onclick={() => (activeVideo = item.data)}
 								>
 									<div class="relative aspect-video overflow-hidden rounded-lg bg-base-300">
@@ -454,7 +454,7 @@
 								</button>
 							{:else}
 								<button
-									class="group shrink-0 w-36 text-left"
+									class="group w-36 shrink-0 text-left"
 									onclick={() => (activeBackdrop = item.data.file_path)}
 								>
 									<div class="relative aspect-video overflow-hidden rounded-lg bg-base-300">
@@ -479,10 +479,10 @@
 				</div>
 			{:else if backdropImages.length > 0}
 				<div class="group/carousel relative">
-					<div class="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+					<div class="flex scrollbar-none gap-3 overflow-x-auto pb-1">
 						{#each backdropImages as backdrop (backdrop.file_path)}
 							<button
-								class="group shrink-0 w-36 text-left"
+								class="group w-36 shrink-0 text-left"
 								onclick={() => (activeBackdrop = backdrop.file_path)}
 							>
 								<div class="relative aspect-video overflow-hidden rounded-lg bg-base-300">
@@ -508,7 +508,7 @@
 							href={youtubeSearchFallbackUrl}
 							target="_blank"
 							rel="noopener noreferrer"
-							class="group shrink-0 w-36"
+							class="group w-36 shrink-0"
 						>
 							<div
 								class="flex aspect-video flex-col items-center justify-center gap-1.5 rounded-lg border border-base-content/10 bg-base-300 p-2 transition-colors group-hover:border-base-content/20 group-hover:bg-base-200"
@@ -555,7 +555,7 @@
 							{#if libraryPageLink}
 								<a
 									href={resolvePath(libraryPageLink)}
-									class="btn gap-1 btn-outline btn-sm btn-primary"
+									class="btn gap-1 btn-outline btn-primary btn-sm"
 								>
 									<Film class="h-4 w-4" />
 									{m.hero_viewInLibrary()}
@@ -571,7 +571,7 @@
 							{#if libraryPageLink}
 								<a
 									href={resolvePath(libraryPageLink)}
-									class="btn gap-1 btn-outline btn-sm btn-primary"
+									class="btn gap-1 btn-outline btn-primary btn-sm"
 								>
 									<Film class="h-4 w-4" />
 									{m.hero_viewInLibrary()}
@@ -587,7 +587,7 @@
 							{#if libraryPageLink}
 								<a
 									href={resolvePath(libraryPageLink)}
-									class="btn gap-1 btn-outline btn-sm btn-primary"
+									class="btn gap-1 btn-outline btn-primary btn-sm"
 								>
 									<Film class="h-4 w-4" />
 									{m.hero_viewInLibrary()}
@@ -595,7 +595,7 @@
 							{/if}
 						{/if}
 					{:else}
-						<button class="btn gap-1 btn-sm btn-primary" onclick={() => (showAddModal = true)}>
+						<button class="btn gap-1 btn-primary btn-sm" onclick={() => (showAddModal = true)}>
 							<Plus class="h-4 w-4" />
 							{m.hero_addToLibrary()}
 						</button>
@@ -622,7 +622,7 @@
 					class="flex w-full items-center gap-2 border-t border-base-content/10 pt-2 sm:w-auto sm:border-0 sm:pt-0"
 				>
 					<button
-						class="btn gap-1 text-error btn-ghost btn-xs"
+						class="btn gap-1 btn-ghost text-error btn-xs"
 						onclick={() => (showBlockConfirm = true)}
 						title={m.hero_blockMediaTooltip()}
 					>
@@ -821,7 +821,7 @@
 					<p class="text-sm text-white/50">{activeVideo.type}</p>
 				</div>
 				<button
-					class="btn btn-circle btn-ghost btn-sm text-white/70 hover:text-white"
+					class="btn btn-circle btn-ghost text-white/70 btn-sm hover:text-white"
 					onclick={() => (activeVideo = null)}
 				>
 					<X size={18} />
@@ -852,7 +852,7 @@
 		onkeydown={(e) => e.key === 'Escape' && (activeBackdrop = null)}
 	>
 		<button
-			class="absolute right-4 top-4 btn btn-circle btn-ghost btn-sm text-white/70 hover:text-white"
+			class="btn absolute top-4 right-4 btn-circle btn-ghost text-white/70 btn-sm hover:text-white"
 			onclick={() => (activeBackdrop = null)}
 		>
 			<X size={18} />

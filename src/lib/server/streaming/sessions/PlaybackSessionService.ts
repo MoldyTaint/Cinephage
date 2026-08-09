@@ -108,7 +108,8 @@ export class PlaybackSessionService {
 			sourceType: source.type,
 			requestHeaders: buildSourceHeaders(source),
 			subtitles: normalizeSubtitleList(source),
-			attempts: []
+			attempts: [],
+			sourceExpiresAt: source.expiresAt
 		});
 
 		logger.info(

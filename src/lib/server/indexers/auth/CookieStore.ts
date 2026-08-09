@@ -533,6 +533,40 @@ export class CookieStore {
 	}
 
 	/**
+	 * Convert a flat name/value cookie map into Playwright Cookie objects for a domain.
+	 * Used to inject stored tracker session cookies into the Camoufox browser context.
+	 */
+	static toPlaywrightCookies(
+		cookies: Record<string, string>,
+		domain: string
+	): import('playwright-core').Cookie[] {
+		const expires = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+		return Object.entries(cookies).map(([name, value]) => ({
+			name,
+			value,
+			domain,
+			path: '/',
+			expires,
+			httpOnly: false,
+			secure: true,
+			sameSite: 'Lax' as const
+		}));
+	}
+
+	/**
+	 * Convert Playwright Cookie objects into a flat name/value map.
+	 */
+	static toCookieRecord(cookies: import('playwright-core').Cookie[]): Record<string, string> {
+		const result: Record<string, string> = {};
+		for (const cookie of cookies) {
+			if (cookie.name && cookie.value !== undefined) {
+				result[cookie.name] = cookie.value;
+			}
+		}
+		return result;
+	}
+
+	/**
 	 * Extract cookies from fetch Response with expiration info.
 	 */
 	static extractCookiesFromResponse(response: Response): {

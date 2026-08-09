@@ -31,11 +31,8 @@ import {
 	getRootFolderOverlapMessage
 } from '$lib/server/filesystem/root-folder-overlap.js';
 import { libraryMediaEvents } from './LibraryMediaEvents.js';
-import {
-	getMediaParseStem,
-	matchEpisodesByIdentifier,
-	resolveTvEpisodeIdentifier
-} from './tv-episode-resolver.js';
+import { getMediaParseStem } from './media-utils.js';
+import { matchEpisodesByIdentifier, resolveTvEpisodeIdentifier } from './tv-episode-resolver.js';
 import { StreamingDiskScanner } from './jobs/StreamingDiskScanner.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
@@ -375,6 +372,7 @@ export class DiskScanService extends EventEmitter {
 			const seenPaths = new Set<string>();
 
 			for await (const batch of scanner.scan(rootFolder.path)) {
+				let fileIndex = 0;
 				for (const file of batch) {
 					progress.currentFile = file.relativePath;
 
@@ -406,6 +404,14 @@ export class DiskScanService extends EventEmitter {
 
 					filesFound++;
 					progress.filesProcessed = filesFound;
+
+					// Yield every 10 files so HTTP requests (health checks, API calls)
+					// can be served even during large initial scans on slow filesystems.
+					// Without this, 500 synchronous SQLite inserts run as microtasks and
+					// starve the event loop on ZFS/NFS mounts for 10+ seconds.
+					if (++fileIndex % 10 === 0) {
+						await new Promise<void>((resolve) => setImmediate(resolve));
+					}
 				}
 
 				progress.filesFound = filesFound;
@@ -416,8 +422,6 @@ export class DiskScanService extends EventEmitter {
 					throw new Error('Scan was cancelled');
 				}
 
-				// Yield to the event loop between batches so HTTP requests and
-				// logging can be served even when scanning a large library.
 				await new Promise<void>((resolve) => setImmediate(resolve));
 			}
 

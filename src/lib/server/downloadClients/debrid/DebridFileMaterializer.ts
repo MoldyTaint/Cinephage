@@ -76,7 +76,8 @@ export class DebridFileMaterializer {
 		} catch (error) {
 			if (tempPath) await rm(tempPath, { force: true }).catch(() => undefined);
 			throw new Error(
-				redactDebridDiagnostic(error instanceof Error ? error.message : 'Materialization failed')
+				redactDebridDiagnostic(error instanceof Error ? error.message : 'Materialization failed'),
+				{ cause: error }
 			);
 		} finally {
 			activeFinalPaths.delete(finalPath);

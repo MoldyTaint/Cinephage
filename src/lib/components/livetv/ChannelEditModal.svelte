@@ -296,7 +296,7 @@
 				<input
 					type="number"
 					id="channelNumber"
-					class="input-bordered input input-sm w-full {channelNumberError ? 'input-error' : ''}"
+					class="input-bordered input w-full input-sm {channelNumberError ? 'input-error' : ''}"
 					bind:value={channelNumber}
 					placeholder={String(channel.position)}
 					min="1"
@@ -313,7 +313,7 @@
 				<input
 					type="text"
 					id="customName"
-					class="input-bordered input input-sm w-full"
+					class="input-bordered input w-full input-sm"
 					bind:value={customName}
 					placeholder={channel.channel.name}
 				/>
@@ -361,7 +361,7 @@
 						<input
 							type="url"
 							id="customLogo"
-							class="input-bordered input input-sm flex-1 {customLogoError ? 'input-error' : ''}"
+							class="input-bordered input flex-1 input-sm {customLogoError ? 'input-error' : ''}"
 							bind:value={customLogo}
 							placeholder={m.livetv_channelEditModal_customLogoPlaceholder()}
 						/>
@@ -401,7 +401,7 @@
 				<input
 					type="text"
 					id="epgId"
-					class="input-bordered input input-sm w-full"
+					class="input-bordered input w-full input-sm"
 					bind:value={epgId}
 					placeholder={m.livetv_channelEditModal_epgIdPlaceholder()}
 				/>
@@ -431,7 +431,7 @@
 						</div>
 						<button
 							type="button"
-							class="btn text-error btn-ghost btn-xs"
+							class="btn btn-ghost text-error btn-xs"
 							onclick={clearEpgSource}
 							title="Remove"
 						>
@@ -448,7 +448,7 @@
 						</div>
 						<button
 							type="button"
-							class="btn text-error btn-ghost btn-xs"
+							class="btn btn-ghost text-error btn-xs"
 							onclick={clearEpgSource}
 							title="Remove"
 						>
@@ -501,7 +501,7 @@
 
 		<div class="modal-action mt-4">
 			{#if onDelete}
-				<button class="btn mr-auto btn-outline btn-sm btn-error" onclick={onDelete}>
+				<button class="btn mr-auto btn-outline btn-error btn-sm" onclick={onDelete}>
 					Delete
 				</button>
 			{/if}
@@ -509,7 +509,7 @@
 			<button class="btn btn-ghost btn-sm" onclick={onClose} disabled={saving}
 				>{m.action_cancel()}</button
 			>
-			<button class="btn btn-sm btn-primary" onclick={handleSubmit} disabled={saving || !isValid}>
+			<button class="btn btn-primary btn-sm" onclick={handleSubmit} disabled={saving || !isValid}>
 				{#if saving}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{/if}

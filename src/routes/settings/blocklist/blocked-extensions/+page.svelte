@@ -66,7 +66,7 @@
 	subtitle="Video file extensions listed here will be skipped during library scans globally. A root folder's own blocked extension list takes priority over this global setting."
 >
 	{#snippet actions()}
-		<button class="btn btn-sm btn-primary" onclick={handleSave} disabled={saving}>
+		<button class="btn btn-primary btn-sm" onclick={handleSave} disabled={saving}>
 			{saving ? 'Saving...' : 'Save'}
 		</button>
 	{/snippet}
@@ -119,7 +119,7 @@
 					bind:value={inputValue}
 					onkeydown={handleKeydown}
 					placeholder=".avi"
-					class="input-bordered input input-sm w-32 font-mono"
+					class="input-bordered input w-32 font-mono input-sm"
 					maxlength="10"
 				/>
 				<button class="btn btn-outline btn-sm" onclick={addExtension} disabled={!inputValue.trim()}>

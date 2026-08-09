@@ -361,7 +361,7 @@
 		<!-- Monitoring -->
 		<section>
 			<h4
-				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/50"
+				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold tracking-wider text-base-content/50 uppercase"
 			>
 				Monitoring
 			</h4>
@@ -418,7 +418,7 @@
 									type="button"
 									class="btn btn-xs {desiredQualities.includes(option.value)
 										? 'btn-primary'
-										: 'btn-ghost border border-base-300'}"
+										: 'border border-base-300 btn-ghost'}"
 									onclick={() => toggleDesiredQuality(option.value)}
 								>
 									{option.label}
@@ -445,7 +445,7 @@
 		<!-- Scheduling -->
 		<section>
 			<h4
-				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/50"
+				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold tracking-wider text-base-content/50 uppercase"
 			>
 				Scheduling
 			</h4>
@@ -491,7 +491,7 @@
 						<input
 							id="movie-availability-delay"
 							type="number"
-							class="input-bordered input input-sm w-20"
+							class="input-bordered input w-20 input-sm"
 							min="0"
 							max="365"
 							bind:value={availabilityDelay}
@@ -505,7 +505,7 @@
 		<!-- Files -->
 		<section>
 			<h4
-				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/50"
+				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold tracking-wider text-base-content/50 uppercase"
 			>
 				Files
 			</h4>
@@ -553,7 +553,7 @@
 								<input
 									type="text"
 									placeholder="Search TMDB collections..."
-									class="input input-xs w-full rounded-full border-base-content/20 bg-base-100 pl-8 pr-7"
+									class="input w-full rounded-full border-base-content/20 bg-base-100 pr-7 pl-8 input-xs"
 									bind:value={collectionQuery}
 									oninput={handleCollectionQueryInput}
 								/>
@@ -563,7 +563,7 @@
 								{#if collectionQuery}
 									<button
 										type="button"
-										class="absolute top-1/2 right-1.5 -translate-y-1/2 text-base-content/40 hover:text-base-content text-xs"
+										class="absolute top-1/2 right-1.5 -translate-y-1/2 text-xs text-base-content/40 hover:text-base-content"
 										onclick={() => {
 											collectionQuery = '';
 											collectionResults = [];
@@ -588,7 +588,7 @@
 							{/if}
 							<button
 								type="button"
-								class="btn btn-ghost btn-xs w-full"
+								class="btn w-full btn-ghost btn-xs"
 								onclick={() => {
 									collectionSearchOpen = false;
 									collectionQuery = '';
@@ -604,14 +604,14 @@
 							<span
 								class="min-w-0 flex-1 truncate {collectionName
 									? ''
-									: 'italic text-base-content/40'}"
+									: 'text-base-content/40 italic'}"
 							>
 								{collectionName ?? 'No collection'}
 							</span>
 							{#if collectionName}
 								<button
 									type="button"
-									class="btn btn-ghost btn-xs text-error"
+									class="btn btn-ghost text-error btn-xs"
 									onclick={() => {
 										collectionId = null;
 										collectionName = null;
@@ -635,7 +635,7 @@
 
 				{#if canMoveExistingFiles}
 					<label class="label cursor-pointer">
-						<span class="label-text text-warning text-xs"
+						<span class="label-text text-xs text-warning"
 							>Move existing files to new root folder</span
 						>
 						<input
@@ -652,7 +652,7 @@
 				{#if movie.path}
 					<div class="form-control w-full">
 						<label class="label py-0.5" for="movie-folder-path">
-							<span class="flex items-center gap-1 label-text text-xs text-base-content/80">
+							<span class="label-text flex items-center gap-1 text-xs text-base-content/80">
 								Folder name
 								<span
 									class="tooltip tooltip-right"
@@ -680,7 +680,7 @@
 								<input
 									id="movie-folder-path"
 									type="text"
-									class="input-bordered input input-sm join-item flex-1 font-mono"
+									class="input-bordered input join-item flex-1 font-mono input-sm"
 									bind:value={folderPath}
 								/>
 								<button
@@ -709,7 +709,7 @@
 		<!-- Metadata -->
 		<section>
 			<h4
-				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/50"
+				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold tracking-wider text-base-content/50 uppercase"
 			>
 				Metadata
 			</h4>

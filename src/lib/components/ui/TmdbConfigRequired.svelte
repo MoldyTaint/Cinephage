@@ -11,7 +11,7 @@
 		<h3 class="font-bold">{m.ui_tmdbRequired_title()}</h3>
 		<p class="text-sm">{message}</p>
 	</div>
-	<a href="/settings/system/metadata-providers?open=tmdb" class="btn gap-2 btn-sm btn-primary">
+	<a href="/settings/system/metadata-providers?open=tmdb" class="btn gap-2 btn-primary btn-sm">
 		<Settings class="h-4 w-4" />
 		{m.ui_tmdbRequired_configureTmdb()}
 	</a>

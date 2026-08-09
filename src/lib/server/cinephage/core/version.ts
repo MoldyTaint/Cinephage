@@ -10,8 +10,11 @@ import { resolveAppVersion as resolveAppVersionBase } from '$lib/server/version'
  *
  * Resolution chain (per field):
  *   1. Manual override from cinephage_api_config (escape hatch for custom builds)
- *   2. APP_VERSION / APP_COMMIT env vars (baked into Dockerfile at build)
- *   3. null — subsystem reports "not configured" and test() fails clearly
+ *   2. Auto-synced latest release (cinephage_api_config.latest_version/commit),
+ *      kept fresh by the identity sync — the api.cinephage.net gateway only
+ *      accepts the newest published release pair.
+ *   3. APP_VERSION / APP_COMMIT env vars (baked into Dockerfile at build)
+ *   4. null — subsystem reports "not configured" and test() fails clearly
  *
  * `resolveAppVersion` reuses the existing helper at src/lib/server/version.ts
  * to stay consistent with the rest of the app.
@@ -38,18 +41,26 @@ export function resolveAppCommit(): string | null {
 export interface CinephageServerIdentity {
 	/** Resolved version string. Always set (falls back to 'dev-local'). */
 	version: string;
-	/** Resolved commit short-SHA. Null when neither override nor APP_COMMIT env is set. */
+	/** Resolved commit short-SHA. Null when no source yields a commit. */
 	commit: string | null;
 	/** True when both version and commit are non-placeholder. Required for API calls. */
 	isConfigured: boolean;
 }
 
-export function getServerIdentity(overrides: {
+export function getServerIdentity(input: {
 	versionOverride: string | null;
 	commitOverride: string | null;
+	latestVersion: string | null;
+	latestCommit: string | null;
 }): CinephageServerIdentity {
-	const version = normalizeString(overrides.versionOverride) ?? resolveAppVersion();
-	const commit = normalizeString(overrides.commitOverride) ?? resolveAppCommit();
+	const version =
+		normalizeString(input.versionOverride) ??
+		normalizeString(input.latestVersion) ??
+		resolveAppVersion();
+	const commit =
+		normalizeString(input.commitOverride) ??
+		normalizeString(input.latestCommit) ??
+		resolveAppCommit();
 
 	return {
 		version,

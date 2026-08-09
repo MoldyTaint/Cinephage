@@ -59,10 +59,38 @@ describe('core/version', () => {
 			const { getServerIdentity } = await import('./version.js');
 			const identity = getServerIdentity({
 				versionOverride: 'override-v',
-				commitOverride: 'override-c'
+				commitOverride: 'override-c',
+				latestVersion: null,
+				latestCommit: null
 			});
 			expect(identity.version).toBe('override-v');
 			expect(identity.commit).toBe('override-c');
+		});
+
+		it('falls back to the auto-synced latest release before env vars', async () => {
+			process.env.APP_VERSION = 'env-version';
+			process.env.APP_COMMIT = 'env-commit';
+			const { getServerIdentity } = await import('./version.js');
+			const identity = getServerIdentity({
+				versionOverride: null,
+				commitOverride: null,
+				latestVersion: '0.15.0',
+				latestCommit: '8167446'
+			});
+			expect(identity.version).toBe('0.15.0');
+			expect(identity.commit).toBe('8167446');
+		});
+
+		it('manual overrides win over the auto-synced latest', async () => {
+			const { getServerIdentity } = await import('./version.js');
+			const identity = getServerIdentity({
+				versionOverride: '1.2.3',
+				commitOverride: 'manual',
+				latestVersion: '0.15.0',
+				latestCommit: '8167446'
+			});
+			expect(identity.version).toBe('1.2.3');
+			expect(identity.commit).toBe('manual');
 		});
 
 		it('falls back to env vars when overrides are null', async () => {
@@ -71,7 +99,9 @@ describe('core/version', () => {
 			const { getServerIdentity } = await import('./version.js');
 			const identity = getServerIdentity({
 				versionOverride: null,
-				commitOverride: null
+				commitOverride: null,
+				latestVersion: null,
+				latestCommit: null
 			});
 			expect(identity.version).toBe('env-version');
 			expect(identity.commit).toBe('env-commit');
@@ -83,7 +113,9 @@ describe('core/version', () => {
 			const { getServerIdentity } = await import('./version.js');
 			const identity = getServerIdentity({
 				versionOverride: null,
-				commitOverride: null
+				commitOverride: null,
+				latestVersion: null,
+				latestCommit: null
 			});
 			expect(identity.version).toBe('env-version');
 			expect(identity.commit).toBeNull();
@@ -94,7 +126,9 @@ describe('core/version', () => {
 			const { getServerIdentity } = await import('./version.js');
 			const identity = getServerIdentity({
 				versionOverride: null,
-				commitOverride: null
+				commitOverride: null,
+				latestVersion: null,
+				latestCommit: null
 			});
 			expect(identity.isConfigured).toBe(false);
 		});
@@ -105,7 +139,9 @@ describe('core/version', () => {
 			const { getServerIdentity } = await import('./version.js');
 			const identity = getServerIdentity({
 				versionOverride: null,
-				commitOverride: null
+				commitOverride: null,
+				latestVersion: null,
+				latestCommit: null
 			});
 			expect(identity.isConfigured).toBe(true);
 		});

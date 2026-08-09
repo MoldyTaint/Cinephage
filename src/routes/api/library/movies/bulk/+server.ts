@@ -78,7 +78,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const moviesToAdd = tmdbIds.filter((id) => !existingTmdbIds.has(id));
 
 		// Get the effective scoring profile once (shared across all movies)
-		const effectiveProfileId = await getEffectiveScoringProfileId(scoringProfileId);
+		const effectiveProfileId = await getEffectiveScoringProfileId(scoringProfileId, owningLibrary);
 
 		const results: BulkAddResult = {
 			added: 0,

@@ -8,13 +8,7 @@
  * Connection status states
  */
 export type SSEStatus =
-	| 'idle'
-	| 'connecting'
-	| 'connected'
-	| 'error'
-	| 'closed'
-	| 'paused'
-	| 'offline';
+	'idle' | 'connecting' | 'connected' | 'error' | 'closed' | 'paused' | 'offline';
 
 /**
  * SSE error types for better error handling

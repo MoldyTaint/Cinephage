@@ -83,7 +83,7 @@
 			<button class="btn btn-ghost btn-xs" onclick={onClearSelection}
 				>{m.livetv_channelBrowserModal_clear()}</button
 			>
-			<button class="btn btn-sm btn-primary" onclick={onAddSelected} disabled={bulkAdding}>
+			<button class="btn btn-primary btn-sm" onclick={onAddSelected} disabled={bulkAdding}>
 				{#if bulkAdding}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{:else}

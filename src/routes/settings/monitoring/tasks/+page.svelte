@@ -294,7 +294,7 @@
 <SettingsPage title={m.settings_tasks_heading()} subtitle={m.settings_tasks_subtitle()}>
 	{#snippet actions()}
 		<button
-			class="btn w-full gap-2 btn-sm btn-primary sm:w-auto"
+			class="btn w-full gap-2 btn-primary btn-sm sm:w-auto"
 			onclick={() => (showCreateModal = true)}
 		>
 			<Plus class="h-4 w-4" />

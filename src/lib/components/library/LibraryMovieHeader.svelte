@@ -267,7 +267,7 @@
 	<div class="flex items-center justify-between gap-2">
 		<a
 			href={resolvePath(librarySlug ? `/library/movies?library=${librarySlug}` : '/library/movies')}
-			class="btn btn-ghost btn-sm gap-1.5 text-base-content/60"
+			class="btn gap-1.5 btn-ghost text-base-content/60 btn-sm"
 		>
 			<ArrowLeft size={16} />
 			<span class="sm:inline"
@@ -281,7 +281,7 @@
 				<MonitorToggle monitored={movie.monitored ?? false} onToggle={onMonitorToggle} size="md" />
 			</div>
 			<button
-				class="btn btn-primary btn-sm gap-1.5 hidden sm:flex"
+				class="btn hidden gap-1.5 btn-primary btn-sm sm:flex"
 				onclick={onAutoSearch}
 				disabled={autoSearching}
 			>
@@ -292,12 +292,12 @@
 				{/if}
 				{m.library_movieHeader_autoGrab()}
 			</button>
-			<button class="btn btn-ghost btn-sm gap-1.5 hidden sm:flex" onclick={onSearch}>
+			<button class="btn hidden gap-1.5 btn-ghost btn-sm sm:flex" onclick={onSearch}>
 				<Search size={14} />
 				{m.library_movieHeader_manual()}
 			</button>
 			{#if onImport}
-				<button class="btn btn-ghost btn-sm gap-1.5 hidden sm:flex" onclick={onImport}>
+				<button class="btn hidden gap-1.5 btn-ghost btn-sm sm:flex" onclick={onImport}>
 					<Download size={14} />
 					{m.action_import()}
 				</button>
@@ -309,7 +309,7 @@
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 				<ul
 					tabindex="0"
-					class="dropdown-content menu z-50 w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
+					class="menu dropdown-content z-50 w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
 				>
 					<li class="hidden sm:flex">
 						<button onclick={onEdit}>
@@ -559,7 +559,7 @@
 							<div class="mb-2 text-sm text-base-content/60">Cast</div>
 							<div class="flex gap-3 overflow-x-auto pb-1">
 								{#each tmdbMovie.credits.cast.slice(0, 8) as actor (actor.id)}
-									<div class="flex shrink-0 flex-col items-center gap-1.5 w-16">
+									<div class="flex w-16 shrink-0 flex-col items-center gap-1.5">
 										<div class="h-14 w-14 overflow-hidden rounded-full bg-base-300">
 											{#if actor.profile_path}
 												<TmdbImage
@@ -577,9 +577,9 @@
 											{/if}
 										</div>
 										<div class="text-center">
-											<div class="text-xs font-medium leading-tight line-clamp-2">{actor.name}</div>
+											<div class="line-clamp-2 text-xs leading-tight font-medium">{actor.name}</div>
 											{#if actor.character}
-												<div class="text-xs text-base-content/50 leading-tight line-clamp-1">
+												<div class="line-clamp-1 text-xs leading-tight text-base-content/50">
 													{actor.character}
 												</div>
 											{/if}
@@ -627,14 +627,14 @@
 							{/if}
 						</div>
 						<div
-							class="flex w-full items-center gap-1 overflow-x-auto border-t border-base-content/10 pt-2 pb-0.5 sm:w-auto sm:shrink-0 sm:border-0 sm:pt-0 sm:overflow-x-visible sm:pb-0"
+							class="flex w-full items-center gap-1 overflow-x-auto border-t border-base-content/10 pt-2 pb-0.5 sm:w-auto sm:shrink-0 sm:overflow-x-visible sm:border-0 sm:pt-0 sm:pb-0"
 						>
 							{#if movie.tmdbId}
 								<a
 									href="https://www.themoviedb.org/movie/{movie.tmdbId}"
 									target="_blank"
 									rel="noopener noreferrer"
-									class="btn btn-ghost btn-xs shrink-0 gap-1"
+									class="btn shrink-0 gap-1 btn-ghost btn-xs"
 								>
 									{m.library_movieHeader_tmdbLink()}<ExternalLink size={12} />
 								</a>
@@ -644,7 +644,7 @@
 									href="https://www.imdb.com/title/{movie.imdbId}"
 									target="_blank"
 									rel="noopener noreferrer"
-									class="btn btn-ghost btn-xs shrink-0 gap-1"
+									class="btn shrink-0 gap-1 btn-ghost btn-xs"
 								>
 									{m.library_movieHeader_imdbLink()}<ExternalLink size={12} />
 								</a>
@@ -654,13 +654,13 @@
 									href={providerLink.href}
 									target="_blank"
 									rel="noopener noreferrer"
-									class="btn btn-ghost btn-xs shrink-0 gap-1"
+									class="btn shrink-0 gap-1 btn-ghost btn-xs"
 								>
 									{providerLink.label}<ExternalLink size={12} />
 								</a>
 							{/each}
 							{#if hasTrailer}
-								<button class="btn btn-ghost btn-xs shrink-0 gap-1" onclick={openTrailer}>
+								<button class="btn shrink-0 gap-1 btn-ghost btn-xs" onclick={openTrailer}>
 									<Play size={12} />{m.hero_trailer()}
 								</button>
 							{/if}
@@ -693,7 +693,7 @@
 
 <!-- Mobile action bar -->
 <div
-	class="fixed bottom-0 left-0 right-0 z-40 border-t border-base-content/6 bg-base-100/75 backdrop-blur-xl sm:hidden"
+	class="fixed right-0 bottom-0 left-0 z-40 border-t border-base-content/6 bg-base-100/75 backdrop-blur-xl sm:hidden"
 	style="padding-bottom: env(safe-area-inset-bottom)"
 >
 	<div class="flex items-stretch justify-around">
@@ -756,7 +756,7 @@
 		</button>
 
 		<!-- Overflow -->
-		<div class="dropdown dropdown-top dropdown-end flex flex-1">
+		<div class="dropdown dropdown-end dropdown-top flex flex-1">
 			<button
 				tabindex="0"
 				class="flex flex-1 flex-col items-center gap-1 py-3 text-error/80 transition-colors active:text-error"
@@ -767,7 +767,7 @@
 			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 			<ul
 				tabindex="0"
-				class="dropdown-content menu z-50 mb-2 w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
+				class="menu dropdown-content z-50 mb-2 w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
 			>
 				<li>
 					<button class="text-error" onclick={onDelete}>

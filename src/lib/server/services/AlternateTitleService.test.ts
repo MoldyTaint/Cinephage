@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cleanTitle } from './AlternateTitleService';
+import { cleanTitle, selectSearchTitles, containsNonLatinScript } from './AlternateTitleService';
 
 describe('cleanTitle', () => {
 	describe('Hungarian diacritics (the primary bug fix)', () => {
@@ -126,5 +126,61 @@ describe('cleanTitle', () => {
 			expect(hungarianReleaseTitle).toContain('dune');
 			expect(englishSearchTitle).toContain('dune');
 		});
+	});
+});
+
+describe('selectSearchTitles', () => {
+	it('keeps a non-Latin alternate when the cap would truncate all of them', () => {
+		const remaining = [
+			'War Machine',
+			'War Machine (2017)',
+			'Máquina de Guerra',
+			'Военная машина',
+			'Máquina de Guerra (España)'
+		];
+		const titles = selectSearchTitles('War Machine', remaining, 5);
+		expect(titles).toHaveLength(5);
+		expect(titles).toContain('Военная машина');
+		expect(titles[titles.length - 1]).toBe('Военная машина');
+	});
+
+	it('does not swap when a non-Latin title is already within the cap', () => {
+		const remaining = ['Военная машина', 'Máquina de Guerra', 'Extra 1', 'Extra 2'];
+		const titles = selectSearchTitles('War Machine', remaining, 5);
+		expect(titles).toEqual([
+			'War Machine',
+			'Военная машина',
+			'Máquina de Guerra',
+			'Extra 1',
+			'Extra 2'
+		]);
+	});
+
+	it('returns all titles when under the cap', () => {
+		const titles = selectSearchTitles('War Machine', ['Военная машина'], 5);
+		expect(titles).toEqual(['War Machine', 'Военная машина']);
+	});
+
+	it('does not swap when the display title itself is non-Latin', () => {
+		const remaining = ['War Machine', 'Máquina de Guerra', 'Extra 1', 'Extra 2', 'Extra 3'];
+		const titles = selectSearchTitles('Военная машина', remaining, 5);
+		expect(titles).toHaveLength(5);
+		expect(titles[0]).toBe('Военная машина');
+		expect(titles).not.toContain('Extra 3');
+	});
+});
+
+describe('containsNonLatinScript', () => {
+	it('detects Cyrillic', () => {
+		expect(containsNonLatinScript('Военная машина')).toBe(true);
+	});
+
+	it('detects CJK', () => {
+		expect(containsNonLatinScript('機動戦士ガンダム')).toBe(true);
+	});
+
+	it('rejects plain Latin titles', () => {
+		expect(containsNonLatinScript('War Machine')).toBe(false);
+		expect(containsNonLatinScript('Máquina de Guerra')).toBe(false);
 	});
 });

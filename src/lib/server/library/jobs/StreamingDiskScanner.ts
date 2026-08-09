@@ -1,5 +1,5 @@
 import { opendir } from 'node:fs/promises';
-import { join, dirname, relative } from 'node:path';
+import { join, dirname, relative, extname } from 'node:path';
 import { stat } from 'node:fs/promises';
 import { isVideoFile } from '$lib/server/library/media-info.js';
 import { DOWNLOAD } from '$lib/config/constants';
@@ -31,10 +31,13 @@ const EXCLUDED_FOLDER_PATTERNS = [
 	/^featurettes?$/i,
 	/^behind[\s._-]?the[\s._-]?scenes?$/i,
 	/^deleted[\s._-]?scenes?$/i,
-	/^specials?$/i,
 	/^subs?$/i,
 	/^subtitles?$/i
 ];
+
+// Patterns only excluded at shallow depth (≤1 from root). At depth ≥2 the
+// same name is a valid TV season folder (e.g. a show's own Specials/ dir).
+const SHALLOW_EXCLUDED_FOLDER_PATTERNS = [/^specials?$/i];
 
 const SAMPLE_PATTERNS = [/\bsample\b/i];
 
@@ -54,7 +57,13 @@ const DEFAULT_OPTIONS: ScannerOptions = {
 function shouldExcludeFolderLegacy(name: string, customPatterns: string[]): boolean {
 	if (EXCLUDED_FOLDER_PATTERNS.some((pattern) => pattern.test(name))) return true;
 	const lower = name.toLowerCase();
-	return customPatterns.some((p) => p.toLowerCase() === lower);
+	if (customPatterns.some((p) => p.toLowerCase() === lower)) return true;
+	// Skip directories whose name is exactly a video-file pattern (e.g. "matrix.mkv/").
+	// isVideoFile() uses path.extname(), which only tests the LAST extension, so
+	// "my.mkv.assets" (ext: .assets) and "render.mp4_temp" (ext: .mp4_temp) are
+	// NOT excluded — only names whose final segment is a recognised video extension.
+	const folderExt = extname(name).toLowerCase();
+	return folderExt.length > 1 && isVideoFile(name);
 }
 
 function shouldExcludeFileLegacy(
@@ -70,9 +79,12 @@ function shouldExcludeFileLegacy(
 		if (blockedExtensions.includes(ext)) return true;
 	}
 
+	// Only check directory segments — the final part is the filename itself,
+	// not a directory, so shouldExcludeFolderLegacy must not test it (our
+	// video-extension check would otherwise exclude every .mkv/.mp4 file).
 	const pathParts = filePath.split('/');
-	for (const part of pathParts) {
-		if (shouldExcludeFolderLegacy(part, customPatterns)) return true;
+	for (let i = 0; i < pathParts.length - 1; i++) {
+		if (shouldExcludeFolderLegacy(pathParts[i], customPatterns)) return true;
 	}
 
 	return false;
@@ -105,7 +117,7 @@ export class StreamingDiskScanner {
 		}
 	}
 
-	private shouldExcludeFolder(name: string): boolean {
+	private shouldExcludeFolder(name: string, depth: number): boolean {
 		const { patterns, customExcludedFolders } = this.options;
 		if (patterns) {
 			// Folder-level ignore: test with trailing slash so directory
@@ -113,6 +125,7 @@ export class StreamingDiskScanner {
 			const relPath = name + '/';
 			return matchIgnore(relPath, patterns);
 		}
+		if (depth >= 1 && SHALLOW_EXCLUDED_FOLDER_PATTERNS.some((p) => p.test(name))) return false;
 		return shouldExcludeFolderLegacy(name, customExcludedFolders);
 	}
 
@@ -134,7 +147,8 @@ export class StreamingDiskScanner {
 
 	private async *walkDirectory(
 		rootPath: string,
-		currentPath: string
+		currentPath: string,
+		depth = 0
 	): AsyncGenerator<DiscoveredFile> {
 		let dirHandle: Awaited<ReturnType<typeof opendir>>;
 		try {
@@ -155,9 +169,9 @@ export class StreamingDiskScanner {
 			const fullPath = join(currentPath, entry.name);
 
 			if (entry.isDirectory()) {
-				if (this.shouldExcludeFolder(entry.name)) continue;
+				if (this.shouldExcludeFolder(entry.name, depth)) continue;
 
-				yield* this.walkDirectory(rootPath, fullPath);
+				yield* this.walkDirectory(rootPath, fullPath, depth + 1);
 			} else if (entry.isFile() || entry.isSymbolicLink()) {
 				if (!isVideoFile(entry.name)) continue;
 

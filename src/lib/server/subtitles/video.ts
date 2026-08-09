@@ -27,29 +27,13 @@ export type VideoSource =
  * Video resolution
  */
 export type VideoResolution =
-	| '2160p'
-	| '1080p'
-	| '1080i'
-	| '720p'
-	| '576p'
-	| '480p'
-	| '360p'
-	| 'unknown';
+	'2160p' | '1080p' | '1080i' | '720p' | '576p' | '480p' | '360p' | 'unknown';
 
 /**
  * Video codec
  */
 export type VideoCodec =
-	| 'H.265'
-	| 'H.264'
-	| 'MPEG-4'
-	| 'MPEG-2'
-	| 'XviD'
-	| 'DivX'
-	| 'VC-1'
-	| 'VP9'
-	| 'AV1'
-	| 'unknown';
+	'H.265' | 'H.264' | 'MPEG-4' | 'MPEG-2' | 'XviD' | 'DivX' | 'VC-1' | 'VP9' | 'AV1' | 'unknown';
 
 /**
  * Audio codec

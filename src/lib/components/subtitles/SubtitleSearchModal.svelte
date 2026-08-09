@@ -243,7 +243,7 @@
 				<input
 					type="text"
 					placeholder="Filter results..."
-					class="input-bordered input input-sm w-full sm:w-48"
+					class="input-bordered input w-full input-sm sm:w-48"
 					bind:value={filterQuery}
 				/>
 			</div>

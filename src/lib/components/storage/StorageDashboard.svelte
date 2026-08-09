@@ -351,7 +351,7 @@
 		{#each chartSections as section (section.title)}
 			<div class="card bg-base-200 p-3">
 				<div class="mb-2 flex items-center justify-between">
-					<h3 class="text-xs font-semibold uppercase tracking-wide text-base-content/60">
+					<h3 class="text-xs font-semibold tracking-wide text-base-content/60 uppercase">
 						{section.title}
 					</h3>
 					<span class="text-xs text-base-content/40">{section.totalLabel}</span>
@@ -390,7 +390,7 @@
 									{item.playCount} play{item.playCount === 1 ? '' : 's'}
 								</div>
 							</div>
-							<span class="badge badge-sm badge-ghost shrink-0">{heightToRes(item.height)}</span>
+							<span class="badge shrink-0 badge-ghost badge-sm">{heightToRes(item.height)}</span>
 						</div>
 					{/each}
 				</div>
@@ -427,7 +427,7 @@
 
 		<!-- Browse media link -->
 		<div class="flex justify-end">
-			<a href={`${baseUrl}/media`} class="btn btn-ghost btn-sm gap-1">
+			<a href={`${baseUrl}/media`} class="btn gap-1 btn-ghost btn-sm">
 				Browse all media
 				<ChevronRight class="h-3.5 w-3.5" />
 			</a>
@@ -472,7 +472,7 @@
 		{#if rootFolderBreakdown.length > 0}
 			<div class="space-y-2">
 				<h3 class="text-sm font-semibold text-base-content/70">Disk Usage</h3>
-				<div class="card bg-base-200 p-3 space-y-3">
+				<div class="card space-y-3 bg-base-200 p-3">
 					{#each rootFolderBreakdown as folder (folder.id)}
 						<div>
 							<div class="mb-1 flex items-center justify-between text-xs">
@@ -513,7 +513,7 @@
 						</div>
 					{/each}
 				</div>
-				<a href={`${baseUrl}/folders`} class="btn btn-ghost btn-xs gap-1 w-full">
+				<a href={`${baseUrl}/folders`} class="btn w-full gap-1 btn-ghost btn-xs">
 					Manage folders <ChevronRight class="h-3 w-3" />
 				</a>
 			</div>

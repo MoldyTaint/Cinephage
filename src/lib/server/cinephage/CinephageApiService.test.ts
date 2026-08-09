@@ -10,7 +10,10 @@ function createMockSettings(): CinephageSettingsService {
 			enabled: true,
 			baseUrl: 'https://api.cinephage.net',
 			versionOverride: null,
-			commitOverride: null
+			commitOverride: null,
+			autoUpdate: true,
+			latestVersion: null,
+			latestCommit: null
 		}),
 		getModuleConfig: vi.fn().mockResolvedValue({
 			moduleId: 'stub',
@@ -35,7 +38,8 @@ function createMockCore(): CinephageCore {
 			'X-Cinephage-Version': 'v1',
 			'X-Cinephage-Commit': 'c1'
 		}),
-		getHttpClient: vi.fn()
+		getHttpClient: vi.fn(),
+		refreshLatestIdentity: vi.fn().mockResolvedValue(undefined)
 	} as unknown as CinephageCore;
 }
 
@@ -102,6 +106,15 @@ describe('CinephageApiService', () => {
 			await vi.advanceTimersByTimeAsync(0);
 			expect(service.status).toBe('ready');
 			expect(registry.initializeAll).toHaveBeenCalledTimes(1);
+		});
+
+		it('kicks off an identity refresh at boot when the subsystem is enabled', async () => {
+			const { CinephageApiService } = await import('./CinephageApiService.js');
+			const core = createMockCore();
+			const service = new CinephageApiService(createMockSettings(), core, createMockRegistry());
+			service.start();
+			await vi.advanceTimersByTimeAsync(0);
+			expect(core.refreshLatestIdentity).toHaveBeenCalledTimes(1);
 		});
 
 		it('reports error status when init throws', async () => {

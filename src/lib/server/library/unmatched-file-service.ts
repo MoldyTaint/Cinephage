@@ -14,7 +14,8 @@ import { createChildLogger } from '$lib/logging';
 const logger = createChildLogger({ logDomain: 'scans' as const });
 import { mediaMatcherService } from './media-matcher.js';
 import { parseRelease } from '$lib/server/indexers/parser/ReleaseParser.js';
-import { resolveTvEpisodeIdentifier, getMediaParseStem } from './tv-episode-resolver.js';
+import { getMediaParseStem } from './media-utils.js';
+import { resolveTvEpisodeIdentifier } from './tv-episode-resolver.js';
 import type {
 	UnmatchedFile,
 	UnmatchedFolder,

@@ -80,7 +80,7 @@
 						{m.unmatched_folder_expand()}
 					{/if}
 				</button>
-				<button class="btn btn-sm btn-primary" onclick={onMatch}>
+				<button class="btn btn-primary btn-sm" onclick={onMatch}>
 					<Link class="h-4 w-4" />
 					{folder.isShowFolder ? m.unmatched_folder_matchShow() : m.unmatched_folder_matchFolder()}
 				</button>

@@ -109,9 +109,12 @@ export async function getAnimeSubtypeEnforcement(): Promise<boolean> {
 }
 
 /**
- * Get the effective scoring profile ID (provided or default)
+ * Get the effective scoring profile ID (provided, owning library, or default)
  */
-export async function getEffectiveScoringProfileId(providedProfileId?: string): Promise<string> {
+export async function getEffectiveScoringProfileId(
+	providedProfileId?: string | null,
+	owningLibrary?: { qualityProfileId: string | null } | null
+): Promise<string> {
 	// Ensure built-in profiles exist as valid FK targets before resolving the final profile ID.
 	await qualityFilter.seedDefaultScoringProfiles();
 
@@ -124,6 +127,13 @@ export async function getEffectiveScoringProfileId(providedProfileId?: string): 
 			);
 		}
 		return providedProfileId;
+	}
+
+	if (owningLibrary?.qualityProfileId) {
+		const profile = await qualityFilter.getProfile(owningLibrary.qualityProfileId);
+		if (profile) {
+			return owningLibrary.qualityProfileId;
+		}
 	}
 
 	const defaultProfile = await qualityFilter.getDefaultScoringProfile();

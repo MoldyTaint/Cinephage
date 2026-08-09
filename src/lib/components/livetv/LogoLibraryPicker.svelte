@@ -193,7 +193,7 @@
 				/>
 				<input
 					type="text"
-					class="input-bordered input input-sm w-full pl-9"
+					class="input-bordered input w-full pl-9 input-sm"
 					placeholder={m.livetv_channelEditModal_searchLogosPlaceholder()}
 					bind:value={search}
 				/>

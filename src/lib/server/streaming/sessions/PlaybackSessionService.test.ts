@@ -117,4 +117,38 @@ describe('PlaybackSessionService', () => {
 		expect(result.error).toBe('Aborted');
 		expect(getStreamsMock).not.toHaveBeenCalled();
 	});
+
+	it('re-resolves when the reused session source URL has expired', async () => {
+		getStreamsMock.mockResolvedValue({
+			success: true,
+			sources: [
+				{
+					quality: '1080p',
+					title: 'Test stream',
+					url: 'https://stream.example.com/master.m3u8',
+					type: 'hls',
+					referer: 'https://player.example.com/',
+					requiresSegmentProxy: true,
+					provider: 'Vidlink',
+					expiresAt: Math.floor(Date.now() / 1000) + 60
+				}
+			]
+		});
+
+		const { getPlaybackSessionService } = await import('./PlaybackSessionService');
+		const service = getPlaybackSessionService();
+
+		const first = await service.createOrReuseSession({ tmdbId: 550, type: 'movie' });
+		expect(first.session).toBeTruthy();
+		expect(first.session?.sourceExpiresAt).toBe(Math.floor(Date.now() / 1000) + 60);
+
+		// Simulate the source URL expiring while the session TTL is still valid.
+		vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 120 * 1000);
+
+		const second = await service.createOrReuseSession({ tmdbId: 550, type: 'movie' });
+		expect(second.session?.token).not.toBe(first.session?.token);
+		expect(getStreamsMock).toHaveBeenCalledTimes(2);
+
+		vi.restoreAllMocks();
+	});
 });
