@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <em>Cinephage</em> — from Greek <em>cine</em> (film) + <em>phage</em> (to devour). A film devourer.
+  <em>Cinephage</em> - from Greek <em>cine</em> (film) + <em>phage</em> (to devour). A film devourer.
 </p>
 
 <p align="center">
@@ -61,14 +61,14 @@ Cinephage is a single app for your whole media setup. Instead of running multipl
 
 Cinephage brings together functionality you'd typically find across multiple applications:
 
-- **Radarr & Sonarr** — Movie and TV series management
-- **Prowlarr** — Indexer management with supported trackers
-- **Bazarr** — Multi-provider subtitle management
-- **Overseerr** — Content discovery and smart lists
-- **FlareSolverr** — Built-in Cloudflare bypass (no external service needed)
-- **Plus** — Live TV/IPTV management, usenet streaming, and more
+- **Radarr & Sonarr** - Movie and TV series management
+- **Prowlarr** - Indexer management with supported trackers
+- **Bazarr** - Multi-provider subtitle management
+- **Overseerr** - Content discovery and smart lists
+- **FlareSolverr** - Built-in Cloudflare bypass (no external service needed)
+- **Plus** - Live TV/IPTV management, usenet streaming, and more
 
-The \*arr projects are fantastic at what they do. We just took a different path — one unified codebase instead of separate services that need to sync with each other.
+The \*arr projects are fantastic at what they do. We just took a different path - one unified codebase instead of separate services that need to sync with each other.
 
 ---
 
@@ -102,20 +102,19 @@ Dynamic content discovery with auto-add to library. Import from IMDb, Trakt, TMD
 
 - File watching and auto-import
 - Multi-indexer search with deduplication
-- Built-in Cardigann-compatible tracker definitions, including NoNaMe Club
-- 6 subtitle providers, 80+ languages
-- 7 automated monitoring tasks
-- Jellyfin/Emby notifications
+- Built-in Cardigann-compatible tracker definitions
+- 6+ subtitle providers, 80+ languages
+- 7+ automated monitoring tasks
+- Jellyfin/Emby & Plex notifications
 - TRaSH Guides-compatible naming
 
 ---
 
 ## Requirements
 
-- **TMDB API Key** — Free at [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
-- **Download Client** (optional) — qBittorrent, SABnzbd, NZBGet, Real-Debrid, or TorBox
-  - Or use streaming mode — no download client needed
-  - Real-Debrid and TorBox accept torrent releases, materialize ready files directly into the resolved library destination, and can optionally remove provider items after a durable import.
+- **TMDB API Key** - Free at [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
+- **Download Client** (optional) - qBittorrent, SABnzbd, NZBGet, Debrid
+  - Or use streaming mode - no download client needed (USENET Only)
 
 ## Quick Start
 
@@ -132,7 +131,7 @@ curl -O https://raw.githubusercontent.com/MoldyTaint/Cinephage/main/.env.example
 cp .env.example .env
 ```
 
-2. Edit `.env` — at minimum set `BETTER_AUTH_SECRET` (generate one with `openssl rand -base64 32`).
+2. Edit `.env` - at minimum set `BETTER_AUTH_SECRET` (generate one with `openssl rand -base64 32`).
 
 3. Update the volume mounts in `docker-compose.yaml` to point to your media and download directories.
 
@@ -162,7 +161,7 @@ npm run build
 cp .env.example .env
 ```
 
-Edit `.env` — set at minimum:
+Edit `.env` - set at minimum:
 
 ```
 BETTER_AUTH_SECRET=<your-secret>
@@ -230,9 +229,9 @@ Comprehensive documentation is available at **[docs.cinephage.net](https://docs.
 
 ## Community
 
-- **[Discord](https://discord.gg/scGCBTSWEt)** — Chat and support
-- **[GitHub Issues](https://github.com/MoldyTaint/cinephage/issues)** — Bug reports and feature requests
-- **[Contributing](CONTRIBUTING.md)** — Development guidelines
+- **[Discord](https://discord.gg/scGCBTSWEt)** - Chat and support
+- **[GitHub Issues](https://github.com/MoldyTaint/cinephage/issues)** - Bug reports and feature requests
+- **[Contributing](CONTRIBUTING.md)** - Development guidelines
 
 ---
 
