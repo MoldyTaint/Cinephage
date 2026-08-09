@@ -121,7 +121,7 @@ describe('getAutoSearchPreflightIssue - debrid satisfies torrent requirement', (
 		expect(issue).toEqual(
 			expect.objectContaining({
 				code: 'NO_DOWNLOAD_CLIENT',
-				message: 'No torrent download client is enabled'
+				message: 'No torrent or debrid download client is enabled'
 			})
 		);
 	});
@@ -140,7 +140,7 @@ describe('getAutoSearchPreflightIssue - debrid satisfies torrent requirement', (
 		expect(issue).toEqual(
 			expect.objectContaining({
 				code: 'NO_DOWNLOAD_CLIENT',
-				message: 'No torrent download client is enabled'
+				message: 'No torrent or debrid download client is enabled'
 			})
 		);
 	});

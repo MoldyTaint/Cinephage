@@ -7,7 +7,6 @@
 	"scripts": {
 		"dev": "vite dev",
 		"dev:host": "vite dev --host",
-		"prebuild": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide --strategy cookie globalVariable baseLocale --silent",
 		"build": "NODE_OPTIONS=--max-old-space-size=8192 VITE_SSR_BUILD=1 vite build",
 		"start": "node server.js",
 		"preview": "vite preview",
