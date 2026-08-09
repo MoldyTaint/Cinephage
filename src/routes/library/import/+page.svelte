@@ -1137,11 +1137,20 @@
 		if (libraries.length === 0) return undefined;
 
 		const preferAnime = options?.preferAnime === true;
+
+		// Each entry's id is a root folder ID. Prefer the one the user flagged as
+		// default in Settings > Library & Storage > Root Folders, which matches AddToLibraryModal.
+		const globalDefaultRootFolderIds = new Set(
+			rootFolders.filter((rf) => rf.isDefault).map((rf) => rf.id)
+		);
+		const globalDefaultId = libraries.find((lib) => globalDefaultRootFolderIds.has(lib.id))?.id;
+
 		if (preferAnime) {
 			return (
 				libraries.find(
 					(library) => library.isDefault && (library.mediaSubType ?? 'standard') === 'anime'
 				)?.id ??
+				globalDefaultId ??
 				libraries.find(
 					(library) => library.isDefault && (library.mediaSubType ?? 'standard') === 'standard'
 				)?.id ??
@@ -1151,6 +1160,7 @@
 		}
 
 		return (
+			globalDefaultId ??
 			libraries.find(
 				(library) => library.isDefault && (library.mediaSubType ?? 'standard') === 'standard'
 			)?.id ??
