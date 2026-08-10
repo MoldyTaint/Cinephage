@@ -2,58 +2,28 @@
 	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { createSSE } from '$lib/sse';
-	import { layoutState, deriveMobileSseStatus, type ScanProgressPayload } from '$lib/layout.svelte';
+	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 
-	type SyncStatusPayload = { inProgress?: boolean };
-	type SyncTransitionPayload = { timestamp?: string };
 	type InsightsUpdatedPayload = { triggeredBy?: string; timestamp?: string };
 
 	let { children } = $props();
 
-	// SSE connections that survive the user navigating away from the status
-	// area. Progress indicators stay visible on return, and invalidateAll()
-	// refreshes stale data when background events fire.
+	// Scan SSE for the connection status indicator only. Toast notifications,
+	// state management, and progress updates are handled by the root layout's
+	// global SSE so they fire from any page. This connection drives the mobile
+	// SSE status chip that is specific to this sub-tree.
 	const scanSse = createSSE<{
-		status: { inProgress?: boolean; isScanning?: boolean } & SyncStatusPayload;
-		progress: ScanProgressPayload;
-		scanComplete: { results?: Array<{ unmatchedFiles?: number }> };
-		scanError: { error?: { message?: string } };
+		status: Record<string, unknown>;
+		progress: Record<string, unknown>;
+		scanStart: Record<string, unknown>;
+		scanComplete: Record<string, unknown>;
+		scanError: Record<string, unknown>;
 	}>('/api/library/scan/status', {
-		status: (payload) => {
-			const inProgress = Boolean(payload.inProgress ?? payload.isScanning ?? false);
-			layoutState.setScanState(inProgress, inProgress ? layoutState.scanProgress : null);
-		},
-		progress: (payload) => {
-			layoutState.setScanState(true, payload);
-		},
-		scanComplete: () => {
-			layoutState.setScanState(false, null);
-			void invalidateAll();
-		},
-		scanError: () => {
-			layoutState.setScanState(false, null);
-		}
-	});
-
-	const syncSse = createSSE<{
-		status: SyncStatusPayload;
-		syncStart: SyncTransitionPayload;
-		syncStop: SyncTransitionPayload;
-	}>('/api/media-server-stats/sync/status', {
-		status: (payload) => {
-			layoutState.setMediaServerSyncing(Boolean(payload.inProgress ?? false));
-		},
-		syncStart: () => {
-			layoutState.setMediaServerSyncing(true);
-		},
-		syncStop: () => {
-			layoutState.setMediaServerSyncing(false);
-			// Sync -> reconcile -> insights chain fires 'storage:insights-updated'
-			// which triggers invalidateAll via insightSse. We also invalidate here
-			// so the sync run table + serverStatuses refresh immediately even if
-			// no insights happened to change.
-			void invalidateAll();
-		}
+		status: () => {},
+		progress: () => {},
+		scanStart: () => {},
+		scanComplete: () => {},
+		scanError: () => {}
 	});
 
 	const insightSse = createSSE<{
@@ -90,7 +60,6 @@
 	$effect(() => {
 		// Touch SSE status to keep reactivity subscription alive.
 		void scanSse.status;
-		void syncSse.status;
 		void insightSse.status;
 	});
 </script>

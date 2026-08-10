@@ -1,6 +1,6 @@
 import { db } from '$lib/server/db/index.js';
 import { libraryJobs } from '$lib/server/db/schema.js';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, and, desc, inArray, lt } from 'drizzle-orm';
 import { NotFoundError, ValidationError } from '$lib/errors/index.js';
 import type { EnqueueLibraryJobInput, LibraryJobType } from './types.js';
 
@@ -45,6 +45,27 @@ export class LibraryJobService {
 
 	enqueueJob(input: EnqueueLibraryJobInput) {
 		if (input.dedupeKey) {
+			// A job that has been 'running' for over an hour was almost certainly
+			// abandoned by a crash or kill signal. Reset it so it no longer blocks
+			// new jobs with the same dedupeKey.
+			const staleThreshold = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+			const now = new Date().toISOString();
+			db.update(libraryJobs)
+				.set({
+					status: 'failed',
+					errorMessage: 'Job timed out (exceeded 1 hour without completion)',
+					completedAt: now,
+					updatedAt: now
+				})
+				.where(
+					and(
+						eq(libraryJobs.dedupeKey, input.dedupeKey),
+						eq(libraryJobs.status, 'running'),
+						lt(libraryJobs.startedAt, staleThreshold)
+					)
+				)
+				.run();
+
 			const existing = db
 				.select()
 				.from(libraryJobs)

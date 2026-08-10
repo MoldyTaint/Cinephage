@@ -58,9 +58,23 @@
 	let retentionSaving = $state(false);
 	let insightsOpen = $state(false);
 	let scanStarting = $state(false);
+	let scanStartTimeout: ReturnType<typeof setTimeout> | null = null;
 	let syncStarting = $state(false);
 	const isScanning = $derived(layoutState.scanInProgress || scanStarting);
 	const isSyncing = $derived(layoutState.mediaServerSyncing || syncStarting);
+
+	// Once the SSE confirms the scan is underway, hand off from scanStarting to
+	// layoutState.scanInProgress so the button stays in "Scanning..." without a
+	// brief reset between the API return and the SSE event.
+	$effect(() => {
+		if (layoutState.scanInProgress && scanStarting) {
+			if (scanStartTimeout !== null) {
+				clearTimeout(scanStartTimeout);
+				scanStartTimeout = null;
+			}
+			scanStarting = false;
+		}
+	});
 
 	type Insight = {
 		id: string;
@@ -399,12 +413,22 @@
 
 	async function triggerLibraryScan(rootFolderId?: string) {
 		resetScanState();
+		if (scanStartTimeout !== null) {
+			clearTimeout(scanStartTimeout);
+			scanStartTimeout = null;
+		}
 		scanStarting = true;
 		try {
 			await scanLibrary(rootFolderId ? { rootFolderId } : { fullScan: true });
+			toasts.info(m.settings_general_scanQueued());
+			// Keep scanStarting=true until SSE scanStart confirms the job is running.
+			// Fallback: clear after 15s in case the SSE event never arrives.
+			scanStartTimeout = setTimeout(() => {
+				scanStarting = false;
+				scanStartTimeout = null;
+			}, 15_000);
 		} catch (error) {
 			scanError = error instanceof Error ? error.message : m.settings_general_failedToStartScan();
-		} finally {
 			scanStarting = false;
 		}
 	}
