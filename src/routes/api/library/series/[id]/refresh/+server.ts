@@ -12,8 +12,8 @@ import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createSSEOperationStream } from '$lib/server/sse';
 import { db } from '$lib/server/db/index.js';
-import { series, seasons, episodes } from '$lib/server/db/schema.js';
-import { eq } from 'drizzle-orm';
+import { series, seasons, episodes, episodeFiles } from '$lib/server/db/schema.js';
+import { eq, inArray } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { logger } from '$lib/logging';
 import { todayDateString } from '$lib/utils/format.js';
@@ -170,6 +170,35 @@ export const POST: RequestHandler = async ({ params, request }) => {
 						.where(eq(series.id, id));
 				}
 
+				// Capture (fileId -> episode numbers) before wiping episodes so we can
+				// restore episodeFiles links after the rebuild assigns new UUIDs.
+				const existingEpFiles = await db
+					.select({ id: episodeFiles.id, episodeIds: episodeFiles.episodeIds })
+					.from(episodeFiles)
+					.where(eq(episodeFiles.seriesId, id));
+
+				const existingEpisodeRows = await db
+					.select({
+						id: episodes.id,
+						seasonNumber: episodes.seasonNumber,
+						episodeNumber: episodes.episodeNumber
+					})
+					.from(episodes)
+					.where(eq(episodes.seriesId, id));
+
+				const epNumByOldId = new Map(
+					existingEpisodeRows.map((e) => [e.id, { s: e.seasonNumber, e: e.episodeNumber }])
+				);
+				const fileEpNumbers = new Map(
+					existingEpFiles.map((f) => [
+						f.id,
+						(f.episodeIds ?? []).flatMap((eid) => {
+							const ep = epNumByOldId.get(eid);
+							return ep ? [ep] : [];
+						})
+					])
+				);
+
 				// Delete existing seasons/episodes and rebuild
 				await deleteAllSeasonsAndEpisodes(id);
 
@@ -266,6 +295,45 @@ export const POST: RequestHandler = async ({ params, request }) => {
 								);
 							}
 						}
+					}
+				}
+
+				// Re-link episodeFiles to new episode UUIDs by matching season/episode number.
+				// deleteAllSeasonsAndEpisodes wiped the old UUIDs so episodeFiles.episodeIds
+				// would otherwise point at non-existent rows, making every file appear missing.
+				if (fileEpNumbers.size > 0) {
+					const newEpisodeRows = await db
+						.select({
+							id: episodes.id,
+							seasonNumber: episodes.seasonNumber,
+							episodeNumber: episodes.episodeNumber
+						})
+						.from(episodes)
+						.where(eq(episodes.seriesId, id));
+
+					const newIdByKey = new Map(
+						newEpisodeRows.map((e) => [`${e.seasonNumber}-${e.episodeNumber}`, e.id])
+					);
+
+					const linkedEpisodeIds = new Set<string>();
+					for (const [fileId, epNums] of fileEpNumbers) {
+						const newIds = epNums
+							.map(({ s, e }) => newIdByKey.get(`${s}-${e}`))
+							.filter((eid): eid is string => eid !== undefined);
+
+						await db
+							.update(episodeFiles)
+							.set({ episodeIds: newIds.length > 0 ? newIds : null })
+							.where(eq(episodeFiles.id, fileId));
+
+						newIds.forEach((eid) => linkedEpisodeIds.add(eid));
+					}
+
+					if (linkedEpisodeIds.size > 0) {
+						await db
+							.update(episodes)
+							.set({ hasFile: true })
+							.where(inArray(episodes.id, [...linkedEpisodeIds]));
 					}
 				}
 
