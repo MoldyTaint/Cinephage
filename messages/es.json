@@ -2814,6 +2814,8 @@
 	"settings_logs_scrollToBottom": "Desplazarse al final",
 	"settings_logs_subtitle": "Flujo en vivo del registro de la aplicación. Haz clic en cualquier entrada para inspeccionar sus detalles.",
 	"settings_logs_toggleLevel": "Alternar registros {level}",
+	"settings_monitoring_mediaServerSyncComplete": "Media server sync complete",
+	"settings_monitoring_mediaServerSyncStarted": "Media server sync started",
 	"settings_monitoring_tabMaintenance": "Mantenimiento de almacenamiento",
 	"settings_monitoring_tabsAriaLabel": "Pestañas de navegación de monitoreo",
 	"settings_naming_advancedOptions": "Opciones avanzadas",

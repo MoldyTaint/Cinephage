@@ -3072,6 +3072,8 @@
 	"settings_logs_scrollToBottom": "Прокрутить вниз",
 	"settings_logs_subtitle": "Живой поток логов приложения. Нажмите на запись, чтобы посмотреть её детали.",
 	"settings_logs_toggleLevel": "Переключить логи уровня {level}",
+	"settings_monitoring_mediaServerSyncComplete": "Media server sync complete",
+	"settings_monitoring_mediaServerSyncStarted": "Media server sync started",
 	"settings_monitoring_tabMaintenance": "Обслуживание хранилища",
 	"settings_monitoring_tabsAriaLabel": "Вкладки навигации по мониторингу",
 	"settings_naming_advancedOptions": "Дополнительные параметры",

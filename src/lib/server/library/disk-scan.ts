@@ -439,6 +439,10 @@ export class DiskScanService extends EventEmitter {
 				throw new Error('Scan cancelled by job controller');
 			}
 
+			if (rootFolder.mediaType === 'tv') {
+				await this.retryUnmatchedTvFiles(rootFolderId, rootFolder.path);
+			}
+
 			await this.reconcileMediaPresence(rootFolderId, rootFolder.mediaType);
 
 			await db
@@ -537,7 +541,118 @@ export class DiskScanService extends EventEmitter {
 		}
 
 		if (mediaType === 'tv') {
+			await this.repairOrphanedEpisodeFiles(rootFolderId);
 			await this.reconcileEpisodePresence(rootFolderId);
+		}
+	}
+
+	/**
+	 * Finds episodeFiles whose episodeIds contain UUIDs that no longer exist
+	 * (e.g. after a series refresh wipes and recreates episode rows) and
+	 * re-resolves them from the filename so the file appears linked again.
+	 */
+	private async repairOrphanedEpisodeFiles(rootFolderId: string): Promise<void> {
+		const seriesInFolder = await db
+			.select({ id: series.id, path: series.path, seriesType: series.seriesType })
+			.from(series)
+			.where(eq(series.rootFolderId, rootFolderId));
+
+		if (seriesInFolder.length === 0) return;
+
+		const seriesIds = seriesInFolder.map((s) => s.id);
+
+		// Build a set of all valid episode UUIDs and a lookup by (seriesId, season, episode).
+		const currentEpisodeRows: Array<{
+			id: string;
+			seriesId: string;
+			seasonNumber: number;
+			episodeNumber: number;
+			absoluteEpisodeNumber: number | null;
+			airDate: string | null;
+		}> = [];
+		for (const chunk of this.chunkArray(seriesIds)) {
+			const rows = await db
+				.select({
+					id: episodes.id,
+					seriesId: episodes.seriesId,
+					seasonNumber: episodes.seasonNumber,
+					episodeNumber: episodes.episodeNumber,
+					absoluteEpisodeNumber: episodes.absoluteEpisodeNumber,
+					airDate: episodes.airDate
+				})
+				.from(episodes)
+				.where(inArray(episodes.seriesId, chunk));
+			currentEpisodeRows.push(...rows);
+		}
+
+		const validEpisodeIds = new Set(currentEpisodeRows.map((e) => e.id));
+
+		const allEpisodeFiles: Array<{
+			id: string;
+			seriesId: string;
+			seasonNumber: number;
+			relativePath: string;
+			episodeIds: string[] | null;
+		}> = [];
+		for (const chunk of this.chunkArray(seriesIds)) {
+			const rows = await db
+				.select({
+					id: episodeFiles.id,
+					seriesId: episodeFiles.seriesId,
+					seasonNumber: episodeFiles.seasonNumber,
+					relativePath: episodeFiles.relativePath,
+					episodeIds: episodeFiles.episodeIds
+				})
+				.from(episodeFiles)
+				.where(inArray(episodeFiles.seriesId, chunk));
+			allEpisodeFiles.push(...rows);
+		}
+
+		// Identify files where any episodeId is no longer valid.
+		const orphaned = allEpisodeFiles.filter((ef) => {
+			const ids = ef.episodeIds ?? [];
+			return ids.length === 0 || ids.some((id) => !validEpisodeIds.has(id));
+		});
+
+		if (orphaned.length === 0) return;
+
+		// For each orphaned file, re-resolve episode mapping from the filename
+		// (same logic as tryAutoLinkTvFile) and update episodeIds.
+		const seriesEpisodesCache = new Map<string, typeof currentEpisodeRows>();
+		for (const s of seriesInFolder) {
+			seriesEpisodesCache.set(
+				s.id,
+				currentEpisodeRows.filter((e) => e.seriesId === s.id)
+			);
+		}
+
+		let repaired = 0;
+		for (const ef of orphaned) {
+			const s = seriesInFolder.find((x) => x.id === ef.seriesId);
+			if (!s) continue;
+
+			const fileName = getMediaParseStem(ef.relativePath);
+			const parsed = this.parser.parse(fileName);
+			const identifier = resolveTvEpisodeIdentifier({
+				filePath: ef.relativePath,
+				parsed,
+				seriesType: s.seriesType === 'anime' || s.seriesType === 'daily' ? s.seriesType : 'standard'
+			});
+
+			if (!identifier) continue;
+
+			const seriesEps = seriesEpisodesCache.get(s.id) ?? [];
+			const matched = matchEpisodesByIdentifier(seriesEps, identifier);
+			const newIds = matched.map((e) => e.id);
+
+			if (newIds.length === 0) continue;
+
+			await db.update(episodeFiles).set({ episodeIds: newIds }).where(eq(episodeFiles.id, ef.id));
+			repaired++;
+		}
+
+		if (repaired > 0) {
+			logger.info({ rootFolderId, repaired }, '[DiskScan] Re-linked orphaned episode file records');
 		}
 	}
 
@@ -704,6 +819,54 @@ export class DiskScanService extends EventEmitter {
 		}
 
 		return results;
+	}
+
+	/**
+	 * Re-attempt linking unmatched TV files that fall under a known series directory.
+	 * Files are added to unmatchedFiles when no series exists for them at scan time.
+	 * When a series is later added (or re-added), subsequent scans skip those files
+	 * because they are already in the existingFiles map. This method runs after the
+	 * main scan walk to give those files a second chance at being linked.
+	 */
+	private async retryUnmatchedTvFiles(rootFolderId: string, rootFolderPath: string): Promise<void> {
+		const seriesInFolder = await db
+			.select({ id: series.id, path: series.path })
+			.from(series)
+			.where(eq(series.rootFolderId, rootFolderId));
+
+		if (seriesInFolder.length === 0) return;
+
+		const unmatched = await db
+			.select({ id: unmatchedFiles.id, path: unmatchedFiles.path, size: unmatchedFiles.size })
+			.from(unmatchedFiles)
+			.where(eq(unmatchedFiles.rootFolderId, rootFolderId));
+
+		let linked = 0;
+		for (const uf of unmatched) {
+			const underSeries = seriesInFolder.some((s) => {
+				const seriesDir = join(rootFolderPath, s.path);
+				return uf.path.startsWith(seriesDir + '/') || uf.path.startsWith(seriesDir + '\\');
+			});
+			if (!underSeries) continue;
+
+			const relPath = relative(rootFolderPath, uf.path);
+			const file: DiscoveredFile = {
+				path: uf.path,
+				relativePath: relPath,
+				size: uf.size ?? 0,
+				modifiedAt: new Date(),
+				parentFolder: dirname(uf.path)
+			};
+			const wasLinked = await this.tryAutoLinkTvFile(file, rootFolderId, rootFolderPath);
+			if (wasLinked) {
+				await db.delete(unmatchedFiles).where(eq(unmatchedFiles.id, uf.id));
+				linked++;
+			}
+		}
+
+		if (linked > 0) {
+			logger.info({ rootFolderId, linked }, '[DiskScan] Re-linked previously unmatched TV files');
+		}
 	}
 
 	private async getExistingFiles(

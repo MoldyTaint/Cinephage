@@ -1,11 +1,13 @@
 <script lang="ts">
 	import './layout.css';
 	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { ThemeSelector, LanguageSelector } from '$lib/components/ui';
 	import Toasts from '$lib/components/ui/Toasts.svelte';
-	import { layoutState } from '$lib/layout.svelte';
+	import { layoutState, type ScanProgressPayload } from '$lib/layout.svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import { createSSE } from '$lib/sse';
+	import { toasts } from '$lib/stores/toast.svelte';
 
 	import { page } from '$app/state';
 	import { resolvePath } from '$lib/utils/routing';
@@ -397,6 +399,58 @@
 	$effect(() => {
 		if (!browser) return;
 		localStorage.setItem(SIDEBAR_EXPANDED_STORAGE_KEY, String(layoutState.isSidebarExpanded));
+	});
+
+	// Global scan SSE - lives in the root layout so toast notifications fire
+	// regardless of which page the user is on when a scan completes.
+	// The monitoring/status sub-layout keeps its own SSE for the progress bar.
+	const _scanSse = createSSE<{
+		status: { scanning?: boolean };
+		progress: ScanProgressPayload;
+		scanStart: Record<string, unknown>;
+		scanComplete: { type?: string; results?: unknown[] };
+		scanError: { error?: { message?: string } };
+	}>('/api/library/scan/status', {
+		status: (payload) => {
+			const inProgress = Boolean(payload.scanning ?? false);
+			layoutState.setScanState(inProgress, inProgress ? layoutState.scanProgress : null);
+		},
+		progress: (payload) => {
+			layoutState.setScanState(true, payload);
+		},
+		scanStart: () => {
+			layoutState.setScanState(true, layoutState.scanProgress);
+		},
+		scanComplete: (payload) => {
+			layoutState.setScanState(false, null);
+			const count = payload.results?.length ?? 0;
+			toasts.success(m.settings_general_scanCompleteFoldersScanned({ count }));
+			void invalidateAll();
+		},
+		scanError: () => {
+			layoutState.setScanState(false, null);
+			toasts.error(m.settings_general_scanFailed());
+		}
+	});
+
+	// Global sync SSE — shows start/complete toasts from any page.
+	const _syncSse = createSSE<{
+		status: { inProgress?: boolean };
+		syncStart: { timestamp?: string };
+		syncStop: { timestamp?: string };
+	}>('/api/media-server-stats/sync/status', {
+		status: (payload) => {
+			layoutState.setMediaServerSyncing(Boolean(payload.inProgress ?? false));
+		},
+		syncStart: () => {
+			layoutState.setMediaServerSyncing(true);
+			toasts.info(m.settings_monitoring_mediaServerSyncStarted());
+		},
+		syncStop: () => {
+			layoutState.setMediaServerSyncing(false);
+			toasts.success(m.settings_monitoring_mediaServerSyncComplete());
+			void invalidateAll();
+		}
 	});
 </script>
 
