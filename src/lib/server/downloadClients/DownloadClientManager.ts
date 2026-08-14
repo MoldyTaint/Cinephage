@@ -600,7 +600,11 @@ export class DownloadClientManager {
 			apiKey:
 				this.normalizeImplementation(config.implementation) === 'sabnzbd'
 					? config.password
-					: undefined
+					: undefined,
+			downloadPathLocal: config.downloadPathLocal ?? null,
+			downloadPathRemote: config.downloadPathRemote ?? null,
+			tempPathLocal: config.tempPathLocal ?? null,
+			tempPathRemote: config.tempPathRemote ?? null
 		});
 
 		if (instance) {

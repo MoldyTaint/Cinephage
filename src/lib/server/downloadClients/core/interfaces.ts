@@ -25,6 +25,11 @@ export interface DownloadClientConfig {
 	apiKey?: string | null;
 	/** Decrypted API token for debrid connection tests. */
 	apiToken?: string | null;
+	/** Local/remote path mapping for completed downloads. */
+	downloadPathLocal?: string | null;
+	downloadPathRemote?: string | null;
+	tempPathLocal?: string | null;
+	tempPathRemote?: string | null;
 }
 
 /**

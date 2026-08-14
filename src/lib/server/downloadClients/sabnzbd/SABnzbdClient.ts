@@ -197,6 +197,26 @@ export class SABnzbdClient implements IDownloadClient {
 	}
 
 	/**
+	 * Resolve SABnzbd's complete_dir to an absolute path for storage-path
+	 * validation. SABnzbd may report a complete_dir that is relative to its own
+	 * working directory while the per-item storage/path fields are absolute.
+	 * When the client's local download path is configured, a relative
+	 * complete_dir is resolved against it (issue #489).
+	 */
+	private resolveCompleteDir(completeDir: string): string {
+		if (
+			completeDir.startsWith('/') ||
+			/^[A-Za-z]:[\\/]/.test(completeDir) ||
+			completeDir.startsWith('\\\\')
+		) {
+			return completeDir;
+		}
+		const localBase = this.config.downloadPathLocal;
+		if (!localBase) return completeDir;
+		return `${localBase.replace(/\/+$/, '')}/${completeDir.replace(/^\/+/, '')}`;
+	}
+
+	/**
 	 * Validate that a storage path is a valid subfolder, not just the base directory.
 	 * This prevents importing from the base download folder which would scan all files.
 	 */
@@ -225,7 +245,7 @@ export class SABnzbdClient implements IDownloadClient {
 		item: SabnzbdHistoryItem,
 		sabConfig: SabnzbdConfigResponse
 	): Promise<string> {
-		const baseDir = sabConfig.misc.complete_dir;
+		const baseDir = this.resolveCompleteDir(sabConfig.misc.complete_dir);
 
 		// Use storage if it's valid (not just the base directory)
 		if (this.isValidStoragePath(item.storage, baseDir)) {
@@ -1000,7 +1020,7 @@ export class SABnzbdClient implements IDownloadClient {
 		item: SabnzbdHistoryItem,
 		sabConfig: SabnzbdConfigResponse
 	): Promise<DownloadInfo> {
-		const baseDir = sabConfig.misc.complete_dir;
+		const baseDir = this.resolveCompleteDir(sabConfig.misc.complete_dir);
 		const hasValidStorage = this.isValidStoragePath(item.storage, baseDir);
 		const outputPath = await this.resolveOutputPath(item, sabConfig);
 

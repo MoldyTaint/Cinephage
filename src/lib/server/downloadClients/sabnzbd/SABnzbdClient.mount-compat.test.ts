@@ -20,6 +20,10 @@ vi.mock('./SABnzbdProxy', () => {
 		getFullStatus = vi.fn();
 		getWarnings = vi.fn();
 		getCategories = vi.fn();
+		getHistory = vi.fn();
+		getQueue = vi.fn();
+		getQueueItem = vi.fn();
+		getHistoryItem = vi.fn();
 
 		constructor() {
 			SABnzbdProxy.instances.push(this);
@@ -37,6 +41,10 @@ function getProxyInstance() {
 		getFullStatus: ReturnType<typeof vi.fn>;
 		getWarnings: ReturnType<typeof vi.fn>;
 		getCategories: ReturnType<typeof vi.fn>;
+		getHistory: ReturnType<typeof vi.fn>;
+		getQueue: ReturnType<typeof vi.fn>;
+		getQueueItem: ReturnType<typeof vi.fn>;
+		getHistoryItem: ReturnType<typeof vi.fn>;
 	};
 }
 
@@ -236,5 +244,103 @@ describe('SABnzbdClient mount-mode compatibility', () => {
 
 		expect(result.success).toBe(true);
 		expect(result.details?.categories).toEqual([]);
+	});
+});
+
+describe('SABnzbdClient relative complete_dir resolution (issue #489)', () => {
+	function historySlot() {
+		return {
+			nzo_id: 'nzo-1',
+			name: 'Item.Name',
+			category: 'movies',
+			status: 'Completed',
+			storage: '/data/Downloads/complete/Item.Name',
+			path: '/data/Downloads/complete/Item.Name',
+			bytes: 1_000_000,
+			completed: 1_700_000_000
+		};
+	}
+
+	beforeEach(() => {
+		const proxyClass = SABnzbdProxy as unknown as { instances: Array<Record<string, unknown>> };
+		proxyClass.instances.length = 0;
+	});
+
+	it('marks items completed when complete_dir is relative and downloadPathLocal is configured', async () => {
+		const client = new SABnzbdClient({
+			host: 'localhost',
+			port: 8080,
+			useSsl: false,
+			apiKey: 'key',
+			implementation: 'sabnzbd',
+			downloadPathLocal: '/data'
+		});
+		const proxy = getProxyInstance();
+		proxy.getConfig.mockResolvedValue({
+			categories: [],
+			misc: { complete_dir: 'Downloads/complete' }
+		});
+		proxy.getHistory.mockResolvedValue({ slots: [historySlot()] });
+		proxy.getQueue.mockResolvedValue({ slots: [] });
+
+		const downloads = await client.getDownloads();
+
+		expect(downloads.length).toBe(1);
+		expect(downloads[0].status).toBe('completed');
+		expect(downloads[0].savePath).toBe('/data/Downloads/complete/Item.Name');
+	});
+
+	it('keeps items in postprocessing when relative complete_dir has no local base to resolve against', async () => {
+		const client = new SABnzbdClient({
+			host: 'localhost',
+			port: 8080,
+			useSsl: false,
+			apiKey: 'key',
+			implementation: 'sabnzbd'
+		});
+		const proxy = getProxyInstance();
+		proxy.getConfig.mockResolvedValue({
+			categories: [],
+			misc: { complete_dir: 'Downloads/complete' }
+		});
+		proxy.getHistory.mockResolvedValue({ slots: [historySlot()] });
+		proxy.getQueue.mockResolvedValue({ slots: [] });
+
+		const downloads = await client.getDownloads();
+
+		expect(downloads.length).toBe(1);
+		expect(downloads[0].status).toBe('postprocessing');
+	});
+
+	it('does not mangle Windows-style absolute complete_dir when downloadPathLocal is configured', async () => {
+		const client = new SABnzbdClient({
+			host: 'localhost',
+			port: 8080,
+			useSsl: false,
+			apiKey: 'key',
+			implementation: 'sabnzbd',
+			downloadPathLocal: '/mnt/sab'
+		});
+		const proxy = getProxyInstance();
+		proxy.getConfig.mockResolvedValue({
+			categories: [],
+			misc: { complete_dir: 'D:/Downloads/complete' }
+		});
+		proxy.getHistory.mockResolvedValue({
+			slots: [
+				{
+					...historySlot(),
+					storage: 'D:/Downloads/complete/Item.Name',
+					path: 'D:/Downloads/complete/Item.Name'
+				}
+			]
+		});
+		proxy.getQueue.mockResolvedValue({ slots: [] });
+
+		const downloads = await client.getDownloads();
+
+		expect(downloads.length).toBe(1);
+		expect(downloads[0].status).toBe('completed');
+		expect(downloads[0].savePath).toBe('D:/Downloads/complete/Item.Name');
 	});
 });
