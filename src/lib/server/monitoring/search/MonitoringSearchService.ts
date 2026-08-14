@@ -1594,6 +1594,26 @@ export class MonitoringSearchService {
 	}
 
 	/**
+	 * Resolve the scoring profile to use for a media item's upgrade/cutoff
+	 * evaluation. Explicit profiles are loaded via the quality filter; when no
+	 * profile is assigned (or the assigned one no longer exists) the default
+	 * profile is used. Without this, contexts for items with a NULL
+	 * scoringProfileId would carry no profile and every release would be
+	 * rejected with NO_PROFILE (issue #492).
+	 */
+	private async resolveScoringProfileForContext(
+		profileId: string | null,
+		relation: typeof scoringProfiles.$inferSelect | null | undefined
+	): Promise<typeof scoringProfiles.$inferSelect | undefined> {
+		if (relation) return relation;
+		if (profileId) {
+			const profile = await qualityFilter.getProfile(profileId);
+			if (profile) return profile as unknown as typeof scoringProfiles.$inferSelect;
+		}
+		return (await qualityFilter.getDefaultScoringProfile()) as unknown as typeof scoringProfiles.$inferSelect;
+	}
+
+	/**
 	 * Search for movie upgrades
 	 * @param cutoffUnmetOnly - If true, only search items below cutoff. If false, search all items with files.
 	 * @param signal - Optional AbortSignal for cancellation support
@@ -1686,7 +1706,10 @@ export class MonitoringSearchService {
 				const context: MovieContext = {
 					movie,
 					existingFile,
-					profile: movie.scoringProfile ?? undefined
+					profile: await this.resolveScoringProfileForContext(
+						movie.scoringProfileId,
+						movie.scoringProfile
+					)
 				};
 
 				// Check monitored
@@ -1875,7 +1898,10 @@ export class MonitoringSearchService {
 					series: episode.series,
 					episode,
 					existingFile,
-					profile: episode.series.scoringProfile ?? undefined
+					profile: await this.resolveScoringProfileForContext(
+						episode.series.scoringProfileId,
+						episode.series.scoringProfile
+					)
 				};
 
 				// Check monitored
@@ -1955,8 +1981,11 @@ export class MonitoringSearchService {
 
 		// Load scoring profile for scoring
 		let profile: ScoringProfile | undefined;
-		if (movie.scoringProfile) {
-			profile = (await qualityFilter.getProfile(movie.scoringProfile.id)) ?? undefined;
+		if (movie.scoringProfileId) {
+			profile = (await qualityFilter.getProfile(movie.scoringProfileId)) ?? undefined;
+		}
+		if (!profile) {
+			profile = await qualityFilter.getDefaultScoringProfile();
 		}
 
 		// Score the existing file upfront for dry-run reporting
@@ -2036,7 +2065,7 @@ export class MonitoringSearchService {
 			const context: MovieContext = {
 				movie,
 				existingFile,
-				profile: movie.scoringProfile ?? undefined
+				profile: (profile ?? movie.scoringProfile ?? undefined) as MovieContext['profile']
 			};
 
 			// Track best candidate for dry-run reporting
@@ -2406,7 +2435,7 @@ export class MonitoringSearchService {
 				series: seriesData,
 				episode,
 				existingFile,
-				profile: seriesData.scoringProfile ?? undefined
+				profile: (profile ?? seriesData.scoringProfile ?? undefined) as EpisodeContext['profile']
 			};
 
 			// Track best candidate for dry-run reporting

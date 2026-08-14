@@ -7,8 +7,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { EpisodeContext } from '../specifications/types.js';
-import { createEpisode, createSeries } from '../../../../test/fixtures/media.js';
+import type { EpisodeContext, MovieContext } from '../specifications/types.js';
+import {
+	createEpisode,
+	createMovie,
+	createMovieFile,
+	createSeries
+} from '../../../../test/fixtures/media.js';
 import { createSearchRelease } from '../../../../test/fixtures/releases.js';
 
 // --- Hoisted mocks (must be before any imports that use them) ---
@@ -18,6 +23,10 @@ const {
 	findManyEpisodeFilesMock,
 	updateEpisodeMock,
 	findManyDownloadQueueMock,
+	findManyMoviesMock,
+	findManyMovieFilesMock,
+	qualityGetProfileMock,
+	qualityGetDefaultScoringProfileMock,
 	mockIsSatisfied,
 	searchAllMock,
 	searchEnhancedMock
@@ -34,6 +43,10 @@ const {
 			})
 		}),
 		findManyDownloadQueueMock: vi.fn().mockResolvedValue([]),
+		findManyMoviesMock: vi.fn(),
+		findManyMovieFilesMock: vi.fn(),
+		qualityGetProfileMock: vi.fn().mockResolvedValue(null),
+		qualityGetDefaultScoringProfileMock: vi.fn().mockResolvedValue(null),
 		mockIsSatisfied,
 		searchAllMock,
 		searchEnhancedMock
@@ -46,6 +59,8 @@ vi.mock('$lib/server/db/index.js', () => ({
 		query: {
 			episodes: { findMany: findManyEpisodesMock },
 			episodeFiles: { findMany: findManyEpisodeFilesMock },
+			movies: { findMany: findManyMoviesMock },
+			movieFiles: { findMany: findManyMovieFilesMock },
 			downloadQueue: { findMany: findManyDownloadQueueMock }
 		},
 		update: updateEpisodeMock,
@@ -154,8 +169,8 @@ vi.mock('$lib/server/scoring/scorer.js', () => ({
 // Mock quality filter
 vi.mock('$lib/server/quality', () => ({
 	qualityFilter: {
-		getProfile: vi.fn().mockResolvedValue(null),
-		getDefaultScoringProfile: vi.fn().mockResolvedValue(null)
+		getProfile: qualityGetProfileMock,
+		getDefaultScoringProfile: qualityGetDefaultScoringProfileMock
 	}
 }));
 
@@ -607,5 +622,122 @@ describe('MonitoringSearchService - episode-targeted season pack grabs', () => {
 				queueItemId: 'queue-1'
 			})
 		);
+	});
+});
+
+describe('MonitoringSearchService - null scoring profile upgrade context (issue #492)', () => {
+	let service: InstanceType<typeof MonitoringSearchService>;
+
+	const defaultProfile = {
+		id: 'default',
+		name: 'Default',
+		upgradesAllowed: true,
+		minScore: 0,
+		upgradeUntilScore: 50000,
+		minScoreIncrement: 100,
+		formatScores: {}
+	};
+
+	beforeEach(() => {
+		findManyMoviesMock.mockReset();
+		findManyMovieFilesMock.mockReset();
+		findManyDownloadQueueMock.mockReset().mockResolvedValue([]);
+		qualityGetProfileMock.mockReset().mockResolvedValue(null);
+		qualityGetDefaultScoringProfileMock.mockReset().mockResolvedValue(null);
+		mockIsSatisfied.mockReset().mockResolvedValue({ accepted: true });
+		searchAllMock.mockReset().mockResolvedValue([]);
+		searchEnhancedMock.mockReset().mockResolvedValue({
+			releases: [
+				createSearchRelease({
+					title: 'Example.Movie.2016.2160p.REMUX.2160p.BluRay',
+					size: 20_000_000_000
+				})
+			],
+			rejections: []
+		});
+		service = new MonitoringSearchService();
+	});
+
+	it('resolves the default scoring profile into movie upgrade contexts when scoringProfileId is null', async () => {
+		const nullProfileMovie = createMovie({
+			id: 'movie-1',
+			tmdbId: 111,
+			title: 'Example Movie',
+			scoringProfileId: null,
+			hasFile: true,
+			monitored: true
+		});
+		const movieFile = createMovieFile({
+			id: 'movie-file-1',
+			movieId: 'movie-1',
+			relativePath: 'Example.Movie.2016.1080p.BluRay.mkv',
+			sceneName: 'Example.Movie.2016.1080p.BluRay',
+			size: 2_000_000_000,
+			quality: { resolution: '1080p', source: 'bluray' }
+		});
+
+		findManyMoviesMock.mockResolvedValue([nullProfileMovie]);
+		findManyMovieFilesMock.mockResolvedValue([movieFile]);
+		qualityGetDefaultScoringProfileMock.mockResolvedValue(defaultProfile);
+
+		const capturedContexts: MovieContext[] = [];
+		mockIsSatisfied.mockImplementation(async (context: MovieContext) => {
+			if (context?.existingFile) {
+				capturedContexts.push({ ...context });
+			}
+			return { accepted: true };
+		});
+
+		await service.searchForUpgrades({
+			movieIds: ['movie-1'],
+			dryRun: true,
+			ignoreCooldown: true
+		});
+
+		expect(capturedContexts.length).toBeGreaterThan(0);
+		for (const ctx of capturedContexts) {
+			expect(ctx.profile).toBeDefined();
+			expect(ctx.profile?.id).toBe('default');
+		}
+		expect(qualityGetDefaultScoringProfileMock).toHaveBeenCalled();
+	});
+
+	it('resolves the default scoring profile into episode upgrade contexts when series scoringProfileId is null', async () => {
+		const nullProfileSeries = {
+			...createSeries({ id: SERIES_ID, tmdbId: 1, scoringProfileId: null }),
+			path: '/tv/test-series'
+		};
+		const episodeWithNullProfileSeries = {
+			...createEpisode({ id: 'ep-1', episodeNumber: 5 }),
+			title: 'Fifth Episode',
+			hasFile: true,
+			series: nullProfileSeries,
+			season: { id: 'season-1', seriesId: SERIES_ID, seasonNumber: 1, monitored: true }
+		};
+
+		findManyEpisodesMock.mockResolvedValue([episodeWithNullProfileSeries]);
+		findManyEpisodeFilesMock.mockResolvedValue([fileForEp1]);
+		qualityGetDefaultScoringProfileMock.mockResolvedValue(defaultProfile);
+
+		const capturedContexts: EpisodeContext[] = [];
+		mockIsSatisfied.mockImplementation(async (context: EpisodeContext) => {
+			if (context?.existingFile) {
+				capturedContexts.push({ ...context });
+			}
+			return { accepted: true };
+		});
+
+		await service.searchForUpgrades({
+			seriesIds: [SERIES_ID],
+			dryRun: true,
+			ignoreCooldown: true
+		});
+
+		expect(capturedContexts.length).toBeGreaterThan(0);
+		for (const ctx of capturedContexts) {
+			expect(ctx.profile).toBeDefined();
+			expect(ctx.profile?.id).toBe('default');
+		}
+		expect(qualityGetDefaultScoringProfileMock).toHaveBeenCalled();
 	});
 });
