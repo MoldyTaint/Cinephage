@@ -164,11 +164,7 @@
 	$effect(() => {
 		if (open) {
 			monitored = movie.monitored ?? true;
-			const defaultProfileId = qualityProfiles.find((p) => p.isDefault)?.id;
-			qualityProfileId =
-				movie.scoringProfileId && movie.scoringProfileId !== defaultProfileId
-					? movie.scoringProfileId
-					: '';
+			qualityProfileId = movie.scoringProfileId ?? '';
 			delayProfileId = (movie as { delayProfileId?: string | null }).delayProfileId ?? null;
 			rootFolderId = movie.rootFolderId ?? '';
 			minimumAvailability = movie.minimumAvailability ?? 'released';
@@ -398,7 +394,14 @@
 							bind:value={qualityProfileId}
 							class="select-bordered select w-full select-sm"
 						>
-							<option value=""
+							{#if defaultProfile}
+								<option value="" hidden
+									>{m.library_movies_profileDefault({
+										name: defaultProfile?.name ?? m.common_default()
+									})}</option
+								>
+							{/if}
+							<option value={defaultProfile?.id ?? ''}
 								>{m.library_movies_profileDefault({
 									name: defaultProfile?.name ?? m.common_default()
 								})}</option

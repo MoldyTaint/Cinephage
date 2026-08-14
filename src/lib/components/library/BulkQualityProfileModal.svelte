@@ -75,7 +75,14 @@
 			bind:value={qualityProfileId}
 			class="select-bordered select w-full"
 		>
-			<option value=""
+			{#if defaultProfile}
+				<option value="" hidden
+					>{m.library_bulkQualityProfile_defaultOption({
+						name: defaultProfile?.name ?? m.common_default()
+					})}</option
+				>
+			{/if}
+			<option value={defaultProfile?.id ?? ''}
 				>{m.library_bulkQualityProfile_defaultOption({
 					name: defaultProfile?.name ?? m.common_default()
 				})}</option

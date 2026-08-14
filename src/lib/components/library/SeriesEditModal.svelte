@@ -237,11 +237,7 @@
 	$effect(() => {
 		if (open) {
 			monitored = series.monitored ?? true;
-			const defaultProfileId = qualityProfiles.find((p) => p.isDefault)?.id;
-			qualityProfileId =
-				series.scoringProfileId && series.scoringProfileId !== defaultProfileId
-					? series.scoringProfileId
-					: '';
+			qualityProfileId = series.scoringProfileId ?? '';
 			delayProfileId = (series as { delayProfileId?: string | null }).delayProfileId ?? null;
 			rootFolderId = series.rootFolderId ?? '';
 			seasonFolder = series.seasonFolder ?? true;
@@ -390,7 +386,12 @@
 						bind:value={qualityProfileId}
 						class="select-bordered select w-full select-sm"
 					>
-						<option value=""
+						{#if defaultProfile}
+							<option value="" hidden
+								>{defaultProfile?.name ?? m.common_default()} ({m.common_default()})</option
+							>
+						{/if}
+						<option value={defaultProfile?.id ?? ''}
 							>{defaultProfile?.name ?? m.common_default()} ({m.common_default()})</option
 						>
 						{#each nonDefaultProfiles as profile (profile.id)}
