@@ -39,6 +39,7 @@
 	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
 	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
 	import * as m from '$lib/paraglide/messages.js';
+	import { seriesStatusFilterOptions } from '$lib/utils/format-status.js';
 
 	let { data } = $props();
 
@@ -387,11 +388,7 @@
 		{
 			key: 'status',
 			label: m.library_tv_filterShowStatus(),
-			options: [
-				{ value: 'all', label: m.library_tv_filterAll() },
-				{ value: 'continuing', label: m.library_tv_filterContinuing() },
-				{ value: 'ended', label: m.library_tv_filterEnded() }
-			]
+			options: seriesStatusFilterOptions()
 		},
 		{
 			key: 'progress',

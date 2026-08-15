@@ -14,6 +14,7 @@ import type { Actions, PageServerLoad } from './$types';
 import type { LibrarySeries, EpisodeFile, QualityProfileSummary } from '$lib/types/library';
 import { logger } from '$lib/logging';
 import { todayDateString } from '$lib/utils/format.js';
+import { matchesSeriesStatusFilter } from '$lib/utils/format-status.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
@@ -298,16 +299,8 @@ export const load: PageServerLoad = async ({ url }) => {
 		}
 
 		// Filter by series status
-		if (status === 'continuing') {
-			filteredSeries = filteredSeries.filter(
-				(s) =>
-					s.status?.toLowerCase() === 'returning series' ||
-					s.status?.toLowerCase() === 'in production'
-			);
-		} else if (status === 'ended') {
-			filteredSeries = filteredSeries.filter(
-				(s) => s.status?.toLowerCase() === 'ended' || s.status?.toLowerCase() === 'canceled'
-			);
+		if (status === 'continuing' || status === 'ended' || status === 'cancelled') {
+			filteredSeries = filteredSeries.filter((s) => matchesSeriesStatusFilter(s.status, status));
 		}
 
 		// Filter by progress
