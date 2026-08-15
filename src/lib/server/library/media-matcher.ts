@@ -21,7 +21,8 @@ import {
 import { eq, and } from 'drizzle-orm';
 import { tmdb, type SearchResult } from '$lib/server/tmdb.js';
 import { mediaInfoService } from './media-info.js';
-import { basename, dirname, extname } from 'path';
+import { basename, dirname, extname, join } from 'path';
+import { RootFolderConflictError } from '$lib/errors';
 import { getSubtitleSettingsService } from '$lib/server/subtitles/services/SubtitleSettingsService.js';
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
@@ -531,7 +532,29 @@ export class MediaMatcherService {
 		// Check if best match exceeds threshold
 		if (bestMatch.confidence >= threshold) {
 			// Auto-match
-			await this.acceptMatch(fileId, bestMatch.tmdbId, file.mediaType as 'movie' | 'tv');
+			try {
+				await this.acceptMatch(fileId, bestMatch.tmdbId, file.mediaType as 'movie' | 'tv');
+			} catch (error) {
+				if (error instanceof RootFolderConflictError) {
+					// Keep the file unmatched with a clear reason instead of
+					// writing an unresolvable file link (bug #488).
+					await db
+						.update(unmatchedFiles)
+						.set({ reason: 'root_folder_conflict' })
+						.where(eq(unmatchedFiles.id, fileId));
+
+					return {
+						fileId,
+						filePath: file.path,
+						matched: false,
+						tmdbId: bestMatch.tmdbId,
+						title: bestMatch.title,
+						confidence: bestMatch.confidence,
+						reason: error.message
+					};
+				}
+				throw error;
+			}
 
 			return {
 				fileId,
@@ -673,6 +696,15 @@ export class MediaMatcherService {
 			throw new Error(`Root folder not found: ${file.rootFolderId}`);
 		}
 
+		// Refuse matches that would produce unresolvable file links: if the
+		// target movie/series already exists, every consumer resolves file
+		// rows through the existing entry's root folder + path. Linking a file
+		// that lives outside that scope (different root folder, or a different
+		// folder layout) writes a row whose resolved path does not exist on
+		// disk - ENOENT on rename/delete/playback plus a false "complete"
+		// state. This mirrors the linkage rule disk-scan enforces.
+		await this.assertNoRootFolderConflict(file, tmdbId, mediaType);
+
 		// Skip .strm probing for existing items using the Streamer profile
 		let allowStrmProbe: boolean;
 		if (mediaType === 'movie') {
@@ -700,6 +732,76 @@ export class MediaMatcherService {
 
 		// Remove from unmatched
 		await db.delete(unmatchedFiles).where(eq(unmatchedFiles.id, unmatchedFileId));
+	}
+
+	/**
+	 * Refuse a match when the target movie/series already exists under a
+	 * different root folder or folder layout than the file being matched.
+	 *
+	 * Consumers (import/rename/playback, disk-scan) resolve file rows through
+	 * the existing entry's root folder + path, so a file outside that scope
+	 * can never be linked honestly. The disk-scan auto-link path enforces the
+	 * same rule; this keeps the accept-match path consistent with it.
+	 */
+	private async assertNoRootFolderConflict(
+		file: typeof unmatchedFiles.$inferSelect,
+		tmdbId: number,
+		mediaType: 'movie' | 'tv'
+	): Promise<void> {
+		if (mediaType === 'movie') {
+			const [existing] = await db
+				.select({
+					rootFolderId: movies.rootFolderId,
+					path: movies.path,
+					title: movies.title
+				})
+				.from(movies)
+				.where(eq(movies.tmdbId, tmdbId));
+			if (!existing?.rootFolderId) return;
+			await this.assertFileInsideEntryScope(
+				file,
+				existing.rootFolderId,
+				existing.path,
+				existing.title
+			);
+		} else {
+			const [existing] = await db
+				.select({
+					rootFolderId: series.rootFolderId,
+					path: series.path,
+					title: series.title
+				})
+				.from(series)
+				.where(eq(series.tmdbId, tmdbId));
+			if (!existing?.rootFolderId) return;
+			await this.assertFileInsideEntryScope(
+				file,
+				existing.rootFolderId,
+				existing.path,
+				existing.title
+			);
+		}
+	}
+
+	private async assertFileInsideEntryScope(
+		file: typeof unmatchedFiles.$inferSelect,
+		existingRootFolderId: string,
+		existingPath: string,
+		title: string
+	): Promise<void> {
+		const [existingRoot] = await db
+			.select({ name: rootFolders.name, path: rootFolders.path })
+			.from(rootFolders)
+			.where(eq(rootFolders.id, existingRootFolderId));
+
+		if (!existingRoot) return;
+
+		const expectedDir = join(existingRoot.path, existingPath);
+		if (!file.path.startsWith(expectedDir + '/')) {
+			throw new RootFolderConflictError(
+				`Refusing to link "${file.path}" to "${title}": the file is not inside "${expectedDir}", where "${title}" is registered under the "${existingRoot.name}" root folder. Linking it would create an unresolvable file path.`
+			);
+		}
 	}
 
 	/**
