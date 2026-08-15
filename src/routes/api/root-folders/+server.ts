@@ -6,6 +6,7 @@ import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { parseBody } from '$lib/server/api/validate.js';
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring/DownloadMonitorService.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { invalidateRootFolderPathCache } from '$lib/server/filesystem/path-guard.js';
 
 /**
  * GET /api/root-folders
@@ -42,6 +43,8 @@ export const POST: RequestHandler = async (event) => {
 		skipFolderPatterns: validated.skipFolderPatterns,
 		blockedVideoExtensions: validated.blockedVideoExtensions
 	});
+
+	invalidateRootFolderPathCache();
 
 	if (validated.blockedVideoExtensions && validated.blockedVideoExtensions.length > 0) {
 		downloadMonitor.checkBlockedExtensions().catch(() => {});

@@ -7,6 +7,7 @@ import { NotFoundError, isAppError } from '$lib/errors';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring/DownloadMonitorService.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { invalidateRootFolderPathCache } from '$lib/server/filesystem/path-guard.js';
 
 /**
  * GET /api/root-folders/[id]
@@ -33,6 +34,7 @@ export const PUT: RequestHandler = async (event) => {
 
 	try {
 		const result = await service.updateFolder(params.id, data);
+		invalidateRootFolderPathCache();
 		if (data.blockedVideoExtensions !== undefined) {
 			downloadMonitor.checkBlockedExtensions().catch(() => {});
 		}
@@ -66,6 +68,7 @@ export const DELETE: RequestHandler = async (event) => {
 
 	try {
 		const result = await service.deleteFolder(params.id);
+		invalidateRootFolderPathCache();
 		libraryMediaEvents.emitLibraryDataChanged({
 			source: 'root-folder',
 			reason: 'root-folder-deleted',

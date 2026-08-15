@@ -36,10 +36,42 @@ async function canonicalizePath(pathToCheck: string): Promise<string> {
 	}
 }
 
+const ROOT_PATHS_TTL_MS = 30_000;
+
+let cachedRootFolderPaths: string[] | null = null;
+let cachedRootFolderPathsAt = 0;
+
+/**
+ * Resolve configured root folder paths with a short TTL cache.
+ *
+ * Resolving root folders is expensive: getFolders() runs a DB query plus a
+ * temp-dir write test and statfs calls per root folder. Hot loops (filesystem
+ * browsing, bulk import validation) call this once per entry; without caching
+ * the cost multiplies by entries x root folders and can freeze the event loop
+ * on large directories or slow disks.
+ */
 async function getRootFolderPaths(): Promise<string[]> {
+	const now = Date.now();
+	if (cachedRootFolderPaths !== null && now - cachedRootFolderPathsAt < ROOT_PATHS_TTL_MS) {
+		return cachedRootFolderPaths;
+	}
+
 	const rootFolderService = new RootFolderService();
 	const rootFolders = await rootFolderService.getFolders();
-	return Promise.all(rootFolders.map((folder) => canonicalizePath(folder.path)));
+	const paths = await Promise.all(rootFolders.map((folder) => canonicalizePath(folder.path)));
+
+	cachedRootFolderPaths = paths;
+	cachedRootFolderPathsAt = now;
+	return paths;
+}
+
+/**
+ * Drop the cached root folder paths. Call after any root folder mutation
+ * (create, update, delete) so subsequent checks see the new configuration.
+ */
+export function invalidateRootFolderPathCache(): void {
+	cachedRootFolderPaths = null;
+	cachedRootFolderPathsAt = 0;
 }
 
 export async function isPathInsideManagedRoot(requestedPath: string): Promise<boolean> {
