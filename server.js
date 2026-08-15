@@ -17,7 +17,16 @@
 // If no .env file exists (e.g. Docker with env vars passed directly), this is a no-op.
 import 'dotenv/config';
 
-import { server } from './build/index.js';
+// Raise the default request body limit. adapter-node reads BODY_SIZE_LIMIT when
+// its bundle loads, so this must be set BEFORE the dynamic import below (ESM
+// static imports are hoisted and would load the bundle too early). Bulk import
+// submits one batch of up to 5000 jobs, which can exceed the 512K default.
+process.env.BODY_SIZE_LIMIT ??= '10M';
+
+// KeepAlive note: Node's default keepAliveTimeout is 5s, but reverse proxies
+// (Nginx, Traefik) typically use 60-75s. The mismatch causes 502 Bad Gateway
+// errors on connection reuse; keepAliveTimeout is raised to 65s below.
+const { server } = await import('./build/index.js');
 
 // Set keepAliveTimeout to 65 seconds (higher than typical proxy timeouts of 60s)
 // This prevents 502 errors from connection reuse issues
@@ -28,3 +37,4 @@ server.server.keepAliveTimeout = 65000;
 server.server.headersTimeout = 66000;
 
 console.log('Server configured with keepAliveTimeout=65s for reverse proxy compatibility');
+console.log(`Body size limit: ${process.env.BODY_SIZE_LIMIT}`);

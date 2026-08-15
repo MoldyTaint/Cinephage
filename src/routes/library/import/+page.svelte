@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
+	import { MAX_BULK_IMPORT_JOBS } from '$lib/shared/bulk-import.js';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
@@ -2178,6 +2179,11 @@
 
 		if (jobs.length === 0) {
 			toasts.warning(m.toast_library_import_noSelectedItems());
+			return;
+		}
+
+		if (jobs.length > MAX_BULK_IMPORT_JOBS) {
+			toasts.error(m.toast_library_import_tooManyItems());
 			return;
 		}
 

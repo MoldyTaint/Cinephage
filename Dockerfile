@@ -110,6 +110,7 @@ ENV NODE_ENV=production \
     NODE_OPTIONS="--max-old-space-size=2048" \
     HOST=0.0.0.0 \
     PORT=3000 \
+    BODY_SIZE_LIMIT=10M \
     FFPROBE_PATH=/usr/bin/ffprobe \
     ALASS_PATH=/usr/local/bin/alass-cli \
     DATA_DIR=/config/data \
