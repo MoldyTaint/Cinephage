@@ -96,6 +96,18 @@ export async function matchUnmatched(id: string, payload: UnmatchedSingleMatch) 
 	return apiPost('/api/library/unmatched/match', { fileIds: [id], ...payload });
 }
 
+export async function forceMatchUnmatched(id: string, tmdbId: number, mediaType: 'movie' | 'tv') {
+	return apiPatch(`/api/library/unmatched/${id}`, { tmdbId, mediaType });
+}
+
+export async function reprocessUnmatched() {
+	return apiPost('/api/library/unmatched');
+}
+
+export async function forceMatchAllUnmatched(minScore: number) {
+	return apiPost('/api/library/unmatched/force-match-all', { minScore });
+}
+
 export async function autoSearchMovie(movieId: string) {
 	return apiPost(`/api/library/movies/${movieId}/auto-search`);
 }

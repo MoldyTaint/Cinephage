@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { Search, X, Clapperboard, Tv, Check, Loader2, Folder } from 'lucide-svelte';
+	import { untrack } from 'svelte';
+	import { Search, X, Clapperboard, Tv, Check, Loader2, ChevronRight, Folder } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
@@ -39,6 +40,9 @@
 	let matchPreview = $state<Array<{ file: string; season?: number; episode?: number }>>([]);
 	let seasonOverride = $state<number | null>(null);
 
+	// Whether the folder's media type is locked (known from folder data)
+	const typeLocked = $derived(folder.mediaType === 'movie' || folder.mediaType === 'tv');
+
 	// Reset state when folder changes
 	$effect(() => {
 		if (folder) {
@@ -65,6 +69,17 @@
 		}
 	});
 
+	// Debounced search-as-you-type (400 ms)
+	let debounceTimer: ReturnType<typeof setTimeout>;
+	$effect(() => {
+		const q = searchQuery;
+		clearTimeout(debounceTimer);
+		if (q.trim() && !selectedMedia) {
+			debounceTimer = setTimeout(() => untrack(() => search()), 400);
+		}
+		return () => clearTimeout(debounceTimer);
+	});
+
 	const hasMissingSeasons = $derived(
 		searchType === 'tv' && matchPreview.some((item) => item.season === undefined)
 	);
@@ -88,10 +103,11 @@
 		}
 	}
 
-	// Handle search on enter
+	// Keep Enter as an immediate search escape hatch
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter') {
-			search();
+			clearTimeout(debounceTimer);
+			untrack(() => search());
 		}
 	}
 
@@ -106,7 +122,6 @@
 
 		isMatching = true;
 		try {
-			// Get all file IDs from the folder
 			const fileIds = folder.files.map((f) => f.id);
 
 			const result = (await batchUnmatchedMatch({
@@ -152,15 +167,25 @@
 
 <ModalWrapper {open} onClose={close} maxWidth="2xl" labelledBy="match-folder-modal-title">
 	<!-- Header -->
-	<div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+	<div class="mb-4 flex items-center justify-between gap-2">
 		<div class="flex items-center gap-2">
 			<Folder class="h-5 w-5 text-primary" />
 			<h3 id="match-folder-modal-title" class="text-lg font-bold">
 				{m.library_matchFolder_title()}
 			</h3>
+			<span
+				class="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium
+				{searchType === 'tv' ? 'bg-secondary/15 text-secondary' : 'bg-primary/15 text-primary'}"
+			>
+				{#if searchType === 'tv'}
+					<Tv class="h-3 w-3" />{m.common_tvShow()}
+				{:else}
+					<Clapperboard class="h-3 w-3" />{m.common_movie()}
+				{/if}
+			</span>
 		</div>
 		<button
-			class="btn btn-circle self-end btn-ghost btn-sm sm:self-auto"
+			class="btn btn-circle shrink-0 btn-ghost btn-sm"
 			onclick={close}
 			aria-label={m.action_close()}
 		>
@@ -218,12 +243,11 @@
 			{#if hasMissingSeasons}
 				<div class="rounded-lg border border-warning/40 bg-warning/10 p-3">
 					<p class="mb-2 text-sm font-medium text-warning-content">
-						Season number could not be parsed from the filenames. Specify it below to match all
-						files correctly.
+						{m.library_matchFolder_seasonParseWarning()}
 					</p>
 					<div class="flex items-center gap-3">
 						<label class="flex items-center gap-2 text-sm">
-							Season
+							{m.library_matchFolder_seasonLabel()}
 							<input
 								type="number"
 								min="0"
@@ -234,7 +258,7 @@
 						</label>
 						{#if seasonOverride !== null}
 							<span class="text-xs text-base-content/60"
-								>Will be applied to all files without a parsed season.</span
+								>{m.library_matchFolder_seasonAppliedHint()}</span
 							>
 						{/if}
 					</div>
@@ -261,7 +285,9 @@
 									S{String(resolvedSeason).padStart(2, '0')}E{String(item.episode).padStart(2, '0')}
 								</span>
 							{:else if resolvedSeason === undefined && item.episode !== undefined}
-								<span class="ml-2 badge shrink-0 badge-sm badge-error">No season</span>
+								<span class="ml-2 badge shrink-0 badge-sm badge-error"
+									>{m.library_matchFolder_noSeason()}</span
+								>
 							{/if}
 						</div>
 					{/each}
@@ -294,99 +320,109 @@
 		</div>
 	{:else}
 		<!-- Search Mode -->
-		<!-- Search Type Toggle -->
-		<div class="mb-4 flex gap-2">
-			<button
-				class="btn btn-sm {searchType === 'movie' ? 'btn-primary' : 'btn-ghost'}"
-				onclick={() => (searchType = 'movie')}
-			>
-				<Clapperboard class="h-4 w-4" />
-				{m.common_movie()}
-			</button>
-			<button
-				class="btn btn-sm {searchType === 'tv' ? 'btn-primary' : 'btn-ghost'}"
-				onclick={() => (searchType = 'tv')}
-			>
-				<Tv class="h-4 w-4" />
-				{m.common_tvShow()}
-			</button>
-		</div>
+
+		<!-- Type toggle — only shown when folder mediaType is not determined -->
+		{#if !typeLocked}
+			<div class="mb-4 flex gap-2">
+				<button
+					class="btn btn-sm {searchType === 'movie' ? 'btn-primary' : 'btn-ghost'}"
+					onclick={() => (searchType = 'movie')}
+				>
+					<Clapperboard class="h-4 w-4" />
+					{m.common_movie()}
+				</button>
+				<button
+					class="btn btn-sm {searchType === 'tv' ? 'btn-primary' : 'btn-ghost'}"
+					onclick={() => (searchType = 'tv')}
+				>
+					<Tv class="h-4 w-4" />
+					{m.common_tvShow()}
+				</button>
+			</div>
+		{/if}
 
 		<!-- Search Input -->
-		<div class="mb-4 flex gap-2">
+		<div class="group relative mt-1">
+			{#if isSearching}
+				<Loader2
+					class="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 animate-spin text-base-content/40"
+				/>
+			{:else}
+				<Search
+					class="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-base-content/40 transition-colors group-focus-within:text-primary"
+				/>
+			{/if}
 			<input
 				type="text"
-				class="input-bordered input flex-1"
+				class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				placeholder={m.library_matchFolder_searchPlaceholder()}
 				bind:value={searchQuery}
 				onkeydown={handleKeydown}
 			/>
-			<button
-				class="btn btn-primary"
-				onclick={search}
-				disabled={isSearching || !searchQuery.trim()}
-			>
-				{#if isSearching}
-					<Loader2 class="h-4 w-4 animate-spin" />
-				{:else}
-					<Search class="h-4 w-4" />
-				{/if}
-				{m.action_search()}
-			</button>
 		</div>
 
 		<!-- Search Results -->
-		<div class="max-h-96 space-y-2 overflow-y-auto">
-			{#if searchResults.length > 0}
-				<p class="mb-2 text-sm text-base-content/70">
-					{m.library_matchFolder_clickToSelect()}
-				</p>
+		{#if searchResults.length > 0}
+			<p class="mt-3 text-xs text-base-content/40">
+				{searchResults.length === 1
+					? m.library_matchFolder_resultCountSingular()
+					: m.library_matchFolder_resultCount({ count: searchResults.length })}
+			</p>
+			<div class="mt-1.5 max-h-80 space-y-1 overflow-y-auto">
 				{#each searchResults as result (result.id)}
 					<button
-						class="flex w-full items-center gap-3 rounded-lg bg-base-200 p-3 text-left transition-colors hover:bg-base-300"
+						class="group flex w-full cursor-pointer items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-base-300"
 						onclick={() => selectMedia(result)}
 					>
-						{#if result.poster_path}
-							<TmdbImage
-								path={result.poster_path}
-								size="w92"
-								alt={result.title || result.name || 'Media poster'}
-								class="h-16 w-12 shrink-0 rounded object-cover"
-							/>
-						{:else}
-							<div class="flex h-16 w-12 shrink-0 items-center justify-center rounded bg-base-300">
-								{#if searchType === 'movie'}
-									<Clapperboard class="h-6 w-6 text-base-content/30" />
-								{:else}
-									<Tv class="h-6 w-6 text-base-content/30" />
-								{/if}
-							</div>
-						{/if}
+						<div class="h-16 w-12 shrink-0 overflow-hidden rounded bg-base-300">
+							{#if result.poster_path}
+								<TmdbImage
+									path={result.poster_path}
+									size="w92"
+									alt={result.title || result.name || 'Media poster'}
+									class="h-full w-full object-cover"
+								/>
+							{:else}
+								<div class="flex h-full w-full items-center justify-center">
+									{#if searchType === 'movie'}
+										<Clapperboard class="h-6 w-6 text-base-content/30" />
+									{:else}
+										<Tv class="h-6 w-6 text-base-content/30" />
+									{/if}
+								</div>
+							{/if}
+						</div>
 						<div class="min-w-0 flex-1">
-							<p class="truncate font-medium">{result.title || result.name}</p>
-							{#if searchType === 'movie' && result.release_date}
-								<p class="text-sm text-base-content/70">{result.release_date.substring(0, 4)}</p>
-							{:else if searchType === 'tv' && result.first_air_date}
-								<p class="text-sm text-base-content/70">{result.first_air_date.substring(0, 4)}</p>
-							{/if}
+							<p class="font-medium wrap-break-word sm:truncate">{result.title || result.name}</p>
+							<p class="text-sm text-base-content/60">
+								{(result.release_date || result.first_air_date)?.substring(0, 4) ||
+									m.common_unknownYear()}
+							</p>
 							{#if result.overview}
-								<p class="mt-1 line-clamp-2 text-xs text-base-content/50">{result.overview}</p>
+								<p class="mt-0.5 line-clamp-1 text-xs text-base-content/40">{result.overview}</p>
 							{/if}
+						</div>
+						<div class="shrink-0">
+							<ChevronRight
+								class="h-4 w-4 text-base-content/20 transition-all group-hover:translate-x-0.5 group-hover:text-base-content/60"
+							/>
 						</div>
 					</button>
 				{/each}
-			{:else if !isSearching && searchQuery}
-				<p class="py-8 text-center text-base-content/50">{m.common_noResults()}</p>
-			{:else if !isSearching}
-				<p class="py-8 text-center text-base-content/50">
-					{m.library_matchFolder_searchHint({
-						type:
-							searchType === 'movie'
-								? m.common_movie().toLowerCase()
-								: m.common_tvShow().toLowerCase()
-					})}
-				</p>
-			{/if}
-		</div>
+			</div>
+		{:else if searchQuery && !isSearching}
+			<div class="mt-4 py-8 text-center text-base-content/50">
+				<p>{m.common_noResults()}</p>
+			</div>
+		{:else if !isSearching}
+			<p class="mt-4 py-8 text-center text-base-content/50">
+				{m.library_matchFolder_searchHint({
+					type:
+						searchType === 'movie'
+							? m.common_movie().toLowerCase()
+							: m.common_tvShow().toLowerCase()
+				})}
+			</p>
+		{/if}
 	{/if}
 </ModalWrapper>

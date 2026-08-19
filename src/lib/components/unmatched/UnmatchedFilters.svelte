@@ -1,6 +1,15 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { Clapperboard, Tv, Folder, List, Square, SquareCheck, RefreshCw } from 'lucide-svelte';
+	import {
+		Clapperboard,
+		Tv,
+		Folder,
+		List,
+		Square,
+		SquareCheck,
+		RefreshCw,
+		Zap
+	} from 'lucide-svelte';
 	import { unmatchedFilesStore } from '$lib/stores/unmatched-files.svelte.js';
 
 	let filter = $derived(unmatchedFilesStore.filters.mediaType || 'all');
@@ -22,9 +31,27 @@
 
 	interface Props {
 		onToggleCheckboxes?: (showing: boolean) => void;
+		onForceMatchAll?: () => Promise<void>;
+		forceMatchAllLoading?: boolean;
 	}
 
-	let { onToggleCheckboxes }: Props = $props();
+	let { onToggleCheckboxes, onForceMatchAll, forceMatchAllLoading = false }: Props = $props();
+
+	// True when at least one file has a top candidate >= 90% - works in both list and folder view
+	const hasEligibleForForceMatch = $derived(
+		viewMode === 'folder'
+			? unmatchedFilesStore.folders.some((folder) =>
+					folder.files.some((f) => {
+						const top = f.suggestedMatches?.[0];
+						return top !== undefined && top.confidence >= 0.9;
+					})
+				)
+			: unmatchedFilesStore.files.some((f) => {
+					if (f.reason !== 'multiple_matches') return false;
+					const top = f.suggestedMatches?.[0];
+					return top !== undefined && top.confidence >= 0.9;
+				})
+	);
 
 	function toggleCheckboxes() {
 		showCheckboxes = !showCheckboxes;
@@ -35,7 +62,7 @@
 	}
 
 	async function reprocessAll() {
-		if (unmatchedFilesStore.files.length === 0) return;
+		if (unmatchedFilesStore.pagination.total === 0) return;
 		isProcessing = true;
 		try {
 			await unmatchedFilesStore.processAll();
@@ -72,7 +99,7 @@
 		</div>
 
 		<div class="flex gap-2">
-			<!-- View Mode Toggle -->
+			<!-- View Mode + Selection Toggle -->
 			<div class="flex gap-1 rounded-lg bg-base-200 p-1">
 				<button
 					class="btn btn-sm {viewMode === 'list' ? 'btn-primary' : 'btn-ghost'}"
@@ -88,32 +115,46 @@
 				>
 					<Folder class="h-4 w-4" />
 				</button>
-			</div>
-
-			<!-- Selection Toggle -->
-			<button
-				class="btn btn-sm {showCheckboxes ? 'btn-primary' : 'btn-ghost'}"
-				onclick={toggleCheckboxes}
-				disabled={unmatchedFilesStore.files.length === 0}
-			>
-				{#if showCheckboxes}
-					<SquareCheck class="h-4 w-4" />
-				{:else}
-					<Square class="h-4 w-4" />
+				{#if viewMode === 'list'}
+					<div class="mx-0.5 w-px self-stretch bg-base-content/10"></div>
+					<button
+						class="btn btn-sm {showCheckboxes ? 'btn-primary' : 'btn-ghost'}"
+						onclick={toggleCheckboxes}
+						disabled={unmatchedFilesStore.files.length === 0}
+						title={m.unmatched_filters_selectFiles()}
+					>
+						{#if showCheckboxes}
+							<SquareCheck class="h-4 w-4" />
+						{:else}
+							<Square class="h-4 w-4" />
+						{/if}
+					</button>
 				{/if}
-			</button>
+			</div>
 		</div>
 	</div>
 
-	<!-- Reprocess Button -->
-	<div class="flex justify-end">
+	<!-- Action buttons row -->
+	<div class="flex justify-end gap-2">
 		<button
 			class="btn btn-outline btn-sm"
 			onclick={reprocessAll}
-			disabled={isProcessing || unmatchedFilesStore.files.length === 0}
+			disabled={isProcessing || unmatchedFilesStore.pagination.total === 0}
 		>
 			<RefreshCw class="h-4 w-4 {isProcessing ? 'animate-spin' : ''}" />
 			{m.unmatched_filters_reprocessFiles()}
+		</button>
+		<button
+			class="btn btn-primary btn-sm"
+			onclick={onForceMatchAll}
+			disabled={forceMatchAllLoading || !hasEligibleForForceMatch}
+		>
+			{#if forceMatchAllLoading}
+				<span class="loading loading-xs loading-spinner"></span>
+			{:else}
+				<Zap class="h-4 w-4" />
+			{/if}
+			{m.unmatched_file_forceMatchAll({ threshold: 90 })}
 		</button>
 	</div>
 </div>

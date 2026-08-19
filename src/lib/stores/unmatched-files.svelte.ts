@@ -1,3 +1,4 @@
+import { SvelteSet } from 'svelte/reactivity';
 import type {
 	UnmatchedFile,
 	UnmatchedFolder,
@@ -12,24 +13,45 @@ interface UnmatchedState {
 	filters: UnmatchedFilters;
 	pagination: PaginationState;
 	viewMode: ViewMode;
-	selectedFiles: Set<string>;
+	selectedFiles: SvelteSet<string>;
 	loading: boolean;
 	error: string | null;
+}
+
+const STORAGE_KEY_VIEW_MODE = 'unmatched:viewMode';
+const STORAGE_KEY_MEDIA_TYPE = 'unmatched:mediaType';
+
+function readViewMode(): 'list' | 'folder' {
+	try {
+		const v = localStorage.getItem(STORAGE_KEY_VIEW_MODE);
+		return v === 'folder' ? 'folder' : 'list';
+	} catch {
+		return 'list';
+	}
+}
+
+function readMediaType(): 'movie' | 'tv' | undefined {
+	try {
+		const v = localStorage.getItem(STORAGE_KEY_MEDIA_TYPE);
+		return v === 'movie' || v === 'tv' ? v : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 class UnmatchedFilesStore {
 	private state = $state<UnmatchedState>({
 		files: [],
 		folders: [],
-		filters: {},
+		filters: { mediaType: readMediaType() },
 		pagination: {
 			page: 1,
 			limit: 50,
 			total: 0,
 			totalPages: 1
 		},
-		viewMode: 'folder',
-		selectedFiles: new Set(),
+		viewMode: readViewMode(),
+		selectedFiles: new SvelteSet(),
 		loading: false,
 		error: null
 	});
@@ -123,7 +145,10 @@ class UnmatchedFilesStore {
 
 				if (result.success) {
 					this.state.files = result.data.files;
-					this.state.pagination = result.data.pagination;
+					this.state.pagination.total = result.data.pagination.total;
+					this.state.pagination.totalPages = result.data.pagination.totalPages;
+					this.state.pagination.page = result.data.pagination.page;
+					this.state.pagination.limit = result.data.pagination.limit;
 				} else {
 					this.state.error = result.error || 'Failed to load files';
 				}
@@ -156,12 +181,30 @@ class UnmatchedFilesStore {
 		} else {
 			delete this.state.filters[key];
 		}
+
+		if (key === 'mediaType') {
+			try {
+				if (value) {
+					localStorage.setItem(STORAGE_KEY_MEDIA_TYPE, value);
+				} else {
+					localStorage.removeItem(STORAGE_KEY_MEDIA_TYPE);
+				}
+			} catch {
+				/* ignore */
+			}
+		}
+
 		this.state.pagination.page = 1;
 		this.loadFiles();
 	}
 
 	setViewMode(mode: ViewMode) {
 		this.state.viewMode = mode;
+		try {
+			localStorage.setItem(STORAGE_KEY_VIEW_MODE, mode);
+		} catch {
+			/* ignore */
+		}
 		this.loadFiles();
 	}
 
