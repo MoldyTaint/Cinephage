@@ -82,21 +82,26 @@ export function createFocusTrap(container: HTMLElement): () => void {
 }
 
 /**
- * Lock body scroll when modal is open
+ * Lock body scroll when modal is open.
+ *
+ * Uses overflow:hidden on <html> rather than position:fixed on <body> so that
+ * DaisyUI drawer-side's position:sticky keeps its scroll reference and the
+ * sidebar does not jump to the top when the modal opens.
  */
 export function lockBodyScroll(): () => void {
-	const scrollY = window.scrollY;
-	const body = document.body;
-	const originalStyle = body.style.cssText;
+	const html = document.documentElement;
+	const scrollbarWidth = window.innerWidth - html.clientWidth;
+	const originalOverflow = html.style.overflow;
+	const originalPaddingRight = html.style.paddingRight;
 
-	body.style.position = 'fixed';
-	body.style.top = `-${scrollY}px`;
-	body.style.left = '0';
-	body.style.right = '0';
-	body.style.overflow = 'hidden';
+	html.style.overflow = 'hidden';
+	// Compensate for scrollbar disappearance to prevent layout shift
+	if (scrollbarWidth > 0) {
+		html.style.paddingRight = `${scrollbarWidth}px`;
+	}
 
 	return () => {
-		body.style.cssText = originalStyle;
-		window.scrollTo(0, scrollY);
+		html.style.overflow = originalOverflow;
+		html.style.paddingRight = originalPaddingRight;
 	};
 }

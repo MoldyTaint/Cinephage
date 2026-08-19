@@ -5,3 +5,4 @@ export { default as UnmatchedBulkActions } from './UnmatchedBulkActions.svelte';
 export { default as UnmatchedEmptyState } from './UnmatchedEmptyState.svelte';
 export { default as UnmatchedPagination } from './UnmatchedPagination.svelte';
 export { default as UnmatchedLibraryIssues } from './UnmatchedLibraryIssues.svelte';
+export { default as UnmatchedDeleteModal } from './UnmatchedDeleteModal.svelte';

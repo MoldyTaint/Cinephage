@@ -565,13 +565,19 @@ export class MediaMatcherService {
 				confidence: bestMatch.confidence
 			};
 		} else {
-			// Low confidence - flag for manual review
-			await db
-				.update(unmatchedFiles)
-				.set({
-					reason: bestMatch.confidence > 0.5 ? 'low_confidence' : 'multiple_matches'
-				})
-				.where(eq(unmatchedFiles.id, fileId));
+			// Below threshold - assign a reason code that reflects why.
+			// multiple_matches: 2+ candidates with a clear leader (safe to force)
+			// ambiguous:        2+ candidates where top two are within 10pp of each other
+			// low_confidence:   single candidate or very low absolute score
+			let reason: string;
+			if (matches.length >= 2) {
+				const margin = matches[0].confidence - matches[1].confidence;
+				reason = margin < 0.1 ? 'ambiguous' : 'multiple_matches';
+			} else {
+				reason = 'low_confidence';
+			}
+
+			await db.update(unmatchedFiles).set({ reason }).where(eq(unmatchedFiles.id, fileId));
 
 			return {
 				fileId,

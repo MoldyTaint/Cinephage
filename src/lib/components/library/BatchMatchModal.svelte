@@ -1,5 +1,15 @@
 <script lang="ts">
-	import { Search, X, Clapperboard, Tv, Check, Loader2, AlertCircle } from 'lucide-svelte';
+	import { untrack } from 'svelte';
+	import {
+		Search,
+		X,
+		Clapperboard,
+		Tv,
+		Check,
+		Loader2,
+		AlertCircle,
+		ChevronRight
+	} from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
@@ -50,9 +60,17 @@
 	// Get selected files
 	const selectedFiles = $derived(allFiles.filter((f) => selectedFileIds.includes(f.id)));
 
+	// Constraint checks
+	const hasTV = $derived(selectedFiles.some((f) => f.mediaType === 'tv'));
+	const hasMovie = $derived(selectedFiles.some((f) => f.mediaType === 'movie'));
+	const hasMixedTypes = $derived(hasTV && hasMovie);
+	const searchType = $derived<'movie' | 'tv'>(hasTV ? 'tv' : 'movie');
+	const multipleMovies = $derived(
+		!hasMixedTypes && searchType === 'movie' && selectedFiles.length > 1
+	);
+
 	// Form state
 	let searchQuery = $state('');
-	let searchType = $state<'movie' | 'tv'>('tv');
 	let searchResults = $state<TmdbSearchResult[]>([]);
 	let isSearching = $state(false);
 	let isPreviewing = $state(false);
@@ -60,26 +78,40 @@
 	let selectedMedia = $state<TmdbSearchResult | null>(null);
 	let previewResults = $state<PreviewResult[]>([]);
 	let previewError = $state('');
+	let matchingId = $state<number | null>(null);
 
-	// Reset state when modal opens
+	// Extract all unique suggested titles from file paths (parent folder name per file)
+	function extractSuggestedTitles(files: UnmatchedFile[]): string[] {
+		if (files.length === 0) return [];
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
+		const seen = new Set<string>();
+		const titles: string[] = [];
+		for (const f of files) {
+			const parts = f.path.split('/');
+			// Walk up past season folders to find the show/movie folder
+			let folder = '';
+			for (let i = parts.length - 2; i >= 0; i--) {
+				const candidate = parts[i].trim();
+				if (candidate && !candidate.match(/^season\s*\d+$/i)) {
+					folder = candidate;
+					break;
+				}
+			}
+			if (folder && !seen.has(folder.toLowerCase())) {
+				seen.add(folder.toLowerCase());
+				titles.push(folder);
+			}
+		}
+		return titles;
+	}
+
+	const suggestedTitles = $derived(extractSuggestedTitles(selectedFiles));
+
+	// Reset state when modal opens; auto-search only when there's one unique title
 	$effect(() => {
 		if (open) {
-			// Auto-detect type from selected files
-			const hasTV = selectedFiles.some((f) => f.mediaType === 'tv');
-			const hasMovie = selectedFiles.some((f) => f.mediaType === 'movie');
-			if (hasTV && !hasMovie) {
-				searchType = 'tv';
-			} else if (hasMovie && !hasTV) {
-				searchType = 'movie';
-			}
-
-			// Try to extract common title from filenames
-			const commonTitle = extractCommonTitle(selectedFiles);
-			if (commonTitle) {
-				searchQuery = commonTitle;
-			}
-
-			// Reset other state
+			const titles = untrack(() => extractSuggestedTitles(selectedFiles));
+			searchQuery = titles.length === 1 ? titles[0] : '';
 			searchResults = [];
 			selectedMedia = null;
 			previewResults = [];
@@ -87,36 +119,16 @@
 		}
 	});
 
-	// Extract common title from file paths
-	function extractCommonTitle(files: UnmatchedFile[]): string | null {
-		if (files.length === 0) return null;
-
-		// Get parent folder names
-		const folderNames = files.map((f) => {
-			const parts = f.path.split('/');
-			return parts[parts.length - 2] || ''; // Parent folder name
-		});
-
-		// Find most common folder name
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const counts = new Map<string, number>();
-		for (const name of folderNames) {
-			const current = counts.get(name) ?? 0;
-			counts.set(name, current + 1);
+	// Debounced search-as-you-type
+	let debounceTimer: ReturnType<typeof setTimeout>;
+	$effect(() => {
+		const q = searchQuery;
+		clearTimeout(debounceTimer);
+		if (q.trim() && !hasMixedTypes) {
+			debounceTimer = setTimeout(() => untrack(() => search()), 400);
 		}
-
-		let mostCommon = '';
-		let maxCount = 0;
-		for (const [name, count] of counts) {
-			if (count > maxCount && name.toLowerCase() !== 'season 1' && !name.match(/^season\s*\d+$/i)) {
-				mostCommon = name;
-				maxCount = count;
-			}
-		}
-
-		// Clean up season folder names
-		return mostCommon.replace(/^season\s*\d+$/i, '').trim() || null;
-	}
+		return () => clearTimeout(debounceTimer);
+	});
 
 	// Search TMDB
 	async function search() {
@@ -137,20 +149,22 @@
 		}
 	}
 
-	// Handle search on enter
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter') {
-			search();
+			clearTimeout(debounceTimer);
+			untrack(() => search());
 		}
 	}
 
 	// Select media and generate preview
 	async function selectMedia(media: TmdbSearchResult) {
+		matchingId = media.id;
 		selectedMedia = media;
 		await generatePreview();
+		matchingId = null;
 	}
 
-	// Generate preview of what will happen (client-side)
+	// Generate preview client-side
 	async function generatePreview() {
 		if (!selectedMedia) return;
 
@@ -158,18 +172,14 @@
 		previewError = '';
 
 		try {
-			// Generate preview client-side from file data
-			previewResults = selectedFiles.map((file) => {
-				const fileName = getFileName(file.path);
-				return {
-					fileId: file.id,
-					filePath: file.path,
-					filename: fileName,
-					status: 'matched' as const,
-					season: file.parsedSeason ?? undefined,
-					episode: file.parsedEpisode ?? undefined
-				};
-			});
+			previewResults = selectedFiles.map((file) => ({
+				fileId: file.id,
+				filePath: file.path,
+				filename: getFileName(file.path),
+				status: 'matched' as const,
+				season: file.parsedSeason ?? undefined,
+				episode: file.parsedEpisode ?? undefined
+			}));
 		} catch {
 			previewError = m.library_batchMatch_failedToGeneratePreview();
 		} finally {
@@ -183,14 +193,14 @@
 
 		isMatching = true;
 		try {
-			// Build episode mapping from preview results or use parsed values
 			const episodeMapping: Record<string, { season: number; episode: number }> = {};
 
 			if (searchType === 'tv') {
 				for (const file of selectedFiles) {
-					const season = file.parsedSeason ?? 1;
-					const episode = file.parsedEpisode ?? 1;
-					episodeMapping[file.id] = { season, episode };
+					episodeMapping[file.id] = {
+						season: file.parsedSeason ?? 1,
+						episode: file.parsedEpisode ?? 1
+					};
 				}
 			}
 
@@ -207,21 +217,15 @@
 
 			if (result.success) {
 				toasts.success(
-					m.library_batchMatch_matchedFiles({
-						count: result.data.matched
-					}),
+					m.library_batchMatch_matchedFiles({ count: result.data.matched }),
 					result.data.failed > 0
 						? { description: m.library_batchMatch_filesFailed({ count: result.data.failed }) }
 						: undefined
 				);
-
-				// Get successfully matched IDs (those not in errors)
 				const errorIds = new Set(
 					result.data.errors.map((e: string) => e.match(/file ([^\s:]+)/)?.[1])
 				);
-				const matchedIds = selectedFileIds.filter((id) => !errorIds.has(id));
-
-				onSuccess(matchedIds);
+				onSuccess(selectedFileIds.filter((id) => !errorIds.has(id)));
 			} else {
 				toasts.error(m.library_batchMatch_failedToMatchFiles(), { description: result.error });
 			}
@@ -232,20 +236,17 @@
 		}
 	}
 
-	// Close modal
 	function close() {
 		onClose();
 		selectedMedia = null;
 		previewResults = [];
 	}
 
-	// Go back to search
 	function backToSearch() {
 		selectedMedia = null;
 		previewResults = [];
 	}
 
-	// Format file size
 	function formatSize(bytes: number | null): string {
 		if (!bytes) return m.library_batchMatch_unknownSize();
 		const gb = bytes / (1024 * 1024 * 1024);
@@ -257,13 +258,25 @@
 
 <ModalWrapper {open} onClose={close} maxWidth="3xl" labelledBy="batch-match-modal-title">
 	<!-- Header -->
-	<div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+	<div class="mb-4 flex items-center justify-between gap-2">
 		<div class="flex items-center gap-2">
 			<Check class="h-5 w-5 text-primary" />
 			<h3 id="batch-match-modal-title" class="text-lg font-bold">{m.library_batchMatch_title()}</h3>
+			{#if !hasMixedTypes}
+				<span
+					class="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium
+					{searchType === 'tv' ? 'bg-secondary/15 text-secondary' : 'bg-primary/15 text-primary'}"
+				>
+					{#if searchType === 'tv'}
+						<Tv class="h-3 w-3" />{m.common_tvShow()}
+					{:else}
+						<Clapperboard class="h-3 w-3" />{m.common_movie()}
+					{/if}
+				</span>
+			{/if}
 		</div>
 		<button
-			class="btn btn-circle self-end btn-ghost btn-sm sm:self-auto"
+			class="btn btn-circle shrink-0 btn-ghost btn-sm"
 			onclick={close}
 			aria-label={m.action_close()}
 		>
@@ -280,20 +293,20 @@
 			{#each selectedFiles.slice(0, 5) as file (file.id)}
 				<div class="flex items-center gap-2 text-xs">
 					{#if file.mediaType === 'movie'}
-						<Clapperboard class="h-3 w-3 text-primary" />
+						<Clapperboard class="h-3 w-3 shrink-0 text-primary" />
 					{:else}
-						<Tv class="h-3 w-3 text-secondary" />
+						<Tv class="h-3 w-3 shrink-0 text-secondary" />
 					{/if}
 					<span class="truncate">{getFileName(file.path)}</span>
 					{#if file.parsedSeason !== null && file.parsedEpisode !== null}
-						<span class="badge badge-xs badge-secondary">
+						<span class="badge shrink-0 badge-xs badge-secondary">
 							S{String(file.parsedSeason).padStart(2, '0')}E{String(file.parsedEpisode).padStart(
 								2,
 								'0'
 							)}
 						</span>
 					{/if}
-					<span class="text-base-content/50">{formatSize(file.size)}</span>
+					<span class="shrink-0 text-base-content/50">{formatSize(file.size)}</span>
 				</div>
 			{/each}
 			{#if selectedFiles.length > 5}
@@ -304,7 +317,16 @@
 		</div>
 	</div>
 
-	{#if selectedMedia}
+	<!-- Mixed-type block -->
+	{#if hasMixedTypes}
+		<div class="alert alert-warning">
+			<AlertCircle class="h-5 w-5 shrink-0" />
+			<div>
+				<p class="font-medium">{m.library_batchMatch_mixedTypesTitle()}</p>
+				<p class="text-sm">{m.library_batchMatch_mixedTypesBody()}</p>
+			</div>
+		</div>
+	{:else if selectedMedia}
 		<!-- Preview Mode -->
 		<div class="space-y-4">
 			<div class="flex items-center gap-3 rounded-lg bg-base-200 p-3">
@@ -324,18 +346,26 @@
 						{/if}
 					</div>
 				{/if}
-				<div class="flex-1">
-					<p class="font-medium">{selectedMedia.title || selectedMedia.name}</p>
-					{#if searchType === 'movie' && selectedMedia.release_date}
-						<p class="text-sm text-base-content/70">{selectedMedia.release_date.substring(0, 4)}</p>
-					{:else if searchType === 'tv' && selectedMedia.first_air_date}
-						<p class="text-sm text-base-content/70">
-							{selectedMedia.first_air_date.substring(0, 4)}
-						</p>
-					{/if}
+				<div class="min-w-0 flex-1">
+					<p class="truncate font-medium">{selectedMedia.title || selectedMedia.name}</p>
+					<p class="text-sm text-base-content/70">
+						{(searchType === 'movie'
+							? selectedMedia.release_date
+							: selectedMedia.first_air_date
+						)?.substring(0, 4) ?? ''}
+					</p>
 				</div>
-				<button class="btn btn-ghost btn-sm" onclick={backToSearch}>{m.action_change()}</button>
+				<button class="btn shrink-0 btn-ghost btn-sm" onclick={backToSearch}
+					>{m.action_change()}</button
+				>
 			</div>
+
+			{#if multipleMovies}
+				<div class="alert py-2 alert-warning">
+					<AlertCircle class="h-4 w-4 shrink-0" />
+					<p class="text-sm">{m.library_batchMatch_multipleMoviesWarning()}</p>
+				</div>
+			{/if}
 
 			<!-- Preview Results -->
 			<div>
@@ -357,15 +387,11 @@
 						<div class="flex items-center justify-center py-8">
 							<Loader2 class="h-8 w-8 animate-spin text-primary" />
 						</div>
-					{:else if previewResults.length === 0}
-						<p class="py-4 text-center text-base-content/50">
-							{m.library_batchMatch_clickPreviewHint()}
-						</p>
 					{:else}
 						{#each previewResults as result (result.fileId)}
 							<div
-								class="flex items-center justify-between rounded px-2 py-1.5 text-sm {result.status ===
-								'matched'
+								class="flex items-center justify-between rounded px-2 py-1.5 text-sm
+								{result.status === 'matched'
 									? 'bg-success/10'
 									: result.status === 'error'
 										? 'bg-error/10'
@@ -406,7 +432,6 @@
 				</div>
 			</div>
 
-			<!-- Actions -->
 			<div class="flex justify-end gap-2 pt-2">
 				<button class="btn btn-ghost" onclick={backToSearch} disabled={isMatching}
 					>{m.action_back()}</button
@@ -427,89 +452,103 @@
 		</div>
 	{:else}
 		<!-- Search Mode -->
-		<!-- Search Type Toggle -->
-		<div class="mb-4 flex gap-2">
-			<button
-				class="btn btn-sm {searchType === 'movie' ? 'btn-primary' : 'btn-ghost'}"
-				onclick={() => (searchType = 'movie')}
-			>
-				<Clapperboard class="h-4 w-4" />
-				{m.common_movie()}
-			</button>
-			<button
-				class="btn btn-sm {searchType === 'tv' ? 'btn-primary' : 'btn-ghost'}"
-				onclick={() => (searchType = 'tv')}
-			>
-				<Tv class="h-4 w-4" />
-				{m.common_tvShow()}
-			</button>
-		</div>
+		<!-- Suggested title chips (shown when multiple unique titles detected) -->
+		{#if suggestedTitles.length > 1}
+			<div class="mb-3">
+				<p class="mb-1.5 text-xs text-base-content/40">
+					{m.library_batchMatch_suggestedSearches()}
+				</p>
+				<div class="flex flex-wrap gap-1.5">
+					{#each suggestedTitles as title (title)}
+						<button
+							class="rounded-full border border-base-content/15 px-3 py-1 text-xs transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary
+								{searchQuery === title ? 'border-primary/40 bg-primary/10 text-primary' : 'text-base-content/60'}"
+							onclick={() => (searchQuery = title)}
+						>
+							{title}
+						</button>
+					{/each}
+				</div>
+			</div>
+		{/if}
 
-		<!-- Search Input -->
-		<div class="mb-4 flex gap-2">
+		<div class="group relative mb-4">
+			{#if isSearching}
+				<Loader2
+					class="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 animate-spin text-base-content/40"
+				/>
+			{:else}
+				<Search
+					class="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-base-content/40 transition-colors group-focus-within:text-primary"
+				/>
+			{/if}
 			<input
 				type="text"
-				class="input-bordered input flex-1"
+				class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				placeholder={m.library_batchMatch_searchPlaceholder()}
 				bind:value={searchQuery}
 				onkeydown={handleKeydown}
 			/>
-			<button
-				class="btn btn-primary"
-				onclick={search}
-				disabled={isSearching || !searchQuery.trim()}
-			>
-				{#if isSearching}
-					<Loader2 class="h-4 w-4 animate-spin" />
-				{:else}
-					<Search class="h-4 w-4" />
-				{/if}
-				{m.action_search()}
-			</button>
 		</div>
 
 		<!-- Search Results -->
-		<div class="max-h-96 space-y-2 overflow-y-auto">
+		<div class="max-h-96 overflow-y-auto">
 			{#if searchResults.length > 0}
-				<p class="mb-2 text-sm text-base-content/70">
-					{m.library_batchMatch_clickToSelect()}
+				<p class="mb-2 text-xs text-base-content/40">
+					{searchResults.length === 1
+						? m.library_batchMatch_resultCountSingular()
+						: m.library_batchMatch_resultCount({ count: searchResults.length })}
 				</p>
-				{#each searchResults as result (result.id)}
-					<button
-						class="flex w-full items-center gap-3 rounded-lg bg-base-200 p-3 text-left transition-colors hover:bg-base-300"
-						onclick={() => selectMedia(result)}
-					>
-						{#if result.poster_path}
-							<TmdbImage
-								path={result.poster_path}
-								size="w92"
-								alt={result.title || result.name || 'Media poster'}
-								class="h-16 w-12 shrink-0 rounded object-cover"
-							/>
-						{:else}
-							<div class="flex h-16 w-12 shrink-0 items-center justify-center rounded bg-base-300">
-								{#if searchType === 'movie'}
-									<Clapperboard class="h-6 w-6 text-base-content/30" />
-								{:else}
-									<Tv class="h-6 w-6 text-base-content/30" />
+				<div class="space-y-1">
+					{#each searchResults as result (result.id)}
+						{@const isLoadingThis = matchingId === result.id}
+						<button
+							class="group flex w-full cursor-pointer items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-base-300 disabled:opacity-60"
+							onclick={() => selectMedia(result)}
+							disabled={isPreviewing}
+						>
+							{#if result.poster_path}
+								<TmdbImage
+									path={result.poster_path}
+									size="w92"
+									alt={result.title || result.name || 'Media poster'}
+									class="h-16 w-12 shrink-0 rounded object-cover"
+								/>
+							{:else}
+								<div
+									class="flex h-16 w-12 shrink-0 items-center justify-center rounded bg-base-300"
+								>
+									{#if searchType === 'movie'}
+										<Clapperboard class="h-6 w-6 text-base-content/30" />
+									{:else}
+										<Tv class="h-6 w-6 text-base-content/30" />
+									{/if}
+								</div>
+							{/if}
+							<div class="min-w-0 flex-1">
+								<p class="truncate font-medium">{result.title || result.name}</p>
+								<p class="text-sm text-base-content/60">
+									{(searchType === 'movie'
+										? result.release_date
+										: result.first_air_date
+									)?.substring(0, 4) ?? m.common_unknownYear()}
+								</p>
+								{#if result.overview}
+									<p class="mt-0.5 line-clamp-1 text-xs text-base-content/40">{result.overview}</p>
 								{/if}
 							</div>
-						{/if}
-						<div class="min-w-0 flex-1">
-							<p class="truncate font-medium">{result.title || result.name}</p>
-							{#if searchType === 'movie' && result.release_date}
-								<p class="text-sm text-base-content/70">{result.release_date.substring(0, 4)}</p>
-							{:else if searchType === 'tv' && result.first_air_date}
-								<p class="text-sm text-base-content/70">
-									{result.first_air_date.substring(0, 4)}
-								</p>
-							{/if}
-							{#if result.overview}
-								<p class="mt-1 line-clamp-2 text-xs text-base-content/50">{result.overview}</p>
-							{/if}
-						</div>
-					</button>
-				{/each}
+							<div class="shrink-0">
+								{#if isLoadingThis}
+									<Loader2 class="h-4 w-4 animate-spin text-base-content/40" />
+								{:else}
+									<ChevronRight
+										class="h-4 w-4 text-base-content/20 transition-all group-hover:translate-x-0.5 group-hover:text-base-content/60"
+									/>
+								{/if}
+							</div>
+						</button>
+					{/each}
+				</div>
 			{:else if !isSearching && searchQuery}
 				<p class="py-8 text-center text-base-content/50">{m.common_noResults()}</p>
 			{:else if !isSearching}

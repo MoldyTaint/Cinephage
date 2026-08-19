@@ -83,7 +83,10 @@ export default defineConfig({
 					environment: 'node',
 					include: ['src/**/*.{test,spec}.{js,ts}'],
 					exclude: ['src/lib/components/**/*.test.ts', 'src/**/*.svelte.{test,spec}.{js,ts}'],
-					fileParallelism: true
+					fileParallelism: true,
+					// First test in each file bears the full module + DB cold-start cost;
+					// under concurrent load this can exceed the 5s default.
+					testTimeout: 15000
 				}
 			},
 			{
