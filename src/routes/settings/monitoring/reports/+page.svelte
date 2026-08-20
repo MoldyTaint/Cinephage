@@ -14,6 +14,7 @@
 		Loader2,
 		RefreshCw,
 		Search,
+		ShieldX,
 		Unlink,
 		X
 	} from 'lucide-svelte';
@@ -25,6 +26,12 @@
 	let { data } = $props();
 
 	const TABS = [
+		{
+			id: 'unmatched-imports',
+			label: m.reports_tab_unmatchedImports(),
+			countKey: 'unmatchedImports' as const,
+			icon: Unlink
+		},
 		{
 			id: 'rejected-releases',
 			label: m.reports_tab_rejectedReleases(),
@@ -42,12 +49,6 @@
 			label: m.reports_tab_renamingFailures(),
 			countKey: 'renamingFailures' as const,
 			icon: FileX
-		},
-		{
-			id: 'unmatched-imports',
-			label: m.reports_tab_unmatchedImports(),
-			countKey: 'unmatchedImports' as const,
-			icon: Unlink
 		},
 		{
 			id: 'metadata-conflicts',
@@ -81,6 +82,30 @@
 		belowThreshold: number;
 	};
 	let unmatchedStats = $state<UnmatchedStats | null>(null);
+
+	// Rejected-releases specific
+	type RejectedStats = {
+		total: number;
+		newIn24h: number;
+		formatMismatch: number;
+		profileMismatch: number;
+		delayPending: number;
+	};
+	type RejectionCheck = { type: string; rule: string; passed: boolean; detail?: string };
+	let rejectedStats = $state<RejectedStats | null>(null);
+
+	// Import-failures specific
+	type ImportStats = {
+		total: number;
+		newIn24h: number;
+		pathResolution: number;
+		diskSpace: number;
+		dangerousFiles: number;
+		transfer: number;
+		maxRetries: number;
+	};
+	let importStats = $state<ImportStats | null>(null);
+
 	let searchQuery = $state('');
 	let reasonFilter = $state('');
 	let dateFilter = $state('');
@@ -145,6 +170,20 @@
 		return extra;
 	}
 
+	const activeRejectedStatCard = $derived(
+		dateFilter === '24h' && !reasonFilter
+			? '24h'
+			: reasonFilter === 'required_format_mismatch'
+				? 'format'
+				: reasonFilter === 'quality_profile_mismatch'
+					? 'profile'
+					: reasonFilter === 'delay_profile_pending'
+						? 'delay'
+						: !reasonFilter && !dateFilter
+							? 'all'
+							: null
+	);
+
 	// Derive which stat card is visually active from toolbar state
 	const activeStatCard = $derived(
 		dateFilter === '24h' && !reasonFilter
@@ -165,6 +204,8 @@
 		try {
 			let url = `/api/reports/${tab}?page=${pg}&limit=${PAGE_SIZE}&order=desc`;
 			if (tab === 'unmatched-imports') url += unmatchedUrlParams();
+			else if (tab === 'rejected-releases') url += rejectedUrlParams();
+			else if (tab === 'import-failures') url += importUrlParams();
 			const res = await fetch(url);
 			const result = await res.json();
 			if (result.success) {
@@ -185,6 +226,8 @@
 		try {
 			let url = `/api/reports/${tab}?page=${pg}&limit=${PAGE_SIZE}&order=desc`;
 			if (tab === 'unmatched-imports') url += unmatchedUrlParams();
+			else if (tab === 'rejected-releases') url += rejectedUrlParams();
+			else if (tab === 'import-failures') url += importUrlParams();
 			const res = await fetch(url);
 			const result = await res.json();
 			if (result.success) {
@@ -203,6 +246,185 @@
 			if (result.success) unmatchedStats = result.data;
 		} catch {
 			/* silent */
+		}
+	}
+
+	async function loadRejectedStats() {
+		try {
+			const res = await fetch('/api/reports/rejected-stats');
+			const result = await res.json();
+			if (result.success) rejectedStats = result.data;
+		} catch {
+			/* silent */
+		}
+	}
+
+	async function loadImportStats() {
+		try {
+			const res = await fetch('/api/reports/import-failures-stats');
+			const result = await res.json();
+			if (result.success) importStats = result.data;
+		} catch {
+			/* silent */
+		}
+	}
+
+	function rejectedUrlParams() {
+		let extra = '';
+		if (searchQuery.trim()) extra += `&search=${encodeURIComponent(searchQuery.trim())}`;
+		if (mediaTypeFilter) extra += `&mediaType=${encodeURIComponent(mediaTypeFilter)}`;
+		if (dateFilter) extra += `&since=${encodeURIComponent(dateFilter)}`;
+		if (reasonFilter) extra += `&reason=${encodeURIComponent(reasonFilter)}`;
+		return extra;
+	}
+
+	function importUrlParams() {
+		let extra = '';
+		if (searchQuery.trim()) extra += `&search=${encodeURIComponent(searchQuery.trim())}`;
+		if (dateFilter) extra += `&since=${encodeURIComponent(dateFilter)}`;
+		if (reasonFilter) extra += `&stage=${encodeURIComponent(reasonFilter)}`;
+		return extra;
+	}
+
+	const activeImportStatCard = $derived(
+		dateFilter === '24h' && !reasonFilter
+			? '24h'
+			: reasonFilter === 'path_resolution'
+				? 'path_resolution'
+				: reasonFilter === 'disk_space'
+					? 'disk_space'
+					: reasonFilter === 'dangerous_files'
+						? 'dangerous_files'
+						: reasonFilter === 'transfer'
+							? 'transfer'
+							: reasonFilter === 'max_retries'
+								? 'max_retries'
+								: !reasonFilter && !dateFilter
+									? 'all'
+									: null
+	);
+
+	function applyImportStatCard(
+		card:
+			| 'all'
+			| '24h'
+			| 'path_resolution'
+			| 'disk_space'
+			| 'dangerous_files'
+			| 'transfer'
+			| 'max_retries'
+	) {
+		if (card === 'all') {
+			reasonFilter = '';
+			dateFilter = '';
+		} else if (card === '24h') {
+			dateFilter = '24h';
+			reasonFilter = '';
+		} else {
+			reasonFilter = card;
+			dateFilter = '';
+		}
+		loadRecords('import-failures', 1);
+	}
+
+	function applyRejectedStatCard(card: 'all' | '24h' | 'format' | 'profile' | 'delay') {
+		if (card === 'all') {
+			reasonFilter = '';
+			dateFilter = '';
+		} else if (card === '24h') {
+			dateFilter = '24h';
+			reasonFilter = '';
+		} else if (card === 'format') {
+			reasonFilter = 'required_format_mismatch';
+			dateFilter = '';
+		} else if (card === 'profile') {
+			reasonFilter = 'quality_profile_mismatch';
+			dateFilter = '';
+		} else if (card === 'delay') {
+			reasonFilter = 'delay_profile_pending';
+			dateFilter = '';
+		}
+		loadRecords('rejected-releases', 1);
+	}
+
+	function rejectedReasonBadgeClass(reason: string | null | undefined) {
+		switch (reason) {
+			case 'required_format_mismatch':
+				return 'badge-error';
+			case 'quality_profile_mismatch':
+				return 'badge-warning';
+			case 'delay_profile_pending':
+				return 'badge-info';
+			default:
+				return 'badge-ghost';
+		}
+	}
+
+	function rejectedReasonLabel(reason: string | null | undefined) {
+		switch (reason) {
+			case 'required_format_mismatch':
+				return m.reports_rejected_reason_required_format_mismatch();
+			case 'quality_profile_mismatch':
+				return m.reports_rejected_reason_quality_profile_mismatch();
+			case 'delay_profile_pending':
+				return m.reports_rejected_reason_delay_profile_pending();
+			default:
+				return reason ?? m.reports_rejected_reason_other();
+		}
+	}
+
+	function rejectedReasonShortLabel(reason: string | null | undefined) {
+		switch (reason) {
+			case 'required_format_mismatch':
+				return 'Format';
+			case 'quality_profile_mismatch':
+				return 'Profile';
+			case 'delay_profile_pending':
+				return 'Delay';
+			default:
+				return 'Other';
+		}
+	}
+
+	async function overrideRejectedRelease(record: AnyRecord) {
+		try {
+			const res = await fetch(`/api/reports/rejected-releases/${record.id}/override`, {
+				method: 'POST'
+			});
+			const result = await res.json();
+			if (result.success) {
+				records = records.map((r) => (r.id === record.id ? { ...r, status: 'overridden' } : r));
+				toasts.success(m.reports_rejected_overrideSuccess());
+				refreshCounts();
+				loadRejectedStats();
+			} else {
+				toasts.error(result.error ?? m.reports_rejected_overrideFail());
+			}
+		} catch {
+			toasts.error(m.reports_rejected_overrideFail());
+		}
+	}
+
+	async function copyRejectedBundle(record: AnyRecord) {
+		const bundle = {
+			releaseTitle: record.releaseTitle,
+			mediaTitle: record.mediaTitle,
+			mediaType: record.mediaType,
+			indexerName: record.indexerName,
+			protocol: record.protocol,
+			primaryReason: record.primaryReason,
+			ruleFired: record.ruleFired,
+			qualityProfileName: record.qualityProfileName,
+			releaseSize: record.releaseSize,
+			rejectionChecks: record.rejectionReasons,
+			correlationId: record.correlationId,
+			rejectedAt: record.rejectedAt
+		};
+		const ok = await copyToClipboard(JSON.stringify(bundle, null, 2));
+		if (ok) {
+			toasts.success(m.reports_rejected_bundleCopied());
+		} else {
+			toasts.error('Failed to copy');
 		}
 	}
 
@@ -231,6 +453,9 @@
 				total = Math.max(0, total - 1);
 				toasts.success('Record resolved');
 				refreshCounts();
+				if (tab === 'rejected-releases') loadRejectedStats();
+				else if (tab === 'unmatched-imports') loadUnmatchedStats();
+				else if (tab === 'import-failures') loadImportStats();
 			} else {
 				toasts.error(result.error || 'Failed to resolve');
 			}
@@ -340,9 +565,11 @@
 		const tab = activeTab;
 		loadRecords(tab, 1);
 		if (tab === 'unmatched-imports') loadUnmatchedStats();
+		else if (tab === 'rejected-releases') loadRejectedStats();
+		else if (tab === 'import-failures') loadImportStats();
 	});
 
-	// ── Formatters ──────────────────────────────────────────────────────────────
+	// Formatters
 
 	function timeAgo(iso: string | null | undefined): string {
 		if (!iso) return '-';
@@ -371,10 +598,10 @@
 		switch (reason) {
 			case 'no_match':
 			case 'parse_failed':
-				return 'badge-error badge-outline';
+				return 'badge-error';
 			case 'multiple_matches':
 			case 'ambiguous':
-				return 'badge-warning badge-outline';
+				return 'badge-warning';
 			default:
 				return 'badge-ghost';
 		}
@@ -528,9 +755,7 @@
 		{/each}
 	</div>
 
-	<!-- ══════════════════════════════════════════════════════════════
-	     UNMATCHED IMPORTS — specialized view
-	══════════════════════════════════════════════════════════════ -->
+	<!-- UNMATCHED IMPORTS SubTab  -->
 	{#if activeTab === 'unmatched-imports'}
 		<!-- Stat cards -->
 		{#if unmatchedStats}
@@ -689,7 +914,10 @@
 				<div class="relative">
 					<button
 						class="btn gap-1 btn-neutral btn-sm"
-						onclick={(e) => { e.stopPropagation(); showExportMenu = !showExportMenu; }}
+						onclick={(e) => {
+							e.stopPropagation();
+							showExportMenu = !showExportMenu;
+						}}
 					>
 						{m.reports_export()}
 						<svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor"
@@ -1076,7 +1304,16 @@
 		{#if matchModalRecord}
 			<MatchFileModal
 				open={!!matchModalRecord}
-				file={matchModalRecord as { id: string; path: string; mediaType: string | null; parsedTitle: string | null; parsedYear: number | null; parsedSeason: number | null; parsedEpisode: number | null; suggestedMatches: unknown }}
+				file={matchModalRecord as {
+					id: string;
+					path: string;
+					mediaType: string | null;
+					parsedTitle: string | null;
+					parsedYear: number | null;
+					parsedSeason: number | null;
+					parsedEpisode: number | null;
+					suggestedMatches: unknown;
+				}}
 				onClose={() => {
 					matchModalRecord = null;
 				}}
@@ -1091,9 +1328,869 @@
 			/>
 		{/if}
 
-		<!-- ══════════════════════════════════════════════════════════════
-	     GENERIC TABLE — other tabs
-	══════════════════════════════════════════════════════════════ -->
+		<!-- REJECTED RELEASES SubTab -->
+	{:else if activeTab === 'rejected-releases'}
+		<!-- Stat cards -->
+		{#if rejectedStats}
+			<div class="grid grid-cols-2 gap-3 sm:grid-cols-5">
+				<button
+					class="flex cursor-pointer flex-col gap-1 rounded-lg border px-4 py-3 text-left shadow-sm transition-all
+						{activeRejectedStatCard === 'all'
+						? 'border-primary/60 bg-primary/8 ring-1 ring-primary/30'
+						: 'border-base-content/12 bg-base-200 hover:border-base-content/25 hover:bg-base-200/80'}"
+					onclick={() => applyRejectedStatCard('all')}
+				>
+					<p class="text-[11px] font-medium tracking-wide text-base-content/50 uppercase">
+						{m.reports_rejected_stat_total()}
+					</p>
+					<p class="text-3xl font-bold text-error">{rejectedStats.total}</p>
+				</button>
+				<button
+					class="flex cursor-pointer flex-col gap-1 rounded-lg border px-4 py-3 text-left shadow-sm transition-all
+						{activeRejectedStatCard === '24h'
+						? 'border-primary/60 bg-primary/8 ring-1 ring-primary/30'
+						: 'border-base-content/12 bg-base-200 hover:border-base-content/25 hover:bg-base-200/80'}"
+					onclick={() => applyRejectedStatCard('24h')}
+				>
+					<p class="text-[11px] font-medium tracking-wide text-base-content/50 uppercase">
+						{m.reports_rejected_stat_newIn24h()}
+					</p>
+					<p
+						class="text-3xl font-bold {rejectedStats.newIn24h > 0
+							? 'text-warning'
+							: 'text-success'}"
+					>
+						{rejectedStats.newIn24h}
+					</p>
+				</button>
+				<button
+					class="flex cursor-pointer flex-col gap-1 rounded-lg border px-4 py-3 text-left shadow-sm transition-all
+						{activeRejectedStatCard === 'format'
+						? 'border-primary/60 bg-primary/8 ring-1 ring-primary/30'
+						: 'border-base-content/12 bg-base-200 hover:border-base-content/25 hover:bg-base-200/80'}"
+					onclick={() => applyRejectedStatCard('format')}
+				>
+					<p class="text-[11px] font-medium tracking-wide text-base-content/50 uppercase">
+						{m.reports_rejected_stat_formatMismatch()}
+					</p>
+					<p class="text-3xl font-bold">{rejectedStats.formatMismatch}</p>
+				</button>
+				<button
+					class="flex cursor-pointer flex-col gap-1 rounded-lg border px-4 py-3 text-left shadow-sm transition-all
+						{activeRejectedStatCard === 'profile'
+						? 'border-primary/60 bg-primary/8 ring-1 ring-primary/30'
+						: 'border-base-content/12 bg-base-200 hover:border-base-content/25 hover:bg-base-200/80'}"
+					onclick={() => applyRejectedStatCard('profile')}
+				>
+					<p class="text-[11px] font-medium tracking-wide text-base-content/50 uppercase">
+						{m.reports_rejected_stat_profileMismatch()}
+					</p>
+					<p class="text-3xl font-bold">{rejectedStats.profileMismatch}</p>
+				</button>
+				<button
+					class="col-span-2 flex cursor-pointer flex-col gap-1 rounded-lg border px-4 py-3 text-left shadow-sm transition-all sm:col-span-1
+						{activeRejectedStatCard === 'delay'
+						? 'border-primary/60 bg-primary/8 ring-1 ring-primary/30'
+						: 'border-base-content/12 bg-base-200 hover:border-base-content/25 hover:bg-base-200/80'}"
+					onclick={() => applyRejectedStatCard('delay')}
+				>
+					<p class="text-[11px] font-medium tracking-wide text-base-content/50 uppercase">
+						{m.reports_rejected_stat_delayPending()}
+					</p>
+					<p class="text-3xl font-bold text-info">{rejectedStats.delayPending}</p>
+					<p class="text-[10px] leading-tight text-base-content/40">held by delay profile</p>
+				</button>
+			</div>
+		{/if}
+
+		<!-- Toolbar -->
+		<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+			<!-- Search -->
+			<div class="relative w-full sm:w-64">
+				<Search
+					class="pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-base-content/40"
+				/>
+				<input
+					type="text"
+					class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-8 pl-9 transition-all input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+					placeholder="Search release or title…"
+					bind:value={searchQuery}
+					oninput={onSearchInput}
+				/>
+				{#if searchQuery}
+					<button
+						class="absolute top-1/2 right-2.5 -translate-y-1/2 text-base-content/40 hover:text-base-content"
+						onclick={() => {
+							searchQuery = '';
+							loadRecords(activeTab, 1);
+						}}
+					>
+						<X class="h-3.5 w-3.5" />
+					</button>
+				{/if}
+			</div>
+
+			<!-- Filters (inline on sm+) -->
+			<div class="flex flex-wrap items-center gap-2">
+				<!-- Media type pills -->
+				<div class="flex items-center gap-1">
+					{#each [{ value: '', label: 'All' }, { value: 'movie', label: 'Movies' }, { value: 'tv', label: 'TV' }] as opt (opt)}
+						<button
+							class="btn font-mono btn-xs {mediaTypeFilter === opt.value
+								? 'btn-primary'
+								: 'btn-ghost'}"
+							onclick={() => {
+								mediaTypeFilter = opt.value;
+								loadRecords(activeTab, 1);
+							}}>{opt.label}</button
+						>
+					{/each}
+				</div>
+
+				<span class="h-4 w-px bg-base-content/15"></span>
+
+				<select
+					class="select w-40 border-base-content/20 bg-base-200/60 transition-all select-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
+					bind:value={reasonFilter}
+					onchange={() => loadRecords(activeTab, 1)}
+				>
+					<option value="">{m.reports_filter_allReasons()}</option>
+					<option value="required_format_mismatch"
+						>{m.reports_rejected_reason_required_format_mismatch()}</option
+					>
+					<option value="quality_profile_mismatch"
+						>{m.reports_rejected_reason_quality_profile_mismatch()}</option
+					>
+					<option value="delay_profile_pending"
+						>{m.reports_rejected_reason_delay_profile_pending()}</option
+					>
+				</select>
+
+				<select
+					class="select w-32 border-base-content/20 bg-base-200/60 transition-all select-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
+					bind:value={dateFilter}
+					onchange={() => loadRecords(activeTab, 1)}
+				>
+					{#each DATE_OPTIONS as opt (opt.value)}
+						<option value={opt.value}>{opt.label}</option>
+					{/each}
+				</select>
+			</div>
+
+			<!-- Right side: count + bulk actions + export -->
+			<div class="flex items-center justify-between gap-2 sm:ml-auto sm:justify-end">
+				<span class="text-xs text-base-content/40 tabular-nums"
+					>{m.reports_showing({ shown: records.length, total })}</span
+				>
+				{#if selectedIds.size > 0}
+					<button
+						class="btn gap-1.5 btn-outline btn-sm"
+						onclick={() => {
+							const sel = records.filter((r) => selectedIds.has(r.id));
+							void copyToClipboard(JSON.stringify(sel, null, 2)).then((ok) => {
+								if (ok) toasts.success(`${sel.length} items copied`);
+								else toasts.error('Failed to copy');
+							});
+						}}
+					>
+						<Copy class="h-3.5 w-3.5" />
+						{m.reports_copySelected()} ({selectedIds.size})
+					</button>
+				{/if}
+				<div class="relative">
+					<button
+						class="btn gap-1.5 btn-neutral btn-sm"
+						onclick={(e) => {
+							e.stopPropagation();
+							showExportMenu = !showExportMenu;
+						}}
+					>
+						{m.reports_export()}
+						<svg class="h-3 w-3" viewBox="0 0 12 12" fill="currentColor"
+							><path d="M6 8L1 3h10z" /></svg
+						>
+					</button>
+					{#if showExportMenu}
+						<div
+							class="absolute top-full right-0 z-20 mt-1 w-44 rounded-lg border border-base-300 bg-base-100 shadow-xl"
+						>
+							<button
+								class="block w-full rounded-t-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
+								onclick={() => {
+									showExportMenu = false;
+									const blob = new Blob(
+										[
+											'id,releaseTitle,mediaTitle,primaryReason,ruleFired,indexerName,protocol,rejectedAt\n' +
+												records
+													.map((r) =>
+														[
+															r.id,
+															r.releaseTitle,
+															r.mediaTitle,
+															r.primaryReason,
+															r.ruleFired,
+															r.indexerName,
+															r.protocol,
+															r.rejectedAt
+														]
+															.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
+															.join(',')
+													)
+													.join('\n')
+										],
+										{ type: 'text/csv' }
+									);
+									const url = URL.createObjectURL(blob);
+									Object.assign(document.createElement('a'), {
+										href: url,
+										download: 'rejected-releases.csv'
+									}).click();
+									URL.revokeObjectURL(url);
+								}}>{m.reports_exportCsv()}</button
+							>
+							<button
+								class="block w-full rounded-b-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
+								onclick={() => {
+									showExportMenu = false;
+									const blob = new Blob([JSON.stringify(records, null, 2)], {
+										type: 'application/json'
+									});
+									const url = URL.createObjectURL(blob);
+									Object.assign(document.createElement('a'), {
+										href: url,
+										download: 'rejected-releases.json'
+									}).click();
+									URL.revokeObjectURL(url);
+								}}>{m.reports_exportJson()}</button
+							>
+						</div>
+					{/if}
+				</div>
+			</div>
+		</div>
+
+		<!-- Table -->
+		{#if loading}
+			<div class="flex items-center justify-center py-16">
+				<Loader2 class="h-5 w-5 animate-spin text-base-content/40" />
+				<span class="ml-2 text-sm text-base-content/60">{m.reports_loading()}</span>
+			</div>
+		{:else if records.length === 0}
+			<div class="flex flex-col items-center justify-center py-20 text-center">
+				<ShieldX class="mb-3 h-12 w-12 text-base-content/15" />
+				<p class="font-medium text-base-content/60">{m.reports_empty()}</p>
+				<p class="mt-1 text-sm text-base-content/40">{m.reports_emptyDescription()}</p>
+			</div>
+		{:else}
+			<div class="overflow-x-auto rounded-lg border border-base-content/12 bg-base-100 shadow-sm">
+				<table class="table w-full table-sm">
+					<thead>
+						<tr
+							class="border-b border-base-content/10 bg-base-200 text-[11px] font-semibold tracking-widest text-base-content/50 uppercase"
+						>
+							<th class="w-8 pr-0">
+								<input
+									type="checkbox"
+									class="checkbox checkbox-xs"
+									checked={selectedIds.size === records.length && records.length > 0}
+									onchange={(e) => {
+										selectedIds = (e.target as HTMLInputElement).checked
+											? new Set(records.map((r) => r.id))
+											: new Set();
+									}}
+								/>
+							</th>
+							<th>{m.reports_col_release()}</th>
+							<th>{m.reports_col_reason()}</th>
+							<th class="hidden sm:table-cell">{m.reports_col_ruleFired()}</th>
+							<th class="hidden md:table-cell">{m.reports_col_indexer()}</th>
+							<th class="hidden sm:table-cell">{m.reports_col_detected()}</th>
+							<th class="hidden sm:table-cell"></th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-base-content/8">
+						{#each records as record (record.id)}
+							{@const expanded = expandedId === record.id}
+							{@const checks = (record.rejectionReasons as RejectionCheck[] | null) ?? []}
+							{@const isSelected = selectedIds.has(record.id)}
+							<tr
+								class="cursor-pointer transition-colors {isSelected
+									? 'bg-primary/5'
+									: 'hover:bg-base-200/50'}"
+								onclick={() => (expandedId = expanded ? null : record.id)}
+							>
+								<td class="pr-0" onclick={(e) => e.stopPropagation()}>
+									<input
+										type="checkbox"
+										class="checkbox checkbox-xs"
+										checked={isSelected}
+										onchange={() => {
+											const next = new Set(selectedIds);
+											if (isSelected) {
+												next.delete(record.id);
+											} else {
+												next.add(record.id);
+											}
+											selectedIds = next;
+										}}
+									/>
+								</td>
+								<td class="max-w-[42vw] sm:max-w-xs">
+									<div class="flex items-start gap-1.5">
+										<ChevronRight
+											class="mt-0.5 h-3.5 w-3.5 shrink-0 text-base-content/30 transition-transform {expanded
+												? 'rotate-90'
+												: ''}"
+										/>
+										<div class="min-w-0">
+											<p class="truncate leading-tight font-semibold">
+												{record.releaseTitle ?? '-'}
+											</p>
+											{#if record.mediaTitle}
+												<p class="truncate text-xs text-base-content/40">
+													{record.mediaTitle}
+												</p>
+											{/if}
+										</div>
+									</div>
+								</td>
+								<td class="whitespace-nowrap">
+									<span
+										class="badge badge-sm {rejectedReasonBadgeClass(
+											String(record.primaryReason ?? '')
+										)}"
+									>
+										<span class="sm:hidden"
+											>{rejectedReasonShortLabel(String(record.primaryReason ?? ''))}</span
+										>
+										<span class="hidden sm:inline"
+											>{rejectedReasonLabel(String(record.primaryReason ?? ''))}</span
+										>
+									</span>
+								</td>
+								<td class="hidden max-w-50 text-sm text-base-content/70 sm:table-cell">
+									<span class="line-clamp-1">{record.ruleFired ?? '-'}</span>
+								</td>
+								<td class="hidden text-sm whitespace-nowrap text-base-content/70 md:table-cell">
+									{record.indexerName ?? '-'}
+									{#if record.protocol}
+										<span class="ml-1 badge badge-outline badge-xs uppercase"
+											>{record.protocol}</span
+										>
+									{/if}
+								</td>
+								<td class="hidden text-sm whitespace-nowrap text-base-content/60 sm:table-cell">
+									{timeAgo(String(record.rejectedAt ?? ''))}
+								</td>
+								<td class="hidden sm:table-cell">
+									{#if record.status === 'overridden'}
+										<span class="badge badge-ghost badge-xs">Overridden</span>
+									{/if}
+								</td>
+							</tr>
+
+							{#if expanded}
+								<tr>
+									<td colspan="7" class="border-b border-base-content/10 p-0">
+										<div class="border-l-4 border-l-primary bg-base-200 py-5 pr-6 pl-10">
+											<!-- Full release filename -->
+											<div
+												class="mb-5 rounded-lg border border-base-content/12 bg-base-100 px-3 py-2.5 font-mono text-xs break-all"
+											>
+												<span class="mr-2 font-semibold text-base-content/50">RELEASE</span>
+												<span class="text-base-content/80">{record.releaseTitle ?? '-'}</span>
+											</div>
+
+											<div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+												<!-- LEFT: Format checks -->
+												<div class="space-y-3">
+													<h4
+														class="text-[10px] font-bold tracking-widest text-base-content/50 uppercase"
+													>
+														{m.reports_rejected_formatChecks()}
+													</h4>
+													{#if checks.length > 0}
+														<div class="space-y-2">
+															{#each checks as check (check.rule)}
+																<div
+																	class="rounded-lg border {check.passed
+																		? 'border-success/20 bg-success/5'
+																		: 'border-base-content/12 bg-base-100'} px-3 py-2.5 shadow-sm"
+																>
+																	<div class="flex items-start gap-2">
+																		{#if check.passed}
+																			<Check class="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+																		{:else}
+																			<X class="mt-0.5 h-3.5 w-3.5 shrink-0 text-error" />
+																		{/if}
+																		<div class="min-w-0">
+																			<p
+																				class="text-sm font-semibold {check.passed
+																					? 'text-base-content/60'
+																					: 'text-base-content'}"
+																			>
+																				{check.rule}
+																			</p>
+																			{#if check.detail}
+																				<p class="mt-0.5 text-xs text-base-content/45">
+																					{check.detail}
+																				</p>
+																			{/if}
+																		</div>
+																	</div>
+																</div>
+															{/each}
+														</div>
+													{:else}
+														<div
+															class="rounded-lg border border-dashed border-base-content/20 px-3 py-5 text-center"
+														>
+															<p class="text-sm text-base-content/50">No check details recorded.</p>
+														</div>
+													{/if}
+												</div>
+
+												<!-- RIGHT: Release details + actions -->
+												<div class="space-y-3">
+													<h4
+														class="text-[10px] font-bold tracking-widest text-base-content/50 uppercase"
+													>
+														Release Details
+													</h4>
+													<div
+														class="overflow-hidden rounded-lg border border-base-content/12 bg-base-100 shadow-sm"
+													>
+														{#if record.mediaTitle}
+															<div
+																class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
+															>
+																<span class="font-medium text-base-content/55">Media</span>
+																<span class="font-semibold">{record.mediaTitle}</span>
+															</div>
+														{/if}
+														{#if record.mediaType}
+															<div
+																class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
+															>
+																<span class="font-medium text-base-content/55">Media type</span>
+																<span class="capitalize">{record.mediaType}</span>
+															</div>
+														{/if}
+														{#if record.qualityProfileName}
+															<div
+																class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
+															>
+																<span class="font-medium text-base-content/55">Profile</span>
+																<span>{record.qualityProfileName}</span>
+															</div>
+														{/if}
+														{#if record.releaseGroup}
+															<div
+																class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
+															>
+																<span class="font-medium text-base-content/55">Group</span>
+																<span class="font-mono text-xs">{record.releaseGroup}</span>
+															</div>
+														{/if}
+														{#if record.releaseSize}
+															<div
+																class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
+															>
+																<span class="font-medium text-base-content/55">Size</span>
+																<span class="font-semibold"
+																	>{formatBytes(Number(record.releaseSize))}</span
+																>
+															</div>
+														{/if}
+														<div
+															class="flex items-center justify-between px-3 py-2.5 text-sm {record.correlationId
+																? 'border-b border-base-content/8'
+																: ''}"
+														>
+															<span class="font-medium text-base-content/55">Rejected</span>
+															<span class="text-base-content/70"
+																>{formatDate(String(record.rejectedAt ?? ''))}</span
+															>
+														</div>
+														{#if record.correlationId}
+															<div
+																class="flex items-center justify-between gap-4 px-3 py-2.5 text-sm"
+															>
+																<span class="shrink-0 font-medium text-base-content/55"
+																	>Correlation ID</span
+																>
+																<span class="truncate font-mono text-xs text-base-content/60">
+																	<span class="sm:hidden"
+																		>{shortCorr(String(record.correlationId))}…</span
+																	>
+																	<span class="hidden sm:inline"
+																		>{String(record.correlationId)}</span
+																	>
+																</span>
+															</div>
+														{/if}
+													</div>
+
+													<!-- Actions -->
+													<div class="flex flex-wrap gap-2">
+														{#if record.correlationId}
+															<a
+																href="/settings/monitoring/logs?correlationId={record.correlationId}"
+																class="btn gap-1.5 border border-base-content/15 bg-base-100 btn-xs hover:bg-base-200"
+																onclick={(e) => e.stopPropagation()}
+																title="View logs for correlation ID {record.correlationId}"
+															>
+																<ExternalLink class="h-3 w-3" />
+																View trace ({shortCorr(String(record.correlationId))})
+															</a>
+														{:else}
+															<button
+																class="btn cursor-not-allowed gap-1.5 border border-base-content/10 bg-base-100 text-base-content/30 btn-xs"
+																disabled
+																onclick={(e) => e.stopPropagation()}
+															>
+																<ExternalLink class="h-3 w-3" />
+																View trace
+															</button>
+														{/if}
+														<button
+															class="btn gap-1.5 border border-base-content/15 bg-base-100 btn-xs hover:bg-base-200"
+															onclick={(e) => {
+																e.stopPropagation();
+																void copyRejectedBundle(record);
+															}}
+														>
+															<Copy class="h-3 w-3" />
+															{m.reports_rejected_copyBundle()}
+														</button>
+														<button
+															class="btn gap-1.5 border border-warning/40 bg-warning/10 text-warning-content btn-xs hover:bg-warning/20"
+															onclick={(e) => {
+																e.stopPropagation();
+																void overrideRejectedRelease(record);
+															}}
+														>
+															<ShieldX class="h-3 w-3" />
+															{m.reports_rejected_override()}
+														</button>
+														{#if record.status === 'overridden'}
+															<button
+																class="btn btn-success btn-xs"
+																onclick={(e) => {
+																	e.stopPropagation();
+																	void resolveRecord(record.id);
+																}}
+															>
+																<Check class="h-3 w-3" />
+																{m.reports_dismiss()}
+															</button>
+														{:else}
+															<button
+																class="btn btn-success btn-xs"
+																onclick={(e) => {
+																	e.stopPropagation();
+																	void resolveRecord(record.id);
+																}}
+															>
+																<Check class="h-3 w-3" />
+																{m.reports_resolve()}
+															</button>
+														{/if}
+													</div>
+												</div>
+											</div>
+										</div>
+									</td>
+								</tr>
+							{/if}
+						{/each}
+					</tbody>
+					{#if totalPages > 1}
+						<tfoot>
+							<tr>
+								<td colspan="7" class="border-t border-base-content/8 py-2">
+									<div class="flex items-center justify-center gap-2">
+										<button
+											class="btn btn-ghost btn-xs"
+											disabled={currentPage <= 1}
+											onclick={() => loadRecords(activeTab, currentPage - 1)}>&larr; Prev</button
+										>
+										<span class="text-xs text-base-content/60">{currentPage} / {totalPages}</span>
+										<button
+											class="btn btn-ghost btn-xs"
+											disabled={currentPage >= totalPages}
+											onclick={() => loadRecords(activeTab, currentPage + 1)}>Next &rarr;</button
+										>
+									</div>
+								</td>
+							</tr>
+						</tfoot>
+					{/if}
+				</table>
+			</div>
+		{/if}
+
+		<!-- IMPORT FAILURES SubTab -->
+	{:else if activeTab === 'import-failures'}
+		<!-- Stat cards -->
+		{#if importStats}
+			<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+				<button
+					class="flex cursor-pointer flex-col gap-1 rounded-lg border px-4 py-3 text-left shadow-sm transition-all
+						{activeImportStatCard === 'all'
+						? 'border-primary/60 bg-primary/8 ring-1 ring-primary/30'
+						: 'border-base-content/12 bg-base-200 hover:border-base-content/25 hover:bg-base-200/80'}"
+					onclick={() => applyImportStatCard('all')}
+				>
+					<p class="text-[11px] font-medium tracking-wide text-base-content/50 uppercase">
+						{m.reports_import_stat_total()}
+					</p>
+					<p class="text-3xl font-bold text-error">{importStats.total}</p>
+				</button>
+				<button
+					class="flex cursor-pointer flex-col gap-1 rounded-lg border px-4 py-3 text-left shadow-sm transition-all
+						{activeImportStatCard === '24h'
+						? 'border-primary/60 bg-primary/8 ring-1 ring-primary/30'
+						: 'border-base-content/12 bg-base-200 hover:border-base-content/25 hover:bg-base-200/80'}"
+					onclick={() => applyImportStatCard('24h')}
+				>
+					<p class="text-[11px] font-medium tracking-wide text-base-content/50 uppercase">
+						{m.reports_import_stat_newIn24h()}
+					</p>
+					<p
+						class="text-3xl font-bold {importStats.newIn24h > 0 ? 'text-warning' : 'text-success'}"
+					>
+						{importStats.newIn24h}
+					</p>
+				</button>
+				<button
+					class="flex cursor-pointer flex-col gap-1 rounded-lg border px-4 py-3 text-left shadow-sm transition-all
+						{activeImportStatCard === 'transfer'
+						? 'border-primary/60 bg-primary/8 ring-1 ring-primary/30'
+						: 'border-base-content/12 bg-base-200 hover:border-base-content/25 hover:bg-base-200/80'}"
+					onclick={() => applyImportStatCard('transfer')}
+				>
+					<p class="text-[11px] font-medium tracking-wide text-base-content/50 uppercase">
+						{m.reports_import_stat_transfer()}
+					</p>
+					<p class="text-3xl font-bold">{importStats.transfer}</p>
+				</button>
+				<button
+					class="flex cursor-pointer flex-col gap-1 rounded-lg border px-4 py-3 text-left shadow-sm transition-all
+						{activeImportStatCard === 'disk_space'
+						? 'border-primary/60 bg-primary/8 ring-1 ring-primary/30'
+						: 'border-base-content/12 bg-base-200 hover:border-base-content/25 hover:bg-base-200/80'}"
+					onclick={() => applyImportStatCard('disk_space')}
+				>
+					<p class="text-[11px] font-medium tracking-wide text-base-content/50 uppercase">
+						{m.reports_import_stat_diskSpace()}
+					</p>
+					<p class="text-3xl font-bold text-warning">{importStats.diskSpace}</p>
+				</button>
+			</div>
+		{/if}
+
+		<!-- Toolbar -->
+		<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+			<div class="relative w-full sm:w-64">
+				<Search
+					class="pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-base-content/40"
+				/>
+				<input
+					type="text"
+					class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-8 pl-9 transition-all input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+					placeholder="Search release or path…"
+					bind:value={searchQuery}
+					oninput={onSearchInput}
+				/>
+				{#if searchQuery}
+					<button
+						class="absolute top-1/2 right-2.5 -translate-y-1/2 text-base-content/40 hover:text-base-content"
+						onclick={() => {
+							searchQuery = '';
+							loadRecords('import-failures', 1);
+						}}><X class="h-3.5 w-3.5" /></button
+					>
+				{/if}
+			</div>
+			<div class="hidden h-5 w-px bg-base-content/12 sm:block"></div>
+			<select
+				class="select w-full border-base-content/20 bg-base-200/60 select-sm sm:w-auto"
+				bind:value={reasonFilter}
+				onchange={() => loadRecords('import-failures', 1)}
+			>
+				<option value="">{m.reports_filter_allStages()}</option>
+				<option value="path_resolution">{m.reports_stage_path_resolution()}</option>
+				<option value="dangerous_files">{m.reports_stage_dangerous_files()}</option>
+				<option value="disk_space">{m.reports_stage_disk_space()}</option>
+				<option value="root_folder">{m.reports_stage_root_folder()}</option>
+				<option value="library_entity">{m.reports_stage_library_entity()}</option>
+				<option value="transfer">{m.reports_stage_transfer()}</option>
+				<option value="max_retries">{m.reports_stage_max_retries()}</option>
+			</select>
+			<select
+				class="select w-full border-base-content/20 bg-base-200/60 select-sm sm:w-auto"
+				bind:value={dateFilter}
+				onchange={() => loadRecords('import-failures', 1)}
+			>
+				{#each DATE_OPTIONS as opt (opt.value)}
+					<option value={opt.value}>{opt.label}</option>
+				{/each}
+			</select>
+			<p class="ml-auto text-sm text-base-content/60">
+				{m.reports_showing({ shown: records.length, total })}
+			</p>
+		</div>
+
+		{#if loading}
+			<div class="flex items-center justify-center py-16">
+				<Loader2 class="h-5 w-5 animate-spin text-base-content/40" />
+				<span class="ml-2 text-sm text-base-content/60">{m.reports_loading()}</span>
+			</div>
+		{:else if records.length === 0}
+			<div class="flex flex-col items-center justify-center py-20 text-center">
+				<AlertTriangle class="mb-3 h-12 w-12 text-base-content/15" />
+				<p class="font-medium text-base-content/60">{m.reports_empty()}</p>
+				<p class="mt-1 text-sm text-base-content/40">{m.reports_emptyDescription()}</p>
+			</div>
+		{:else}
+			<div class="overflow-x-auto rounded-lg border border-base-content/12 bg-base-100 shadow-sm">
+				<table class="table w-full table-sm">
+					<thead>
+						<tr
+							class="border-b border-base-content/10 bg-base-200 text-[11px] font-semibold tracking-widest text-base-content/50 uppercase"
+						>
+							<th>{m.reports_col_release()}</th>
+							<th>{m.reports_col_stage()}</th>
+							<th>{m.reports_col_reason()}</th>
+							<th>{m.reports_col_date()}</th>
+							<th>{m.reports_col_status()}</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-base-content/8">
+						{#each records as record (record.id)}
+							{@const expanded = expandedId === record.id}
+							<tr
+								class="hover cursor-pointer"
+								onclick={() => (expandedId = expanded ? null : record.id)}
+							>
+								<td
+									><div class="flex items-center gap-1.5">
+										<ChevronRight
+											class="h-3 w-3 shrink-0 text-base-content/30 transition-transform {expanded
+												? 'rotate-90'
+												: ''}"
+										/>
+										<span class="max-w-xs truncate font-medium">{record.releaseTitle ?? '-'}</span>
+									</div></td
+								>
+								<td class="text-sm">{stageLabel(String(record.failureStage ?? ''))}</td>
+								<td class="max-w-xs text-sm text-base-content/70"
+									><span class="line-clamp-1">{record.reasonDetail ?? record.reason ?? '-'}</span
+									></td
+								>
+								<td class="text-sm whitespace-nowrap text-base-content/60"
+									>{formatDate(String(record.failedAt ?? ''))}</td
+								>
+								<td
+									><span class="badge badge-sm {statusBadgeClass(String(record.status ?? ''))}"
+										>{statusLabel(String(record.status ?? ''))}</span
+									></td
+								>
+								<td></td>
+							</tr>
+							{#if expanded}
+								<tr>
+									<td colspan="6" class="p-0">
+										<div
+											class="space-y-2 border-l-4 border-l-primary bg-base-200 py-4 pr-6 pl-10 text-sm"
+										>
+											{#if record.sourcePath}<div class="flex gap-2">
+													<span class="w-24 shrink-0 text-base-content/50">Source</span><span
+														class="font-mono text-xs break-all">{record.sourcePath}</span
+													>
+												</div>{/if}
+											{#if record.destinationPath}<div class="flex gap-2">
+													<span class="w-24 shrink-0 text-base-content/50">Destination</span><span
+														class="font-mono text-xs break-all">{record.destinationPath}</span
+													>
+												</div>{/if}
+											{#if record.reasonDetail}<div class="flex gap-2">
+													<span class="w-24 shrink-0 text-base-content/50">Error</span><span
+														class="text-error">{record.reasonDetail}</span
+													>
+												</div>{/if}
+											{#if Array.isArray(record.dangerousFiles) && record.dangerousFiles.length > 0}<div
+													class="flex gap-2"
+												>
+													<span class="w-24 shrink-0 text-base-content/50">Dangerous</span>
+													<ul class="list-disc pl-4 font-mono text-xs">
+														{#each record.dangerousFiles as f (f)}<li>
+																{f.path} ({f.extension})
+															</li>{/each}
+													</ul>
+												</div>{/if}
+											<div class="flex gap-2">
+												<span class="w-24 shrink-0 text-base-content/50">Attempts</span><span
+													>{record.attemptCount ?? 1}</span
+												>
+											</div>
+											{#if record.correlationId}<div class="flex gap-2">
+													<span class="w-24 shrink-0 text-base-content/50">Trace</span><a
+														href="/settings/monitoring/logs?correlationId={record.correlationId}"
+														class="link font-mono text-xs link-primary"
+														onclick={(e) => e.stopPropagation()}>{m.reports_viewTrace()} ↗</a
+													>
+												</div>{/if}
+											{#if record.status !== 'resolved'}
+												<div class="mt-3 flex gap-2">
+													<button
+														class="btn btn-success btn-xs"
+														onclick={(e) => {
+															e.stopPropagation();
+															void resolveRecord(record.id);
+														}}
+													>
+														<Check class="h-3 w-3" />
+														{m.reports_resolve()}
+													</button>
+												</div>
+											{/if}
+										</div>
+									</td>
+								</tr>
+							{/if}
+						{/each}
+					</tbody>
+					{#if totalPages > 1}
+						<tfoot>
+							<tr>
+								<td colspan="6" class="border-t border-base-content/8 py-2">
+									<div class="flex items-center justify-center gap-2">
+										<button
+											class="btn btn-ghost btn-xs"
+											disabled={currentPage <= 1}
+											onclick={() => loadRecords('import-failures', currentPage - 1)}
+											>&larr; Prev</button
+										>
+										<span class="text-xs text-base-content/60">{currentPage} / {totalPages}</span>
+										<button
+											class="btn btn-ghost btn-xs"
+											disabled={currentPage >= totalPages}
+											onclick={() => loadRecords('import-failures', currentPage + 1)}
+											>Next &rarr;</button
+										>
+									</div>
+								</td>
+							</tr>
+						</tfoot>
+					{/if}
+				</table>
+			</div>
+		{/if}
+
+		<!-- GENERIC TABLE other tabs -->
 	{:else}
 		{#if loading}
 			<div class="flex items-center justify-center py-16">
