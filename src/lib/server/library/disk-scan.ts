@@ -649,6 +649,7 @@ export class DiskScanService extends EventEmitter {
 
 			await db.update(episodeFiles).set({ episodeIds: newIds }).where(eq(episodeFiles.id, ef.id));
 			repaired++;
+			await new Promise<void>((resolve) => setImmediate(resolve));
 		}
 
 		if (repaired > 0) {
@@ -680,23 +681,34 @@ export class DiskScanService extends EventEmitter {
 			}
 		}
 
+		const gained: string[] = [];
+		const lost: string[] = [];
 		const changedMovieIds: string[] = [];
+
 		for (const movie of moviesInFolder) {
 			const shouldHaveFile = moviesWithFiles.has(movie.id);
 			const currentlyHasFile = movie.hasFile ?? false;
-			if (shouldHaveFile === currentlyHasFile) {
-				continue;
-			}
-
-			const lostFile = currentlyHasFile && !shouldHaveFile;
-			await db
-				.update(movies)
-				.set({
-					hasFile: shouldHaveFile,
-					...(lostFile ? { lastSearchTime: null } : {})
-				})
-				.where(eq(movies.id, movie.id));
+			if (shouldHaveFile === currentlyHasFile) continue;
 			changedMovieIds.push(movie.id);
+			if (shouldHaveFile) gained.push(movie.id);
+			else lost.push(movie.id);
+		}
+
+		for (const chunk of this.chunkArray(gained)) {
+			await db.transaction((tx) => {
+				tx.update(movies).set({ hasFile: true }).where(inArray(movies.id, chunk)).run();
+			});
+			await new Promise<void>((resolve) => setImmediate(resolve));
+		}
+
+		for (const chunk of this.chunkArray(lost)) {
+			await db.transaction((tx) => {
+				tx.update(movies)
+					.set({ hasFile: false, lastSearchTime: null })
+					.where(inArray(movies.id, chunk))
+					.run();
+			});
+			await new Promise<void>((resolve) => setImmediate(resolve));
 		}
 
 		if (changedMovieIds.length > 0) {
@@ -772,18 +784,25 @@ export class DiskScanService extends EventEmitter {
 		}
 
 		for (const idChunk of this.chunkArray(episodeIdsToSetTrue)) {
-			await db.update(episodes).set({ hasFile: true }).where(inArray(episodes.id, idChunk));
+			await db.transaction((tx) => {
+				tx.update(episodes).set({ hasFile: true }).where(inArray(episodes.id, idChunk)).run();
+			});
+			await new Promise<void>((resolve) => setImmediate(resolve));
 		}
 
 		for (const idChunk of this.chunkArray(episodeIdsToSetFalse)) {
-			await db
-				.update(episodes)
-				.set({ hasFile: false, lastSearchTime: null })
-				.where(inArray(episodes.id, idChunk));
+			await db.transaction((tx) => {
+				tx.update(episodes)
+					.set({ hasFile: false, lastSearchTime: null })
+					.where(inArray(episodes.id, idChunk))
+					.run();
+			});
+			await new Promise<void>((resolve) => setImmediate(resolve));
 		}
 
 		for (const seriesId of seriesIds) {
 			await this.updateSeriesAndSeasonStats(seriesId);
+			await new Promise<void>((resolve) => setImmediate(resolve));
 		}
 
 		if (episodeIdsToSetTrue.length > 0 || episodeIdsToSetFalse.length > 0) {
@@ -862,6 +881,7 @@ export class DiskScanService extends EventEmitter {
 				await db.delete(unmatchedFiles).where(eq(unmatchedFiles.id, uf.id));
 				linked++;
 			}
+			await new Promise<void>((resolve) => setImmediate(resolve));
 		}
 
 		if (linked > 0) {
@@ -1045,21 +1065,25 @@ export class DiskScanService extends EventEmitter {
 					hdr: parsed.hdr ?? undefined
 				};
 
-				await db.insert(episodeFiles).values({
-					seriesId: s.id,
-					seasonNumber: seasonNum,
-					episodeIds,
-					relativePath,
-					size: file.size,
-					dateAdded: new Date().toISOString(),
-					releaseGroup: parsed.releaseGroup ?? undefined,
-					releaseType: episodeNums.length > 1 ? 'multiEpisode' : 'singleEpisode',
-					quality
-				});
+				await db.transaction((tx) => {
+					tx.insert(episodeFiles)
+						.values({
+							seriesId: s.id,
+							seasonNumber: seasonNum,
+							episodeIds,
+							relativePath,
+							size: file.size,
+							dateAdded: new Date().toISOString(),
+							releaseGroup: parsed.releaseGroup ?? undefined,
+							releaseType: episodeNums.length > 1 ? 'multiEpisode' : 'singleEpisode',
+							quality
+						})
+						.run();
 
-				for (const epId of episodeIds) {
-					await db.update(episodes).set({ hasFile: true }).where(eq(episodes.id, epId));
-				}
+					for (const epId of episodeIds) {
+						tx.update(episodes).set({ hasFile: true }).where(eq(episodes.id, epId)).run();
+					}
+				});
 
 				await this.updateSeriesAndSeasonStats(s.id);
 
@@ -1096,14 +1120,6 @@ export class DiskScanService extends EventEmitter {
 		);
 		const episodesWithFiles = episodesForStats.filter((episode) => episode.hasFile);
 
-		await db
-			.update(series)
-			.set({
-				episodeFileCount: episodesWithFiles.length,
-				episodeCount: episodesForStats.length
-			})
-			.where(eq(series.id, seriesId));
-
 		const seasonMap = new Map<number, { total: number; withFiles: number }>();
 		for (const episode of allEpisodes) {
 			if (!isAired(episode)) continue;
@@ -1113,15 +1129,25 @@ export class DiskScanService extends EventEmitter {
 			seasonMap.set(episode.seasonNumber, stats);
 		}
 
-		for (const [seasonNumber, stats] of seasonMap) {
-			await db
-				.update(seasons)
+		await db.transaction((tx) => {
+			tx.update(series)
 				.set({
-					episodeFileCount: stats.withFiles,
-					episodeCount: stats.total
+					episodeFileCount: episodesWithFiles.length,
+					episodeCount: episodesForStats.length
 				})
-				.where(and(eq(seasons.seriesId, seriesId), eq(seasons.seasonNumber, seasonNumber)));
-		}
+				.where(eq(series.id, seriesId))
+				.run();
+
+			for (const [seasonNumber, stats] of seasonMap) {
+				tx.update(seasons)
+					.set({
+						episodeFileCount: stats.withFiles,
+						episodeCount: stats.total
+					})
+					.where(and(eq(seasons.seriesId, seriesId), eq(seasons.seasonNumber, seasonNumber)))
+					.run();
+			}
+		});
 	}
 
 	private async addUnmatchedFile(
