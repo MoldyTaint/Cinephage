@@ -50,12 +50,6 @@
 			label: m.reports_tab_renamingFailures(),
 			countKey: 'renamingFailures' as const,
 			icon: FileX
-		},
-		{
-			id: 'metadata-conflicts',
-			label: m.reports_tab_metadataConflicts(),
-			countKey: 'metadataConflicts' as const,
-			icon: AlertTriangle
 		}
 	] as const;
 
@@ -2840,6 +2834,20 @@
 				{/if}
 			</div>
 			<div class="flex flex-wrap items-center gap-2">
+				<div class="flex items-center gap-1">
+					{#each [{ value: '', label: m.reports_filter_all() }, { value: 'movie', label: m.reports_type_movie() }, { value: 'episode', label: m.reports_type_tv() }] as opt (opt.value)}
+						<button
+							class="btn font-mono btn-xs {renamingFileTypeFilter === opt.value
+								? 'btn-primary'
+								: 'btn-ghost'}"
+							onclick={() => {
+								renamingFileTypeFilter = opt.value;
+								loadRecords('renaming-failures', 1);
+							}}>{opt.label}</button
+						>
+					{/each}
+				</div>
+				<span class="hidden h-4 w-px bg-base-content/15 sm:block"></span>
 				<select
 					class="select w-44 border-base-content/20 bg-base-200 transition-all select-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
 					bind:value={reasonFilter}
@@ -2855,20 +2863,6 @@
 					<option value="disk_full">{m.reports_renaming_reason_diskFull()}</option>
 					<option value="preview_error">{m.reports_renaming_reason_previewError()}</option>
 				</select>
-				<span class="hidden h-4 w-px bg-base-content/15 sm:block"></span>
-				<div class="flex items-center gap-1">
-					{#each [{ value: '', label: m.reports_filter_all() }, { value: 'movie', label: m.reports_type_movie() }, { value: 'episode', label: m.reports_type_tv() }] as opt (opt.value)}
-						<button
-							class="btn font-mono btn-xs {renamingFileTypeFilter === opt.value
-								? 'btn-primary'
-								: 'btn-ghost'}"
-							onclick={() => {
-								renamingFileTypeFilter = opt.value;
-								loadRecords('renaming-failures', 1);
-							}}>{opt.label}</button
-						>
-					{/each}
-				</div>
 				<select
 					class="select w-32 border-base-content/20 bg-base-200 transition-all select-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
 					bind:value={dateFilter}
@@ -3285,7 +3279,6 @@
 				</table>
 			</div>
 		{/if}
-		<!-- GENERIC TABLE other tabs -->
 	{:else}
 		{#if loading}
 			<div class="flex items-center justify-center py-16">
@@ -3326,10 +3319,6 @@
 								<th>{m.reports_col_file()}</th><th>{m.reports_col_reason()}</th><th
 									>{m.reports_col_date()}</th
 								><th>{m.reports_col_status()}</th><th></th>
-							{:else if activeTab === 'metadata-conflicts'}
-								<th>{m.reports_col_media()}</th><th>{m.reports_col_conflict()}</th><th
-									>{m.reports_col_providers()}</th
-								><th>{m.reports_col_date()}</th><th>{m.reports_col_status()}</th><th></th>
 							{/if}
 						</tr>
 					</thead>
@@ -3427,38 +3416,6 @@
 									<td class="text-sm">{record.reason ?? '-'}</td>
 									<td class="text-sm whitespace-nowrap text-base-content/60"
 										>{formatDate(String(record.failedAt ?? ''))}</td
-									>
-									<td
-										><span class="badge badge-sm {statusBadgeClass(String(record.status ?? ''))}"
-											>{statusLabel(String(record.status ?? ''))}</span
-										></td
-									>
-									<td onclick={(e) => e.stopPropagation()}
-										>{#if record.status !== 'resolved'}<button
-												class="btn btn-ghost btn-xs"
-												onclick={() => resolveRecord(record.id)}>{m.reports_resolve()}</button
-											>{/if}</td
-									>
-								{:else if activeTab === 'metadata-conflicts'}
-									<td
-										><div class="flex items-center gap-1.5">
-											<ChevronRight
-												class="h-3 w-3 shrink-0 text-base-content/30 transition-transform {expanded
-													? 'rotate-90'
-													: ''}"
-											/><span class="font-medium"
-												>{record.mediaTitle ?? `TMDB #${record.tmdbId}`}</span
-											>
-										</div></td
-									>
-									<td class="text-sm">{record.conflictType ?? '-'}</td>
-									<td class="text-sm text-base-content/70"
-										>{Array.isArray(record.providersChecked)
-											? record.providersChecked.join(', ')
-											: '-'}</td
-									>
-									<td class="text-sm whitespace-nowrap text-base-content/60"
-										>{formatDate(String(record.detectedAt ?? ''))}</td
 									>
 									<td
 										><span class="badge badge-sm {statusBadgeClass(String(record.status ?? ''))}"
@@ -3583,36 +3540,16 @@
 															>{m.reports_detail_error()}</span
 														><span class="text-error">{record.reasonDetail}</span>
 													</div>{/if}
-											{:else if activeTab === 'metadata-conflicts'}
-												{#if record.providerResults}
-													<div class="flex gap-2">
-														<span class="w-24 shrink-0 text-base-content/50"
-															>{m.reports_detail_providers()}</span
-														>
-														<ul class="space-y-0.5">
-															{#each Object.entries(record.providerResults as Record<string, { found: boolean; error?: string }>) as [prov, res] ((prov, res))}
-																<li class="flex items-center gap-2">
-																	<span class="capitalize">{prov}</span>{#if res.found}<span
-																			class="badge badge-xs badge-success">found</span
-																		>{:else}<span class="badge badge-xs badge-error">not found</span
-																		>{/if}{#if res.error}<span class="text-xs text-error"
-																			>{res.error}</span
-																		>{/if}
-																</li>
-															{/each}
-														</ul>
-													</div>
-												{/if}
-												{#if record.correlationId}<div class="flex gap-2">
-														<span class="w-24 shrink-0 text-base-content/50"
-															>{m.reports_detail_trace()}</span
-														><a
-															href="/settings/monitoring/logs?correlationId={record.correlationId}"
-															class="link font-mono text-xs link-primary"
-															onclick={(e) => e.stopPropagation()}>{m.reports_viewTrace()} ↗</a
-														>
-													</div>{/if}
 											{/if}
+											{#if record.correlationId}<div class="flex gap-2">
+													<span class="w-24 shrink-0 text-base-content/50"
+														>{m.reports_detail_trace()}</span
+													><a
+														href="/settings/monitoring/logs?correlationId={record.correlationId}"
+														class="link font-mono text-xs link-primary"
+														onclick={(e) => e.stopPropagation()}>{m.reports_viewTrace()} ↗</a
+													>
+												</div>{/if}
 										</div>
 									</td>
 								</tr>

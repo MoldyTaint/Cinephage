@@ -117,39 +117,5 @@ export const migration_v128: MigrationDefinition = {
 				.prepare(`CREATE INDEX "idx_renaming_failures_status" ON "renaming_failures" ("status")`)
 				.run();
 		}
-
-		// metadata_conflicts: pipeline stage 4 - file matched, metadata providers disagree
-		if (!tableExists(sqlite, 'metadata_conflicts')) {
-			sqlite
-				.prepare(
-					`CREATE TABLE "metadata_conflicts" (
-					"id" text PRIMARY KEY NOT NULL,
-					"correlation_id" text,
-					"tmdb_id" integer NOT NULL,
-					"media_type" text NOT NULL,
-					"media_title" text,
-					"conflict_type" text NOT NULL,
-					"providers_checked" text,
-					"provider_results" text,
-					"detected_at" text NOT NULL,
-					"status" text NOT NULL DEFAULT 'unresolved',
-					"resolved_at" text
-				)`
-				)
-				.run();
-			sqlite
-				.prepare(
-					`CREATE INDEX "idx_metadata_conflicts_tmdb" ON "metadata_conflicts" ("tmdb_id", "media_type")`
-				)
-				.run();
-			sqlite
-				.prepare(
-					`CREATE INDEX "idx_metadata_conflicts_detected_at" ON "metadata_conflicts" ("detected_at")`
-				)
-				.run();
-			sqlite
-				.prepare(`CREATE INDEX "idx_metadata_conflicts_status" ON "metadata_conflicts" ("status")`)
-				.run();
-		}
 	}
 };

@@ -3996,35 +3996,4 @@ export const renamingFailures = sqliteTable(
 export type RenamingFailureRecord = typeof renamingFailures.$inferSelect;
 export type NewRenamingFailureRecord = typeof renamingFailures.$inferInsert;
 
-export const metadataConflicts = sqliteTable(
-	'metadata_conflicts',
-	{
-		id: text('id')
-			.primaryKey()
-			.$defaultFn(() => randomUUID()),
-		correlationId: text('correlation_id'),
-		tmdbId: integer('tmdb_id').notNull(),
-		mediaType: text('media_type').notNull(), // 'movie' | 'tv'
-		mediaTitle: text('media_title'),
-		// 'identity_mismatch' | 'missing_provider' | 'provider_error' | 'score_too_low'
-		conflictType: text('conflict_type').notNull(),
-		providersChecked: text('providers_checked', { mode: 'json' }).$type<string[]>(),
-		providerResults: text('provider_results', { mode: 'json' }).$type<
-			Record<string, { found: boolean; confidence?: number; error?: string }>
-		>(),
-		detectedAt: text('detected_at')
-			.notNull()
-			.$defaultFn(() => new Date().toISOString()),
-		status: text('status').notNull().default('unresolved'), // 'unresolved' | 'resolved' | 'ignored'
-		resolvedAt: text('resolved_at')
-	},
-	(table) => [
-		index('idx_metadata_conflicts_tmdb').on(table.tmdbId, table.mediaType),
-		index('idx_metadata_conflicts_detected_at').on(table.detectedAt),
-		index('idx_metadata_conflicts_status').on(table.status)
-	]
-);
-
-export type MetadataConflictRecord = typeof metadataConflicts.$inferSelect;
-export type NewMetadataConflictRecord = typeof metadataConflicts.$inferInsert;
 export type NewRenameHistoryRecord = typeof renameHistory.$inferInsert;

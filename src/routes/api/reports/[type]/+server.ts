@@ -6,7 +6,6 @@ import {
 	importFailures,
 	renamingFailures,
 	unmatchedFiles,
-	metadataConflicts,
 	downloadClients
 } from '$lib/server/db/schema.js';
 import { count, desc, asc, eq, ne, and, or, like, gt, inArray } from 'drizzle-orm';
@@ -16,8 +15,7 @@ const VALID_TYPES = [
 	'rejected-releases',
 	'import-failures',
 	'renaming-failures',
-	'unmatched-imports',
-	'metadata-conflicts'
+	'unmatched-imports'
 ] as const;
 
 type ReportType = (typeof VALID_TYPES)[number];
@@ -295,29 +293,6 @@ export const GET: RequestHandler = async ({ params, url }) => {
 				total = cnt.count;
 				break;
 			}
-
-			case 'metadata-conflicts': {
-				const q = db.select().from(metadataConflicts);
-				const cq = db.select({ count: count() }).from(metadataConflicts);
-				if (statusFilter) {
-					q.where(eq(metadataConflicts.status, statusFilter));
-					cq.where(eq(metadataConflicts.status, statusFilter));
-				}
-				const [rows, [cnt]] = await Promise.all([
-					q
-						.orderBy(
-							order === 'desc'
-								? desc(metadataConflicts.detectedAt)
-								: asc(metadataConflicts.detectedAt)
-						)
-						.limit(limit)
-						.offset(offset),
-					cq
-				]);
-				records = rows;
-				total = cnt.count;
-				break;
-			}
 		}
 
 		return json({
@@ -397,17 +372,6 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 							resolvedAt: body.status === 'resolved' ? resolvedAt : null
 						})
 						.where(eq(renamingFailures.id, id));
-				}
-				break;
-			case 'metadata-conflicts':
-				for (const id of body.ids) {
-					await db
-						.update(metadataConflicts)
-						.set({
-							status: body.status,
-							resolvedAt: body.status === 'resolved' ? resolvedAt : null
-						})
-						.where(eq(metadataConflicts.id, id));
 				}
 				break;
 			case 'unmatched-imports':
