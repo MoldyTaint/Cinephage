@@ -5,6 +5,7 @@
  * Handles CRUD operations, matching, and folder grouping.
  */
 
+import { randomUUID } from 'node:crypto';
 import { db } from '$lib/server/db/index.js';
 import { unmatchedFiles, rootFolders } from '$lib/server/db/schema.js';
 import { eq, and, sql, desc, asc } from 'drizzle-orm';
@@ -188,7 +189,8 @@ export class UnmatchedFileService {
 				parsedEpisode: unmatchedFiles.parsedEpisode,
 				suggestedMatches: unmatchedFiles.suggestedMatches,
 				reason: unmatchedFiles.reason,
-				discoveredAt: unmatchedFiles.discoveredAt
+				discoveredAt: unmatchedFiles.discoveredAt,
+				correlationId: unmatchedFiles.correlationId
 			})
 			.from(unmatchedFiles)
 			.leftJoin(rootFolders, eq(unmatchedFiles.rootFolderId, rootFolders.id))
@@ -414,10 +416,24 @@ export class UnmatchedFileService {
 		file: UnmatchedFile,
 		tmdbId: number
 	): Promise<{ success: boolean; mediaId?: string; error?: string }> {
+		const correlationId = file.correlationId ?? randomUUID();
+		const matchLogger = createChildLogger({ logDomain: 'scans' as const, correlationId });
 		try {
+			matchLogger.info(
+				{ fileId: file.id, filePath: file.path, tmdbId },
+				'[UnmatchedFileService] Manual movie match started'
+			);
 			await mediaMatcherService.acceptMatch(file.id, tmdbId, 'movie');
+			matchLogger.info(
+				{ fileId: file.id, tmdbId },
+				'[UnmatchedFileService] Manual movie match successful'
+			);
 			return { success: true };
 		} catch (err) {
+			matchLogger.error(
+				{ fileId: file.id, filePath: file.path, tmdbId, err },
+				'[UnmatchedFileService] Movie match failed'
+			);
 			return {
 				success: false,
 				error: err instanceof Error ? err.message : 'Failed to match movie'
@@ -434,6 +450,8 @@ export class UnmatchedFileService {
 		season: number,
 		episode: number
 	): Promise<{ success: boolean; mediaId?: string; error?: string }> {
+		const correlationId = file.correlationId ?? randomUUID();
+		const matchLogger = createChildLogger({ logDomain: 'scans' as const, correlationId });
 		try {
 			const [fileRecord] = await db
 				.select()
@@ -444,6 +462,11 @@ export class UnmatchedFileService {
 				return { success: false, error: 'File record not found' };
 			}
 
+			matchLogger.info(
+				{ fileId: file.id, filePath: file.path, tmdbId, season, episode },
+				'[UnmatchedFileService] Manual episode match started'
+			);
+
 			// Write season/episode before acceptMatch reads them from the DB
 			await db
 				.update(unmatchedFiles)
@@ -451,10 +474,14 @@ export class UnmatchedFileService {
 				.where(eq(unmatchedFiles.id, file.id));
 
 			await mediaMatcherService.acceptMatch(file.id, tmdbId, 'tv');
+			matchLogger.info(
+				{ fileId: file.id, tmdbId, season, episode },
+				'[UnmatchedFileService] Manual episode match successful'
+			);
 			return { success: true };
 		} catch (err) {
 			const errorMsg = err instanceof Error ? err.message : 'Failed to match episode';
-			logger.error(
+			matchLogger.error(
 				{ fileId: file.id, filePath: file.path, tmdbId, season, episode, err },
 				`[UnmatchedFileService] Episode match failed: ${errorMsg}`
 			);
@@ -660,6 +687,7 @@ export class UnmatchedFileService {
 		suggestedMatches: unknown;
 		reason: string | null;
 		discoveredAt: string | null;
+		correlationId?: string | null;
 	}): UnmatchedFile {
 		return {
 			id: record.id,
@@ -674,7 +702,8 @@ export class UnmatchedFileService {
 			parsedEpisode: record.parsedEpisode,
 			suggestedMatches: record.suggestedMatches as UnmatchedFile['suggestedMatches'],
 			reason: record.reason as UnmatchedReason,
-			discoveredAt: record.discoveredAt || new Date().toISOString()
+			discoveredAt: record.discoveredAt || new Date().toISOString(),
+			correlationId: record.correlationId ?? null
 		};
 	}
 }

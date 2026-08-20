@@ -137,7 +137,7 @@ import {
  * Version 126: Add metadata_language and prefer_original_title columns to movies and series tables
  * Version 127: Add cinephage_api_config identity auto-sync columns (latest_version, latest_commit, auto_update)
  */
-export const CURRENT_SCHEMA_VERSION = 127;
+export const CURRENT_SCHEMA_VERSION = 128;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -690,7 +690,9 @@ const TABLE_DEFINITIONS: string[] = [
 		"suggested_matches" text,
 		"reason" text,
 		"discovered_at" text,
-		"last_seen_scan_id" text
+		"last_seen_scan_id" text,
+		"correlation_id" text,
+		"ambiguity_margin" real
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "library_scan_history" (
@@ -1405,6 +1407,73 @@ const TABLE_DEFINITIONS: string[] = [
 		"error" text,
 		"operation" text NOT NULL DEFAULT 'rename',
 		"created_at" text NOT NULL
+	)`,
+
+	// =========================================================================
+	// Diagnostic Report Tables
+	// =========================================================================
+
+	`CREATE TABLE IF NOT EXISTS "rejected_releases" (
+		"id" text PRIMARY KEY NOT NULL,
+		"correlation_id" text,
+		"release_title" text NOT NULL,
+		"indexer_name" text,
+		"protocol" text,
+		"tmdb_id" integer,
+		"media_type" text,
+		"media_title" text,
+		"rejection_reasons" text,
+		"quality_profile_name" text,
+		"release_size" integer,
+		"release_group" text,
+		"rejected_at" text NOT NULL,
+		"status" text NOT NULL DEFAULT 'rejected'
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "import_failures" (
+		"id" text PRIMARY KEY NOT NULL,
+		"correlation_id" text,
+		"release_title" text NOT NULL,
+		"source_path" text,
+		"destination_path" text,
+		"failure_stage" text NOT NULL,
+		"reason" text NOT NULL,
+		"reason_detail" text,
+		"dangerous_files" text,
+		"attempt_count" integer NOT NULL DEFAULT 1,
+		"download_client_id" text,
+		"failed_at" text NOT NULL,
+		"status" text NOT NULL DEFAULT 'failed',
+		"resolved_at" text
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "renaming_failures" (
+		"id" text PRIMARY KEY NOT NULL,
+		"correlation_id" text,
+		"file_id" text NOT NULL,
+		"file_type" text NOT NULL,
+		"source_path" text NOT NULL,
+		"intended_path" text NOT NULL,
+		"naming_template" text,
+		"reason" text NOT NULL,
+		"reason_detail" text,
+		"failed_at" text NOT NULL,
+		"status" text NOT NULL DEFAULT 'failed',
+		"resolved_at" text
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "metadata_conflicts" (
+		"id" text PRIMARY KEY NOT NULL,
+		"correlation_id" text,
+		"tmdb_id" integer NOT NULL,
+		"media_type" text NOT NULL,
+		"media_title" text,
+		"conflict_type" text NOT NULL,
+		"providers_checked" text,
+		"provider_results" text,
+		"detected_at" text NOT NULL,
+		"status" text NOT NULL DEFAULT 'unresolved',
+		"resolved_at" text
 	)`
 ];
 
@@ -1544,7 +1613,20 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_synced_items_item_type" ON "media_server_synced_items" ("item_type")`,
 	// Rename history audit indexes
 	`CREATE INDEX IF NOT EXISTS "idx_rename_history_file" ON "rename_history" ("file_id")`,
-	`CREATE INDEX IF NOT EXISTS "idx_rename_history_created" ON "rename_history" ("created_at")`
+	`CREATE INDEX IF NOT EXISTS "idx_rename_history_created" ON "rename_history" ("created_at")`,
+	// Diagnostic report table indexes
+	`CREATE INDEX IF NOT EXISTS "idx_rejected_releases_rejected_at" ON "rejected_releases" ("rejected_at")`,
+	`CREATE INDEX IF NOT EXISTS "idx_rejected_releases_tmdb" ON "rejected_releases" ("tmdb_id", "media_type")`,
+	`CREATE INDEX IF NOT EXISTS "idx_rejected_releases_status" ON "rejected_releases" ("status")`,
+	`CREATE INDEX IF NOT EXISTS "idx_import_failures_failed_at" ON "import_failures" ("failed_at")`,
+	`CREATE INDEX IF NOT EXISTS "idx_import_failures_status" ON "import_failures" ("status")`,
+	`CREATE INDEX IF NOT EXISTS "idx_import_failures_stage" ON "import_failures" ("failure_stage")`,
+	`CREATE INDEX IF NOT EXISTS "idx_renaming_failures_failed_at" ON "renaming_failures" ("failed_at")`,
+	`CREATE INDEX IF NOT EXISTS "idx_renaming_failures_file" ON "renaming_failures" ("file_id", "file_type")`,
+	`CREATE INDEX IF NOT EXISTS "idx_renaming_failures_status" ON "renaming_failures" ("status")`,
+	`CREATE INDEX IF NOT EXISTS "idx_metadata_conflicts_tmdb" ON "metadata_conflicts" ("tmdb_id", "media_type")`,
+	`CREATE INDEX IF NOT EXISTS "idx_metadata_conflicts_detected_at" ON "metadata_conflicts" ("detected_at")`,
+	`CREATE INDEX IF NOT EXISTS "idx_metadata_conflicts_status" ON "metadata_conflicts" ("status")`
 ];
 
 /**

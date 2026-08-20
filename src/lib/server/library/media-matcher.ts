@@ -5,6 +5,7 @@
  * Auto-matches high-confidence results and flags low-confidence for manual review.
  */
 
+import { randomUUID } from 'node:crypto';
 import { db } from '$lib/server/db/index.js';
 import { todayDateString } from '$lib/utils/format.js';
 import {
@@ -26,7 +27,7 @@ import { RootFolderConflictError } from '$lib/errors';
 import { getSubtitleSettingsService } from '$lib/server/subtitles/services/SubtitleSettingsService.js';
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
-import { logger } from '$lib/logging/index.js';
+import { logger, createChildLogger } from '$lib/logging/index.js';
 import { parseRelease, extractExternalIds } from '$lib/server/indexers/parser/ReleaseParser.js';
 import { getMediaParseStem } from './media-utils.js';
 import { resolveTvEpisodeIdentifier, extractSeasonFromPath } from './tv-episode-resolver.js';
@@ -483,6 +484,8 @@ export class MediaMatcherService {
 			};
 		}
 
+		const correlationId = randomUUID();
+		const matchLogger = createChildLogger({ logDomain: 'scans' as const, correlationId });
 		const threshold = await this.getMatchThreshold();
 
 		// Re-parse the filename to get the correct clean title
@@ -491,6 +494,11 @@ export class MediaMatcherService {
 		const parsed = parseRelease(filename);
 		const searchTitle = parsed.cleanTitle || file.parsedTitle || filename;
 		const searchYear = parsed.year || file.parsedYear || undefined;
+
+		matchLogger.info(
+			{ fileId, filePath: file.path, parsedTitle: searchTitle, mediaType: file.mediaType },
+			'[MediaMatcher] Processing unmatched file'
+		);
 
 		// Find matches (checks for embedded IDs first, then falls back to title search)
 		const matches = await this.findMatches(
@@ -501,12 +509,14 @@ export class MediaMatcherService {
 		);
 
 		if (matches.length === 0) {
+			matchLogger.info({ fileId, filePath: file.path }, '[MediaMatcher] No TMDB matches found');
 			// Update file with no match reason
 			await db
 				.update(unmatchedFiles)
 				.set({
 					reason: 'no_match',
-					suggestedMatches: []
+					suggestedMatches: [],
+					correlationId
 				})
 				.where(eq(unmatchedFiles.id, fileId));
 
@@ -521,11 +531,24 @@ export class MediaMatcherService {
 
 		const bestMatch = matches[0];
 
+		matchLogger.info(
+			{
+				fileId,
+				candidates: matches.length,
+				topCandidate: bestMatch.title,
+				topTmdbId: bestMatch.tmdbId,
+				topConfidence: bestMatch.confidence,
+				threshold
+			},
+			'[MediaMatcher] TMDB search results'
+		);
+
 		// Store all suggested matches
 		await db
 			.update(unmatchedFiles)
 			.set({
-				suggestedMatches: matches.slice(0, 5)
+				suggestedMatches: matches.slice(0, 5),
+				correlationId
 			})
 			.where(eq(unmatchedFiles.id, fileId));
 
@@ -533,14 +556,27 @@ export class MediaMatcherService {
 		if (bestMatch.confidence >= threshold) {
 			// Auto-match
 			try {
+				matchLogger.info(
+					{
+						fileId,
+						tmdbId: bestMatch.tmdbId,
+						title: bestMatch.title,
+						confidence: bestMatch.confidence
+					},
+					'[MediaMatcher] Auto-matching above threshold'
+				);
 				await this.acceptMatch(fileId, bestMatch.tmdbId, file.mediaType as 'movie' | 'tv');
 			} catch (error) {
 				if (error instanceof RootFolderConflictError) {
 					// Keep the file unmatched with a clear reason instead of
 					// writing an unresolvable file link (bug #488).
+					matchLogger.warn(
+						{ fileId, tmdbId: bestMatch.tmdbId, error: error.message },
+						'[MediaMatcher] Root folder conflict - keeping unmatched'
+					);
 					await db
 						.update(unmatchedFiles)
-						.set({ reason: 'root_folder_conflict' })
+						.set({ reason: 'root_folder_conflict', correlationId })
 						.where(eq(unmatchedFiles.id, fileId));
 
 					return {
@@ -553,9 +589,17 @@ export class MediaMatcherService {
 						reason: error.message
 					};
 				}
+				matchLogger.error(
+					{ fileId, tmdbId: bestMatch.tmdbId, err: error },
+					'[MediaMatcher] acceptMatch failed'
+				);
 				throw error;
 			}
 
+			matchLogger.info(
+				{ fileId, tmdbId: bestMatch.tmdbId, title: bestMatch.title },
+				'[MediaMatcher] Auto-match successful'
+			);
 			return {
 				fileId,
 				filePath: file.path,
@@ -570,14 +614,23 @@ export class MediaMatcherService {
 			// ambiguous:        2+ candidates where top two are within 10pp of each other
 			// low_confidence:   single candidate or very low absolute score
 			let reason: string;
+			let ambiguityMargin: number | null = null;
 			if (matches.length >= 2) {
 				const margin = matches[0].confidence - matches[1].confidence;
+				ambiguityMargin = Math.round(margin * 100) / 100;
 				reason = margin < 0.1 ? 'ambiguous' : 'multiple_matches';
 			} else {
 				reason = 'low_confidence';
 			}
 
-			await db.update(unmatchedFiles).set({ reason }).where(eq(unmatchedFiles.id, fileId));
+			matchLogger.info(
+				{ fileId, reason, confidence: bestMatch.confidence, threshold, ambiguityMargin },
+				'[MediaMatcher] Match below threshold'
+			);
+			await db
+				.update(unmatchedFiles)
+				.set({ reason, correlationId, ambiguityMargin })
+				.where(eq(unmatchedFiles.id, fileId));
 
 			return {
 				fileId,
@@ -692,11 +745,15 @@ export class MediaMatcherService {
 			throw new Error(`Unmatched file not found: ${unmatchedFileId}`);
 		}
 
+		if (!file.rootFolderId) {
+			throw new Error(`File has no root folder assigned: ${file.path}`);
+		}
+
 		// Get root folder
 		const [rootFolder] = await db
 			.select()
 			.from(rootFolders)
-			.where(eq(rootFolders.id, file.rootFolderId!));
+			.where(eq(rootFolders.id, file.rootFolderId));
 
 		if (!rootFolder) {
 			throw new Error(`Root folder not found: ${file.rootFolderId}`);

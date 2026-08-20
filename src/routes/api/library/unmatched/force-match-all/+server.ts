@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '$lib/server/db/index.js';
@@ -5,7 +6,7 @@ import { unmatchedFiles } from '$lib/server/db/schema.js';
 import { inArray } from 'drizzle-orm';
 import { mediaMatcherService } from '$lib/server/library/media-matcher.js';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { logger } from '$lib/logging';
+import { logger, createChildLogger } from '$lib/logging';
 
 /**
  * POST /api/library/unmatched/force-match-all
@@ -31,7 +32,8 @@ export const POST: RequestHandler = async (event) => {
 				id: unmatchedFiles.id,
 				mediaType: unmatchedFiles.mediaType,
 				suggestedMatches: unmatchedFiles.suggestedMatches,
-				reason: unmatchedFiles.reason
+				reason: unmatchedFiles.reason,
+				correlationId: unmatchedFiles.correlationId
 			})
 			.from(unmatchedFiles)
 			.where(inArray(unmatchedFiles.reason, ['multiple_matches']));
@@ -46,16 +48,26 @@ export const POST: RequestHandler = async (event) => {
 
 		for (const file of eligible) {
 			const top = (file.suggestedMatches as Array<{ tmdbId: number; confidence: number }>)[0];
+			const correlationId = file.correlationId ?? randomUUID();
+			const matchLogger = createChildLogger({ logDomain: 'scans' as const, correlationId });
 			try {
+				matchLogger.info(
+					{ fileId: file.id, tmdbId: top.tmdbId, confidence: top.confidence },
+					'[ForceMatchAll] Force-matching file to top candidate'
+				);
 				await mediaMatcherService.acceptMatch(
 					file.id,
 					top.tmdbId,
 					file.mediaType as 'movie' | 'tv'
 				);
 				matched++;
+				matchLogger.info(
+					{ fileId: file.id, tmdbId: top.tmdbId },
+					'[ForceMatchAll] Force-match successful'
+				);
 			} catch (err) {
 				failed++;
-				logger.warn(
+				matchLogger.warn(
 					{ fileId: file.id, tmdbId: top.tmdbId, err },
 					'[ForceMatchAll] Failed to force-match file'
 				);

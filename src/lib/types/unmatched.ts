@@ -16,6 +16,7 @@ export interface UnmatchedFile {
 	suggestedMatches: SuggestedMatch[] | null;
 	reason: UnmatchedReason | null;
 	discoveredAt: string;
+	correlationId: string | null;
 }
 
 export interface SuggestedMatch {
