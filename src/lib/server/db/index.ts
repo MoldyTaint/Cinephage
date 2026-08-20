@@ -50,6 +50,28 @@ let initialized = false;
  * 2. Existing database - Ensures all tables exist, runs incremental updates
  * 3. Migration-era database - Backward compatible with old migration system
  */
+function runStartupMaintenance(): void {
+	// One-time: switch from auto_vacuum=NONE to INCREMENTAL so deleted pages are
+	// reclaimed incrementally instead of building up as freelist bloat.
+	// PRAGMA auto_vacuum can only change outside a transaction and requires VACUUM
+	// to take effect — the pragma value itself (2 = INCREMENTAL) is the done-marker.
+	const autoVacuumMode = sqlite.pragma('auto_vacuum', { simple: true }) as number;
+
+	if (autoVacuumMode !== 2) {
+		logger.info(
+			'[DB] Running one-time VACUUM to reclaim freelist space and enable incremental auto-vacuum (this may take a moment)...'
+		);
+		const start = Date.now();
+		sqlite.pragma('auto_vacuum = INCREMENTAL');
+		sqlite.exec('VACUUM');
+		logger.info({ durationMs: Date.now() - start }, '[DB] VACUUM complete');
+		return;
+	}
+
+	// Every startup: reclaim any pages freed since last run.
+	sqlite.pragma('incremental_vacuum');
+}
+
 export async function initializeDatabase(): Promise<void> {
 	if (initialized) return;
 
@@ -58,6 +80,8 @@ export async function initializeDatabase(): Promise<void> {
 
 		// Use embedded schema sync (no external migration files needed)
 		syncSchema(sqlite);
+
+		runStartupMaintenance();
 
 		const { keywordBlocklistService } =
 			await import('$lib/server/settings/KeywordBlocklistService.js');
