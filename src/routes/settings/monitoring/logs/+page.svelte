@@ -66,6 +66,7 @@
 	let initialized = false;
 
 	let search = $state('');
+	let correlationIdScope = $state(''); // set when navigating from "View trace"; sent as dedicated param
 	let selectedDomain = $state<CapturedLogDomain | 'all'>('all');
 	let levels = new SvelteSet<CapturedLogLevel>(DEFAULT_LEVELS);
 	let from = $state('');
@@ -90,11 +91,14 @@
 		if (initialized) return;
 		initialized = true;
 
-		// Pre-populate search from URL param (e.g. ?correlationId=... from "View trace" link)
+		// Pre-populate correlationId scope from URL param (e.g. ?correlationId=... from "View trace" link)
 		if (typeof window !== 'undefined') {
 			const sp = new URLSearchParams(window.location.search);
 			const corrId = sp.get('correlationId');
-			if (corrId) search = corrId;
+			if (corrId) {
+				correlationIdScope = corrId;
+				search = corrId; // also show it in the search field for visibility
+			}
 		}
 
 		entries = structuredClone(data.initialEntries);
@@ -171,7 +175,8 @@
 
 		if (page) params.set('page', String(page));
 		if (selectedDomain !== 'all') params.set('logDomain', selectedDomain);
-		if (search.trim()) params.set('search', search.trim());
+		if (correlationIdScope) params.set('correlationId', correlationIdScope);
+		else if (search.trim()) params.set('search', search.trim());
 		if (from) params.set('from', new Date(from).toISOString());
 		if (to) params.set('to', new Date(to).toISOString());
 
@@ -182,7 +187,7 @@
 		return [
 			[...levels].sort().join(','),
 			selectedDomain,
-			search.trim(),
+			correlationIdScope || search.trim(),
 			from || 'none',
 			to || 'none'
 		].join('||');
@@ -641,6 +646,9 @@
 						type="text"
 						class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 						bind:value={search}
+						oninput={() => {
+							correlationIdScope = '';
+						}}
 						placeholder="Search message, source, path, payload…"
 					/>
 				</div>

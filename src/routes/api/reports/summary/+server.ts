@@ -22,7 +22,7 @@ export const GET: RequestHandler = async () => {
 				db
 					.select({ count: count() })
 					.from(rejectedReleases)
-					.where(ne(rejectedReleases.status, 'overridden')),
+					.where(ne(rejectedReleases.status, 'resolved')),
 				db
 					.select({ count: count() })
 					.from(importFailures)

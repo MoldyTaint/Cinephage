@@ -3900,14 +3900,24 @@ export const rejectedReleases = sqliteTable(
 		tmdbId: integer('tmdb_id'),
 		mediaType: text('media_type'), // 'movie' | 'tv'
 		mediaTitle: text('media_title'),
-		rejectionReasons: text('rejection_reasons', { mode: 'json' }).$type<string[]>(),
+		rejectionReasons: text('rejection_reasons', { mode: 'json' }).$type<
+			Array<{ type: string; rule: string; passed: boolean; detail?: string }>
+		>(),
+		primaryReason: text('primary_reason'), // 'required_format_mismatch' | 'quality_profile_mismatch' | 'delay_profile_pending' | 'other'
+		ruleFired: text('rule_fired'), // short description of the triggering rule
 		qualityProfileName: text('quality_profile_name'),
 		releaseSize: integer('release_size'),
 		releaseGroup: text('release_group'),
+		// Grab fields — stored at rejection time to enable "Override and grab"
+		downloadUrl: text('download_url'),
+		magnetUrl: text('magnet_url'),
+		infoHash: text('info_hash'),
+		indexerGuid: text('indexer_guid'),
+		indexerId: text('indexer_id'),
 		rejectedAt: text('rejected_at')
 			.notNull()
 			.$defaultFn(() => new Date().toISOString()),
-		status: text('status').notNull().default('rejected') // 'rejected' | 'overridden'
+		status: text('status').notNull().default('rejected') // 'rejected' | 'overridden' | 'resolved'
 	},
 	(table) => [
 		index('idx_rejected_releases_rejected_at').on(table.rejectedAt),

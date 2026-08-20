@@ -36,14 +36,59 @@ class GrabServiceImpl {
 		return GrabServiceImpl.instance;
 	}
 
-	async grab(request: GrabRequest): Promise<GrabResult> {
-		return mediaOccupancyService.runExclusive(request.target, () => this.grabUnlocked(request));
+	async grab(request: GrabRequest, opts?: { forceOverride?: boolean }): Promise<GrabResult> {
+		return mediaOccupancyService.runExclusive(request.target, () =>
+			this.grabUnlocked(request, opts?.forceOverride ?? false)
+		);
 	}
 
-	private async grabUnlocked(request: GrabRequest): Promise<GrabResult> {
+	private async grabUnlocked(request: GrabRequest, forceOverride = false): Promise<GrabResult> {
 		const { release, target, options } = request;
 
 		const resolved = await this.resolveTarget(request);
+
+		// When force-overriding, skip the decision pipeline entirely
+		if (forceOverride) {
+			const handlerResult = await this.routeByProtocol(request, resolved);
+			if (!handlerResult.success) {
+				logger.error(
+					{ title: release.title, error: handlerResult.error },
+					'[Grab] Override handler failed'
+				);
+				return {
+					success: false,
+					decision: {
+						accepted: false,
+						reason: handlerResult.error ?? 'Handler failed',
+						upgradeStatus: 'rejected',
+						scores: { candidate: 0 },
+						audit: { stages: [], finalResult: { accepted: false }, totalDurationMs: 0 }
+					},
+					error: handlerResult.error
+				};
+			}
+			return {
+				success: true,
+				decision: {
+					accepted: true,
+					reason: 'force_override',
+					upgradeStatus: 'new',
+					scores: { candidate: 0 },
+					audit: { stages: [], finalResult: { accepted: true }, totalDurationMs: 0 }
+				},
+				download: {
+					queueId: handlerResult.queueId!,
+					hash: handlerResult.hash,
+					clientId: handlerResult.clientId!,
+					clientName: handlerResult.clientName!,
+					category: handlerResult.category ?? (resolved.mediaType === 'movie' ? 'movies' : 'tv'),
+					addedToQueue: handlerResult.wasDuplicate !== true,
+					wasDuplicate: handlerResult.wasDuplicate ?? false,
+					isUpgrade: false
+				}
+			};
+		}
+
 		const existingFiles = await this.getExistingFiles(request);
 
 		const ctx: GrabDecisionContext = {
@@ -341,11 +386,34 @@ class GrabServiceImpl {
 		const rejectingStage = decision?.audit?.stages?.find(
 			(s) => !s.skipped && s.result && !s.result.accepted
 		);
-		const rejectionReasons: string[] = [];
-		if (decision?.reason) rejectionReasons.push(decision.reason);
-		if (rejectingStage?.result?.reason && rejectingStage.result.reason !== decision?.reason) {
-			rejectionReasons.push(rejectingStage.result.reason);
-		}
+
+		// Build structured rejection checks from all evaluated stages
+		const rejectionReasons = decision?.audit?.stages
+			?.filter((s) => !s.skipped && s.result != null)
+			.map((s) => ({
+				type: s.name,
+				rule: s.result?.reason ?? s.name,
+				passed: s.result?.accepted ?? true,
+				detail: s.result?.details ? JSON.stringify(s.result.details) : undefined
+			}));
+
+		// Derive primary_reason category from the rejection type
+		const primaryReason = (() => {
+			switch (decision?.rejectionType) {
+				case 'missing_required_format':
+				case 'banned':
+					return 'required_format_mismatch';
+				case 'below_minimum':
+				case 'not_upgrade':
+				case 'upgrades_disabled':
+				case 'size_rejected':
+					return 'quality_profile_mismatch';
+				case 'pending_delay':
+					return 'delay_profile_pending';
+				default:
+					return decision?.rejectionType ?? 'other';
+			}
+		})();
 
 		await db.insert(rejectedReleases).values({
 			id: randomUUID(),
@@ -356,10 +424,19 @@ class GrabServiceImpl {
 			tmdbId: tmdbId ?? null,
 			mediaType: resolved.mediaType,
 			mediaTitle: mediaTitle ?? undefined,
-			rejectionReasons: rejectionReasons.length > 0 ? rejectionReasons : undefined,
+			rejectionReasons:
+				rejectionReasons && rejectionReasons.length > 0 ? rejectionReasons : undefined,
+			primaryReason,
+			ruleFired: rejectingStage?.result?.reason ?? decision?.reason ?? undefined,
 			qualityProfileName: resolved.profile?.name ?? undefined,
 			releaseSize: release.size ?? undefined,
 			releaseGroup: release.releaseGroup ?? undefined,
+			// Grab fields for future override
+			downloadUrl: release.downloadUrl ?? undefined,
+			magnetUrl: release.magnetUrl ?? undefined,
+			infoHash: release.infoHash ?? undefined,
+			indexerGuid: release.guid ?? undefined,
+			indexerId: release.indexerId ?? undefined,
 			rejectedAt: new Date().toISOString(),
 			status: 'rejected'
 		});

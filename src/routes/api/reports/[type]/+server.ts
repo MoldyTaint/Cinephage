@@ -8,7 +8,7 @@ import {
 	unmatchedFiles,
 	metadataConflicts
 } from '$lib/server/db/schema.js';
-import { count, desc, asc, eq, and, or, like, gt, inArray } from 'drizzle-orm';
+import { count, desc, asc, eq, ne, and, or, like, gt, inArray } from 'drizzle-orm';
 import { logger } from '$lib/logging';
 
 const VALID_TYPES = [
@@ -50,11 +50,48 @@ export const GET: RequestHandler = async ({ params, url }) => {
 
 		switch (type) {
 			case 'rejected-releases': {
+				const reasonParam = url.searchParams.get('reason');
+				const searchParam = url.searchParams.get('search');
+				const sinceParam = url.searchParams.get('since');
+				const mediaTypeParam = url.searchParams.get('mediaType');
+
+				const conditions = [];
+				// Always exclude resolved records unless an explicit status filter is set
+				if (statusFilter) {
+					conditions.push(eq(rejectedReleases.status, statusFilter));
+				} else {
+					conditions.push(ne(rejectedReleases.status, 'resolved'));
+				}
+				if (reasonParam) conditions.push(eq(rejectedReleases.primaryReason, reasonParam));
+				if (mediaTypeParam) conditions.push(eq(rejectedReleases.mediaType, mediaTypeParam));
+				if (searchParam && searchParam.trim()) {
+					const term = `%${searchParam.trim()}%`;
+					conditions.push(
+						or(like(rejectedReleases.releaseTitle, term), like(rejectedReleases.mediaTitle, term))
+					);
+				}
+				if (sinceParam) {
+					const ms =
+						sinceParam === '24h'
+							? 86_400_000
+							: sinceParam === '7d'
+								? 604_800_000
+								: sinceParam === '30d'
+									? 2_592_000_000
+									: null;
+					if (ms) {
+						conditions.push(
+							gt(rejectedReleases.rejectedAt, new Date(Date.now() - ms).toISOString())
+						);
+					}
+				}
+
+				const where = conditions.length > 0 ? and(...conditions) : undefined;
 				const q = db.select().from(rejectedReleases);
 				const cq = db.select({ count: count() }).from(rejectedReleases);
-				if (statusFilter) {
-					q.where(eq(rejectedReleases.status, statusFilter));
-					cq.where(eq(rejectedReleases.status, statusFilter));
+				if (where) {
+					q.where(where);
+					cq.where(where);
 				}
 				const [rows, [cnt]] = await Promise.all([
 					q
@@ -73,11 +110,43 @@ export const GET: RequestHandler = async ({ params, url }) => {
 			}
 
 			case 'import-failures': {
+				const stageParam = url.searchParams.get('stage');
+				const searchParam = url.searchParams.get('search');
+				const sinceParam = url.searchParams.get('since');
+
+				const conditions = [];
+				if (statusFilter) {
+					conditions.push(eq(importFailures.status, statusFilter));
+				} else {
+					conditions.push(ne(importFailures.status, 'resolved'));
+				}
+				if (stageParam) conditions.push(eq(importFailures.failureStage, stageParam));
+				if (searchParam && searchParam.trim()) {
+					const term = `%${searchParam.trim()}%`;
+					conditions.push(
+						or(like(importFailures.releaseTitle, term), like(importFailures.sourcePath, term))
+					);
+				}
+				if (sinceParam) {
+					const ms =
+						sinceParam === '24h'
+							? 86_400_000
+							: sinceParam === '7d'
+								? 604_800_000
+								: sinceParam === '30d'
+									? 2_592_000_000
+									: null;
+					if (ms) {
+						conditions.push(gt(importFailures.failedAt, new Date(Date.now() - ms).toISOString()));
+					}
+				}
+
+				const where = conditions.length > 0 ? and(...conditions) : undefined;
 				const q = db.select().from(importFailures);
 				const cq = db.select({ count: count() }).from(importFailures);
-				if (statusFilter) {
-					q.where(eq(importFailures.status, statusFilter));
-					cq.where(eq(importFailures.status, statusFilter));
+				if (where) {
+					q.where(where);
+					cq.where(where);
 				}
 				const [rows, [cnt]] = await Promise.all([
 					q
