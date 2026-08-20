@@ -184,11 +184,42 @@ export const GET: RequestHandler = async ({ params, url }) => {
 			}
 
 			case 'renaming-failures': {
+				const reasonParam = url.searchParams.get('reason');
+				const searchParam = url.searchParams.get('search');
+				const sinceParam = url.searchParams.get('since');
+				const fileTypeParam = url.searchParams.get('fileType');
+				const conditions = [];
+				if (statusFilter) {
+					conditions.push(eq(renamingFailures.status, statusFilter));
+				} else {
+					conditions.push(ne(renamingFailures.status, 'resolved'));
+				}
+				if (reasonParam) conditions.push(eq(renamingFailures.reason, reasonParam));
+				if (fileTypeParam) conditions.push(eq(renamingFailures.fileType, fileTypeParam));
+				if (searchParam?.trim()) {
+					const term = `%${searchParam.trim()}%`;
+					conditions.push(
+						or(like(renamingFailures.sourcePath, term), like(renamingFailures.intendedPath, term))
+					);
+				}
+				if (sinceParam) {
+					const ms =
+						sinceParam === '24h'
+							? 86_400_000
+							: sinceParam === '7d'
+								? 604_800_000
+								: sinceParam === '30d'
+									? 2_592_000_000
+									: null;
+					if (ms)
+						conditions.push(gt(renamingFailures.failedAt, new Date(Date.now() - ms).toISOString()));
+				}
+				const rfWhere = conditions.length > 0 ? and(...conditions) : undefined;
 				const q = db.select().from(renamingFailures);
 				const cq = db.select({ count: count() }).from(renamingFailures);
-				if (statusFilter) {
-					q.where(eq(renamingFailures.status, statusFilter));
-					cq.where(eq(renamingFailures.status, statusFilter));
+				if (rfWhere) {
+					q.where(rfWhere);
+					cq.where(rfWhere);
 				}
 				const [rows, [cnt]] = await Promise.all([
 					q

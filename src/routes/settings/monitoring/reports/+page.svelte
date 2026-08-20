@@ -14,6 +14,7 @@
 		Loader2,
 		RefreshCw,
 		Search,
+		Settings,
 		ShieldX,
 		Unlink,
 		X
@@ -106,6 +107,15 @@
 	};
 	let importStats = $state<ImportStats | null>(null);
 
+	type RenamingStats = {
+		total: number;
+		newIn24h: number;
+		collisions: number;
+		permissionIo: number;
+	};
+	let renamingStats = $state<RenamingStats | null>(null);
+	let renamingFileTypeFilter = $state('');
+
 	let searchQuery = $state('');
 	let reasonFilter = $state('');
 	let dateFilter = $state('');
@@ -134,6 +144,7 @@
 		reasonFilter = '';
 		dateFilter = '';
 		mediaTypeFilter = '';
+		renamingFileTypeFilter = '';
 		goto(`?tab=${tabId}`, { replaceState: true });
 	}
 
@@ -206,6 +217,7 @@
 			if (tab === 'unmatched-imports') url += unmatchedUrlParams();
 			else if (tab === 'rejected-releases') url += rejectedUrlParams();
 			else if (tab === 'import-failures') url += importUrlParams();
+			else if (tab === 'renaming-failures') url += renamingUrlParams();
 			const res = await fetch(url);
 			const result = await res.json();
 			if (result.success) {
@@ -228,6 +240,7 @@
 			if (tab === 'unmatched-imports') url += unmatchedUrlParams();
 			else if (tab === 'rejected-releases') url += rejectedUrlParams();
 			else if (tab === 'import-failures') url += importUrlParams();
+			else if (tab === 'renaming-failures') url += renamingUrlParams();
 			const res = await fetch(url);
 			const result = await res.json();
 			if (result.success) {
@@ -267,6 +280,142 @@
 		} catch {
 			/* silent */
 		}
+	}
+
+	async function loadRenamingStats() {
+		try {
+			const res = await fetch('/api/reports/renaming-failures-stats');
+			const result = await res.json();
+			if (result.success) renamingStats = result.data;
+		} catch {
+			/* silent */
+		}
+	}
+
+	function renamingUrlParams() {
+		let extra = '';
+		if (searchQuery.trim()) extra += `&search=${encodeURIComponent(searchQuery.trim())}`;
+		if (dateFilter) extra += `&since=${encodeURIComponent(dateFilter)}`;
+		if (reasonFilter) extra += `&reason=${encodeURIComponent(reasonFilter)}`;
+		if (renamingFileTypeFilter) extra += `&fileType=${encodeURIComponent(renamingFileTypeFilter)}`;
+		return extra;
+	}
+
+	const activeRenamingStatCard = $derived(
+		dateFilter === '24h' && !reasonFilter
+			? '24h'
+			: reasonFilter === 'collision'
+				? 'collision'
+				: reasonFilter === 'permission_denied' ||
+					  reasonFilter === 'io_error' ||
+					  reasonFilter === 'disk_full'
+					? 'permissionIo'
+					: !reasonFilter && !dateFilter
+						? 'all'
+						: null
+	);
+
+	function applyRenamingStatCard(card: 'all' | '24h' | 'collision' | 'permissionIo') {
+		if (card === 'all') {
+			reasonFilter = '';
+			dateFilter = '';
+		} else if (card === '24h') {
+			dateFilter = '24h';
+			reasonFilter = '';
+		} else if (card === 'collision') {
+			reasonFilter = 'collision';
+			dateFilter = '';
+		} else if (card === 'permissionIo') {
+			reasonFilter = 'permission_denied';
+			dateFilter = '';
+		}
+		loadRecords('renaming-failures', 1);
+	}
+
+	function renamingReasonBadgeClass(reason: string) {
+		switch (reason) {
+			case 'collision':
+				return 'badge-error';
+			case 'permission_denied':
+			case 'disk_full':
+				return 'badge-warning';
+			case 'source_not_found':
+				return 'badge-ghost';
+			case 'path_too_long':
+			case 'invalid_chars':
+				return 'badge-info';
+			default:
+				return 'badge-neutral';
+		}
+	}
+
+	function renamingReasonLabel(reason: string) {
+		switch (reason) {
+			case 'collision':
+				return m.reports_renaming_reason_collision();
+			case 'io_error':
+				return m.reports_renaming_reason_ioError();
+			case 'permission_denied':
+				return m.reports_renaming_reason_permissionDenied();
+			case 'source_not_found':
+				return m.reports_renaming_reason_sourceNotFound();
+			case 'path_too_long':
+				return m.reports_renaming_reason_pathTooLong();
+			case 'invalid_chars':
+				return m.reports_renaming_reason_invalidChars();
+			case 'disk_full':
+				return m.reports_renaming_reason_diskFull();
+			case 'preview_error':
+				return m.reports_renaming_reason_previewError();
+			default:
+				return reason;
+		}
+	}
+
+	function renamingReasonShortLabel(reason: string) {
+		switch (reason) {
+			case 'collision':
+				return 'Collision';
+			case 'io_error':
+				return 'I/O';
+			case 'permission_denied':
+				return 'Permission';
+			case 'source_not_found':
+				return 'Not found';
+			case 'path_too_long':
+				return 'Too long';
+			case 'invalid_chars':
+				return 'Inv. chars';
+			case 'disk_full':
+				return 'No space';
+			case 'preview_error':
+				return 'Preview';
+			default:
+				return reason;
+		}
+	}
+
+	function fileTypeLabel(t: string) {
+		return t === 'episode' ? m.reports_type_tv() : m.reports_type_movie();
+	}
+	function mediaTypeLabel(t: string | null | undefined) {
+		return t === 'tv' ? m.reports_type_tv() : t === 'movie' ? m.reports_type_movie() : (t ?? '—');
+	}
+
+	async function copyRenamingBundle(record: Record<string, unknown>) {
+		const bundle = {
+			sourcePath: record.sourcePath,
+			intendedPath: record.intendedPath,
+			fileType: record.fileType,
+			reason: record.reason,
+			reasonDetail: record.reasonDetail,
+			namingTemplate: record.namingTemplate,
+			correlationId: record.correlationId,
+			failedAt: record.failedAt
+		};
+		const ok = await copyToClipboard(JSON.stringify(bundle, null, 2));
+		if (ok) toasts.success(m.reports_renaming_bundleCopied());
+		else toasts.error('Failed to copy');
 	}
 
 	function rejectedUrlParams() {
@@ -469,6 +618,7 @@
 				refreshCounts();
 				if (tab === 'rejected-releases') loadRejectedStats();
 				else if (tab === 'import-failures') loadImportStats();
+				else if (tab === 'renaming-failures') loadRenamingStats();
 			} else {
 				toasts.error(result.error || 'Failed to resolve');
 			}
@@ -495,6 +645,7 @@
 				if (tab === 'rejected-releases') loadRejectedStats();
 				else if (tab === 'unmatched-imports') loadUnmatchedStats();
 				else if (tab === 'import-failures') loadImportStats();
+				else if (tab === 'renaming-failures') loadRenamingStats();
 			} else {
 				toasts.error(result.error || 'Failed to resolve');
 			}
@@ -624,6 +775,7 @@
 		if (tab === 'unmatched-imports') loadUnmatchedStats();
 		else if (tab === 'rejected-releases') loadRejectedStats();
 		else if (tab === 'import-failures') loadImportStats();
+		else if (tab === 'renaming-failures') loadRenamingStats();
 	});
 
 	// Formatters
@@ -906,7 +1058,7 @@
 				<input
 					type="text"
 					class="input w-full rounded-full border-base-content/20 bg-base-200 pr-8 pl-9 transition-all input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
-					placeholder="Search file or title…"
+					placeholder={m.reports_search_fileOrTitle()}
 					bind:value={searchQuery}
 					oninput={onSearchInput}
 				/>
@@ -927,7 +1079,7 @@
 			<div class="flex flex-wrap items-center gap-2">
 				<!-- Media type pills -->
 				<div class="flex items-center gap-1">
-					{#each [{ value: '', label: 'All' }, { value: 'movie', label: 'Movies' }, { value: 'tv', label: 'TV' }] as opt (opt)}
+					{#each [{ value: '', label: m.reports_filter_all() }, { value: 'movie', label: m.reports_type_movie() }, { value: 'tv', label: m.reports_type_tv() }] as opt (opt)}
 						<button
 							class="btn font-mono btn-xs {mediaTypeFilter === opt.value
 								? 'btn-primary'
@@ -1136,7 +1288,9 @@
 											<div
 												class="mb-5 rounded-lg border border-base-content/12 bg-base-100 px-3 py-2.5 font-mono text-xs break-all"
 											>
-												<span class="mr-2 font-semibold text-base-content/50">SOURCE</span>
+												<span class="mr-2 font-semibold text-base-content/50"
+													>{m.reports_banner_source()}</span
+												>
 												<span class="text-base-content/80">{record.path ?? '-'}</span>
 											</div>
 											<div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -1227,16 +1381,20 @@
 														<div
 															class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
 														>
-															<span class="font-medium text-base-content/55">Media type</span>
-															<span class="text-xs font-semibold tracking-wide uppercase"
-																>{record.mediaType ?? '—'}</span
+															<span class="font-medium text-base-content/55"
+																>{m.reports_detail_mediaType()}</span
+															>
+															<span class="badge badge-outline badge-sm"
+																>{mediaTypeLabel(record.mediaType)}</span
 															>
 														</div>
 														{#if record.contentCategory && record.contentCategory !== 'main'}
 															<div
 																class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
 															>
-																<span class="font-medium text-base-content/55">Category</span>
+																<span class="font-medium text-base-content/55"
+																	>{m.reports_detail_category()}</span
+																>
 																<span class="font-semibold capitalize"
 																	>{record.contentCategory}</span
 																>
@@ -1246,7 +1404,9 @@
 															<div
 																class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
 															>
-																<span class="font-medium text-base-content/55">File size</span>
+																<span class="font-medium text-base-content/55"
+																	>{m.reports_detail_fileSize()}</span
+																>
 																<span class="font-semibold">{formatBytes(Number(record.size))}</span
 																>
 															</div>
@@ -1256,7 +1416,9 @@
 																? 'border-b border-base-content/8'
 																: ''}"
 														>
-															<span class="font-medium text-base-content/55">Discovered</span>
+															<span class="font-medium text-base-content/55"
+																>{m.reports_detail_discovered()}</span
+															>
 															<span class="text-base-content/70"
 																>{formatDate(String(record.discoveredAt ?? ''))}</span
 															>
@@ -1266,7 +1428,7 @@
 																class="flex items-center justify-between gap-4 px-3 py-2.5 text-sm"
 															>
 																<span class="shrink-0 font-medium text-base-content/55"
-																	>Correlation ID</span
+																	>{m.reports_detail_correlationId()}</span
 																>
 																<span
 																	class="truncate font-mono text-xs text-base-content/60 sm:overflow-visible sm:whitespace-normal"
@@ -1477,7 +1639,7 @@
 				<input
 					type="text"
 					class="input w-full rounded-full border-base-content/20 bg-base-200 pr-8 pl-9 transition-all input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
-					placeholder="Search release or title…"
+					placeholder={m.reports_search_releaseOrTitle()}
 					bind:value={searchQuery}
 					oninput={onSearchInput}
 				/>
@@ -1498,7 +1660,7 @@
 			<div class="flex flex-wrap items-center gap-2">
 				<!-- Media type pills -->
 				<div class="flex items-center gap-1">
-					{#each [{ value: '', label: 'All' }, { value: 'movie', label: 'Movies' }, { value: 'tv', label: 'TV' }] as opt (opt)}
+					{#each [{ value: '', label: m.reports_filter_all() }, { value: 'movie', label: m.reports_type_movie() }, { value: 'tv', label: m.reports_type_tv() }] as opt (opt)}
 						<button
 							class="btn font-mono btn-xs {mediaTypeFilter === opt.value
 								? 'btn-primary'
@@ -1550,7 +1712,7 @@
 					{#if selectedIds.size > 0}
 						<button class="btn gap-1.5 btn-sm btn-success" onclick={() => bulkResolve()}>
 							<Check class="h-3.5 w-3.5" />
-							Resolve ({selectedIds.size})
+							{m.reports_resolveSelected({ count: selectedIds.size })}
 						</button>
 						<button
 							class="btn gap-1.5 btn-outline btn-sm"
@@ -1754,7 +1916,7 @@
 								</td>
 								<td class="hidden sm:table-cell">
 									{#if record.status === 'overridden'}
-										<span class="badge badge-ghost badge-xs">Overridden</span>
+										<span class="badge badge-ghost badge-xs">{m.reports_status_overridden()}</span>
 									{/if}
 								</td>
 							</tr>
@@ -1767,7 +1929,9 @@
 											<div
 												class="mb-5 rounded-lg border border-base-content/12 bg-base-100 px-3 py-2.5 font-mono text-xs break-all"
 											>
-												<span class="mr-2 font-semibold text-base-content/50">RELEASE</span>
+												<span class="mr-2 font-semibold text-base-content/50"
+													>{m.reports_banner_release()}</span
+												>
 												<span class="text-base-content/80">{record.releaseTitle ?? '-'}</span>
 											</div>
 
@@ -1815,7 +1979,9 @@
 														<div
 															class="rounded-lg border border-dashed border-base-content/20 px-3 py-5 text-center"
 														>
-															<p class="text-sm text-base-content/50">No check details recorded.</p>
+															<p class="text-sm text-base-content/50">
+																{m.reports_detail_noCheckDetails()}
+															</p>
 														</div>
 													{/if}
 												</div>
@@ -1834,7 +2000,9 @@
 															<div
 																class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
 															>
-																<span class="font-medium text-base-content/55">Media</span>
+																<span class="font-medium text-base-content/55"
+																	>{m.reports_detail_media()}</span
+																>
 																<span class="font-semibold">{record.mediaTitle}</span>
 															</div>
 														{/if}
@@ -1842,15 +2010,21 @@
 															<div
 																class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
 															>
-																<span class="font-medium text-base-content/55">Media type</span>
-																<span class="capitalize">{record.mediaType}</span>
+																<span class="font-medium text-base-content/55"
+																	>{m.reports_detail_mediaType()}</span
+																>
+																<span class="badge badge-outline badge-sm"
+																	>{mediaTypeLabel(record.mediaType)}</span
+																>
 															</div>
 														{/if}
 														{#if record.qualityProfileName}
 															<div
 																class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
 															>
-																<span class="font-medium text-base-content/55">Profile</span>
+																<span class="font-medium text-base-content/55"
+																	>{m.reports_detail_profile()}</span
+																>
 																<span>{record.qualityProfileName}</span>
 															</div>
 														{/if}
@@ -1858,7 +2032,9 @@
 															<div
 																class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
 															>
-																<span class="font-medium text-base-content/55">Group</span>
+																<span class="font-medium text-base-content/55"
+																	>{m.reports_detail_group()}</span
+																>
 																<span class="font-mono text-xs">{record.releaseGroup}</span>
 															</div>
 														{/if}
@@ -1866,7 +2042,9 @@
 															<div
 																class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
 															>
-																<span class="font-medium text-base-content/55">Size</span>
+																<span class="font-medium text-base-content/55"
+																	>{m.reports_detail_size()}</span
+																>
 																<span class="font-semibold"
 																	>{formatBytes(Number(record.releaseSize))}</span
 																>
@@ -1877,7 +2055,9 @@
 																? 'border-b border-base-content/8'
 																: ''}"
 														>
-															<span class="font-medium text-base-content/55">Rejected</span>
+															<span class="font-medium text-base-content/55"
+																>{m.reports_detail_rejected()}</span
+															>
 															<span class="text-base-content/70"
 																>{formatDate(String(record.rejectedAt ?? ''))}</span
 															>
@@ -1887,7 +2067,7 @@
 																class="flex items-center justify-between gap-4 px-3 py-2.5 text-sm"
 															>
 																<span class="shrink-0 font-medium text-base-content/55"
-																	>Correlation ID</span
+																	>{m.reports_detail_correlationId()}</span
 																>
 																<span class="truncate font-mono text-xs text-base-content/60">
 																	<span class="sm:hidden"
@@ -1934,7 +2114,7 @@
 															{m.reports_rejected_copyBundle()}
 														</button>
 														<button
-															class="btn gap-1.5 border border-warning/40 bg-warning/10 text-warning-content btn-xs hover:bg-warning/20"
+															class="btn btn-warning btn-xs"
 															onclick={(e) => {
 																e.stopPropagation();
 																void overrideRejectedRelease(record);
@@ -1983,13 +2163,15 @@
 										<button
 											class="btn btn-ghost btn-xs"
 											disabled={currentPage <= 1}
-											onclick={() => loadRecords(activeTab, currentPage - 1)}>&larr; Prev</button
+											onclick={() => loadRecords(activeTab, currentPage - 1)}
+											>{m.reports_pagination_prev()}</button
 										>
 										<span class="text-xs text-base-content/60">{currentPage} / {totalPages}</span>
 										<button
 											class="btn btn-ghost btn-xs"
 											disabled={currentPage >= totalPages}
-											onclick={() => loadRecords(activeTab, currentPage + 1)}>Next &rarr;</button
+											onclick={() => loadRecords(activeTab, currentPage + 1)}
+											>{m.reports_pagination_next()}</button
 										>
 									</div>
 								</td>
@@ -2070,7 +2252,7 @@
 				<input
 					type="text"
 					class="input w-full rounded-full border-base-content/20 bg-base-200 pr-8 pl-9 transition-all input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
-					placeholder="Search release or path…"
+					placeholder={m.reports_search_releaseOrPath()}
 					bind:value={searchQuery}
 					oninput={onSearchInput}
 				/>
@@ -2128,7 +2310,7 @@
 					{#if selectedIds.size > 0}
 						<button class="btn gap-1.5 btn-sm btn-success" onclick={() => bulkResolve()}>
 							<Check class="h-3.5 w-3.5" />
-							Resolve ({selectedIds.size})
+							{m.reports_resolveSelected({ count: selectedIds.size })}
 						</button>
 						<button
 							class="btn gap-1.5 btn-outline btn-sm"
@@ -2324,7 +2506,9 @@
 												<div
 													class="mb-5 rounded-lg border border-base-content/12 bg-base-100 px-3 py-2.5 font-mono text-xs break-all"
 												>
-													<span class="mr-2 font-semibold text-base-content/50">SOURCE</span>
+													<span class="mr-2 font-semibold text-base-content/50"
+														>{m.reports_banner_source()}</span
+													>
 													<span class="text-base-content/80">{record.sourcePath}</span>
 												</div>
 											{/if}
@@ -2335,7 +2519,7 @@
 													<h4
 														class="text-[10px] font-bold tracking-widest text-base-content/50 uppercase"
 													>
-														Error Details
+														{m.reports_section_errorDetails()}
 													</h4>
 													{#if record.reasonDetail || record.reason}
 														<div
@@ -2360,7 +2544,9 @@
 														<div
 															class="rounded-lg border border-warning/20 bg-warning/5 px-3 py-2.5"
 														>
-															<p class="mb-1.5 text-xs font-semibold text-warning">Blocked files</p>
+															<p class="mb-1.5 text-xs font-semibold text-warning">
+																{m.reports_detail_blockedFiles()}
+															</p>
 															<ul class="space-y-0.5 font-mono text-xs text-base-content/70">
 																{#each record.dangerousFiles as f (f)}<li>
 																		{f.path}
@@ -2373,7 +2559,9 @@
 														<div
 															class="rounded-lg border border-dashed border-base-content/20 px-3 py-5 text-center"
 														>
-															<p class="text-sm text-base-content/50">No error details recorded.</p>
+															<p class="text-sm text-base-content/50">
+																{m.reports_detail_noErrorDetails()}
+															</p>
 														</div>
 													{/if}
 												</div>
@@ -2391,7 +2579,9 @@
 														<div
 															class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
 														>
-															<span class="font-medium text-base-content/55">Stage</span>
+															<span class="font-medium text-base-content/55"
+																>{m.reports_detail_stage()}</span
+															>
 															<span class="badge badge-sm badge-warning"
 																>{stageLabel(String(record.failureStage ?? ''))}</span
 															>
@@ -2414,7 +2604,7 @@
 																class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
 															>
 																<span class="shrink-0 font-medium text-base-content/55"
-																	>Destination</span
+																	>{m.reports_detail_destination()}</span
 																>
 																<span class="ml-4 truncate text-right font-mono text-xs"
 																	>{record.destinationPath}</span
@@ -2424,7 +2614,9 @@
 														<div
 															class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
 														>
-															<span class="font-medium text-base-content/55">Attempts</span>
+															<span class="font-medium text-base-content/55"
+																>{m.reports_detail_attempts()}</span
+															>
 															<span
 																class="font-semibold {(record.attemptCount ?? 1) >= 5
 																	? 'text-error'
@@ -2436,7 +2628,9 @@
 																? 'border-b border-base-content/8'
 																: ''}"
 														>
-															<span class="font-medium text-base-content/55">Failed</span>
+															<span class="font-medium text-base-content/55"
+																>{m.reports_detail_failed()}</span
+															>
 															<span class="text-base-content/70"
 																>{formatDate(String(record.failedAt ?? ''))}</span
 															>
@@ -2446,7 +2640,7 @@
 																class="flex items-center justify-between gap-4 px-3 py-2.5 text-sm"
 															>
 																<span class="shrink-0 font-medium text-base-content/55"
-																	>Correlation ID</span
+																	>{m.reports_detail_correlationId()}</span
 																>
 																<span class="truncate font-mono text-xs text-base-content/60">
 																	<span class="sm:hidden"
@@ -2479,21 +2673,6 @@
 															>
 																<ExternalLink class="h-3 w-3" />
 																View trace
-															</button>
-														{/if}
-														{#if record.sourcePath}
-															<button
-																class="btn gap-1.5 border border-base-content/15 bg-base-100 btn-xs hover:bg-base-200"
-																onclick={(e) => {
-																	e.stopPropagation();
-																	void copyToClipboard(String(record.sourcePath)).then((ok) => {
-																		if (ok) toasts.success('Path copied');
-																		else toasts.error('Failed to copy');
-																	});
-																}}
-															>
-																<Copy class="h-3 w-3" />
-																Copy path
 															</button>
 														{/if}
 														<button
@@ -2556,19 +2735,552 @@
 											class="btn btn-ghost btn-xs"
 											disabled={currentPage <= 1}
 											onclick={() => loadRecords('import-failures', currentPage - 1)}
-											>&larr; Prev</button
+											>{m.reports_pagination_prev()}</button
 										>
 										<span class="text-xs text-base-content/60">{currentPage} / {totalPages}</span>
 										<button
 											class="btn btn-ghost btn-xs"
 											disabled={currentPage >= totalPages}
 											onclick={() => loadRecords('import-failures', currentPage + 1)}
-											>Next &rarr;</button
+											>{m.reports_pagination_next()}</button
 										>
 									</div>
 								</td>
 							</tr>
 						</tfoot>
+					{/if}
+				</table>
+			</div>
+		{/if}
+		<!-- RENAMING FAILURES SubTab -->
+	{:else if activeTab === 'renaming-failures'}
+		{#if renamingStats}
+			<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+				<button
+					class="flex cursor-pointer flex-col gap-1 rounded-lg border px-4 py-3 text-left shadow-sm transition-all
+						{activeRenamingStatCard === 'all'
+						? 'border-primary/60 bg-primary/8 ring-1 ring-primary/30'
+						: 'border-base-content/12 bg-base-200 hover:border-base-content/25 hover:bg-base-200/80'}"
+					onclick={() => applyRenamingStatCard('all')}
+				>
+					<p class="text-[11px] font-medium tracking-wide text-base-content/50 uppercase">
+						{m.reports_renaming_stat_total()}
+					</p>
+					<p class="text-3xl font-bold text-error">{renamingStats.total}</p>
+				</button>
+				<button
+					class="flex cursor-pointer flex-col gap-1 rounded-lg border px-4 py-3 text-left shadow-sm transition-all
+						{activeRenamingStatCard === '24h'
+						? 'border-primary/60 bg-primary/8 ring-1 ring-primary/30'
+						: 'border-base-content/12 bg-base-200 hover:border-base-content/25 hover:bg-base-200/80'}"
+					onclick={() => applyRenamingStatCard('24h')}
+				>
+					<p class="text-[11px] font-medium tracking-wide text-base-content/50 uppercase">
+						{m.reports_renaming_stat_newIn24h()}
+					</p>
+					<p
+						class="text-3xl font-bold {renamingStats.newIn24h > 0
+							? 'text-warning'
+							: 'text-success'}"
+					>
+						{renamingStats.newIn24h}
+					</p>
+				</button>
+				<button
+					class="flex cursor-pointer flex-col gap-1 rounded-lg border px-4 py-3 text-left shadow-sm transition-all
+						{activeRenamingStatCard === 'collision'
+						? 'border-primary/60 bg-primary/8 ring-1 ring-primary/30'
+						: 'border-base-content/12 bg-base-200 hover:border-base-content/25 hover:bg-base-200/80'}"
+					onclick={() => applyRenamingStatCard('collision')}
+				>
+					<p class="text-[11px] font-medium tracking-wide text-base-content/50 uppercase">
+						{m.reports_renaming_stat_collisions()}
+					</p>
+					<p class="text-3xl font-bold">{renamingStats.collisions}</p>
+				</button>
+				<button
+					class="flex cursor-pointer flex-col gap-1 rounded-lg border px-4 py-3 text-left shadow-sm transition-all
+						{activeRenamingStatCard === 'permissionIo'
+						? 'border-primary/60 bg-primary/8 ring-1 ring-primary/30'
+						: 'border-base-content/12 bg-base-200 hover:border-base-content/25 hover:bg-base-200/80'}"
+					onclick={() => applyRenamingStatCard('permissionIo')}
+				>
+					<p class="text-[11px] font-medium tracking-wide text-base-content/50 uppercase">
+						{m.reports_renaming_stat_permissionIo()}
+					</p>
+					<p class="text-3xl font-bold {renamingStats.permissionIo > 0 ? 'text-warning' : ''}">
+						{renamingStats.permissionIo}
+					</p>
+				</button>
+			</div>
+		{/if}
+
+		<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+			<div class="relative w-full sm:w-64">
+				<Search
+					class="pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-base-content/40"
+				/>
+				<input
+					type="text"
+					class="input w-full rounded-full border-base-content/20 bg-base-200 pr-8 pl-9 transition-all input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+					placeholder={m.reports_search_sourceOrPath()}
+					bind:value={searchQuery}
+					oninput={onSearchInput}
+				/>
+				{#if searchQuery}
+					<button
+						class="absolute top-1/2 right-2.5 -translate-y-1/2 text-base-content/40 hover:text-base-content"
+						onclick={() => {
+							searchQuery = '';
+							loadRecords('renaming-failures', 1);
+						}}
+					>
+						<X class="h-3.5 w-3.5" />
+					</button>
+				{/if}
+			</div>
+			<div class="flex flex-wrap items-center gap-2">
+				<select
+					class="select w-44 border-base-content/20 bg-base-200 transition-all select-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
+					bind:value={reasonFilter}
+					onchange={() => loadRecords('renaming-failures', 1)}
+				>
+					<option value="">{m.reports_filter_allReasons()}</option>
+					<option value="collision">{m.reports_renaming_reason_collision()}</option>
+					<option value="io_error">{m.reports_renaming_reason_ioError()}</option>
+					<option value="permission_denied">{m.reports_renaming_reason_permissionDenied()}</option>
+					<option value="source_not_found">{m.reports_renaming_reason_sourceNotFound()}</option>
+					<option value="path_too_long">{m.reports_renaming_reason_pathTooLong()}</option>
+					<option value="invalid_chars">{m.reports_renaming_reason_invalidChars()}</option>
+					<option value="disk_full">{m.reports_renaming_reason_diskFull()}</option>
+					<option value="preview_error">{m.reports_renaming_reason_previewError()}</option>
+				</select>
+				<span class="hidden h-4 w-px bg-base-content/15 sm:block"></span>
+				<div class="flex items-center gap-1">
+					{#each [{ value: '', label: m.reports_filter_all() }, { value: 'movie', label: m.reports_type_movie() }, { value: 'episode', label: m.reports_type_tv() }] as opt (opt.value)}
+						<button
+							class="btn font-mono btn-xs {renamingFileTypeFilter === opt.value
+								? 'btn-primary'
+								: 'btn-ghost'}"
+							onclick={() => {
+								renamingFileTypeFilter = opt.value;
+								loadRecords('renaming-failures', 1);
+							}}>{opt.label}</button
+						>
+					{/each}
+				</div>
+				<select
+					class="select w-32 border-base-content/20 bg-base-200 transition-all select-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
+					bind:value={dateFilter}
+					onchange={() => loadRecords('renaming-failures', 1)}
+				>
+					{#each DATE_OPTIONS as opt (opt.value)}<option value={opt.value}>{opt.label}</option
+						>{/each}
+				</select>
+			</div>
+			<div class="flex flex-col items-end gap-1.5 self-end sm:ml-auto">
+				<span class="text-xs text-base-content/40 tabular-nums"
+					>{m.reports_showing({ shown: records.length, total })}</span
+				>
+				<div class="flex flex-wrap items-center gap-2">
+					{#if selectedIds.size > 0}
+						<button class="btn gap-1.5 btn-sm btn-success" onclick={() => bulkResolve()}>
+							<Check class="h-3.5 w-3.5" />
+							{m.reports_resolveSelected({ count: selectedIds.size })}
+						</button>
+						<button
+							class="btn gap-1.5 btn-outline btn-sm"
+							onclick={() => {
+								const sel = records.filter((r) => selectedIds.has(r.id));
+								void copyToClipboard(JSON.stringify(sel, null, 2)).then((ok) => {
+									if (ok) toasts.success(`${sel.length} items copied`);
+									else toasts.error('Failed to copy');
+								});
+							}}
+						>
+							<Copy class="h-3.5 w-3.5" />
+							{m.reports_copySelected()} ({selectedIds.size})
+						</button>
+					{/if}
+					<div class="relative">
+						<button
+							class="btn gap-1.5 btn-neutral btn-sm"
+							onclick={(e) => {
+								e.stopPropagation();
+								showExportMenu = !showExportMenu;
+							}}
+						>
+							{m.reports_export()}
+							<svg class="h-3 w-3" viewBox="0 0 12 12" fill="currentColor"
+								><path d="M6 8L1 3h10z" /></svg
+							>
+						</button>
+						{#if showExportMenu}
+							<div
+								class="absolute top-full right-0 z-20 mt-1 w-44 rounded-lg border border-base-300 bg-base-100 shadow-xl"
+							>
+								<button
+									class="block w-full rounded-t-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
+									onclick={() => {
+										showExportMenu = false;
+										const blob = new Blob(
+											[
+												'id,sourcePath,intendedPath,fileType,reason,reasonDetail,failedAt\n' +
+													records
+														.map((r) =>
+															[
+																r.id,
+																r.sourcePath,
+																r.intendedPath,
+																r.fileType,
+																r.reason,
+																r.reasonDetail,
+																r.failedAt
+															]
+																.map((v) => `"${String(v ?? '')}"`)
+																.join(',')
+														)
+														.join('\n')
+											],
+											{ type: 'text/csv' }
+										);
+										const url = URL.createObjectURL(blob);
+										Object.assign(document.createElement('a'), {
+											href: url,
+											download: 'renaming-failures.csv'
+										}).click();
+										URL.revokeObjectURL(url);
+									}}>{m.reports_exportCsv()}</button
+								>
+								<button
+									class="block w-full rounded-b-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
+									onclick={() => {
+										showExportMenu = false;
+										const blob = new Blob([JSON.stringify(records, null, 2)], {
+											type: 'application/json'
+										});
+										const url = URL.createObjectURL(blob);
+										Object.assign(document.createElement('a'), {
+											href: url,
+											download: 'renaming-failures.json'
+										}).click();
+										URL.revokeObjectURL(url);
+									}}>{m.reports_exportJson()}</button
+								>
+							</div>
+						{/if}
+					</div>
+				</div>
+			</div>
+		</div>
+
+		{#if loading}
+			<div class="flex items-center justify-center py-16">
+				<Loader2 class="h-5 w-5 animate-spin text-base-content/40" /><span
+					class="ml-2 text-sm text-base-content/60">{m.reports_loading()}</span
+				>
+			</div>
+		{:else if records.length === 0}
+			<div class="flex flex-col items-center justify-center py-20 text-center">
+				<FileX class="mb-3 h-12 w-12 text-base-content/15" />
+				<p class="font-medium text-base-content/60">{m.reports_empty()}</p>
+				<p class="mt-1 text-sm text-base-content/40">{m.reports_emptyDescription()}</p>
+			</div>
+		{:else}
+			<div class="overflow-x-auto rounded-lg border border-base-content/12 bg-base-100 shadow-sm">
+				<table class="table w-full table-sm">
+					<thead>
+						<tr
+							class="border-b border-base-content/10 bg-base-200 text-[11px] font-semibold tracking-widest text-base-content/50 uppercase"
+						>
+							<th class="w-8 pr-0"
+								><input
+									type="checkbox"
+									class="checkbox checkbox-xs"
+									checked={selectedIds.size === records.length && records.length > 0}
+									onchange={(e) => {
+										selectedIds = (e.target as HTMLInputElement).checked
+											? new Set(records.map((r) => r.id))
+											: new Set();
+									}}
+								/></th
+							>
+							<th>{m.reports_col_file()}</th>
+							<th class="hidden sm:table-cell">{m.reports_col_type()}</th>
+							<th>{m.reports_col_reason()}</th>
+							<th class="hidden sm:table-cell">{m.reports_col_date()}</th>
+							<th>{m.reports_col_status()}</th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-base-content/8">
+						{#each records as record (record.id)}
+							{@const expanded = expandedId === record.id}
+							{@const isSelected = selectedIds.has(record.id)}
+							<tr
+								class="cursor-pointer transition-colors {isSelected
+									? 'bg-primary/5'
+									: 'hover:bg-base-200/50'}"
+								onclick={() => (expandedId = expanded ? null : record.id)}
+							>
+								<td class="pr-0" onclick={(e) => e.stopPropagation()}>
+									<input
+										type="checkbox"
+										class="checkbox checkbox-xs"
+										checked={isSelected}
+										onchange={() => {
+											const next = new Set(selectedIds);
+											if (isSelected) next.delete(record.id);
+											else next.add(record.id);
+											selectedIds = next;
+										}}
+									/>
+								</td>
+
+								<td class="max-w-[42vw] sm:max-w-xs">
+									<div class="flex items-start gap-1.5">
+										<ChevronRight
+											class="mt-0.5 h-3.5 w-3.5 shrink-0 text-base-content/30 transition-transform {expanded
+												? 'rotate-90'
+												: ''}"
+										/>
+										<div class="min-w-0">
+											<p
+												class="truncate text-xs font-medium"
+												title={String(record.sourcePath ?? '')}
+											>
+												{String(record.sourcePath ?? '')
+													.split('/')
+													.pop() ?? record.sourcePath}
+											</p>
+											<p
+												class="truncate font-mono text-[12px] text-base-content/40"
+												title={String(record.intendedPath ?? '')}
+											>
+												&#x2192; {String(record.intendedPath ?? '')
+													.split('/')
+													.pop() ?? record.intendedPath}
+											</p>
+										</div>
+									</div>
+								</td>
+								<td class="hidden sm:table-cell">
+									<span class="badge badge-outline badge-sm"
+										>{fileTypeLabel(String(record.fileType ?? ''))}</span
+									>
+								</td>
+								<td
+									><span
+										class="badge badge-sm {renamingReasonBadgeClass(String(record.reason ?? ''))}"
+										><span class="sm:hidden"
+											>{renamingReasonShortLabel(String(record.reason ?? ''))}</span
+										><span class="hidden sm:inline"
+											>{renamingReasonLabel(String(record.reason ?? ''))}</span
+										></span
+									></td
+								>
+								<td class="hidden text-xs text-base-content/60 sm:table-cell"
+									>{formatDate(String(record.failedAt ?? ''))}</td
+								>
+								<td
+									><span class="badge badge-sm {statusBadgeClass(String(record.status ?? ''))}"
+										>{statusLabel(String(record.status ?? ''))}</span
+									></td
+								>
+							</tr>
+
+							{#if expanded}
+								<tr>
+									<td colspan="6" class="border-b border-base-content/10 p-0">
+										<div class="border-l-4 border-l-primary bg-base-200 py-5 pr-6 pl-10">
+											<div
+												class="mb-2 rounded-lg border border-base-content/12 bg-base-100 px-3 py-2.5 font-mono text-xs break-all"
+											>
+												<span class="mr-2 font-semibold text-base-content/50"
+													>{m.reports_banner_source()}</span
+												>
+												<span class="text-base-content/80">{record.sourcePath}</span>
+											</div>
+											<div
+												class="mb-5 rounded-lg border border-base-content/12 bg-base-100 px-3 py-2.5 font-mono text-xs break-all"
+											>
+												<span class="mr-2 font-semibold text-base-content/50"
+													>{m.reports_renaming_intended()}</span
+												>
+												<span class="text-base-content/80">{record.intendedPath}</span>
+											</div>
+
+											<div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+												<div class="space-y-3">
+													<h4
+														class="text-[10px] font-bold tracking-widest text-base-content/50 uppercase"
+													>
+														{m.reports_section_errorDetails()}
+													</h4>
+													<div
+														class="rounded-lg border border-error/20 bg-error/5 px-3 py-2.5 shadow-sm"
+													>
+														<div class="flex items-start gap-2">
+															<X class="mt-0.5 h-3.5 w-3.5 shrink-0 text-error" />
+															<div class="min-w-0">
+																<p class="text-sm font-semibold text-base-content">
+																	{record.reasonDetail ??
+																		renamingReasonLabel(String(record.reason ?? ''))}
+																</p>
+																{#if record.reasonDetail}<p
+																		class="mt-0.5 text-xs text-base-content/45"
+																	>
+																		{renamingReasonLabel(String(record.reason ?? ''))}
+																	</p>{/if}
+															</div>
+														</div>
+													</div>
+												</div>
+
+												<div class="space-y-3">
+													<h4
+														class="text-[10px] font-bold tracking-widest text-base-content/50 uppercase"
+													>
+														{m.reports_section_renameDetails()}
+													</h4>
+													<div
+														class="overflow-hidden rounded-lg border border-base-content/12 bg-base-100 shadow-sm"
+													>
+														<div
+															class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
+														>
+															<span class="font-medium text-base-content/55"
+																>{m.reports_col_type()}</span
+															>
+															<span class="badge badge-outline badge-sm"
+																>{fileTypeLabel(String(record.fileType ?? ''))}</span
+															>
+														</div>
+														<div
+															class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
+														>
+															<span class="font-medium text-base-content/55"
+																>{m.reports_detail_failed()}</span
+															>
+															<span class="text-base-content/70"
+																>{formatDate(String(record.failedAt ?? ''))}</span
+															>
+														</div>
+														{#if record.correlationId}
+															<div
+																class="flex items-center justify-between gap-4 px-3 py-2.5 text-sm"
+															>
+																<span class="shrink-0 font-medium text-base-content/55"
+																	>{m.reports_detail_correlationId()}</span
+																>
+																<span class="truncate font-mono text-xs text-base-content/60"
+																	><span class="sm:hidden"
+																		>{shortCorr(String(record.correlationId))}&#x2026;</span
+																	><span class="hidden sm:inline"
+																		>{String(record.correlationId)}</span
+																	></span
+																>
+															</div>
+														{/if}
+													</div>
+
+													<div class="flex flex-wrap gap-2">
+														{#if record.correlationId}
+															<a
+																href="/settings/monitoring/logs?correlationId={record.correlationId}"
+																class="btn gap-1.5 border border-base-content/15 bg-base-100 btn-xs hover:bg-base-200"
+																onclick={(e) => e.stopPropagation()}
+																><ExternalLink class="h-3 w-3" /> View trace ({shortCorr(
+																	String(record.correlationId)
+																)})</a
+															>
+														{/if}
+														<button
+															class="btn gap-1.5 border border-base-content/15 bg-base-100 btn-xs hover:bg-base-200"
+															onclick={(e) => {
+																e.stopPropagation();
+																void copyRenamingBundle(record as Record<string, unknown>);
+															}}
+														>
+															<Copy class="h-3 w-3" />
+															{m.reports_renaming_copyBundle()}
+														</button>
+														{#if record.status !== 'resolved'}
+															{#if record.reason === 'path_too_long' || record.reason === 'invalid_chars'}
+																<a
+																	href="/settings/library/naming"
+																	class="btn gap-1.5 border border-base-content/15 bg-base-100 btn-xs hover:bg-base-200"
+																	onclick={(e) => e.stopPropagation()}
+																	><Settings class="h-3 w-3" />
+																	{m.reports_renaming_fixTemplate()}</a
+																>
+															{:else if record.reason !== 'source_not_found'}
+																<button
+																	class="btn gap-1.5 border border-base-content/15 bg-base-100 btn-xs hover:bg-base-200"
+																	onclick={async (e) => {
+																		e.stopPropagation();
+																		const res = await fetch(
+																			`/api/reports/renaming-failures/${record.id}/retry`,
+																			{ method: 'POST' }
+																		);
+																		const result = await res.json();
+																		if (result.success) {
+																			toasts.success(m.reports_renaming_retrySuccess());
+																			loadRecords('renaming-failures', currentPage);
+																			loadRenamingStats();
+																		} else
+																			toasts.error(
+																				result.error ?? m.reports_renaming_retryFailed()
+																			);
+																	}}
+																>
+																	<RefreshCw class="h-3 w-3" />
+																	{m.reports_renaming_retry()}
+																</button>
+															{/if}
+															<button
+																class="btn gap-1.5 btn-success btn-xs"
+																onclick={(e) => {
+																	e.stopPropagation();
+																	void resolveRecord(record.id);
+																}}><Check class="h-3 w-3" /> {m.reports_resolve()}</button
+															>
+														{/if}
+														{#if record.reason === 'source_not_found' && record.status !== 'resolved'}
+															<p class="mt-1 w-full text-xs text-base-content/45">
+																{m.reports_renaming_sourceGone()}
+															</p>
+														{/if}
+													</div>
+												</div>
+											</div>
+										</div>
+									</td>
+								</tr>
+							{/if}
+						{/each}
+					</tbody>
+					{#if totalPages > 1}
+						<tfoot
+							><tr
+								><td colspan="6" class="border-t border-base-content/8 py-2">
+									<div class="flex items-center justify-center gap-2">
+										<button
+											class="btn btn-ghost btn-xs"
+											disabled={currentPage <= 1}
+											onclick={() => loadRecords('renaming-failures', currentPage - 1)}
+											>{m.reports_pagination_prev()}</button
+										>
+										<span class="text-xs text-base-content/60">{currentPage} / {totalPages}</span>
+										<button
+											class="btn btn-ghost btn-xs"
+											disabled={currentPage >= totalPages}
+											onclick={() => loadRecords('renaming-failures', currentPage + 1)}
+											>{m.reports_pagination_next()}</button
+										>
+									</div>
+								</td></tr
+							></tfoot
+						>
 					{/if}
 				</table>
 			</div>
@@ -2770,31 +3482,37 @@
 										>
 											{#if activeTab === 'rejected-releases'}
 												{#if record.mediaTitle}<div class="flex gap-2">
-														<span class="w-24 shrink-0 text-base-content/50">Media</span><span
+														<span class="w-24 shrink-0 text-base-content/50"
+															>{m.reports_detail_media()}</span
+														><span
 															>{record.mediaTitle}
 															{record.mediaType ? `(${record.mediaType})` : ''}</span
 														>
 													</div>{/if}
 												{#if record.releaseSize}<div class="flex gap-2">
-														<span class="w-24 shrink-0 text-base-content/50">Size</span><span
-															>{formatBytes(Number(record.releaseSize))}</span
-														>
+														<span class="w-24 shrink-0 text-base-content/50"
+															>{m.reports_detail_size()}</span
+														><span>{formatBytes(Number(record.releaseSize))}</span>
 													</div>{/if}
 												{#if record.qualityProfileName}<div class="flex gap-2">
-														<span class="w-24 shrink-0 text-base-content/50">Profile</span><span
-															>{record.qualityProfileName}</span
-														>
+														<span class="w-24 shrink-0 text-base-content/50"
+															>{m.reports_detail_profile()}</span
+														><span>{record.qualityProfileName}</span>
 													</div>{/if}
 												{#if Array.isArray(record.rejectionReasons) && record.rejectionReasons.length > 0}
 													<div class="flex gap-2">
-														<span class="w-24 shrink-0 text-base-content/50">Reasons</span>
+														<span class="w-24 shrink-0 text-base-content/50"
+															>{m.reports_detail_reasons()}</span
+														>
 														<ul class="list-disc space-y-0.5 pl-4">
 															{#each record.rejectionReasons as r (r)}<li>{r}</li>{/each}
 														</ul>
 													</div>
 												{/if}
 												{#if record.correlationId}<div class="flex gap-2">
-														<span class="w-24 shrink-0 text-base-content/50">Trace</span><a
+														<span class="w-24 shrink-0 text-base-content/50"
+															>{m.reports_detail_trace()}</span
+														><a
 															href="/settings/monitoring/logs?correlationId={record.correlationId}"
 															class="link font-mono text-xs link-primary"
 															onclick={(e) => e.stopPropagation()}>{m.reports_viewTrace()} ↗</a
@@ -2802,24 +3520,28 @@
 													</div>{/if}
 											{:else if activeTab === 'import-failures'}
 												{#if record.sourcePath}<div class="flex gap-2">
-														<span class="w-24 shrink-0 text-base-content/50">Source</span><span
-															class="font-mono text-xs break-all">{record.sourcePath}</span
-														>
+														<span class="w-24 shrink-0 text-base-content/50"
+															>{m.reports_detail_source()}</span
+														><span class="font-mono text-xs break-all">{record.sourcePath}</span>
 													</div>{/if}
 												{#if record.destinationPath}<div class="flex gap-2">
-														<span class="w-24 shrink-0 text-base-content/50">Destination</span><span
-															class="font-mono text-xs break-all">{record.destinationPath}</span
+														<span class="w-24 shrink-0 text-base-content/50"
+															>{m.reports_detail_destination()}</span
+														><span class="font-mono text-xs break-all"
+															>{record.destinationPath}</span
 														>
 													</div>{/if}
 												{#if record.reasonDetail}<div class="flex gap-2">
-														<span class="w-24 shrink-0 text-base-content/50">Error</span><span
-															class="text-error">{record.reasonDetail}</span
-														>
+														<span class="w-24 shrink-0 text-base-content/50"
+															>{m.reports_detail_error()}</span
+														><span class="text-error">{record.reasonDetail}</span>
 													</div>{/if}
 												{#if Array.isArray(record.dangerousFiles) && record.dangerousFiles.length > 0}<div
 														class="flex gap-2"
 													>
-														<span class="w-24 shrink-0 text-base-content/50">Dangerous</span>
+														<span class="w-24 shrink-0 text-base-content/50"
+															>{m.reports_detail_dangerous()}</span
+														>
 														<ul class="list-disc pl-4 font-mono text-xs">
 															{#each record.dangerousFiles as f (f)}<li>
 																	{f.path} ({f.extension})
@@ -2827,12 +3549,14 @@
 														</ul>
 													</div>{/if}
 												<div class="flex gap-2">
-													<span class="w-24 shrink-0 text-base-content/50">Attempts</span><span
-														>{record.attemptCount ?? 1}</span
-													>
+													<span class="w-24 shrink-0 text-base-content/50"
+														>{m.reports_detail_attempts()}</span
+													><span>{record.attemptCount ?? 1}</span>
 												</div>
 												{#if record.correlationId}<div class="flex gap-2">
-														<span class="w-24 shrink-0 text-base-content/50">Trace</span><a
+														<span class="w-24 shrink-0 text-base-content/50"
+															>{m.reports_detail_trace()}</span
+														><a
 															href="/settings/monitoring/logs?correlationId={record.correlationId}"
 															class="link font-mono text-xs link-primary"
 															onclick={(e) => e.stopPropagation()}>{m.reports_viewTrace()} ↗</a
@@ -2840,29 +3564,31 @@
 													</div>{/if}
 											{:else if activeTab === 'renaming-failures'}
 												<div class="flex gap-2">
-													<span class="w-24 shrink-0 text-base-content/50">Source</span><span
-														class="font-mono text-xs break-all">{record.sourcePath}</span
-													>
+													<span class="w-24 shrink-0 text-base-content/50"
+														>{m.reports_detail_source()}</span
+													><span class="font-mono text-xs break-all">{record.sourcePath}</span>
 												</div>
 												<div class="flex gap-2">
-													<span class="w-24 shrink-0 text-base-content/50">Intended</span><span
-														class="font-mono text-xs break-all">{record.intendedPath}</span
-													>
+													<span class="w-24 shrink-0 text-base-content/50"
+														>{m.reports_detail_intended()}</span
+													><span class="font-mono text-xs break-all">{record.intendedPath}</span>
 												</div>
 												{#if record.namingTemplate}<div class="flex gap-2">
-														<span class="w-24 shrink-0 text-base-content/50">Template</span><span
-															class="font-mono text-xs">{record.namingTemplate}</span
-														>
+														<span class="w-24 shrink-0 text-base-content/50"
+															>{m.reports_detail_template()}</span
+														><span class="font-mono text-xs">{record.namingTemplate}</span>
 													</div>{/if}
 												{#if record.reasonDetail}<div class="flex gap-2">
-														<span class="w-24 shrink-0 text-base-content/50">Error</span><span
-															class="text-error">{record.reasonDetail}</span
-														>
+														<span class="w-24 shrink-0 text-base-content/50"
+															>{m.reports_detail_error()}</span
+														><span class="text-error">{record.reasonDetail}</span>
 													</div>{/if}
 											{:else if activeTab === 'metadata-conflicts'}
 												{#if record.providerResults}
 													<div class="flex gap-2">
-														<span class="w-24 shrink-0 text-base-content/50">Providers</span>
+														<span class="w-24 shrink-0 text-base-content/50"
+															>{m.reports_detail_providers()}</span
+														>
 														<ul class="space-y-0.5">
 															{#each Object.entries(record.providerResults as Record<string, { found: boolean; error?: string }>) as [prov, res] ((prov, res))}
 																<li class="flex items-center gap-2">
@@ -2878,7 +3604,9 @@
 													</div>
 												{/if}
 												{#if record.correlationId}<div class="flex gap-2">
-														<span class="w-24 shrink-0 text-base-content/50">Trace</span><a
+														<span class="w-24 shrink-0 text-base-content/50"
+															>{m.reports_detail_trace()}</span
+														><a
 															href="/settings/monitoring/logs?correlationId={record.correlationId}"
 															class="link font-mono text-xs link-primary"
 															onclick={(e) => e.stopPropagation()}>{m.reports_viewTrace()} ↗</a
@@ -2899,13 +3627,15 @@
 										<button
 											class="btn btn-ghost btn-xs"
 											disabled={currentPage <= 1}
-											onclick={() => loadRecords(activeTab, currentPage - 1)}>&larr; Prev</button
+											onclick={() => loadRecords(activeTab, currentPage - 1)}
+											>{m.reports_pagination_prev()}</button
 										>
 										<span class="text-xs text-base-content/60">{currentPage} / {totalPages}</span>
 										<button
 											class="btn btn-ghost btn-xs"
 											disabled={currentPage >= totalPages}
-											onclick={() => loadRecords(activeTab, currentPage + 1)}>Next &rarr;</button
+											onclick={() => loadRecords(activeTab, currentPage + 1)}
+											>{m.reports_pagination_next()}</button
 										>
 									</div>
 								</td>
