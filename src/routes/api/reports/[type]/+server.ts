@@ -6,7 +6,8 @@ import {
 	importFailures,
 	renamingFailures,
 	unmatchedFiles,
-	metadataConflicts
+	metadataConflicts,
+	downloadClients
 } from '$lib/server/db/schema.js';
 import { count, desc, asc, eq, ne, and, or, like, gt, inArray } from 'drizzle-orm';
 import { logger } from '$lib/logging';
@@ -142,7 +143,27 @@ export const GET: RequestHandler = async ({ params, url }) => {
 				}
 
 				const where = conditions.length > 0 ? and(...conditions) : undefined;
-				const q = db.select().from(importFailures);
+				const q = db
+					.select({
+						id: importFailures.id,
+						correlationId: importFailures.correlationId,
+						releaseTitle: importFailures.releaseTitle,
+						sourcePath: importFailures.sourcePath,
+						destinationPath: importFailures.destinationPath,
+						failureStage: importFailures.failureStage,
+						reason: importFailures.reason,
+						reasonDetail: importFailures.reasonDetail,
+						dangerousFiles: importFailures.dangerousFiles,
+						attemptCount: importFailures.attemptCount,
+						downloadClientId: importFailures.downloadClientId,
+						failedAt: importFailures.failedAt,
+						status: importFailures.status,
+						resolvedAt: importFailures.resolvedAt,
+						downloadClientName: downloadClients.name,
+						downloadClientImplementation: downloadClients.implementation
+					})
+					.from(importFailures)
+					.leftJoin(downloadClients, eq(importFailures.downloadClientId, downloadClients.id));
 				const cq = db.select({ count: count() }).from(importFailures);
 				if (where) {
 					q.where(where);
