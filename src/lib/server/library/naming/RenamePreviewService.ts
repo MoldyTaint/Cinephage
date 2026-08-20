@@ -14,7 +14,8 @@ import {
 	episodes,
 	episodeFiles,
 	rootFolders,
-	renameHistory
+	renameHistory,
+	renamingFailures
 } from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { extname, join, dirname, basename, resolve } from 'path';
@@ -83,6 +84,28 @@ function formatAudioChannels(channels?: number): string | undefined {
 	};
 
 	return channelMap[channels] || `${channels}.0`;
+}
+
+async function recordRenamingFailure(opts: {
+	fileId: string;
+	fileType: 'movie' | 'episode';
+	sourcePath: string;
+	intendedPath: string;
+	reason: string;
+	reasonDetail?: string;
+}): Promise<void> {
+	await db.insert(renamingFailures).values({
+		id: randomUUID(),
+		correlationId: randomUUID(),
+		fileId: opts.fileId,
+		fileType: opts.fileType,
+		sourcePath: opts.sourcePath,
+		intendedPath: opts.intendedPath,
+		reason: opts.reason,
+		reasonDetail: opts.reasonDetail ?? null,
+		failedAt: new Date().toISOString(),
+		status: 'failed'
+	});
 }
 
 /**
@@ -465,6 +488,16 @@ export class RenamePreviewService {
 						};
 						groupResult.push(failResult);
 						await this.writeRenameHistory(item, failResult.success, failResult.error);
+						recordRenamingFailure({
+							fileId: item.fileId,
+							fileType: item.mediaType,
+							sourcePath: item.currentFullPath,
+							intendedPath: item.newFullPath,
+							reason: 'collision',
+							reasonDetail: failResult.error
+						}).catch((err) =>
+							logger.warn({ err }, '[RenamePreviewService] Failed to record renaming failure')
+						);
 						continue;
 					}
 
@@ -479,12 +512,34 @@ export class RenamePreviewService {
 						};
 						groupResult.push(failResult);
 						await this.writeRenameHistory(item, failResult.success, failResult.error);
+						recordRenamingFailure({
+							fileId: item.fileId,
+							fileType: item.mediaType,
+							sourcePath: item.currentFullPath,
+							intendedPath: item.newFullPath,
+							reason: 'preview_error',
+							reasonDetail: failResult.error
+						}).catch((err) =>
+							logger.warn({ err }, '[RenamePreviewService] Failed to record renaming failure')
+						);
 						continue;
 					}
 
 					const renameResult = await this.executeFileRename(item);
 					groupResult.push(renameResult);
 					await this.writeRenameHistory(item, renameResult.success, renameResult.error);
+					if (!renameResult.success) {
+						recordRenamingFailure({
+							fileId: item.fileId,
+							fileType: item.mediaType,
+							sourcePath: item.currentFullPath,
+							intendedPath: item.newFullPath,
+							reason: 'io_error',
+							reasonDetail: renameResult.error
+						}).catch((err) =>
+							logger.warn({ err }, '[RenamePreviewService] Failed to record renaming failure')
+						);
+					}
 				}
 
 				// After all files in this group are processed, handle any folder rename.

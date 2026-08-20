@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { grabDecisionPipeline } from '$lib/server/filters/GrabDecisionPipeline.js';
 import { qualityFilter } from '$lib/server/quality/QualityFilter.js';
 import { db } from '$lib/server/db/index.js';
@@ -7,7 +8,8 @@ import {
 	episodes,
 	movieFiles,
 	episodeFiles,
-	rootFolders
+	rootFolders,
+	rejectedReleases
 } from '$lib/server/db/schema.js';
 import { and, eq, ne } from 'drizzle-orm';
 import type { GrabRequest, GrabResult, ResolvedContext, HandlerResult } from './grab-types.js';
@@ -78,6 +80,12 @@ class GrabServiceImpl {
 			} else {
 				logger.debug(rejectionCtx, '[Grab] Release rejected (automated search)');
 			}
+
+			// Persist rejection for diagnostic reports (fire-and-forget)
+			this.persistRejectedRelease(release, resolved, decision).catch((err) =>
+				logger.warn({ err }, '[Grab] Failed to persist rejected release record')
+			);
+
 			return { success: false, decision };
 		}
 
@@ -310,6 +318,51 @@ class GrabServiceImpl {
 					error: `Unknown protocol: ${protocol ?? 'undefined'}`
 				};
 		}
+	}
+
+	private async persistRejectedRelease(
+		release: GrabRequest['release'],
+		resolved: ResolvedContext,
+		decision: import('./grab-types.js').GrabResult['decision']
+	): Promise<void> {
+		// Resolve tmdbId from the linked movie or series
+		let tmdbId: number | undefined;
+		let mediaTitle: string | undefined;
+		if (resolved.movieId) {
+			const movie = await db.query.movies.findFirst({ where: eq(movies.id, resolved.movieId) });
+			tmdbId = movie?.tmdbId ?? undefined;
+			mediaTitle = movie?.title ?? undefined;
+		} else if (resolved.seriesId) {
+			const show = await db.query.series.findFirst({ where: eq(series.id, resolved.seriesId) });
+			tmdbId = show?.tmdbId ?? undefined;
+			mediaTitle = show?.title ?? undefined;
+		}
+
+		const rejectingStage = decision?.audit?.stages?.find(
+			(s) => !s.skipped && s.result && !s.result.accepted
+		);
+		const rejectionReasons: string[] = [];
+		if (decision?.reason) rejectionReasons.push(decision.reason);
+		if (rejectingStage?.result?.reason && rejectingStage.result.reason !== decision?.reason) {
+			rejectionReasons.push(rejectingStage.result.reason);
+		}
+
+		await db.insert(rejectedReleases).values({
+			id: randomUUID(),
+			correlationId: randomUUID(),
+			releaseTitle: release.title,
+			indexerName: release.indexerName ?? undefined,
+			protocol: release.protocol ?? undefined,
+			tmdbId: tmdbId ?? null,
+			mediaType: resolved.mediaType,
+			mediaTitle: mediaTitle ?? undefined,
+			rejectionReasons: rejectionReasons.length > 0 ? rejectionReasons : undefined,
+			qualityProfileName: resolved.profile?.name ?? undefined,
+			releaseSize: release.size ?? undefined,
+			releaseGroup: release.releaseGroup ?? undefined,
+			rejectedAt: new Date().toISOString(),
+			status: 'rejected'
+		});
 	}
 }
 

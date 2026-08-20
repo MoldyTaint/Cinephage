@@ -1038,10 +1038,16 @@ export const unmatchedFiles = sqliteTable('unmatched_files', {
 			title: string;
 			year?: number;
 			confidence: number;
+			scoreBreakdown?: {
+				titleMatch: number;
+				yearMatch: number;
+				typeMatch: number;
+				popularity: number;
+			};
 		}>
 	>(),
 	// Why it wasn't matched
-	reason: text('reason'), // 'no_match', 'low_confidence', 'multiple_matches', 'parse_failed'
+	reason: text('reason'), // 'no_match' | 'low_confidence' | 'multiple_matches' | 'ambiguous' | 'parse_failed'
 	// When discovered
 	discoveredAt: text('discovered_at').$defaultFn(() => new Date().toISOString()),
 	lastSeenScanId: text('last_seen_scan_id'),
@@ -1049,7 +1055,10 @@ export const unmatchedFiles = sqliteTable('unmatched_files', {
 	contentCategory: text('content_category').notNull().default('main'),
 	filenameSignature: text('filename_signature'),
 	contentHash: text('content_hash'),
-	contentHashAlgorithm: text('content_hash_algorithm')
+	contentHashAlgorithm: text('content_hash_algorithm'),
+	// Diagnostic fields (added in migration 128)
+	correlationId: text('correlation_id'),
+	ambiguityMargin: real('ambiguity_margin')
 });
 
 /**
@@ -3873,4 +3882,139 @@ export const renameHistory = sqliteTable('rename_history', {
 });
 
 export type RenameHistoryRecord = typeof renameHistory.$inferSelect;
+
+// ============================================================================
+// Diagnostic Report Tables
+// ============================================================================
+
+export const rejectedReleases = sqliteTable(
+	'rejected_releases',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => randomUUID()),
+		correlationId: text('correlation_id'),
+		releaseTitle: text('release_title').notNull(),
+		indexerName: text('indexer_name'),
+		protocol: text('protocol'), // 'torrent' | 'usenet' | 'debrid'
+		tmdbId: integer('tmdb_id'),
+		mediaType: text('media_type'), // 'movie' | 'tv'
+		mediaTitle: text('media_title'),
+		rejectionReasons: text('rejection_reasons', { mode: 'json' }).$type<string[]>(),
+		qualityProfileName: text('quality_profile_name'),
+		releaseSize: integer('release_size'),
+		releaseGroup: text('release_group'),
+		rejectedAt: text('rejected_at')
+			.notNull()
+			.$defaultFn(() => new Date().toISOString()),
+		status: text('status').notNull().default('rejected') // 'rejected' | 'overridden'
+	},
+	(table) => [
+		index('idx_rejected_releases_rejected_at').on(table.rejectedAt),
+		index('idx_rejected_releases_tmdb').on(table.tmdbId, table.mediaType),
+		index('idx_rejected_releases_status').on(table.status)
+	]
+);
+
+export type RejectedReleaseRecord = typeof rejectedReleases.$inferSelect;
+export type NewRejectedReleaseRecord = typeof rejectedReleases.$inferInsert;
+
+export const importFailures = sqliteTable(
+	'import_failures',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => randomUUID()),
+		correlationId: text('correlation_id'),
+		releaseTitle: text('release_title').notNull(),
+		sourcePath: text('source_path'),
+		destinationPath: text('destination_path'),
+		// 'path_resolution' | 'dangerous_files' | 'disk_space' | 'root_folder' | 'library_entity' | 'transfer' | 'max_retries'
+		failureStage: text('failure_stage').notNull(),
+		// 'path_unavailable' | 'library_entity_missing' | 'root_folder_unavailable' | 'insufficient_disk_space' | 'dangerous_files_detected' | 'transfer_failed' | 'max_retries_exceeded'
+		reason: text('reason').notNull(),
+		reasonDetail: text('reason_detail'),
+		dangerousFiles: text('dangerous_files', { mode: 'json' }).$type<
+			Array<{ path: string; extension: string }>
+		>(),
+		attemptCount: integer('attempt_count').notNull().default(1),
+		downloadClientId: text('download_client_id'),
+		failedAt: text('failed_at')
+			.notNull()
+			.$defaultFn(() => new Date().toISOString()),
+		status: text('status').notNull().default('failed'), // 'failed' | 'retrying' | 'resolved'
+		resolvedAt: text('resolved_at')
+	},
+	(table) => [
+		index('idx_import_failures_failed_at').on(table.failedAt),
+		index('idx_import_failures_status').on(table.status),
+		index('idx_import_failures_stage').on(table.failureStage)
+	]
+);
+
+export type ImportFailureRecord = typeof importFailures.$inferSelect;
+export type NewImportFailureRecord = typeof importFailures.$inferInsert;
+
+export const renamingFailures = sqliteTable(
+	'renaming_failures',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => randomUUID()),
+		correlationId: text('correlation_id'),
+		fileId: text('file_id').notNull(),
+		fileType: text('file_type').notNull(), // 'movie' | 'episode'
+		sourcePath: text('source_path').notNull(),
+		intendedPath: text('intended_path').notNull(),
+		namingTemplate: text('naming_template'),
+		// 'collision' | 'invalid_chars' | 'path_too_long' | 'permission_denied' | 'source_not_found' | 'disk_full'
+		reason: text('reason').notNull(),
+		reasonDetail: text('reason_detail'),
+		failedAt: text('failed_at')
+			.notNull()
+			.$defaultFn(() => new Date().toISOString()),
+		status: text('status').notNull().default('failed'), // 'failed' | 'resolved'
+		resolvedAt: text('resolved_at')
+	},
+	(table) => [
+		index('idx_renaming_failures_failed_at').on(table.failedAt),
+		index('idx_renaming_failures_file').on(table.fileId, table.fileType),
+		index('idx_renaming_failures_status').on(table.status)
+	]
+);
+
+export type RenamingFailureRecord = typeof renamingFailures.$inferSelect;
+export type NewRenamingFailureRecord = typeof renamingFailures.$inferInsert;
+
+export const metadataConflicts = sqliteTable(
+	'metadata_conflicts',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => randomUUID()),
+		correlationId: text('correlation_id'),
+		tmdbId: integer('tmdb_id').notNull(),
+		mediaType: text('media_type').notNull(), // 'movie' | 'tv'
+		mediaTitle: text('media_title'),
+		// 'identity_mismatch' | 'missing_provider' | 'provider_error' | 'score_too_low'
+		conflictType: text('conflict_type').notNull(),
+		providersChecked: text('providers_checked', { mode: 'json' }).$type<string[]>(),
+		providerResults: text('provider_results', { mode: 'json' }).$type<
+			Record<string, { found: boolean; confidence?: number; error?: string }>
+		>(),
+		detectedAt: text('detected_at')
+			.notNull()
+			.$defaultFn(() => new Date().toISOString()),
+		status: text('status').notNull().default('unresolved'), // 'unresolved' | 'resolved' | 'ignored'
+		resolvedAt: text('resolved_at')
+	},
+	(table) => [
+		index('idx_metadata_conflicts_tmdb').on(table.tmdbId, table.mediaType),
+		index('idx_metadata_conflicts_detected_at').on(table.detectedAt),
+		index('idx_metadata_conflicts_status').on(table.status)
+	]
+);
+
+export type MetadataConflictRecord = typeof metadataConflicts.$inferSelect;
+export type NewMetadataConflictRecord = typeof metadataConflicts.$inferInsert;
 export type NewRenameHistoryRecord = typeof renameHistory.$inferInsert;

@@ -124,6 +124,7 @@ import { migration_v124 } from './124-add-subtitles-movie-file-id.js';
 import { migration_v125 } from './125-add-debrid-client-columns.js';
 import { migration_v126 } from './126-add-metadata-language-overrides.js';
 import { migration_v127 } from './127-add-cinephage-api-identity-auto-sync.js';
+import { migration_v128 } from './128-add-diagnostic-report-tables.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -250,5 +251,6 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v124,
 	migration_v125,
 	migration_v126,
-	migration_v127
+	migration_v127,
+	migration_v128
 ];

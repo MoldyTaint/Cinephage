@@ -686,7 +686,8 @@ class PinoAppLogger implements AppLogger {
 export const logger: AppLogger = new PinoAppLogger();
 
 export function createChildLogger(baseContext: LogContext): AppLogger {
-	return new PinoAppLogger(baseContext);
+	const pinoLogger = rootPinoLogger.child(sanitizeContext(baseContext));
+	return new PinoAppLogger(baseContext, pinoLogger);
 }
 
 export function createRequestLogger(baseContext: LogContext): AppLogger {

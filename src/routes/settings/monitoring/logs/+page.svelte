@@ -2,6 +2,7 @@
 	import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
 	import { Download, Loader2, Search, CalendarSync, CalendarClock, X, Trash2 } from 'lucide-svelte';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { copyToClipboard } from '$lib/utils/clipboard';
 
 	import * as m from '$lib/paraglide/messages.js';
 	import { SettingsPage } from '$lib/components/ui/settings';
@@ -88,6 +89,14 @@
 	$effect(() => {
 		if (initialized) return;
 		initialized = true;
+
+		// Pre-populate search from URL param (e.g. ?correlationId=... from "View trace" link)
+		if (typeof window !== 'undefined') {
+			const sp = new URLSearchParams(window.location.search);
+			const corrId = sp.get('correlationId');
+			if (corrId) search = corrId;
+		}
+
 		entries = structuredClone(data.initialEntries);
 		historyPage = data.initialPage;
 		historyPageSize = data.initialPageSize;
@@ -100,6 +109,9 @@
 		retentionDays = data.retentionDays;
 		selectedEntryId = null;
 		lastLoadedFilterKey = buildFilterKey();
+
+		// If a correlationId was provided, immediately load filtered history
+		if (search) void loadHistoryPage(1, 'replace');
 	});
 
 	$effect(() => {
@@ -514,11 +526,11 @@
 	}
 
 	async function copyText(value: string, label: string): Promise<void> {
-		if (!value || !navigator.clipboard) return;
-		try {
-			await navigator.clipboard.writeText(value);
+		if (!value) return;
+		const ok = await copyToClipboard(value);
+		if (ok) {
 			toasts.success(`${label} copied`);
-		} catch {
+		} else {
 			toasts.error(`Failed to copy ${label.toLowerCase()}`);
 		}
 	}

@@ -42,6 +42,12 @@
 
 		updateScrollIndicators();
 
+		// On mount, scroll the active nav item into view so it's visible on mobile
+		const activeEl = navScroller.querySelector<HTMLElement>('[class*="border-primary"]');
+		if (activeEl) {
+			activeEl.scrollIntoView({ block: 'nearest', inline: 'center' });
+		}
+
 		const scroller = navScroller;
 		const onScroll = () => updateScrollIndicators();
 		scroller.addEventListener('scroll', onScroll, { passive: true });
