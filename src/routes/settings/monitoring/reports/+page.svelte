@@ -438,6 +438,45 @@
 		}
 	}
 
+	// Auto-refresh for import-failures
+	let lastRefreshed = $state<Date | null>(null);
+	$effect(() => {
+		if (activeTab !== 'import-failures') return;
+		const interval = setInterval(() => {
+			loadRecords('import-failures', currentPage);
+			loadImportStats();
+			lastRefreshed = new Date();
+		}, 60_000);
+		return () => clearInterval(interval);
+	});
+
+	async function bulkResolve() {
+		const tab = activeTab;
+		if (tab === 'unmatched-imports' || selectedIds.size === 0) return;
+		const ids = [...selectedIds];
+		try {
+			const res = await fetch(`/api/reports/${tab}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ ids, status: 'resolved' })
+			});
+			const result = await res.json();
+			if (result.success) {
+				records = records.filter((r) => !selectedIds.has(r.id));
+				total = Math.max(0, total - ids.length);
+				selectedIds = new Set();
+				toasts.success(`${ids.length} records resolved`);
+				refreshCounts();
+				if (tab === 'rejected-releases') loadRejectedStats();
+				else if (tab === 'import-failures') loadImportStats();
+			} else {
+				toasts.error(result.error || 'Failed to resolve');
+			}
+		} catch {
+			toasts.error('Failed to resolve');
+		}
+	}
+
 	async function resolveRecord(id: string) {
 		const tab = activeTab;
 		if (tab === 'unmatched-imports') return;
@@ -513,6 +552,24 @@
 		} else {
 			toasts.error('Failed to copy');
 		}
+	}
+	async function copyImportBundle(record: Record<string, unknown>) {
+		const bundle = {
+			releaseTitle: record.releaseTitle,
+			sourcePath: record.sourcePath,
+			destinationPath: record.destinationPath,
+			failureStage: record.failureStage,
+			reason: record.reason,
+			reasonDetail: record.reasonDetail,
+			dangerousFiles: record.dangerousFiles,
+			attemptCount: record.attemptCount,
+			downloadClient: record.downloadClientName ?? record.downloadClientId,
+			correlationId: record.correlationId,
+			failedAt: record.failedAt
+		};
+		const ok = await copyToClipboard(JSON.stringify(bundle, null, 2));
+		if (ok) toasts.success(m.reports_import_bundleCopied());
+		else toasts.error('Failed to copy');
 	}
 
 	function exportRecords(format: 'csv' | 'json') {
@@ -848,7 +905,7 @@
 				/>
 				<input
 					type="text"
-					class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-8 pl-9 transition-all input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+					class="input w-full rounded-full border-base-content/20 bg-base-200 pr-8 pl-9 transition-all input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 					placeholder="Search file or title…"
 					bind:value={searchQuery}
 					oninput={onSearchInput}
@@ -886,14 +943,14 @@
 				<span class="h-4 w-px bg-base-content/15"></span>
 
 				<select
-					class="select w-36 border-base-content/20 bg-base-200/60 transition-all select-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
+					class="select w-36 border-base-content/20 bg-base-200 transition-all select-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
 					bind:value={reasonFilter}
 					onchange={() => loadRecords(activeTab, 1)}
 				>
 					{#each REASON_OPTIONS as opt (opt)}<option value={opt.value}>{opt.label}</option>{/each}
 				</select>
 				<select
-					class="select w-32 border-base-content/20 bg-base-200/60 transition-all select-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
+					class="select w-32 border-base-content/20 bg-base-200 transition-all select-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
 					bind:value={dateFilter}
 					onchange={() => loadRecords(activeTab, 1)}
 				>
@@ -1075,6 +1132,13 @@
 									<td colspan="7" class="border-b border-base-content/10 p-0">
 										<!-- Full-width bg so it bleeds edge to edge; content indented to align under filename -->
 										<div class="border-l-4 border-l-primary bg-base-200 py-5 pr-6 pl-10">
+											<!-- Full file path banner -->
+											<div
+												class="mb-5 rounded-lg border border-base-content/12 bg-base-100 px-3 py-2.5 font-mono text-xs break-all"
+											>
+												<span class="mr-2 font-semibold text-base-content/50">SOURCE</span>
+												<span class="text-base-content/80">{record.path ?? '-'}</span>
+											</div>
 											<div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
 												<!-- LEFT: Match candidates -->
 												<div class="space-y-3">
@@ -1412,7 +1476,7 @@
 				/>
 				<input
 					type="text"
-					class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-8 pl-9 transition-all input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+					class="input w-full rounded-full border-base-content/20 bg-base-200 pr-8 pl-9 transition-all input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 					placeholder="Search release or title…"
 					bind:value={searchQuery}
 					oninput={onSearchInput}
@@ -1450,7 +1514,7 @@
 				<span class="h-4 w-px bg-base-content/15"></span>
 
 				<select
-					class="select w-40 border-base-content/20 bg-base-200/60 transition-all select-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
+					class="select w-40 border-base-content/20 bg-base-200 transition-all select-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
 					bind:value={reasonFilter}
 					onchange={() => loadRecords(activeTab, 1)}
 				>
@@ -1467,7 +1531,7 @@
 				</select>
 
 				<select
-					class="select w-32 border-base-content/20 bg-base-200/60 transition-all select-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
+					class="select w-32 border-base-content/20 bg-base-200 transition-all select-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
 					bind:value={dateFilter}
 					onchange={() => loadRecords(activeTab, 1)}
 				>
@@ -1478,93 +1542,99 @@
 			</div>
 
 			<!-- Right side: count + bulk actions + export -->
-			<div class="flex items-center justify-between gap-2 sm:ml-auto sm:justify-end">
+			<div class="flex flex-col items-end gap-1.5 self-end sm:ml-auto">
 				<span class="text-xs text-base-content/40 tabular-nums"
 					>{m.reports_showing({ shown: records.length, total })}</span
 				>
-				{#if selectedIds.size > 0}
-					<button
-						class="btn gap-1.5 btn-outline btn-sm"
-						onclick={() => {
-							const sel = records.filter((r) => selectedIds.has(r.id));
-							void copyToClipboard(JSON.stringify(sel, null, 2)).then((ok) => {
-								if (ok) toasts.success(`${sel.length} items copied`);
-								else toasts.error('Failed to copy');
-							});
-						}}
-					>
-						<Copy class="h-3.5 w-3.5" />
-						{m.reports_copySelected()} ({selectedIds.size})
-					</button>
-				{/if}
-				<div class="relative">
-					<button
-						class="btn gap-1.5 btn-neutral btn-sm"
-						onclick={(e) => {
-							e.stopPropagation();
-							showExportMenu = !showExportMenu;
-						}}
-					>
-						{m.reports_export()}
-						<svg class="h-3 w-3" viewBox="0 0 12 12" fill="currentColor"
-							><path d="M6 8L1 3h10z" /></svg
+				<div class="flex flex-wrap items-center gap-2">
+					{#if selectedIds.size > 0}
+						<button class="btn gap-1.5 btn-sm btn-success" onclick={() => bulkResolve()}>
+							<Check class="h-3.5 w-3.5" />
+							Resolve ({selectedIds.size})
+						</button>
+						<button
+							class="btn gap-1.5 btn-outline btn-sm"
+							onclick={() => {
+								const sel = records.filter((r) => selectedIds.has(r.id));
+								void copyToClipboard(JSON.stringify(sel, null, 2)).then((ok) => {
+									if (ok) toasts.success(`${sel.length} items copied`);
+									else toasts.error('Failed to copy');
+								});
+							}}
 						>
-					</button>
-					{#if showExportMenu}
-						<div
-							class="absolute top-full right-0 z-20 mt-1 w-44 rounded-lg border border-base-300 bg-base-100 shadow-xl"
-						>
-							<button
-								class="block w-full rounded-t-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
-								onclick={() => {
-									showExportMenu = false;
-									const blob = new Blob(
-										[
-											'id,releaseTitle,mediaTitle,primaryReason,ruleFired,indexerName,protocol,rejectedAt\n' +
-												records
-													.map((r) =>
-														[
-															r.id,
-															r.releaseTitle,
-															r.mediaTitle,
-															r.primaryReason,
-															r.ruleFired,
-															r.indexerName,
-															r.protocol,
-															r.rejectedAt
-														]
-															.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
-															.join(',')
-													)
-													.join('\n')
-										],
-										{ type: 'text/csv' }
-									);
-									const url = URL.createObjectURL(blob);
-									Object.assign(document.createElement('a'), {
-										href: url,
-										download: 'rejected-releases.csv'
-									}).click();
-									URL.revokeObjectURL(url);
-								}}>{m.reports_exportCsv()}</button
-							>
-							<button
-								class="block w-full rounded-b-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
-								onclick={() => {
-									showExportMenu = false;
-									const blob = new Blob([JSON.stringify(records, null, 2)], {
-										type: 'application/json'
-									});
-									const url = URL.createObjectURL(blob);
-									Object.assign(document.createElement('a'), {
-										href: url,
-										download: 'rejected-releases.json'
-									}).click();
-									URL.revokeObjectURL(url);
-								}}>{m.reports_exportJson()}</button
-							>
-						</div>
+							<Copy class="h-3.5 w-3.5" />
+							{m.reports_copySelected()} ({selectedIds.size})
+						</button>
 					{/if}
+					<div class="relative">
+						<button
+							class="btn gap-1.5 btn-neutral btn-sm"
+							onclick={(e) => {
+								e.stopPropagation();
+								showExportMenu = !showExportMenu;
+							}}
+						>
+							{m.reports_export()}
+							<svg class="h-3 w-3" viewBox="0 0 12 12" fill="currentColor"
+								><path d="M6 8L1 3h10z" /></svg
+							>
+						</button>
+						{#if showExportMenu}
+							<div
+								class="absolute top-full right-0 z-20 mt-1 w-44 rounded-lg border border-base-300 bg-base-100 shadow-xl"
+							>
+								<button
+									class="block w-full rounded-t-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
+									onclick={() => {
+										showExportMenu = false;
+										const blob = new Blob(
+											[
+												'id,releaseTitle,mediaTitle,primaryReason,ruleFired,indexerName,protocol,rejectedAt\n' +
+													records
+														.map((r) =>
+															[
+																r.id,
+																r.releaseTitle,
+																r.mediaTitle,
+																r.primaryReason,
+																r.ruleFired,
+																r.indexerName,
+																r.protocol,
+																r.rejectedAt
+															]
+																.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
+																.join(',')
+														)
+														.join('\n')
+											],
+											{ type: 'text/csv' }
+										);
+										const url = URL.createObjectURL(blob);
+										Object.assign(document.createElement('a'), {
+											href: url,
+											download: 'rejected-releases.csv'
+										}).click();
+										URL.revokeObjectURL(url);
+									}}>{m.reports_exportCsv()}</button
+								>
+								<button
+									class="block w-full rounded-b-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
+									onclick={() => {
+										showExportMenu = false;
+										const blob = new Blob([JSON.stringify(records, null, 2)], {
+											type: 'application/json'
+										});
+										const url = URL.createObjectURL(blob);
+										Object.assign(document.createElement('a'), {
+											href: url,
+											download: 'rejected-releases.json'
+										}).click();
+										URL.revokeObjectURL(url);
+									}}>{m.reports_exportJson()}</button
+								>
+							</div>
+						{/if}
+					</div>
 				</div>
 			</div>
 		</div>
@@ -1992,13 +2062,14 @@
 
 		<!-- Toolbar -->
 		<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+			<!-- Left side: search + filters -->
 			<div class="relative w-full sm:w-64">
 				<Search
 					class="pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-base-content/40"
 				/>
 				<input
 					type="text"
-					class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-8 pl-9 transition-all input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+					class="input w-full rounded-full border-base-content/20 bg-base-200 pr-8 pl-9 transition-all input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 					placeholder="Search release or path…"
 					bind:value={searchQuery}
 					oninput={onSearchInput}
@@ -2015,7 +2086,7 @@
 			</div>
 			<div class="hidden h-5 w-px bg-base-content/12 sm:block"></div>
 			<select
-				class="select w-full border-base-content/20 bg-base-200/60 select-sm sm:w-auto"
+				class="select w-full border-base-content/20 bg-base-200 select-sm sm:w-auto"
 				bind:value={reasonFilter}
 				onchange={() => loadRecords('import-failures', 1)}
 			>
@@ -2029,7 +2100,7 @@
 				<option value="max_retries">{m.reports_stage_max_retries()}</option>
 			</select>
 			<select
-				class="select w-full border-base-content/20 bg-base-200/60 select-sm sm:w-auto"
+				class="select w-full border-base-content/20 bg-base-200 select-sm sm:w-auto"
 				bind:value={dateFilter}
 				onchange={() => loadRecords('import-failures', 1)}
 			>
@@ -2037,9 +2108,112 @@
 					<option value={opt.value}>{opt.label}</option>
 				{/each}
 			</select>
-			<p class="ml-auto text-sm text-base-content/60">
-				{m.reports_showing({ shown: records.length, total })}
-			</p>
+
+			<!-- Right side: count + last refreshed + bulk actions + export -->
+			<div class="flex flex-col items-end gap-1.5 self-end sm:ml-auto">
+				<div class="flex items-center gap-2">
+					<span class="text-xs text-base-content/40 tabular-nums"
+						>{m.reports_showing({ shown: records.length, total })}</span
+					>
+					{#if lastRefreshed}
+						<span
+							class="hidden text-xs text-base-content/30 sm:inline"
+							title="Auto-refreshes every 60s"
+						>
+							· refreshed {timeAgo(lastRefreshed.toISOString())}
+						</span>
+					{/if}
+				</div>
+				<div class="flex flex-wrap items-center gap-2">
+					{#if selectedIds.size > 0}
+						<button class="btn gap-1.5 btn-sm btn-success" onclick={() => bulkResolve()}>
+							<Check class="h-3.5 w-3.5" />
+							Resolve ({selectedIds.size})
+						</button>
+						<button
+							class="btn gap-1.5 btn-outline btn-sm"
+							onclick={() => {
+								const sel = records.filter((r) => selectedIds.has(r.id));
+								void copyToClipboard(JSON.stringify(sel, null, 2)).then((ok) => {
+									if (ok) toasts.success(`${sel.length} items copied`);
+									else toasts.error('Failed to copy');
+								});
+							}}
+						>
+							<Copy class="h-3.5 w-3.5" />
+							{m.reports_copySelected()} ({selectedIds.size})
+						</button>
+					{/if}
+					<div class="relative">
+						<button
+							class="btn gap-1.5 btn-neutral btn-sm"
+							onclick={(e) => {
+								e.stopPropagation();
+								showExportMenu = !showExportMenu;
+							}}
+						>
+							{m.reports_export()}
+							<svg class="h-3 w-3" viewBox="0 0 12 12" fill="currentColor"
+								><path d="M6 8L1 3h10z" /></svg
+							>
+						</button>
+						{#if showExportMenu}
+							<div
+								class="absolute top-full right-0 z-20 mt-1 w-44 rounded-lg border border-base-300 bg-base-100 shadow-xl"
+							>
+								<button
+									class="block w-full rounded-t-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
+									onclick={() => {
+										showExportMenu = false;
+										const blob = new Blob(
+											[
+												'id,releaseTitle,sourcePath,failureStage,reason,attemptCount,failedAt\n' +
+													records
+														.map((r) =>
+															[
+																r.id,
+																r.releaseTitle,
+																r.sourcePath,
+																r.failureStage,
+																r.reason,
+																r.attemptCount,
+																r.failedAt
+															]
+																.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
+																.join(',')
+														)
+														.join('\n')
+											],
+											{ type: 'text/csv' }
+										);
+										const url = URL.createObjectURL(blob);
+										Object.assign(document.createElement('a'), {
+											href: url,
+											download: 'import-failures.csv'
+										}).click();
+										URL.revokeObjectURL(url);
+									}}>{m.reports_exportCsv()}</button
+								>
+								<button
+									class="block w-full rounded-b-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
+									onclick={() => {
+										showExportMenu = false;
+										const blob = new Blob([JSON.stringify(records, null, 2)], {
+											type: 'application/json'
+										});
+										const url = URL.createObjectURL(blob);
+										Object.assign(document.createElement('a'), {
+											href: url,
+											download: 'import-failures.json'
+										}).click();
+										URL.revokeObjectURL(url);
+									}}>{m.reports_exportJson()}</button
+								>
+							</div>
+						{/if}
+					</div>
+				</div>
+			</div>
 		</div>
 
 		{#if loading}
@@ -2060,103 +2234,313 @@
 						<tr
 							class="border-b border-base-content/10 bg-base-200 text-[11px] font-semibold tracking-widest text-base-content/50 uppercase"
 						>
+							<th class="w-8 pr-0">
+								<input
+									type="checkbox"
+									class="checkbox checkbox-xs"
+									checked={selectedIds.size === records.length && records.length > 0}
+									onchange={(e) => {
+										selectedIds = (e.target as HTMLInputElement).checked
+											? new Set(records.map((r) => r.id))
+											: new Set();
+									}}
+								/>
+							</th>
 							<th>{m.reports_col_release()}</th>
-							<th>{m.reports_col_stage()}</th>
-							<th>{m.reports_col_reason()}</th>
-							<th>{m.reports_col_date()}</th>
+							<th class="hidden sm:table-cell">{m.reports_col_stage()}</th>
+							<th class="hidden md:table-cell">{m.reports_col_reason()}</th>
+							<th class="hidden sm:table-cell">{m.reports_col_date()}</th>
 							<th>{m.reports_col_status()}</th>
-							<th></th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-base-content/8">
 						{#each records as record (record.id)}
 							{@const expanded = expandedId === record.id}
+							{@const isSelected = selectedIds.has(record.id)}
 							<tr
-								class="hover cursor-pointer"
+								class="cursor-pointer transition-colors {isSelected
+									? 'bg-primary/5'
+									: 'hover:bg-base-200/50'}"
 								onclick={() => (expandedId = expanded ? null : record.id)}
 							>
-								<td
-									><div class="flex items-center gap-1.5">
+								<td class="pr-0" onclick={(e) => e.stopPropagation()}>
+									<input
+										type="checkbox"
+										class="checkbox checkbox-xs"
+										checked={isSelected}
+										onchange={() => {
+											const next = new Set(selectedIds);
+											if (isSelected) next.delete(record.id);
+											else next.add(record.id);
+											selectedIds = next;
+										}}
+									/>
+								</td>
+								<td class="max-w-[42vw] sm:max-w-xs">
+									<div class="flex items-start gap-1.5">
 										<ChevronRight
-											class="h-3 w-3 shrink-0 text-base-content/30 transition-transform {expanded
+											class="mt-0.5 h-3.5 w-3.5 shrink-0 text-base-content/30 transition-transform {expanded
 												? 'rotate-90'
 												: ''}"
 										/>
-										<span class="max-w-xs truncate font-medium">{record.releaseTitle ?? '-'}</span>
-									</div></td
-								>
-								<td class="text-sm">{stageLabel(String(record.failureStage ?? ''))}</td>
-								<td class="max-w-xs text-sm text-base-content/70"
-									><span class="line-clamp-1">{record.reasonDetail ?? record.reason ?? '-'}</span
-									></td
-								>
-								<td class="text-sm whitespace-nowrap text-base-content/60"
-									>{formatDate(String(record.failedAt ?? ''))}</td
-								>
-								<td
-									><span class="badge badge-sm {statusBadgeClass(String(record.status ?? ''))}"
-										>{statusLabel(String(record.status ?? ''))}</span
-									></td
-								>
-								<td></td>
+										<div class="min-w-0">
+											<p class="truncate leading-tight font-semibold">
+												{record.releaseTitle ?? '-'}
+											</p>
+											<p class="truncate text-xs text-base-content/40 sm:hidden">
+												{stageLabel(String(record.failureStage ?? ''))}
+											</p>
+										</div>
+									</div>
+								</td>
+								<td class="hidden whitespace-nowrap sm:table-cell">
+									<span class="badge badge-sm badge-warning"
+										>{stageLabel(String(record.failureStage ?? ''))}</span
+									>
+								</td>
+								<td class="hidden max-w-50 text-sm text-base-content/70 md:table-cell">
+									<span class="line-clamp-1">{record.reasonDetail ?? record.reason ?? '-'}</span>
+								</td>
+								<td class="hidden text-sm whitespace-nowrap text-base-content/60 sm:table-cell">
+									{timeAgo(String(record.failedAt ?? ''))}
+								</td>
+								<td>
+									<div class="flex items-center gap-1.5">
+										<span class="badge badge-sm {statusBadgeClass(String(record.status ?? ''))}"
+											>{statusLabel(String(record.status ?? ''))}</span
+										>
+										{#if (record.attemptCount ?? 1) >= 3}
+											<span class="badge badge-sm badge-error">{record.attemptCount}×</span>
+										{/if}
+									</div>
+								</td>
 							</tr>
+
 							{#if expanded}
 								<tr>
-									<td colspan="6" class="p-0">
-										<div
-											class="space-y-2 border-l-4 border-l-primary bg-base-200 py-4 pr-6 pl-10 text-sm"
-										>
-											{#if record.sourcePath}<div class="flex gap-2">
-													<span class="w-24 shrink-0 text-base-content/50">Source</span><span
-														class="font-mono text-xs break-all">{record.sourcePath}</span
-													>
-												</div>{/if}
-											{#if record.destinationPath}<div class="flex gap-2">
-													<span class="w-24 shrink-0 text-base-content/50">Destination</span><span
-														class="font-mono text-xs break-all">{record.destinationPath}</span
-													>
-												</div>{/if}
-											{#if record.reasonDetail}<div class="flex gap-2">
-													<span class="w-24 shrink-0 text-base-content/50">Error</span><span
-														class="text-error">{record.reasonDetail}</span
-													>
-												</div>{/if}
-											{#if Array.isArray(record.dangerousFiles) && record.dangerousFiles.length > 0}<div
-													class="flex gap-2"
+									<td colspan="6" class="border-b border-base-content/10 p-0">
+										<div class="border-l-4 border-l-primary bg-base-200 py-5 pr-6 pl-10">
+											{#if record.sourcePath}
+												<div
+													class="mb-5 rounded-lg border border-base-content/12 bg-base-100 px-3 py-2.5 font-mono text-xs break-all"
 												>
-													<span class="w-24 shrink-0 text-base-content/50">Dangerous</span>
-													<ul class="list-disc pl-4 font-mono text-xs">
-														{#each record.dangerousFiles as f (f)}<li>
-																{f.path} ({f.extension})
-															</li>{/each}
-													</ul>
-												</div>{/if}
-											<div class="flex gap-2">
-												<span class="w-24 shrink-0 text-base-content/50">Attempts</span><span
-													>{record.attemptCount ?? 1}</span
-												>
-											</div>
-											{#if record.correlationId}<div class="flex gap-2">
-													<span class="w-24 shrink-0 text-base-content/50">Trace</span><a
-														href="/settings/monitoring/logs?correlationId={record.correlationId}"
-														class="link font-mono text-xs link-primary"
-														onclick={(e) => e.stopPropagation()}>{m.reports_viewTrace()} ↗</a
-													>
-												</div>{/if}
-											{#if record.status !== 'resolved'}
-												<div class="mt-3 flex gap-2">
-													<button
-														class="btn btn-success btn-xs"
-														onclick={(e) => {
-															e.stopPropagation();
-															void resolveRecord(record.id);
-														}}
-													>
-														<Check class="h-3 w-3" />
-														{m.reports_resolve()}
-													</button>
+													<span class="mr-2 font-semibold text-base-content/50">SOURCE</span>
+													<span class="text-base-content/80">{record.sourcePath}</span>
 												</div>
 											{/if}
+
+											<div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+												<!-- LEFT: Error details -->
+												<div class="space-y-3">
+													<h4
+														class="text-[10px] font-bold tracking-widest text-base-content/50 uppercase"
+													>
+														Error Details
+													</h4>
+													{#if record.reasonDetail || record.reason}
+														<div
+															class="rounded-lg border border-error/20 bg-error/5 px-3 py-2.5 shadow-sm"
+														>
+															<div class="flex items-start gap-2">
+																<X class="mt-0.5 h-3.5 w-3.5 shrink-0 text-error" />
+																<div class="min-w-0">
+																	<p class="text-sm font-semibold text-base-content">
+																		{record.reasonDetail ?? record.reason}
+																	</p>
+																	{#if record.reasonDetail && record.reason && record.reasonDetail !== record.reason}
+																		<p class="mt-0.5 text-xs text-base-content/45">
+																			{record.reason}
+																		</p>
+																	{/if}
+																</div>
+															</div>
+														</div>
+													{/if}
+													{#if Array.isArray(record.dangerousFiles) && record.dangerousFiles.length > 0}
+														<div
+															class="rounded-lg border border-warning/20 bg-warning/5 px-3 py-2.5"
+														>
+															<p class="mb-1.5 text-xs font-semibold text-warning">Blocked files</p>
+															<ul class="space-y-0.5 font-mono text-xs text-base-content/70">
+																{#each record.dangerousFiles as f (f)}<li>
+																		{f.path}
+																		<span class="text-base-content/40">({f.extension})</span>
+																	</li>{/each}
+															</ul>
+														</div>
+													{/if}
+													{#if !record.reasonDetail && !record.reason && !(Array.isArray(record.dangerousFiles) && record.dangerousFiles.length > 0)}
+														<div
+															class="rounded-lg border border-dashed border-base-content/20 px-3 py-5 text-center"
+														>
+															<p class="text-sm text-base-content/50">No error details recorded.</p>
+														</div>
+													{/if}
+												</div>
+
+												<!-- RIGHT: Import details + actions -->
+												<div class="space-y-3">
+													<h4
+														class="text-[10px] font-bold tracking-widest text-base-content/50 uppercase"
+													>
+														Import Details
+													</h4>
+													<div
+														class="overflow-hidden rounded-lg border border-base-content/12 bg-base-100 shadow-sm"
+													>
+														<div
+															class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
+														>
+															<span class="font-medium text-base-content/55">Stage</span>
+															<span class="badge badge-sm badge-warning"
+																>{stageLabel(String(record.failureStage ?? ''))}</span
+															>
+														</div>
+														{#if (record as Record<string, unknown>).downloadClientName}
+															<div
+																class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
+															>
+																<span class="font-medium text-base-content/55"
+																	>{m.reports_import_detail_client()}</span
+																>
+																<span class="font-mono text-xs text-base-content/80"
+																	>{(record as Record<string, unknown>)
+																		.downloadClientName as string}</span
+																>
+															</div>
+														{/if}
+														{#if record.destinationPath}
+															<div
+																class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
+															>
+																<span class="shrink-0 font-medium text-base-content/55"
+																	>Destination</span
+																>
+																<span class="ml-4 truncate text-right font-mono text-xs"
+																	>{record.destinationPath}</span
+																>
+															</div>
+														{/if}
+														<div
+															class="flex items-center justify-between border-b border-base-content/8 px-3 py-2.5 text-sm"
+														>
+															<span class="font-medium text-base-content/55">Attempts</span>
+															<span
+																class="font-semibold {(record.attemptCount ?? 1) >= 5
+																	? 'text-error'
+																	: ''}">{record.attemptCount ?? 1}</span
+															>
+														</div>
+														<div
+															class="flex items-center justify-between px-3 py-2.5 text-sm {record.correlationId
+																? 'border-b border-base-content/8'
+																: ''}"
+														>
+															<span class="font-medium text-base-content/55">Failed</span>
+															<span class="text-base-content/70"
+																>{formatDate(String(record.failedAt ?? ''))}</span
+															>
+														</div>
+														{#if record.correlationId}
+															<div
+																class="flex items-center justify-between gap-4 px-3 py-2.5 text-sm"
+															>
+																<span class="shrink-0 font-medium text-base-content/55"
+																	>Correlation ID</span
+																>
+																<span class="truncate font-mono text-xs text-base-content/60">
+																	<span class="sm:hidden"
+																		>{shortCorr(String(record.correlationId))}…</span
+																	>
+																	<span class="hidden sm:inline"
+																		>{String(record.correlationId)}</span
+																	>
+																</span>
+															</div>
+														{/if}
+													</div>
+
+													<!-- Actions -->
+													<div class="flex flex-wrap gap-2">
+														{#if record.correlationId}
+															<a
+																href="/settings/monitoring/logs?correlationId={record.correlationId}"
+																class="btn gap-1.5 border border-base-content/15 bg-base-100 btn-xs hover:bg-base-200"
+																onclick={(e) => e.stopPropagation()}
+															>
+																<ExternalLink class="h-3 w-3" />
+																View trace ({shortCorr(String(record.correlationId))})
+															</a>
+														{:else}
+															<button
+																class="btn cursor-not-allowed gap-1.5 border border-base-content/10 bg-base-100 text-base-content/30 btn-xs"
+																disabled
+																onclick={(e) => e.stopPropagation()}
+															>
+																<ExternalLink class="h-3 w-3" />
+																View trace
+															</button>
+														{/if}
+														{#if record.sourcePath}
+															<button
+																class="btn gap-1.5 border border-base-content/15 bg-base-100 btn-xs hover:bg-base-200"
+																onclick={(e) => {
+																	e.stopPropagation();
+																	void copyToClipboard(String(record.sourcePath)).then((ok) => {
+																		if (ok) toasts.success('Path copied');
+																		else toasts.error('Failed to copy');
+																	});
+																}}
+															>
+																<Copy class="h-3 w-3" />
+																Copy path
+															</button>
+														{/if}
+														<button
+															class="btn gap-1.5 border border-base-content/15 bg-base-100 btn-xs hover:bg-base-200"
+															onclick={(e) => {
+																e.stopPropagation();
+																void copyImportBundle(record as Record<string, unknown>);
+															}}
+														>
+															<Copy class="h-3 w-3" />
+															{m.reports_import_copyBundle()}
+														</button>
+														{#if record.status === 'failed'}
+															<button
+																class="btn gap-1.5 border border-base-content/15 bg-base-100 btn-xs hover:bg-base-200"
+																onclick={async (e) => {
+																	e.stopPropagation();
+																	const res = await fetch(
+																		`/api/reports/import-failures/${record.id}/retry`,
+																		{ method: 'POST' }
+																	);
+																	const result = await res.json();
+																	if (result.success)
+																		toasts.success(m.reports_import_retry_queued());
+																	else toasts.error(m.reports_import_retry_failed());
+																	if (result.success) loadRecords('import-failures', currentPage);
+																}}
+															>
+																<RefreshCw class="h-3 w-3" />
+																{m.reports_import_retry()}
+															</button>
+														{/if}
+														{#if record.status !== 'resolved'}
+															<button
+																class="btn gap-1.5 btn-success btn-xs"
+																onclick={(e) => {
+																	e.stopPropagation();
+																	void resolveRecord(record.id);
+																}}
+															>
+																<Check class="h-3 w-3" />
+																{m.reports_resolve()}
+															</button>
+														{/if}
+													</div>
+												</div>
+											</div>
 										</div>
 									</td>
 								</tr>
@@ -2189,7 +2573,6 @@
 				</table>
 			</div>
 		{/if}
-
 		<!-- GENERIC TABLE other tabs -->
 	{:else}
 		{#if loading}
