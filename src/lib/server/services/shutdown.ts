@@ -1,6 +1,7 @@
 import { logger } from '$lib/logging';
 import { getImportService } from '$lib/server/downloadClients/import/ImportService.js';
 import { getServiceManager } from '$lib/server/services/service-manager.js';
+import { sqlite } from '$lib/server/db/index.js';
 
 let isShuttingDown = false;
 
@@ -25,6 +26,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
 		clearTimeout(timeout);
 
 		logger.info('All services stopped successfully');
+		sqlite.pragma('wal_checkpoint(TRUNCATE)');
 		process.exit(0);
 	} catch (error) {
 		logger.error('Error during graceful shutdown', error);
