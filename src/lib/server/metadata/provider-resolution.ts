@@ -9,13 +9,10 @@
  * TMDB is always the canonical identity/overview/display record.
  */
 
-import { randomUUID } from 'node:crypto';
 import { buildMetadataProviderRegistry } from './provider-registry.js';
 import { resolveAnimeProviderRef } from './provider-ref-resolver.js';
 import type { MetadataDetails, MetadataMediaType } from './providers/types.js';
 import { createChildLogger } from '$lib/logging';
-import { db } from '$lib/server/db/index.js';
-import { metadataConflicts } from '$lib/server/db/schema.js';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 
@@ -78,7 +75,7 @@ export async function enrichAnimeMetadata(
 
 				result.refs[providerId] = ref;
 				result.details[providerId] = details;
-				providerResults[providerId] = { found: true };
+				providerResults[providerId] = { found: true, id: ref };
 			} catch (err) {
 				const error = err instanceof Error ? err.message : String(err);
 				providerResults[providerId] = { found: false, error };
@@ -89,31 +86,6 @@ export async function enrichAnimeMetadata(
 			}
 		})
 	);
-
-	// Record a metadata conflict when all configured providers failed to resolve
-	if (
-		input.tmdbId &&
-		configuredProviders.length > 0 &&
-		configuredProviders.every((id) => !providerResults[id]?.found)
-	) {
-		const hasErrors = configuredProviders.some((id) => providerResults[id]?.error);
-		db.insert(metadataConflicts)
-			.values({
-				id: randomUUID(),
-				correlationId: randomUUID(),
-				tmdbId: input.tmdbId,
-				mediaType: mediaType === 'tv' || mediaType === 'anime' ? 'tv' : 'movie',
-				mediaTitle: input.tmdbTitle,
-				conflictType: hasErrors ? 'provider_error' : 'missing_provider',
-				providersChecked: configuredProviders,
-				providerResults,
-				detectedAt: new Date().toISOString(),
-				status: 'unresolved'
-			})
-			.catch((err) =>
-				logger.warn({ err }, '[AnimeEnrichment] Failed to persist metadata conflict record')
-			);
-	}
 
 	return result;
 }

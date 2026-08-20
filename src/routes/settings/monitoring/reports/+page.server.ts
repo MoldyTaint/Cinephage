@@ -4,13 +4,12 @@ import {
 	rejectedReleases,
 	importFailures,
 	renamingFailures,
-	unmatchedFiles,
-	metadataConflicts
+	unmatchedFiles
 } from '$lib/server/db/schema.js';
 import { count, ne } from 'drizzle-orm';
 
 export const load: PageServerLoad = async () => {
-	const [[rejected], [imports], [renaming], [unmatched], [metadata]] = await Promise.all([
+	const [[rejected], [imports], [renaming], [unmatched]] = await Promise.all([
 		db
 			.select({ count: count() })
 			.from(rejectedReleases)
@@ -20,11 +19,7 @@ export const load: PageServerLoad = async () => {
 			.select({ count: count() })
 			.from(renamingFailures)
 			.where(ne(renamingFailures.status, 'resolved')),
-		db.select({ count: count() }).from(unmatchedFiles),
-		db
-			.select({ count: count() })
-			.from(metadataConflicts)
-			.where(ne(metadataConflicts.status, 'resolved'))
+		db.select({ count: count() }).from(unmatchedFiles)
 	]);
 
 	return {
@@ -32,8 +27,7 @@ export const load: PageServerLoad = async () => {
 			rejectedReleases: rejected.count,
 			importFailures: imports.count,
 			renamingFailures: renaming.count,
-			unmatchedImports: unmatched.count,
-			metadataConflicts: metadata.count
+			unmatchedImports: unmatched.count
 		}
 	};
 };
