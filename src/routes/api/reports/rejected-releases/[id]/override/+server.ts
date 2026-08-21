@@ -80,6 +80,9 @@ export const POST: RequestHandler = async (event) => {
 				target,
 				options: {
 					isAutomatic: false,
+					force: true,
+					skipBlocklist: true,
+					allowSidegrade: false,
 					acquisitionProtocol: 'default'
 				}
 			},

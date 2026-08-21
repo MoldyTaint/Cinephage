@@ -637,7 +637,6 @@
 				toasts.success('Record resolved');
 				refreshCounts();
 				if (tab === 'rejected-releases') loadRejectedStats();
-				else if (tab === 'unmatched-imports') loadUnmatchedStats();
 				else if (tab === 'import-failures') loadImportStats();
 				else if (tab === 'renaming-failures') loadRenamingStats();
 			} else {
@@ -1297,7 +1296,7 @@
 													</h4>
 													{#if candidates && candidates.length > 0}
 														<div class="space-y-2">
-															{#each candidates.slice(0, 5) as c, i ((c, i))}
+															{#each candidates.slice(0, 5) as c, i (i)}
 																<div
 																	class="rounded-lg border border-base-content/12 bg-base-100 px-3 py-2.5 shadow-sm"
 																>
@@ -1379,7 +1378,9 @@
 																>{m.reports_detail_mediaType()}</span
 															>
 															<span class="badge badge-outline badge-sm"
-																>{mediaTypeLabel(record.mediaType)}</span
+																>{mediaTypeLabel(
+																	record.mediaType as string | null | undefined
+																)}</span
 															>
 														</div>
 														{#if record.contentCategory && record.contentCategory !== 'main'}
@@ -2008,7 +2009,9 @@
 																	>{m.reports_detail_mediaType()}</span
 																>
 																<span class="badge badge-outline badge-sm"
-																	>{mediaTypeLabel(record.mediaType)}</span
+																	>{mediaTypeLabel(
+																		record.mediaType as string | null | undefined
+																	)}</span
 																>
 															</div>
 														{/if}
@@ -2485,7 +2488,7 @@
 										<span class="badge badge-sm {statusBadgeClass(String(record.status ?? ''))}"
 											>{statusLabel(String(record.status ?? ''))}</span
 										>
-										{#if (record.attemptCount ?? 1) >= 3}
+										{#if ((record.attemptCount as number | undefined) ?? 1) >= 3}
 											<span class="badge badge-sm badge-error">{record.attemptCount}×</span>
 										{/if}
 									</div>
@@ -2612,7 +2615,8 @@
 																>{m.reports_detail_attempts()}</span
 															>
 															<span
-																class="font-semibold {(record.attemptCount ?? 1) >= 5
+																class="font-semibold {((record.attemptCount as
+																	number | undefined) ?? 1) >= 5
 																	? 'text-error'
 																	: ''}">{record.attemptCount ?? 1}</span
 															>

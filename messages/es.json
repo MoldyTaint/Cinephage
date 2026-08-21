@@ -4471,7 +4471,7 @@
 	"toast_library_unmatched_filesMatched": "Archivos coincidentes exitosamente",
 	"toast_library_unmatched_folderForceMatched": "Emparejados {matched} de {total} archivos",
 	"toast_library_unmatched_folderMatched": "Carpeta coincidente exitosamente",
-	"toast_library_unmatched_forceMatchAllComplete": "Forzado coincidencia de {matched} de {eligible} archivos",
+	"toast_library_unmatched_forceMatchAllComplete": "Se emparejaron {matched} de {eligible} archivos ({failed} fallidos)",
 	"toast_library_unmatched_forceMatchFailed": "Error al forzar la coincidencia del archivo",
 	"toast_library_unmatched_forceMatched": "Forzado a coincidir con el candidato principal",
 	"toast_library_unmatched_reprocessStarted": "Reprocesando archivos sin coincidencia…",

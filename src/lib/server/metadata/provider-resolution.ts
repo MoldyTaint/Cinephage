@@ -46,7 +46,7 @@ export async function enrichAnimeMetadata(
 	if (!registry.enrichmentEnabled) return result;
 
 	const providerIds = ['anilist', 'mal'] as const;
-	const providerResults: Record<string, { found: boolean; error?: string }> = {};
+	const providerResults: Record<string, { found: boolean; id?: string; error?: string }> = {};
 	const configuredProviders: string[] = [];
 
 	await Promise.all(

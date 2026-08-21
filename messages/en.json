@@ -4471,7 +4471,7 @@
 	"toast_library_unmatched_filesMatched": "Files matched successfully",
 	"toast_library_unmatched_folderForceMatched": "Matched {matched} of {total} files",
 	"toast_library_unmatched_folderMatched": "Folder matched successfully",
-	"toast_library_unmatched_forceMatchAllComplete": "Force matched {matched} of {eligible} files",
+	"toast_library_unmatched_forceMatchAllComplete": "Force matched {matched} of {eligible} files ({failed} failed)",
 	"toast_library_unmatched_forceMatchFailed": "Failed to force match file",
 	"toast_library_unmatched_forceMatched": "Force matched to top candidate",
 	"toast_library_unmatched_reprocessStarted": "Re-processing unmatched files…",
