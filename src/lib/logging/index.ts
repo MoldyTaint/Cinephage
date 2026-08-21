@@ -354,7 +354,7 @@ function getBasePinoOptions(): LoggerOptions {
 function createRootPinoLogger(): PinoLogger {
 	const options = getBasePinoOptions();
 
-	if (import.meta.env.SSR && isDev()) {
+	if (import.meta.env?.SSR && isDev()) {
 		return pino(
 			options,
 			pino.transport({
@@ -381,7 +381,7 @@ let logHistoryService: {
 	append(entry: CapturedLogEntry): void;
 } | null = null;
 
-if (import.meta.env.SSR) {
+if (import.meta.env?.SSR) {
 	const { AsyncLocalStorage } = await import('node:async_hooks');
 	asyncLocalStorage = new AsyncLocalStorage<LogStore>();
 }
@@ -496,7 +496,7 @@ function prepareLogEvent(level: LogLevel, args: unknown[]): PreparedLogEvent {
 }
 
 function captureLogEvent(level: LogLevel, event: PreparedLogEvent): void {
-	if (!import.meta.env.SSR) {
+	if (!import.meta.env?.SSR) {
 		return;
 	}
 
