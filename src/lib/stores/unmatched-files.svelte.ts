@@ -200,6 +200,7 @@ class UnmatchedFilesStore {
 
 	setViewMode(mode: ViewMode) {
 		this.state.viewMode = mode;
+		this.state.selectedFiles.clear();
 		try {
 			localStorage.setItem(STORAGE_KEY_VIEW_MODE, mode);
 		} catch {
