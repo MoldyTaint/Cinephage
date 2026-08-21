@@ -18,6 +18,7 @@ import { db } from '$lib/server/db/index.js';
 import { settings } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
+import { resolveAppVersion } from '$lib/server/version.js';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 
@@ -186,7 +187,7 @@ function todayStr(): string {
 }
 
 function buildPreUpdateFilename(schemaVersion: number): string {
-	const version = process.env.npm_package_version ?? 'unknown';
+	const version = resolveAppVersion();
 	const date = todayStr();
 	return `cinephage-pre-update-v${version}-schema${schemaVersion}-${date}.db`;
 }
