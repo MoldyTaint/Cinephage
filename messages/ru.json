@@ -4471,7 +4471,7 @@
 	"toast_library_unmatched_filesMatched": "Файлы успешно сопоставлены",
 	"toast_library_unmatched_folderForceMatched": "Сопоставлено {matched} из {total} файлов",
 	"toast_library_unmatched_folderMatched": "Папка успешно сопоставлена",
-	"toast_library_unmatched_forceMatchAllComplete": "Принудительно сопоставлено {matched} из {eligible} файлов",
+	"toast_library_unmatched_forceMatchAllComplete": "Принудительно сопоставлено {matched} из {eligible} файлов ({failed} ошибок)",
 	"toast_library_unmatched_forceMatchFailed": "Не удалось принудительно сопоставить файл",
 	"toast_library_unmatched_forceMatched": "Принудительно сопоставлено с лучшим кандидатом",
 	"toast_library_unmatched_reprocessStarted": "Повторная обработка несопоставленных файлов…",

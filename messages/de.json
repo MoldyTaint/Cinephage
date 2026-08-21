@@ -4471,7 +4471,7 @@
 	"toast_library_unmatched_filesMatched": "Dateien erfolgreich abgeglichen",
 	"toast_library_unmatched_folderForceMatched": "{matched} von {total} Dateien abgeglichen",
 	"toast_library_unmatched_folderMatched": "Ordner erfolgreich abgeglichen",
-	"toast_library_unmatched_forceMatchAllComplete": "{matched} von {eligible} Dateien zwangsweise zugeordnet",
+	"toast_library_unmatched_forceMatchAllComplete": "{matched} von {eligible} Dateien erfolgreich zugeordnet ({failed} fehlgeschlagen)",
 	"toast_library_unmatched_forceMatchFailed": "Zwangszuordnung der Datei fehlgeschlagen",
 	"toast_library_unmatched_forceMatched": "Zwangsweise dem besten Kandidaten zugeordnet",
 	"toast_library_unmatched_reprocessStarted": "Nicht zugeordnete Dateien werden erneut verarbeitet…",
