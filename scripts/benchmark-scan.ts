@@ -59,8 +59,8 @@
  *          each episode_file.series_id must reference a real series row.
  *       4. Re-run the scan against the same temp DB by temporarily hardcoding
  *          DATA_DIR to the preserved data dir and the root folder ID.
- *       
- * 		Reconcile will then have real rows to process and will exercise the 
+ *
+ * 		Reconcile will then have real rows to process and will exercise the
  * 		bulk hasFile update transactions.
  */
 

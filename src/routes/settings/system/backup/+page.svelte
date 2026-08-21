@@ -1,6 +1,18 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { Download, Upload, RefreshCw, AlertCircle, CheckCircle } from 'lucide-svelte';
+	import {
+		Download,
+		Upload,
+		RefreshCw,
+		AlertCircle,
+		CheckCircle,
+		Database,
+		HardDrive,
+		ChevronDown,
+		ChevronUp,
+		FolderOpen
+	} from 'lucide-svelte';
+	import { FolderBrowser } from '$lib/components/library';
 	import type { LayoutData } from '../$types';
 	import { invalidateAll } from '$app/navigation';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
@@ -136,6 +148,110 @@
 				return m.settings_system_backup_summaryLiveTv({ count: String(totalRows) });
 		}
 	}
+
+	// =====================
+	// DB Backup State
+	// =====================
+	interface DbBackupFile {
+		filename: string;
+		path: string;
+		sizeBytes: number;
+		createdAt: string;
+	}
+
+	interface DbBackupSettings {
+		enabled: boolean;
+		directory: string;
+		retentionCount: number;
+	}
+
+	let dbBackupSettings = $state<DbBackupSettings>({
+		enabled: true,
+		directory: '',
+		retentionCount: 7
+	});
+	let dbScheduledBackups = $state<DbBackupFile[]>([]);
+	let dbPreUpdateBackups = $state<DbBackupFile[]>([]);
+	let dbBackupLoading = $state(false);
+	let dbBackupRunning = $state(false);
+	let dbBackupError = $state<string | null>(null);
+	let dbBackupSuccess = $state<string | null>(null);
+	let showFolderBrowser = $state(false);
+	let showAllScheduled = $state(false);
+	let showAllPreUpdate = $state(false);
+	const BACKUP_LIST_PREVIEW = 3;
+
+	async function loadDbBackupData(): Promise<void> {
+		dbBackupLoading = true;
+		dbBackupError = null;
+		try {
+			const res = await fetch('/api/settings/system/db-backup');
+			const data = await res.json();
+			if (data.success) {
+				dbBackupSettings = data.settings;
+				dbScheduledBackups = data.scheduledBackups;
+				dbPreUpdateBackups = data.preUpdateBackups;
+			}
+		} catch {
+			dbBackupError = m.settings_system_backup_db_errorLoad();
+		} finally {
+			dbBackupLoading = false;
+		}
+	}
+
+	async function saveDbBackupSettings(): Promise<void> {
+		dbBackupError = null;
+		dbBackupSuccess = null;
+		try {
+			const res = await fetch('/api/settings/system/db-backup', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(dbBackupSettings)
+			});
+			const data = await res.json();
+			if (data.success) {
+				dbBackupSettings = data.settings;
+				dbBackupSuccess = m.settings_system_backup_db_settingsSaved();
+				setTimeout(() => {
+					dbBackupSuccess = null;
+				}, 3000);
+			}
+		} catch {
+			dbBackupError = m.settings_system_backup_db_errorSave();
+		}
+	}
+
+	async function runDbBackupNow(): Promise<void> {
+		dbBackupRunning = true;
+		dbBackupError = null;
+		dbBackupSuccess = null;
+		try {
+			const res = await fetch('/api/settings/system/db-backup/run', { method: 'POST' });
+			const data = await res.json();
+			if (data.success) {
+				dbBackupSuccess = m.settings_system_backup_db_backupCreated();
+				await loadDbBackupData();
+				setTimeout(() => {
+					dbBackupSuccess = null;
+				}, 4000);
+			} else {
+				dbBackupError = data.error ?? m.settings_system_backup_db_errorBackup();
+			}
+		} catch {
+			dbBackupError = m.settings_system_backup_db_errorBackup();
+		} finally {
+			dbBackupRunning = false;
+		}
+	}
+
+	function fmtBytes(bytes: number): string {
+		if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+		return `${(bytes / 1024).toFixed(0)} KB`;
+	}
+
+	$effect(() => {
+		loadDbBackupData();
+	});
 
 	let backupExportPassphrase = $state('');
 	let backupIncludeIndexerCookies = $state(false);
@@ -618,6 +734,221 @@
 				</div>
 			</div>
 		</div>
+	</SettingsSection>
+
+	<SettingsSection title={m.settings_system_backup_db_sectionTitle()}>
+		{#if showFolderBrowser}
+			<FolderBrowser
+				value={dbBackupSettings.directory || '/'}
+				onSelect={(path) => {
+					dbBackupSettings.directory = path;
+					showFolderBrowser = false;
+					saveDbBackupSettings();
+				}}
+				onCancel={() => (showFolderBrowser = false)}
+			/>
+		{:else}
+			<div class="space-y-6">
+				{#if dbBackupError}
+					<div class="alert alert-error">
+						<AlertCircle class="h-4 w-4" />
+						<span>{dbBackupError}</span>
+					</div>
+				{/if}
+
+				{#if dbBackupSuccess}
+					<div class="alert alert-success">
+						<CheckCircle class="h-4 w-4" />
+						<span>{dbBackupSuccess}</span>
+					</div>
+				{/if}
+
+				<!-- Settings -->
+				<div class="space-y-4 rounded-box border border-base-300 bg-base-200 p-4">
+					<div class="flex items-center justify-between">
+						<div>
+							<p class="font-medium">{m.settings_system_backup_db_scheduledTitle()}</p>
+							<p class="text-sm text-base-content/60">
+								{m.settings_system_backup_db_scheduledDesc()}
+							</p>
+							{#if dbScheduledBackups.length > 0}
+								{@const latest = [...dbScheduledBackups].sort((a, b) =>
+									b.filename.localeCompare(a.filename)
+								)[0]}
+								<p class="mt-1 text-xs text-base-content/40">
+									{m.settings_system_backup_db_lastBackup({
+										timestamp: latest.filename
+											.replace('cinephage-backup-', '')
+											.replace('.db', '')
+											.replace(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/, '$1-$2-$3 $4:$5:$6')
+									})}
+								</p>
+							{/if}
+						</div>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary"
+							bind:checked={dbBackupSettings.enabled}
+							onchange={saveDbBackupSettings}
+						/>
+					</div>
+
+					<div class="space-y-2">
+						<label class="label" for="db-backup-retention">
+							<span class="label-text font-medium"
+								>{m.settings_system_backup_db_copiesToKeep()}</span
+							>
+						</label>
+						<select
+							id="db-backup-retention"
+							class="select-bordered select w-full max-w-xs"
+							bind:value={dbBackupSettings.retentionCount}
+							onchange={saveDbBackupSettings}
+						>
+							{#each [3, 5, 7, 14, 30] as n (n)}
+								<option value={n}>{n}</option>
+							{/each}
+						</select>
+						<p class="text-xs text-base-content/50">
+							{m.settings_system_backup_db_copiesToKeepHint()}
+						</p>
+					</div>
+
+					<div class="space-y-2">
+						<label class="label" for="db-backup-dir">
+							<span class="label-text font-medium"
+								>{m.settings_system_backup_db_backupFolder()}</span
+							>
+						</label>
+						<div class="flex gap-2">
+							<input
+								id="db-backup-dir"
+								type="text"
+								class="input-bordered input flex-1"
+								placeholder="Default: data/backups/scheduled"
+								bind:value={dbBackupSettings.directory}
+								onblur={saveDbBackupSettings}
+							/>
+							<button
+								class="btn btn-square btn-outline"
+								title="Browse folders"
+								onclick={() => (showFolderBrowser = true)}
+							>
+								<FolderOpen class="h-4 w-4" />
+							</button>
+						</div>
+						<p class="text-xs text-base-content/50">
+							{m.settings_system_backup_db_backupFolderHint()}
+						</p>
+					</div>
+
+					<div class="flex justify-end">
+						<button
+							class="btn gap-2 btn-primary btn-sm"
+							onclick={runDbBackupNow}
+							disabled={dbBackupRunning}
+						>
+							{#if dbBackupRunning}
+								<RefreshCw class="h-4 w-4 animate-spin" />
+								{m.settings_system_backup_db_backingUp()}
+							{:else}
+								<HardDrive class="h-4 w-4" />
+								{m.settings_system_backup_db_backUpNow()}
+							{/if}
+						</button>
+					</div>
+				</div>
+
+				<!-- Scheduled backup list -->
+				<div class="space-y-2">
+					<h4 class="flex items-center gap-2 text-sm font-medium">
+						<Database class="h-4 w-4" />
+						{m.settings_system_backup_db_scheduledTitle()}
+						{#if dbScheduledBackups.length > 0}
+							<span class="badge badge-sm badge-primary">{dbScheduledBackups.length}</span>
+						{/if}
+					</h4>
+					{#if dbBackupLoading}
+						<p class="text-sm text-base-content/50">{m.settings_system_backup_db_noScheduled()}</p>
+					{:else if dbScheduledBackups.length === 0}
+						<p class="text-sm text-base-content/50">{m.settings_system_backup_db_noScheduled()}</p>
+					{:else}
+						{@const reversed = [...dbScheduledBackups].reverse()}
+						{@const visible = showAllScheduled ? reversed : reversed.slice(0, BACKUP_LIST_PREVIEW)}
+						<ul class="space-y-1">
+							{#each visible as f (f.filename)}
+								<li
+									class="flex items-center justify-between rounded-box bg-base-200 px-3 py-2 text-sm"
+								>
+									<span class="truncate font-mono">{f.filename}</span>
+									<span class="ml-4 shrink-0 text-base-content/50">{fmtBytes(f.sizeBytes)}</span>
+								</li>
+							{/each}
+						</ul>
+						{#if reversed.length > BACKUP_LIST_PREVIEW}
+							<button
+								class="flex items-center gap-1 text-xs text-base-content/50 transition-colors hover:text-base-content"
+								onclick={() => (showAllScheduled = !showAllScheduled)}
+							>
+								{#if showAllScheduled}
+									<ChevronUp class="h-3 w-3" /> {m.settings_system_backup_db_showFewer()}
+								{:else}
+									<ChevronDown class="h-3 w-3" />
+									{m.settings_system_backup_db_showAll({ count: String(reversed.length) })}
+								{/if}
+							</button>
+						{/if}
+					{/if}
+				</div>
+
+				<!-- Pre-update backup list -->
+				<div class="space-y-2">
+					<h4 class="flex items-center gap-2 text-sm font-medium">
+						<Database class="h-4 w-4 text-warning" />
+						{m.settings_system_backup_db_preUpdateTitle()}
+						<span class="badge badge-sm badge-secondary"
+							>{m.settings_system_backup_db_alwaysOn()}</span
+						>
+					</h4>
+					<p class="alert-sm alert alert-info">
+						{m.settings_system_backup_db_preUpdateDesc()}
+					</p>
+					{#if dbBackupLoading}
+						<p class="text-sm text-base-content/50">{m.common_loading()}</p>
+					{:else if dbPreUpdateBackups.length === 0}
+						<p class="text-sm text-base-content/50">{m.settings_system_backup_db_noPreUpdate()}</p>
+					{:else}
+						{@const reversedPre = [...dbPreUpdateBackups].reverse()}
+						{@const visiblePre = showAllPreUpdate
+							? reversedPre
+							: reversedPre.slice(0, BACKUP_LIST_PREVIEW)}
+						<ul class="space-y-1">
+							{#each visiblePre as f (f.filename)}
+								<li
+									class="flex items-center justify-between rounded-box bg-base-200 px-3 py-2 text-sm"
+								>
+									<span class="truncate font-mono">{f.filename}</span>
+									<span class="ml-4 shrink-0 text-base-content/50">{fmtBytes(f.sizeBytes)}</span>
+								</li>
+							{/each}
+						</ul>
+						{#if reversedPre.length > BACKUP_LIST_PREVIEW}
+							<button
+								class="flex items-center gap-1 text-xs text-base-content/50 transition-colors hover:text-base-content"
+								onclick={() => (showAllPreUpdate = !showAllPreUpdate)}
+							>
+								{#if showAllPreUpdate}
+									<ChevronUp class="h-3 w-3" /> {m.settings_system_backup_db_showFewer()}
+								{:else}
+									<ChevronDown class="h-3 w-3" />
+									{m.settings_system_backup_db_showAll({ count: String(reversedPre.length) })}
+								{/if}
+							</button>
+						{/if}
+					{/if}
+				</div>
+			</div>
+		{/if}
 	</SettingsSection>
 </SettingsPage>
 

@@ -6,6 +6,8 @@ import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 import { syncSchema } from './schema-sync';
+import { tableExists, getAppliedMigrations, getSchemaVersion } from './migration-helpers';
+import { MIGRATIONS } from './migrations/index';
 
 // Ensure data directory exists before creating database connection
 const DATA_DIR = process.env.DATA_DIR || 'data';
@@ -77,6 +79,22 @@ export async function initializeDatabase(): Promise<void> {
 
 	try {
 		logger.info('Initializing database...');
+
+		// Pre-update backup: if pending migrations exist, snapshot the DB before applying them.
+		// Only triggered on existing installs (schema_migrations table present) with new migrations.
+		const hasMigrationsTable = tableExists(sqlite, 'schema_migrations');
+		if (hasMigrationsTable) {
+			const applied = getAppliedMigrations(sqlite);
+			const hasPending = MIGRATIONS.some((m) => {
+				const row = applied.get(m.version);
+				return !row || row.success === 0;
+			});
+			if (hasPending) {
+				const { dbBackupService } = await import('./DbBackupService.js');
+				const schemaVersion = getSchemaVersion(sqlite);
+				await dbBackupService.runPreUpdateBackup(sqlite, schemaVersion);
+			}
+		}
 
 		// Use embedded schema sync (no external migration files needed)
 		syncSchema(sqlite);
