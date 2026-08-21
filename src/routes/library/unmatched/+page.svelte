@@ -299,7 +299,7 @@
 	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 		<div>
 			<h1 class="text-3xl font-bold">{m.library_unmatched_heading()}</h1>
-			<p class="text-warning">
+			<p class={pagination.total === 0 ? 'text-success' : 'text-warning'}>
 				{m.library_unmatched_filesNeedAttention({ count: pagination.total })}
 			</p>
 		</div>
