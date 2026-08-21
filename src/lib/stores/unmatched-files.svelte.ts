@@ -246,6 +246,7 @@ class UnmatchedFilesStore {
 					this.state.selectedFiles.delete(id);
 					this.state.files = this.state.files.filter((f) => f.id !== id);
 				});
+				this.state.pagination.total = Math.max(0, this.state.pagination.total - fileIds.length);
 				return result.data;
 			} else {
 				throw new Error(result.error || 'Failed to delete files');
@@ -285,6 +286,7 @@ class UnmatchedFilesStore {
 					this.state.selectedFiles.delete(id);
 					this.state.files = this.state.files.filter((f) => f.id !== id);
 				});
+				this.state.pagination.total = Math.max(0, this.state.pagination.total - fileIds.length);
 				return result.data;
 			} else {
 				throw new Error(result.error || 'Failed to match files');
