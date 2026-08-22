@@ -106,6 +106,8 @@ export class PlaybackSessionService {
 			provider: source.provider,
 			entryUrl: source.url,
 			sourceType: source.type,
+			sourceFormat: source.sourceFormat,
+			sourceContentType: source.sourceContentType,
 			requestHeaders: buildSourceHeaders(source),
 			subtitles: normalizeSubtitleList(source),
 			attempts: [],

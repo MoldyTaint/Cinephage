@@ -21,6 +21,8 @@ interface CreatePlaybackSessionInput {
 	provider?: string;
 	entryUrl: string;
 	sourceType: StreamType;
+	sourceFormat?: string;
+	sourceContentType?: string;
 	requestHeaders: Record<string, string>;
 	subtitles?: PlaybackSessionSubtitle[];
 	attempts: PlaybackSessionAttempt[];
@@ -53,6 +55,8 @@ export class PlaybackSessionStore {
 			provider: input.provider,
 			entryUrl: input.entryUrl,
 			sourceType: input.sourceType,
+			sourceFormat: input.sourceFormat,
+			sourceContentType: input.sourceContentType,
 			requestHeaders: { ...input.requestHeaders },
 			subtitles: input.subtitles ? [...input.subtitles] : [],
 			createdAt: now,

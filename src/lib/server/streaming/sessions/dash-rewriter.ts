@@ -67,7 +67,15 @@ export function rewriteDashManifest(options: RewriteDashOptions): string {
 		if (options.apiKey) {
 			url.searchParams.set('api_key', options.apiKey);
 		}
-		return url.toString();
+		let output = url.toString();
+		const templateParameters = new Map<string, string>();
+		for (const match of absoluteUrl.matchAll(/\$([A-Za-z][A-Za-z0-9]*)(?:%0\d+d)?\$/g)) {
+			templateParameters.set(match[1], match[0]);
+		}
+		for (const [name, template] of templateParameters) {
+			output += `${output.includes('?') ? '&' : '?'}dash_${encodeURIComponent(name)}=${template}`;
+		}
+		return output;
 	}
 
 	/**
@@ -98,7 +106,9 @@ export function rewriteDashManifest(options: RewriteDashOptions): string {
 		// is rewritten too, so the client resolves media templates against the
 		// session-proxied root rather than the CDN.
 		if (resolved.origin === origin && resolved.pathname.startsWith(mpdDirPath)) {
-			return buildDashProxyUrl(resolved.pathname.slice(mpdDirPath.length));
+			return buildDashProxyUrl(
+				`${resolved.pathname.slice(mpdDirPath.length)}${resolved.search}${resolved.hash}`
+			);
 		}
 
 		// Anything else -> registered session resource.

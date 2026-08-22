@@ -231,6 +231,7 @@ describe('LibraryStreamingModule', () => {
 		}
 
 		it('normalizes a dash source with string subtitles, requiresProxy and expiresAt', async () => {
+			const futureExpiry = Math.floor(Date.now() / 1000) + 3600;
 			const httpGet = vi.fn().mockResolvedValue({
 				status: 200,
 				body: JSON.stringify({
@@ -243,7 +244,7 @@ describe('LibraryStreamingModule', () => {
 					},
 					subtitles: ['https://cdn.example.com/sub/en.srt?signed'],
 					requiresProxy: true,
-					expiresAt: 1786206904
+					expiresAt: futureExpiry
 				})
 			});
 
@@ -255,11 +256,33 @@ describe('LibraryStreamingModule', () => {
 			const source = result.sources[0];
 			expect(source.type).toBe('dash');
 			expect(source.requiresProxy).toBe(true);
-			expect(source.expiresAt).toBe(1786206904);
+			expect(source.expiresAt).toBe(futureExpiry);
 			expect(source.headers?.Cookie).toContain('CloudFront-Policy=xyz');
 			expect(source.subtitles).toEqual([
 				{ url: 'https://cdn.example.com/sub/en.srt?signed', label: 'und', language: 'und' }
 			]);
+		});
+
+		it('keeps an obfuscated direct source as a file instead of assuming HLS', async () => {
+			const httpGet = vi.fn().mockResolvedValue({
+				status: 200,
+				body: JSON.stringify({
+					url: 'https://cdn.example.com/obfuscated/movie.jpeg?token=signed',
+					provider: 'Direct',
+					quality: '2160p',
+					protocol: 'mkv',
+					headers: { Referer: 'https://player.example.com/' }
+				})
+			});
+
+			const mod = new LibraryStreamingModule(settings, createFakeCore(httpGet) as never);
+			const result = await mod.getStreams({ tmdbId: 550, type: 'movie' });
+
+			expect(result.success).toBe(true);
+			expect(result.sources[0].type).toBe('file');
+			expect(result.sources[0].sourceFormat).toBe('mkv');
+			expect(result.sources[0].sourceContentType).toBe('video/x-matroska');
+			expect(result.sources[0].requiresSegmentProxy).toBe(false);
 		});
 
 		it('toggles the version format and retries once on 401', async () => {

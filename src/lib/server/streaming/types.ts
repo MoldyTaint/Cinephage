@@ -2,7 +2,7 @@
  * Shared streaming types used by the active Cinephage API path.
  */
 
-export type StreamType = 'hls' | 'm3u8' | 'mp4' | 'dash';
+export type StreamType = 'hls' | 'm3u8' | 'mp4' | 'dash' | 'file';
 
 export type StreamStatus = 'working' | 'down' | 'unknown' | 'validating';
 
@@ -18,6 +18,10 @@ export interface StreamSource {
 	title: string;
 	url: string;
 	type: StreamType;
+	/** Raw protocol/container value reported by the upstream API, when available. */
+	sourceFormat?: string;
+	/** Authoritative media type derived from the upstream protocol/container metadata. */
+	sourceContentType?: string;
 	referer: string;
 	requiresSegmentProxy: boolean;
 	status?: StreamStatus;
@@ -97,7 +101,7 @@ export interface CinephageApiStream {
 	url: string;
 	provider: string;
 	quality: string;
-	protocol: 'hls' | 'mp4';
+	protocol: string;
 	headers: Record<string, string>;
 	subtitles?: StreamSubtitle[];
 }
@@ -163,6 +167,8 @@ export interface PlaybackSession {
 	provider?: string;
 	entryUrl: string;
 	sourceType: StreamType;
+	sourceFormat?: string;
+	sourceContentType?: string;
 	requestHeaders: Record<string, string>;
 	subtitles: PlaybackSessionSubtitle[];
 	createdAt: number;

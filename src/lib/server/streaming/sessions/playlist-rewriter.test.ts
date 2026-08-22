@@ -41,6 +41,21 @@ function rewrite(playlist: string, playlistUrl = 'https://cdn.example.com/master
 }
 
 describe('rewriteSessionPlaylist', () => {
+	it('does not turn a growing media playlist into a finite VOD', () => {
+		const playlist = [
+			'#EXTM3U',
+			'#EXT-X-TARGETDURATION:10',
+			'#EXT-X-MEDIA-SEQUENCE:42',
+			'#EXTINF:10.0,',
+			'segment42.ts'
+		].join('\n');
+
+		const result = rewrite(playlist);
+
+		expect(result).not.toContain('#EXT-X-PLAYLIST-TYPE:VOD');
+		expect(result).not.toContain('#EXT-X-ENDLIST');
+	});
+
 	it('rewrites basic master playlist with variant streams', () => {
 		const playlist = [
 			'#EXTM3U',

@@ -152,10 +152,6 @@ export function rewriteSessionPlaylist(options: RewritePlaylistOptions): string 
 
 	let previousWasExtinf = false;
 	let previousWasStreamInf = false;
-	let hasMediaTags = false;
-	let hasMasterTags = false;
-	let hasEndlist = false;
-	let hasPlaylistType = false;
 
 	for (const line of lines) {
 		const trimmed = line.trim();
@@ -193,7 +189,6 @@ export function rewriteSessionPlaylist(options: RewritePlaylistOptions): string 
 			result.push(line);
 			previousWasExtinf = true;
 			previousWasStreamInf = false;
-			hasMediaTags = true;
 			continue;
 		}
 
@@ -201,13 +196,10 @@ export function rewriteSessionPlaylist(options: RewritePlaylistOptions): string 
 			result.push(line);
 			previousWasExtinf = false;
 			previousWasStreamInf = true;
-			hasMasterTags = true;
 			continue;
 		}
 
 		if (line.startsWith('#') || trimmed === '') {
-			if (trimmed === '#EXT-X-ENDLIST') hasEndlist = true;
-			if (trimmed.startsWith('#EXT-X-PLAYLIST-TYPE:')) hasPlaylistType = true;
 			result.push(line);
 			continue;
 		}
@@ -235,14 +227,7 @@ export function rewriteSessionPlaylist(options: RewritePlaylistOptions): string 
 		previousWasStreamInf = false;
 	}
 
-	let rewritten = result.join('\n');
-
-	if (hasMediaTags && !hasMasterTags && !hasEndlist) {
-		if (!hasPlaylistType) {
-			rewritten = rewritten.replace('#EXTM3U\n', '#EXTM3U\n#EXT-X-PLAYLIST-TYPE:VOD\n');
-		}
-		rewritten = rewritten.trimEnd() + '\n#EXT-X-ENDLIST\n';
-	}
+	const rewritten = result.join('\n');
 
 	if (options.injectSubtitles) {
 		return injectSubtitleTracks(rewritten, options.baseUrl, options.session, options.apiKey);
