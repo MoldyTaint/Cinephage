@@ -430,3 +430,51 @@ describe('Manual match via unmatchedFileService (bug #488)', () => {
 		expect(await countEpisodeFiles('s1')).toBe(0);
 	});
 });
+
+describe('series-directory context matching (issue #513)', () => {
+	it('matches a TV file whose filename is polluted, via its series folder name', async () => {
+		await insertRootFolder('rf-513', '/media/series', 'tv');
+		await insertUnmatchedFile({
+			id: 'uf-513',
+			path: '/media/series/Breaking Bad/Season 3/Breaking Bad - [3x13] - Full Measure.mkv',
+			rootFolderId: 'rf-513',
+			mediaType: 'tv',
+			parsedSeason: 3,
+			parsedEpisode: 13
+		});
+
+		mocks.searchTv.mockImplementation(async (query: string) => {
+			if (/breaking bad/i.test(query)) {
+				return {
+					results: [{ id: 1396, name: 'Breaking Bad', first_air_date: '2008-01-20' }]
+				};
+			}
+			return { results: [] };
+		});
+		mocks.getTVShow.mockResolvedValue({
+			id: 1396,
+			name: 'Breaking Bad',
+			first_air_date: '2008-01-20',
+			seasons: [{ season_number: 3, name: 'Season 3', episode_count: 13 }]
+		});
+		mocks.getSeason.mockResolvedValue({
+			episodes: [
+				{
+					id: 1,
+					season_number: 3,
+					episode_number: 13,
+					name: 'Full Measure',
+					overview: '',
+					air_date: '2010-06-13',
+					runtime: 47
+				}
+			]
+		});
+
+		const result = await mediaMatcherService.processUnmatchedFile('uf-513');
+		expect(result.matched).toBe(true);
+		expect(result.tmdbId).toBe(1396);
+		const [created] = await testDb.db.select().from(series).where(eq(series.tmdbId, 1396));
+		expect(created.title).toBe('Breaking Bad');
+	});
+});

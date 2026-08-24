@@ -22,7 +22,7 @@ import {
 import { eq, and } from 'drizzle-orm';
 import { tmdb, type SearchResult } from '$lib/server/tmdb.js';
 import { mediaInfoService } from './media-info.js';
-import { basename, dirname, extname, join } from 'path';
+import { basename, dirname, extname, join, relative } from 'path';
 import { RootFolderConflictError } from '$lib/errors';
 import { getSubtitleSettingsService } from '$lib/server/subtitles/services/SubtitleSettingsService.js';
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
@@ -224,11 +224,45 @@ export class MediaMatcherService {
 	 * 3. IMDB ID embedded in path → cross-reference via TMDB (100% confidence)
 	 * 4. Title search with fuzzy matching (variable confidence)
 	 */
+	/**
+	 * Derive candidate series names from the file's path segments relative to
+	 * its root folder. For TV layouts (<root>/<Series>/Season NN/<file>), the
+	 * first segment is the series directory — the most reliable title signal
+	 * available when the filename itself is polluted with episode identifiers.
+	 */
+	private async getPathSeriesCandidates(
+		file: typeof unmatchedFiles.$inferSelect
+	): Promise<string[]> {
+		if (file.mediaType !== 'tv' || !file.rootFolderId) return [];
+
+		const [root] = await db.select().from(rootFolders).where(eq(rootFolders.id, file.rootFolderId));
+		if (!root) return [];
+
+		const rel = relative(root.path, file.path);
+		const segments = rel.split(/[\\/]/).filter((s) => s.length > 0);
+		if (segments.length <= 1) return []; // file sits directly under the root
+
+		const candidates: string[] = [];
+		for (const segment of segments.slice(0, 2)) {
+			const parsedSegment = parseRelease(segment);
+			const cleaned = (parsedSegment.cleanTitle || '').trim();
+			if (!cleaned) continue;
+			// Skip structural folders ("Season 03", "Specials", "Extras", ...)
+			if (/^(season|s\d|specials?|extras?|featurettes?)/i.test(cleaned)) continue;
+			if (!candidates.some((c) => c.toLowerCase() === cleaned.toLowerCase())) {
+				candidates.push(cleaned);
+			}
+			if (candidates.length >= 2) break;
+		}
+		return candidates;
+	}
+
 	private async findMatches(
 		title: string,
 		year: number | undefined,
 		mediaType: 'movie' | 'tv',
-		filePath: string
+		filePath: string,
+		seriesCandidates: string[] = []
 	): Promise<SuggestedMatch[]> {
 		try {
 			// Extract external IDs from folder/file path
@@ -292,9 +326,41 @@ export class MediaMatcherService {
 				}
 			}
 
-			// Priority 4: Fall back to title search
+			// Search result shared by the remaining priorities
 			let results: SearchResult;
 
+			// Priority 4 (TV): series-directory context. For files organized as
+			// <root>/<Series>/Season NN/<file>, the folder name is the series
+			// title — far more reliable than the filename, which is often
+			// dominated by episode identifiers TMDB cannot match (#513).
+			if (mediaType === 'tv' && seriesCandidates.length > 0) {
+				for (const candidate of seriesCandidates) {
+					results = await tmdb.searchTv(candidate, undefined, true);
+					if (!results.results || results.results.length === 0) continue;
+
+					const matches: SuggestedMatch[] = results.results.slice(0, 5).map((result) => {
+						const resultTitle = result.title || result.name || '';
+						const resultDate = result.first_air_date || result.release_date;
+						const resultYear = resultDate ? parseInt(resultDate.split('-')[0]) : undefined;
+
+						return {
+							tmdbId: result.id,
+							title: resultTitle,
+							year: resultYear,
+							confidence: this.calculateMatchConfidence(candidate, year, resultTitle, resultYear)
+						};
+					});
+					matches.sort((a, b) => b.confidence - a.confidence);
+
+					logger.info(
+						{ filePath, seriesCandidate: candidate, candidates: matches.length },
+						'[MediaMatcher] Matched via series directory name'
+					);
+					return matches;
+				}
+			}
+
+			// Priority 5: Fall back to filename-title search
 			// Use skipFilters=true to bypass global filters (min rating, vote count)
 			// so that all TMDB results are visible for matching
 			if (mediaType === 'movie') {
@@ -500,12 +566,15 @@ export class MediaMatcherService {
 			'[MediaMatcher] Processing unmatched file'
 		);
 
-		// Find matches (checks for embedded IDs first, then falls back to title search)
+		// Find matches (checks for embedded IDs first, then series-directory
+		// context, then falls back to title search)
+		const seriesCandidates = await this.getPathSeriesCandidates(file);
 		const matches = await this.findMatches(
 			searchTitle,
 			searchYear,
 			file.mediaType as 'movie' | 'tv',
-			file.path
+			file.path,
+			seriesCandidates
 		);
 
 		if (matches.length === 0) {
