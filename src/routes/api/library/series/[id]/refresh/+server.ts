@@ -24,6 +24,7 @@ import {
 	deleteAllSeasonsAndEpisodes
 } from '$lib/server/metadata/EpisodeGroupService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+import { resolveLanguage } from '$lib/server/metadata/metadata-refresh.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import {
 	startRefresh,
@@ -80,9 +81,18 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			};
 
 			try {
+				// Honor the per-series metadata language so a manual full rebuild
+				// produces the same localized titles/overviews the background
+				// metadata refresh writes. Null keeps the global TMDB default.
+				const fetchLanguage = await resolveLanguage(
+					seriesData.metadataLanguage ?? null,
+					seriesData.tmdbId,
+					`/tv/${seriesData.tmdbId}`
+				);
+
 				// Fetch fresh data from TMDB (canonical identity/overview/genres)
 				const [tmdbSeries, externalIds] = await Promise.all([
-					tmdb.getTVShow(seriesData.tmdbId),
+					tmdb.getTVShow(seriesData.tmdbId, fetchLanguage),
 					tmdb.getTvExternalIds(seriesData.tmdbId).catch(() => null)
 				]);
 
@@ -245,7 +255,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 							try {
 								const tmdbSeason = await tmdb.getSeason(
 									seriesData.tmdbId,
-									tmdbSeasonInfo.season_number
+									tmdbSeasonInfo.season_number,
+									fetchLanguage
 								);
 
 								const isSpecials = tmdbSeasonInfo.season_number === 0;

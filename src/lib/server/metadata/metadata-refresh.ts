@@ -2,6 +2,7 @@ import { db } from '$lib/server/db/index.js';
 import { movies, series, episodes } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
+import { isGeneratedEpisodeTitle } from './episode-title.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
@@ -15,7 +16,7 @@ export function resolveLanguageForFetch(
 	return metadataLanguage || null;
 }
 
-async function resolveLanguage(
+export async function resolveLanguage(
 	metaLanguage: string | null,
 	tmdbId: number,
 	endpoint: string
@@ -174,8 +175,35 @@ async function refreshEpisodeMetadata(
 			);
 			const ed = epDetails as Record<string, unknown>;
 			const epUpdate: Record<string, unknown> = {};
-			if (typeof ed.name === 'string') epUpdate.title = ed.name;
-			if (typeof ed.overview === 'string') epUpdate.overview = ed.overview;
+
+			let name = typeof ed.name === 'string' ? ed.name : undefined;
+			let overview = typeof ed.overview === 'string' ? ed.overview.trim() : '';
+
+			// TMDB synthesizes "Episode N"-style names in the requested language
+			// when no real translation exists (e.g. German "Folge 4"). Those are
+			// not translations — fall back to the original-language data rather
+			// than clobbering the real title.
+			const needsFallback =
+				language !== null && (name === undefined || isGeneratedEpisodeTitle(name));
+			if (needsFallback) {
+				try {
+					const original = (await tmdb.fetch(
+						`/tv/${tmdbId}/season/${ep.seasonNumber}/episode/${ep.episodeNumber}`
+					)) as Record<string, unknown>;
+					const originalName = typeof original.name === 'string' ? original.name : undefined;
+					if (originalName && !isGeneratedEpisodeTitle(originalName)) {
+						name = originalName;
+						if (!overview && typeof original.overview === 'string') {
+							overview = original.overview.trim();
+						}
+					}
+				} catch {
+					// keep localized data if the fallback request fails
+				}
+			}
+
+			if (name !== undefined && !isGeneratedEpisodeTitle(name)) epUpdate.title = name;
+			if (overview) epUpdate.overview = overview;
 
 			if (Object.keys(epUpdate).length > 0) {
 				await db.update(episodes).set(epUpdate).where(eq(episodes.id, ep.id));
