@@ -108,6 +108,7 @@ describe('PlexStatsProvider', () => {
 		mockFetch.mockResolvedValueOnce(mockSectionsResponse());
 		mockFetch.mockResolvedValueOnce(mockEmptyLibrary('1'));
 		mockFetch.mockResolvedValueOnce(mockEmptyLibrary('2'));
+		mockFetch.mockResolvedValueOnce(mockEmptyLibrary('2'));
 
 		const provider = new PlexStatsProvider(mockConfig);
 		await provider.fetchAllItems();
@@ -168,6 +169,7 @@ describe('PlexStatsProvider', () => {
 		mockFetch.mockResolvedValueOnce(
 			mockSectionsResponse([{ key: '2', type: 'show', title: 'TV Shows' }])
 		);
+		mockFetch.mockResolvedValueOnce(mockEmptyLibrary('2'));
 		mockFetch.mockResolvedValueOnce(
 			mockFetchResponse({
 				MediaContainer: { Metadata: [episode], totalSize: 1 }
@@ -481,5 +483,115 @@ describe('PlexStatsProvider', () => {
 		const result = await provider.fetchAllItems();
 
 		expect(result.items[0].lastPlayedDate).toBe(new Date(epochValue * 1000).toISOString());
+	});
+});
+
+describe('PlexStatsProvider episode series-id resolution', () => {
+	let mockFetch: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		mockFetch = vi.fn();
+		vi.stubGlobal('fetch', mockFetch);
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	function makeShow(overrides: Record<string, any> = {}) {
+		return {
+			ratingKey: '300',
+			title: 'Test Series',
+			type: 'show',
+			Guid: [{ id: 'tmdb://555' }, { id: 'tvdb://777' }],
+			...overrides
+		};
+	}
+
+	function makeEpisode(overrides: Record<string, any> = {}) {
+		return {
+			ratingKey: '200',
+			title: 'Test Episode',
+			year: 2023,
+			grandparentTitle: 'Test Series',
+			grandparentRatingKey: '300',
+			parentIndex: 1,
+			index: 5,
+			viewCount: 2,
+			lastViewedAt: 1704067200,
+			duration: 2700000,
+			Media: [
+				{
+					videoCodec: 'h264',
+					container: 'mp4',
+					Part: [{ size: 1073741824, Stream: [] }]
+				}
+			],
+			...overrides
+		};
+	}
+
+	async function fetchWithShowsAndEpisodes(episodes: any[], shows: any[] = [makeShow()]) {
+		mockFetch.mockResolvedValueOnce(
+			mockSectionsResponse([{ key: '2', type: 'show', title: 'TV Shows' }])
+		);
+		mockFetch.mockResolvedValueOnce(
+			mockFetchResponse({
+				MediaContainer: { Metadata: shows, totalSize: shows.length }
+			})
+		);
+		mockFetch.mockResolvedValueOnce(
+			mockFetchResponse({
+				MediaContainer: { Metadata: episodes, totalSize: episodes.length }
+			})
+		);
+
+		const provider = new PlexStatsProvider(mockConfig);
+		return provider.fetchAllItems();
+	}
+
+	it('replaces episode-scoped tmdb guids with the parent series tmdbId', async () => {
+		// Per Plex's metadata provider spec, episode Guid arrays carry
+		// EPISODE-scoped ids (e.g. tmdb://1418023), not the series id.
+		const episode = makeEpisode({
+			Guid: [{ id: 'tmdb://1418023' }, { id: 'tvdb://6179251' }, { id: 'imdb://tt7308394' }]
+		});
+
+		const result = await fetchWithShowsAndEpisodes([episode]);
+
+		expect(result.items[0].tmdbId).toBe(555);
+	});
+
+	it('backfills the series tmdbId when the episode carries no tmdb guid', async () => {
+		const episode = makeEpisode({ Guid: [{ id: 'tvdb://6179251' }] });
+
+		const result = await fetchWithShowsAndEpisodes([episode]);
+
+		expect(result.items[0].tmdbId).toBe(555);
+		expect(result.items[0].tvdbId).toBe(6179251);
+	});
+
+	it('keeps episode-level tvdb and imdb ids from the episode itself', async () => {
+		const episode = makeEpisode({
+			Guid: [{ id: 'tmdb://1418023' }, { id: 'tvdb://6179251' }, { id: 'imdb://tt7308394' }]
+		});
+
+		const result = await fetchWithShowsAndEpisodes([episode]);
+
+		expect(result.items[0].tvdbId).toBe(6179251);
+		expect(result.items[0].imdbId).toBe('tt7308394');
+	});
+
+	it('yields null tmdbId rather than an unresolvable episode-scoped id when the show has no tmdb guid', async () => {
+		const episode = makeEpisode({
+			Guid: [{ id: 'tmdb://1418023' }]
+		});
+
+		const result = await fetchWithShowsAndEpisodes(
+			[episode],
+			[makeShow({ Guid: [{ id: 'tvdb://777' }] })]
+		);
+
+		expect(result.items[0].tmdbId).toBeNull();
 	});
 });

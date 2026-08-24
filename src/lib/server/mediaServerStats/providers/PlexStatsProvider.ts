@@ -23,9 +23,28 @@ export class PlexStatsProvider implements MediaServerStatsProvider {
 					items.push(this.normalizeItem(raw, 'movie'));
 				}
 			} else if (section.type === 'show') {
+				// Plex attaches only EPISODE-scoped ids to episode Guid arrays
+				// (tmdb://<episode-id> per the metadata provider spec), while local
+				// reconciliation keys episodes by SERIES tmdbId + season + episode.
+				// Fetch the show rows so each episode can inherit its series id,
+				// mirroring the Jellyfin/Emby backfill in EmbyCompatibleProvider.
+				const shows = await this.fetchLibraryItems(section.key, 2);
+				const seriesTmdbByRatingKey = new Map<string, number | null>();
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				for (const raw of shows) {
+					if (raw?.ratingKey != null) {
+						seriesTmdbByRatingKey.set(String(raw.ratingKey), this.parseGuids(raw).tmdbId);
+					}
+				}
+
 				const episodes = await this.fetchLibraryItems(section.key, 4);
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				for (const raw of episodes) {
-					items.push(this.normalizeItem(raw, 'episode'));
+					const item = this.normalizeItem(raw, 'episode');
+					const parentKey =
+						raw?.grandparentRatingKey != null ? String(raw.grandparentRatingKey) : null;
+					item.tmdbId = (parentKey ? seriesTmdbByRatingKey.get(parentKey) : null) ?? null;
+					items.push(item);
 				}
 			}
 		}
