@@ -281,6 +281,31 @@ describe('ReleaseParser', () => {
 			expect(result.episode?.isSeasonPack).toBe(false);
 		});
 
+		it('should not fabricate a multi-episode range from an unrelated bare number in the title', () => {
+			const result = parseRelease(
+				'Die Legende von Korra (2012) ger - S02E08 - 020 - Wie alles begann, Teil 2 [WEBRip-1080p][8bit][x265][DD+ 2.0]-WOTT'
+			);
+
+			expect(result.episode?.season).toBe(2);
+			expect(result.episode?.episodes).toEqual([8]);
+			expect(result.episode?.isSeasonPack).toBe(false);
+		});
+
+		it('should not treat a spaced standalone number after SxxExx as a range end', () => {
+			const result = parseRelease('Show Name S01E05 - 12 - Episode Title [1080p]');
+
+			expect(result.episode?.episodes).toEqual([5]);
+			expect(result.episode?.isSeasonPack).toBe(false);
+		});
+
+		it('should still parse spaced ranges when the second number is explicitly marked with E', () => {
+			const result = parseRelease('Show Name S01E05 - E08 [1080p]');
+
+			expect(result.episode?.season).toBe(1);
+			expect(result.episode?.episodes).toContain(5);
+			expect(result.episode?.episodes).toContain(8);
+		});
+
 		it('should parse complete series packs', () => {
 			const result = parseRelease('Friends.Complete.Series.S01-S10.1080p.BluRay.x264-GROUP');
 
@@ -482,6 +507,33 @@ describe('ReleaseParser', () => {
 			const result = parseRelease('Movie.2023.1080p.BluRay.x264-GROUP');
 
 			expect(result.languages).toContain('en');
+		});
+
+		it('should detect a bare ISO 639-1 code in the fan-release name slot', () => {
+			const result = parseRelease(
+				'Love, Death & Robots (2019) de - S01E05 - SUCKER OF SOULS [WEB-DL-1080p][DV][x265]-WACHi'
+			);
+
+			expect(result.languages).toContain('de');
+		});
+
+		it('should detect multiple bare space-delimited codes', () => {
+			const result = parseRelease('Die Legende von Korra (2012) de en - S02E05 - Title');
+
+			expect(result.languages).toContain('de');
+			expect(result.languages).toContain('en');
+		});
+
+		it('should not treat dotted scene-title words as bare language codes', () => {
+			const result = parseRelease('Le.Chateau.de.Ma.Mere.2023.1080p.BluRay.x264-GROUP');
+
+			expect(result.languages).not.toContain('de');
+		});
+
+		it('should not detect codes embedded inside larger words', () => {
+			const result = parseRelease('Death.Watch.2023.1080p.BluRay.x264-GROUP');
+
+			expect(result.languages).toEqual(['en']);
 		});
 	});
 

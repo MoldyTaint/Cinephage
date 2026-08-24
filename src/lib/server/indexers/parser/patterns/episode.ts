@@ -55,6 +55,35 @@ function createDefaultEpisodeInfo(): EpisodeInfo {
 }
 
 /**
+ * Shared extraction for explicit SxxExx-yy / SxxExx-Eyy episode ranges.
+ */
+function extractExplicitEpisodeRange(match: RegExpMatchArray): Partial<EpisodeInfo> {
+	const season = parseInt(match[1], 10);
+	const startEpisode = parseInt(match[2], 10);
+	const endEpisode = parseInt(match[3], 10);
+	const totalEpisodes = match[4] ? parseInt(match[4], 10) : undefined;
+	const episodes: number[] = [];
+
+	if (
+		!Number.isNaN(startEpisode) &&
+		!Number.isNaN(endEpisode) &&
+		endEpisode >= startEpisode &&
+		endEpisode - startEpisode < 300
+	) {
+		for (let ep = startEpisode; ep <= endEpisode; ep++) {
+			episodes.push(ep);
+		}
+	}
+
+	return {
+		season,
+		episodes: episodes.length > 0 ? episodes : [startEpisode],
+		isSeasonPack: true,
+		...inferCompleteFromEpisodeRange(season, startEpisode, endEpisode, totalEpisodes)
+	};
+}
+
+/**
  * Episode patterns ordered by specificity (most specific first)
  */
 const EPISODE_PATTERNS: Array<{
@@ -256,34 +285,20 @@ const EPISODE_PATTERNS: Array<{
 
 	// Explicit episode range using SxxExx-yy / SxxExx-Eyy:
 	// "S01E01-08", "S1E1-E8"
+	//
+	// Split into two forms so unrelated bare numbers embedded in release
+	// titles can't fabricate ranges (e.g. "Show - S02E08 - 020 - Episode
+	// Title" where "020" is an absolute-episode field):
+	//   - an unprefixed second number requires a TIGHT hyphen ("S01E01-08")
+	//   - loose/spaced separators require an explicit "E" prefix ("E05 - E08")
+	{
+		pattern: /\bS(\d{1,2})[\s._-]?E(\d{1,3})-(\d{1,3})(?![:\d])(?:\s*(?:of|\/)\s*(\d{1,3}))?\b/i,
+		extract: extractExplicitEpisodeRange
+	},
 	{
 		pattern:
-			/\bS(\d{1,2})[\s._-]?E(\d{1,3})[\s._-]?-[\s._-]?E?(\d{1,3})(?!:)(?:\s*(?:of|\/)\s*(\d{1,3}))?\b/i,
-		extract: (match) => {
-			const season = parseInt(match[1], 10);
-			const startEpisode = parseInt(match[2], 10);
-			const endEpisode = parseInt(match[3], 10);
-			const totalEpisodes = match[4] ? parseInt(match[4], 10) : undefined;
-			const episodes: number[] = [];
-
-			if (
-				!Number.isNaN(startEpisode) &&
-				!Number.isNaN(endEpisode) &&
-				endEpisode >= startEpisode &&
-				endEpisode - startEpisode < 300
-			) {
-				for (let ep = startEpisode; ep <= endEpisode; ep++) {
-					episodes.push(ep);
-				}
-			}
-
-			return {
-				season,
-				episodes: episodes.length > 0 ? episodes : [startEpisode],
-				isSeasonPack: true,
-				...inferCompleteFromEpisodeRange(season, startEpisode, endEpisode, totalEpisodes)
-			};
-		}
+			/\bS(\d{1,2})[\s._-]?E(\d{1,3})[\s._-]?-[\s._-]?E(\d{1,3})(?!:)(?:\s*(?:of|\/)\s*(\d{1,3}))?\b/i,
+		extract: extractExplicitEpisodeRange
 	},
 
 	// Standard S##E## format (most common, handles multi-episode)

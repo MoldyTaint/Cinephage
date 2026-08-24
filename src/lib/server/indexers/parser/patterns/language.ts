@@ -142,6 +142,43 @@ const LANGUAGE_PATTERNS: Array<{ pattern: RegExp; code: string }> = [
 ];
 
 /**
+ * Bare ISO 639-1 codes accepted in the fan-release naming slot directly after
+ * a parenthesized year, e.g. "Name (2019) de - S01E05" or
+ * "Name (2012) de en - S02E05".
+ *
+ * Deliberately conservative:
+ *  - only this exact slot qualifies (codes elsewhere in the title are ignored),
+ *    because post-normalization the parser cannot distinguish a bare "de" in
+ *    "le chateau de ma mere" from a language tag;
+ *  - codes that double as common words are excluded (it, no, he, la, hi, el…).
+ */
+const BARE_ISO639_1_CODES = new Set([
+	'de',
+	'en',
+	'fr',
+	'es',
+	'pt',
+	'ru',
+	'pl',
+	'sv',
+	'fi',
+	'tr',
+	'cs',
+	'hu',
+	'da',
+	'nl',
+	'ja',
+	'ko',
+	'zh',
+	'th',
+	'vi'
+]);
+
+/** Captures the optional two-letter tag list that follows a "(YYYY)" year. */
+const FAN_TAG_SLOT =
+	/\((?:19|20)\d{2}\)\s+([A-Za-z]{2}(?:\s+[A-Za-z]{2}){0,5})(?=\s*(?:[-–)\]]|$))/;
+
+/**
  * Extract all languages from a release title
  *
  * @param title - The release title to parse
@@ -158,6 +195,16 @@ export function extractLanguages(title: string): LanguageMatch {
 			seen.add(code);
 			languages.push(code);
 			matchedTexts.push(match[0]);
+		}
+	}
+
+	const tagSlot = title.match(FAN_TAG_SLOT);
+	if (tagSlot?.[1]) {
+		for (const token of tagSlot[1].toLowerCase().split(/\s+/)) {
+			if (!BARE_ISO639_1_CODES.has(token) || seen.has(token)) continue;
+			seen.add(token);
+			languages.push(token);
+			matchedTexts.push(token);
 		}
 	}
 
