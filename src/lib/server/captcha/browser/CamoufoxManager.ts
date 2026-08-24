@@ -254,6 +254,15 @@ export class CamoufoxManager {
 		headless: boolean;
 		proxy?: ProxyConfig;
 		acquireTimeoutMs?: number;
+		/**
+		 * Load the shadow-unlock addon (default true).
+		 *
+		 * The addon patches Element.prototype.attachShadow in the page MAIN world,
+		 * which Cloudflare's Turnstile can detect as DOM tampering and respond to
+		 * with an unwinnable managed-challenge loop. Callers should solve passively
+		 * without it first and only opt in for genuinely interactive challenges.
+		 */
+		shadowUnlockAddon?: boolean;
 	}): Promise<ManagedBrowser> {
 		// Wait for availability check to complete before checking isAvailable
 		await this.waitForAvailabilityCheck();
@@ -296,10 +305,13 @@ export class CamoufoxManager {
 			};
 
 			// Load the shadow-unlock addon so interactive Turnstile checkboxes
-			// (in closed shadow DOM) are reachable and clickable.
-			const addonPath = resolveAddonPath();
-			if (addonPath) {
-				camoufoxOptions.addons = [addonPath];
+			// (in closed shadow DOM) are reachable and clickable. Opt-out when the
+			// caller is making a clean passive attempt (see option docs).
+			if (options.shadowUnlockAddon !== false) {
+				const addonPath = resolveAddonPath();
+				if (addonPath) {
+					camoufoxOptions.addons = [addonPath];
+				}
 			}
 
 			// Add proxy if provided
@@ -410,7 +422,12 @@ export class CamoufoxManager {
 	 */
 	async createBrowserForDomain(
 		_domain: string,
-		options: { headless: boolean; proxy?: ProxyConfig; acquireTimeoutMs?: number }
+		options: {
+			headless: boolean;
+			proxy?: ProxyConfig;
+			acquireTimeoutMs?: number;
+			shadowUnlockAddon?: boolean;
+		}
 	): Promise<ManagedBrowser> {
 		return this.createBrowser(options);
 	}

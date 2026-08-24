@@ -149,6 +149,15 @@ export interface BrowserFetchRequest {
 	returnOnlyCookies?: boolean;
 	/** Cookies to inject into the browser context before navigation (e.g. tracker session cookies). */
 	cookies?: Cookie[];
+	/**
+	 * Fetch a binary resource (e.g. a .torrent file) instead of an HTML page.
+	 * The challenge is solved via page navigation as usual, but the payload is
+	 * retrieved through the browser context's request client (shares cookies and
+	 * user agent, passes Cloudflare) and returned as `data` instead of `body`.
+	 */
+	binary?: boolean;
+	/** Referer header for binary fetches (some trackers require it for downloads). */
+	referer?: string;
 }
 
 /**
@@ -159,6 +168,8 @@ export interface BrowserFetchResult {
 	success: boolean;
 	/** Response body (HTML/text) */
 	body: string;
+	/** Binary payload when `binary: true` was requested (e.g. .torrent bytes) */
+	data?: Buffer;
 	/** Final URL after redirects */
 	url: string;
 	/** HTTP status code */

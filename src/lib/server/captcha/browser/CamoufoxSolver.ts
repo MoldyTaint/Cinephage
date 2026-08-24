@@ -199,7 +199,30 @@ function attachAbort(
 }
 
 /**
+ * Failure kinds that justify a second, interactive (shadow-unlock addon) attempt.
+ * Everything else (launch failures, aborts, no response) is terminal for the
+ * current budget and must not trigger a relaunch.
+ */
+function isInteractiveFallbackCandidate(error?: string): boolean {
+	if (!error) return false;
+	return (
+		error.includes('Challenge not solved within timeout') ||
+		error.includes('challenge page returned')
+	);
+}
+
+/** Phase 1 (passive) wait budget. Clean fingerprints clear in ~5-15s live. */
+const PASSIVE_PHASE_BUDGET_MS = 25_000;
+
+/**
  * Solve a challenge for the given URL using Camoufox
+ *
+ * Two-phase strategy (live-verified against rutracker.org, issue #228):
+ * 1. Passive attempt WITHOUT the shadow-unlock addon — its MAIN-world
+ *    attachShadow patch is detected by Cloudflare Turnstile, which then serves
+ *    an unwinnable challenge loop even when a clean fingerprint would auto-clear.
+ * 2. Only if still challenged with budget remaining: retry WITH the addon so the
+ *    ClickSolver can handle genuinely interactive Turnstile checkboxes.
  */
 export async function solveChallenge(
 	request: SolveRequest,
@@ -207,25 +230,62 @@ export async function solveChallenge(
 ): Promise<SolveResult> {
 	const startTime = Date.now();
 	const camoufoxManager = getCamoufoxManager();
-	let managed: ManagedBrowser | null = null;
-	let detachAbort: () => void = () => {};
 
 	if (request.signal?.aborted) {
 		return createErrorResult('Aborted before start', startTime);
 	}
+
+	const timeout = (request.timeout || config.timeoutSeconds) * 1000;
+
+	let result = await runSolveAttempt(request, config, camoufoxManager, {
+		startTime,
+		timeout,
+		shadowUnlockAddon: false,
+		waitCapMs: PASSIVE_PHASE_BUDGET_MS
+	});
+
+	if (
+		isInteractiveFallbackCandidate(result.error) &&
+		!request.signal?.aborted &&
+		timeout - (Date.now() - startTime) > 10_000
+	) {
+		logger.info('[CamoufoxSolver] Challenge persists passively; retrying with shadow-unlock addon');
+		result = await runSolveAttempt(request, config, camoufoxManager, {
+			startTime,
+			timeout,
+			shadowUnlockAddon: true
+		});
+	}
+
+	return result;
+}
+
+async function runSolveAttempt(
+	request: SolveRequest,
+	config: { headless: boolean; timeoutSeconds: number; blockMedia?: boolean },
+	camoufoxManager: ReturnType<typeof getCamoufoxManager>,
+	opts: {
+		startTime: number;
+		timeout: number;
+		shadowUnlockAddon: boolean;
+		waitCapMs?: number;
+	}
+): Promise<SolveResult> {
+	const { startTime, timeout } = opts;
+	let managed: ManagedBrowser | null = null;
+	let detachAbort: () => void = () => {};
 
 	try {
 		// Extract domain from URL
 		const url = new URL(request.url);
 		const domain = url.hostname;
 
-		const timeout = (request.timeout || config.timeoutSeconds) * 1000;
-
 		// Create browser
 		managed = await camoufoxManager.createBrowserForDomain(domain, {
 			headless: config.headless,
 			proxy: request.proxy,
-			acquireTimeoutMs: timeout
+			acquireTimeoutMs: timeout,
+			shadowUnlockAddon: opts.shadowUnlockAddon
 		});
 
 		detachAbort = attachAbort(request.signal, camoufoxManager, managed);
@@ -289,7 +349,10 @@ export async function solveChallenge(
 
 		// Wait for challenge to complete
 		// Camoufox + humanize handles most of this automatically
-		const solved = await waitForChallengeComplete(page, timeout - (Date.now() - startTime));
+		const waitBudget = opts.waitCapMs
+			? Math.min(timeout - (Date.now() - startTime), opts.waitCapMs)
+			: timeout - (Date.now() - startTime);
+		const solved = await waitForChallengeComplete(page, waitBudget);
 
 		if (solved) {
 			// Get final cookies
@@ -417,6 +480,13 @@ export async function testForChallenge(
  * Fetch a page through Camoufox browser.
  * This bypasses TLS/JA3 fingerprinting issues that prevent Node.js fetch
  * from accessing Cloudflare-protected sites even with valid cookies.
+ *
+ * Two-phase strategy (live-verified against rutracker.org, issue #228):
+ * 1. Passive attempt WITHOUT the shadow-unlock addon — its MAIN-world
+ *    attachShadow patch is detected by Cloudflare Turnstile, which then serves
+ *    an unwinnable challenge loop even when a clean fingerprint would auto-clear.
+ * 2. Only if still challenged with budget remaining: retry WITH the addon so the
+ *    ClickSolver can handle genuinely interactive Turnstile checkboxes.
  */
 export async function browserFetch(
 	request: BrowserFetchRequest,
@@ -424,8 +494,6 @@ export async function browserFetch(
 ): Promise<BrowserFetchResult> {
 	const startTime = Date.now();
 	const camoufoxManager = getCamoufoxManager();
-	let managed: ManagedBrowser | null = null;
-	let detachAbort: () => void = () => {};
 
 	if (request.signal?.aborted) {
 		return {
@@ -441,14 +509,54 @@ export async function browserFetch(
 		};
 	}
 
+	const timeout = (request.timeout || config.timeoutSeconds) * 1000;
+
+	let result = await runBrowserFetchAttempt(request, config, camoufoxManager, {
+		startTime,
+		timeout,
+		shadowUnlockAddon: false,
+		waitCapMs: PASSIVE_PHASE_BUDGET_MS
+	});
+
+	if (
+		isInteractiveFallbackCandidate(result.error) &&
+		!request.signal?.aborted &&
+		timeout - (Date.now() - startTime) > 10_000
+	) {
+		logger.info('[CamoufoxSolver] Challenge persists passively; retrying with shadow-unlock addon');
+		result = await runBrowserFetchAttempt(request, config, camoufoxManager, {
+			startTime,
+			timeout,
+			shadowUnlockAddon: true
+		});
+	}
+
+	return result;
+}
+
+async function runBrowserFetchAttempt(
+	request: BrowserFetchRequest,
+	config: { headless: boolean; timeoutSeconds: number; blockMedia?: boolean },
+	camoufoxManager: ReturnType<typeof getCamoufoxManager>,
+	opts: {
+		startTime: number;
+		timeout: number;
+		shadowUnlockAddon: boolean;
+		waitCapMs?: number;
+	}
+): Promise<BrowserFetchResult> {
+	const { startTime, timeout } = opts;
+	let managed: ManagedBrowser | null = null;
+	let detachAbort: () => void = () => {};
+
 	try {
 		const domain = new URL(request.url).hostname;
-		const timeout = (request.timeout || config.timeoutSeconds) * 1000;
 
 		managed = await camoufoxManager.createBrowserForDomain(domain, {
 			headless: config.headless,
 			proxy: request.proxy,
-			acquireTimeoutMs: timeout
+			acquireTimeoutMs: timeout,
+			shadowUnlockAddon: opts.shadowUnlockAddon
 		});
 
 		detachAbort = attachAbort(request.signal, camoufoxManager, managed);
@@ -513,7 +621,8 @@ export async function browserFetch(
 
 		// Wait for any challenge to complete (auto-solve or Turnstile hand-off).
 		logger.debug('[CamoufoxSolver] Waiting for any challenge to complete');
-		let solved = await waitForChallengeComplete(page, remaining());
+		const mainWaitBudget = opts.waitCapMs ? Math.min(remaining(), opts.waitCapMs) : remaining();
+		let solved = await waitForChallengeComplete(page, mainWaitBudget);
 
 		// Fallback: if a non-deep-link somehow still shows a challenge, try a root
 		// warm-up + retry once (covers sites that challenge even the root path).
@@ -536,6 +645,63 @@ export async function browserFetch(
 				cookies: [],
 				userAgent: '',
 				error: `Cloudflare bypass failed for ${new URL(request.url).hostname}: challenge not solved within timeout`,
+				timeMs: Date.now() - startTime
+			};
+		}
+
+		// Binary mode: solve the challenge as usual, then pull the payload through
+		// the browser context's request client. It shares the solved session's
+		// cookies and user agent, which Cloudflare accepts where a plain Node
+		// fetch with mismatched fingerprints gets challenged (verified live on
+		// rutracker.org dl.php, issue #228). Navigation to binary endpoints is
+		// avoided entirely — Firefox would not expose their bytes via page.content().
+		if (request.binary) {
+			const finalCookies = await camoufoxManager.extractCookies(managed.context, [request.url]);
+			const requestHeaders: Record<string, string> = {};
+			if (request.referer) {
+				requestHeaders.Referer = request.referer;
+			}
+
+			const apiResponse = await managed.context.request.get(request.url, {
+				headers: Object.keys(requestHeaders).length > 0 ? requestHeaders : undefined,
+				maxRedirects: 5,
+				timeout: Math.max(1000, timeout - (Date.now() - startTime))
+			});
+			const data = await apiResponse.body().catch(() => Buffer.alloc(0));
+
+			if (!apiResponse.ok() || data.length === 0) {
+				return {
+					success: false,
+					body: '',
+					url: request.url,
+					status: apiResponse.status(),
+					headers: {},
+					cookies: finalCookies,
+					userAgent: '',
+					error: `Binary fetch failed for ${new URL(request.url).hostname}: HTTP ${apiResponse.status()} (${data.length} bytes)`,
+					timeMs: Date.now() - startTime
+				};
+			}
+
+			logger.debug(
+				{
+					url: request.url,
+					status: apiResponse.status(),
+					dataLength: data.length,
+					timeMs: Date.now() - startTime
+				},
+				'[CamoufoxSolver] Binary fetch completed'
+			);
+
+			return {
+				success: true,
+				body: '',
+				data,
+				url: request.url,
+				status: apiResponse.status(),
+				headers: {},
+				cookies: finalCookies,
+				userAgent: '',
 				timeMs: Date.now() - startTime
 			};
 		}

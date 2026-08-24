@@ -197,6 +197,19 @@ describe('CamoufoxManager', () => {
 			);
 		});
 
+		it('should omit the shadow-unlock addon when shadowUnlockAddon=false', async () => {
+			const manager = new CamoufoxManager();
+			await manager.waitForAvailabilityCheck();
+
+			(Camoufox as ReturnType<typeof vi.fn>).mockClear();
+			(Camoufox as ReturnType<typeof vi.fn>).mockResolvedValue(mockBrowser);
+
+			await manager.createBrowser({ headless: true, shadowUnlockAddon: false });
+
+			const options = (Camoufox as ReturnType<typeof vi.fn>).mock.calls[0][0];
+			expect(options.addons).toBeUndefined();
+		});
+
 		it('should return managed browser with page', async () => {
 			const manager = new CamoufoxManager();
 			await manager.waitForAvailabilityCheck();

@@ -34,6 +34,7 @@ import { RequestBuilder, createRequestBuilder } from './RequestBuilder';
 import { ResponseParser, createResponseParser } from './ResponseParser';
 import { AuthManager, createAuthManager } from '../auth/AuthManager';
 import { CookieStore, createCookieStore } from '../auth/CookieStore';
+import { isCloudflareProtected } from '../http/CloudflareDetection';
 import { DownloadHandler, createDownloadHandler } from './DownloadHandler';
 import { SearchCapabilityChecker } from './SearchCapabilityChecker';
 import { getPersistentStatusTracker } from '../status';
@@ -1292,6 +1293,68 @@ export class UnifiedIndexer implements IIndexer {
 
 			if (!response.ok) {
 				const _errorText = await response.text().catch(() => '');
+
+				// Cloudflare-protected download endpoints (e.g. rutracker dl.php) reject
+				// plain Node fetches regardless of valid session cookies — the challenge
+				// must be solved by a real browser and the payload pulled through the
+				// browser context (issue #228).
+				const isCloudflare = isCloudflareProtected(response.status, response.headers, _errorText);
+				if (isCloudflare || response.status === 403 || response.status === 503) {
+					this.log.info({ url: currentUrl }, 'Download blocked, retrying through browser');
+					const { getCaptchaSolver } = await import('$lib/server/captcha/CaptchaSolver');
+					const solver = getCaptchaSolver();
+					const browserResult = await solver.fetch({
+						url: currentUrl,
+						method: 'GET',
+						timeout: 90,
+						binary: true,
+						referer: headers.Referer,
+						cookies: CookieStore.toPlaywrightCookies(this.cookies, new URL(currentUrl).hostname)
+					});
+
+					if (browserResult.success && browserResult.data && browserResult.data.length > 0) {
+						const data = browserResult.data;
+
+						if (this.protocol === 'usenet') {
+							return {
+								success: true,
+								data,
+								responseTimeMs: Date.now() - startTime
+							};
+						}
+
+						const { parseTorrentFile } =
+							await import('$lib/server/downloadClients/utils/torrentParser');
+						const parseResult = await parseTorrentFile(data);
+
+						if (!parseResult.success) {
+							return {
+								success: false,
+								error: parseResult.error,
+								responseTimeMs: Date.now() - startTime
+							};
+						}
+
+						if (parseResult.magnetUrl) {
+							return {
+								success: true,
+								magnetUrl: parseResult.magnetUrl,
+								infoHash: parseResult.infoHash,
+								responseTimeMs: Date.now() - startTime
+							};
+						}
+
+						return {
+							success: true,
+							data,
+							infoHash: parseResult.infoHash,
+							responseTimeMs: Date.now() - startTime
+						};
+					}
+
+					this.log.warn({ url: currentUrl, error: browserResult.error }, 'Browser download failed');
+				}
+
 				return {
 					success: false,
 					error: `HTTP ${response.status}: ${response.statusText}`,
