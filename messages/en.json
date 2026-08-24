@@ -4066,6 +4066,7 @@
 	"status_disabled": "Disabled",
 	"status_disconnected": "Disconnected",
 	"status_downloading": "Downloading",
+	"status_importing": "Importing",
 	"status_error": "Error",
 	"status_failed": "Failed",
 	"status_folder_not_found": "Root folder not found",

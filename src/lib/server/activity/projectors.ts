@@ -48,6 +48,11 @@ function mapQueueStatus(status: string): UnifiedActivity['status'] {
 			return 'imported';
 		case 'removed':
 			return 'removed';
+		case 'completed':
+		case 'postprocessing':
+		case 'importing':
+			// Transfer finished; the item is in the import pipeline, not still downloading.
+			return 'importing';
 		case 'awaiting':
 			// Download vanished from client; recovering in the poll loop.
 			// Surface as still-in-progress until it recovers or fails.

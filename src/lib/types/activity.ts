@@ -12,6 +12,7 @@ export type ActivityStatus =
 	| 'imported' // Successfully imported to library
 	| 'streaming' // Streaming source (no download)
 	| 'downloading' // Currently downloading
+	| 'importing' // Transfer finished; import/post-processing pipeline in progress
 	| 'seeding' // Download complete, still seeding
 	| 'paused' // Download paused
 	| 'failed' // Download or import failed
@@ -49,6 +50,7 @@ export type ActivityScope = 'all' | 'active' | 'history';
 
 const ACTIVE_ACTIVITY_STATUSES: ActivityStatus[] = [
 	'downloading',
+	'importing',
 	'seeding',
 	'paused',
 	'searching'
@@ -244,6 +246,7 @@ export interface ActivitySortOptions {
 export interface ActivitySummary {
 	totalCount: number;
 	downloadingCount: number;
+	importingCount: number;
 	seedingCount: number;
 	pausedCount: number;
 	failedCount: number;

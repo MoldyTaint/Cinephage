@@ -80,7 +80,8 @@ export function applyRequestedStatusFilter(
 		case 'success':
 			return activities.filter((activity) => activity.status === 'imported');
 		case 'downloading':
-			return activities.filter((activity) => activity.status === 'downloading');
+		case 'importing':
+			return activities.filter((activity) => activity.status === status);
 		case 'failed':
 		case 'search_error':
 		case 'seeding':
@@ -98,6 +99,7 @@ export function createEmptySummary(): ActivitySummary {
 	return {
 		totalCount: 0,
 		downloadingCount: 0,
+		importingCount: 0,
 		seedingCount: 0,
 		pausedCount: 0,
 		failedCount: 0
@@ -118,6 +120,9 @@ export function buildActivitySummary(activeActivities: UnifiedActivity[]): Activ
 				break;
 			case 'failed':
 				summary.failedCount += 1;
+				break;
+			case 'importing':
+				summary.importingCount += 1;
 				break;
 			default:
 				summary.downloadingCount += 1;

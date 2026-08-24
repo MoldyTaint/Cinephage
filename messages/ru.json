@@ -4066,6 +4066,7 @@
 	"status_disabled": "Отключено",
 	"status_disconnected": "Не подключено",
 	"status_downloading": "Загрузка",
+	"status_importing": "Импортирование",
 	"status_error": "Ошибка",
 	"status_failed": "Не удалось",
 	"status_folder_not_found": "Корневая папка не найдена",

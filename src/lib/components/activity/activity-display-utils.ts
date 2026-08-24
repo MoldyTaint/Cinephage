@@ -35,6 +35,9 @@ export const statusConfig: Record<
 	get downloading() {
 		return { label: m.status_downloading(), variant: 'badge-info', icon: Loader2 };
 	},
+	get importing() {
+		return { label: m.status_importing(), variant: 'badge-info', icon: Loader2 };
+	},
 	get seeding() {
 		return { label: m.status_seeding(), variant: 'badge-success', icon: Upload };
 	},
