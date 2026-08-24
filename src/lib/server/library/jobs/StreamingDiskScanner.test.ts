@@ -16,6 +16,17 @@ async function cleanup(root: string) {
 const fakeVideo = Buffer.alloc(11 * 1024 * 1024, 'x');
 
 describe('StreamingDiskScanner', () => {
+	it('propagates the error when the root path itself cannot be opened', async () => {
+		const scanner = new StreamingDiskScanner();
+		const missingRoot = join(tmpdir(), 'cinephage-missing-root-scan-test');
+
+		await expect(async () => {
+			for await (const _batch of scanner.scan(missingRoot)) {
+				// The generator must not yield anything for an inaccessible root.
+			}
+		}).rejects.toThrow();
+	});
+
 	it('discovers video files in a directory tree', async () => {
 		const root = await createTempDir();
 		await mkdir(join(root, 'Movies', 'Some Movie (2020)'), { recursive: true });

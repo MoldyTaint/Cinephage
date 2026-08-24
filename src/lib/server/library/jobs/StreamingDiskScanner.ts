@@ -155,7 +155,11 @@ export class StreamingDiskScanner {
 			dirHandle = await opendir(currentPath);
 		} catch (error) {
 			const fsError = error as NodeJS.ErrnoException;
-			if (fsError?.code === 'ENOENT' || fsError?.code === 'EACCES' || fsError?.code === 'EPERM') {
+			const isRootPath = depth === 0 && currentPath === rootPath;
+			if (
+				(fsError?.code === 'ENOENT' || fsError?.code === 'EACCES' || fsError?.code === 'EPERM') &&
+				!isRootPath
+			) {
 				logger.debug(
 					{ currentPath, code: fsError.code },
 					'[StreamingScanner] Skipping inaccessible directory'

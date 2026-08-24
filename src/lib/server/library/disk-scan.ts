@@ -428,6 +428,16 @@ export class DiskScanService extends EventEmitter {
 			progress.filesFound = filesFound;
 			this.emit('progress', progress);
 
+			// Data-safety guard: a scan that saw zero files while the database
+			// still tracks files for this folder almost always means the folder
+			// was unreadable or unmounted mid-scan, not that the user deleted
+			// their library. Refuse to wipe records on an empty result.
+			if (filesFound === 0 && existingFiles.size > 0) {
+				throw new Error(
+					`Root folder ${rootFolder.path} scanned as empty but ${existingFiles.size} tracked file(s) exist; refusing to remove records. Verify the folder is mounted and readable, then rescan.`
+				);
+			}
+
 			for (const [path, existingFile] of existingFiles) {
 				if (!seenPaths.has(path)) {
 					await this.removeFile(existingFile.id, rootFolder.mediaType);

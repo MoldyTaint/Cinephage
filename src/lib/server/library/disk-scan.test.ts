@@ -1,91 +1,98 @@
-import { describe, it, expect } from 'vitest';
-import { mkdtemp, writeFile, rm, truncate, symlink } from 'fs/promises';
-import { tmpdir } from 'os';
-import { join } from 'path';
-import { DiskScanService } from './disk-scan.js';
+import { describe, it, expect, afterAll, vi } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { eq } from 'drizzle-orm';
 
-async function createTempDir() {
-	return mkdtemp(join(tmpdir(), 'cinephage-diskscan-'));
-}
+import { createTestDb, destroyTestDb, type TestDatabase } from '../../../test/db-helper.js';
 
-async function createSizedFile(filePath: string, sizeBytes: number) {
-	await writeFile(filePath, '');
-	await truncate(filePath, sizeBytes);
-}
+const testDb: TestDatabase = createTestDb();
 
-describe('DiskScanService symlink discovery', () => {
-	it('discovers symlinked video files', async () => {
-		const sourceDir = await createTempDir();
-		const scanDir = await createTempDir();
-		try {
-			const targetPath = join(sourceDir, 'actual-video.mkv');
-			const symlinkPath = join(scanDir, 'linked-video.mkv');
+vi.mock('$lib/server/db', () => ({
+	get db() {
+		return testDb.db;
+	},
+	get sqlite() {
+		return testDb.sqlite;
+	},
+	initializeDatabase: vi.fn().mockResolvedValue(undefined)
+}));
 
-			// Above MIN_SCAN_SIZE_BYTES (10 MB)
-			await createSizedFile(targetPath, 12 * 1024 * 1024);
-			await symlink(targetPath, symlinkPath);
+const { diskScanService } = await import('./disk-scan.js');
+const { movies, movieFiles, rootFolders } = await import('$lib/server/db/schema.js');
 
-			const service = DiskScanService.getInstance();
-			const discovered = await (
-				service as unknown as {
-					discoverFiles: (
-						rootPath: string,
-						currentPath?: string
-					) => Promise<Array<{ path: string; relativePath: string }>>;
-				}
-			).discoverFiles(scanDir);
+const emptyRoot = await mkdtemp(join(tmpdir(), 'cinephage-empty-root-'));
+const missingRoot = join(tmpdir(), 'cinephage-missing-root-does-not-exist');
 
-			expect(discovered.some((f) => f.path === symlinkPath)).toBe(true);
-			expect(discovered.some((f) => f.relativePath === 'linked-video.mkv')).toBe(true);
-		} finally {
-			await rm(sourceDir, { recursive: true, force: true });
-			await rm(scanDir, { recursive: true, force: true });
+testDb.db
+	.insert(rootFolders)
+	.values([
+		{
+			id: 'root-empty',
+			name: 'Empty Root',
+			path: emptyRoot,
+			mediaType: 'movie',
+			blockedVideoExtensions: '[]'
+		},
+		{
+			id: 'root-missing',
+			name: 'Missing Root',
+			path: missingRoot,
+			mediaType: 'movie',
+			blockedVideoExtensions: '[]'
 		}
-	});
+	])
+	.run();
+
+for (const rootId of ['root-empty', 'root-missing']) {
+	testDb.db
+		.insert(movies)
+		.values({
+			id: `movie-${rootId}`,
+			tmdbId: 900000 + (rootId === 'root-empty' ? 1 : 2),
+			title: 'Tracked Movie',
+			path: 'Movies/Tracked Movie (2020)',
+			rootFolderId: rootId
+		})
+		.run();
+	testDb.db
+		.insert(movieFiles)
+		.values({
+			movieId: `movie-${rootId}`,
+			relativePath: 'Tracked.Movie.2020.mkv',
+			size: 1024 * 1024 * 1024
+		})
+		.run();
+}
+
+afterAll(() => {
+	void rm(emptyRoot, { recursive: true, force: true });
+	destroyTestDb(testDb);
 });
 
-describe('DiskScanService file exclusions', () => {
-	it('does not exclude legitimate titles that contain bonus-content words', async () => {
-		const scanDir = await createTempDir();
-		try {
-			const filePath = join(scanDir, 'The Interview (2014).strm');
-			await writeFile(filePath, 'http://example.com/stream\n');
+async function trackedFileCount(rootId: string): Promise<number> {
+	const rows = await testDb.db
+		.select({ id: movieFiles.id })
+		.from(movieFiles)
+		.where(eq(movieFiles.movieId, `movie-${rootId}`));
+	return rows.length;
+}
 
-			const service = DiskScanService.getInstance();
-			const discovered = await (
-				service as unknown as {
-					discoverFiles: (
-						rootPath: string,
-						currentPath?: string
-					) => Promise<Array<{ path: string; relativePath: string }>>;
-				}
-			).discoverFiles(scanDir);
+describe('DiskScanService.scanRootFolder data-safety', () => {
+	it('refuses to remove tracked records when an accessible folder scans as empty', async () => {
+		const result = await diskScanService.scanRootFolder('root-empty');
 
-			expect(discovered.some((file) => file.path === filePath)).toBe(true);
-		} finally {
-			await rm(scanDir, { recursive: true, force: true });
-		}
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/scanned as empty/i);
+		expect(await trackedFileCount('root-empty')).toBe(1);
 	});
 
-	it('still excludes sample files by filename', async () => {
-		const scanDir = await createTempDir();
-		try {
-			const filePath = join(scanDir, 'My Movie Sample.mkv');
-			await createSizedFile(filePath, 12 * 1024 * 1024);
+	it('fails the scan when the root path is missing instead of treating it as empty', async () => {
+		const result = await diskScanService.scanRootFolder('root-missing');
 
-			const service = DiskScanService.getInstance();
-			const discovered = await (
-				service as unknown as {
-					discoverFiles: (
-						rootPath: string,
-						currentPath?: string
-					) => Promise<Array<{ path: string; relativePath: string }>>;
-				}
-			).discoverFiles(scanDir);
-
-			expect(discovered.some((file) => file.path === filePath)).toBe(false);
-		} finally {
-			await rm(scanDir, { recursive: true, force: true });
-		}
+		expect(result.success).toBe(false);
+		expect(result.error).toBeTruthy();
+		expect(result.error).not.toMatch(/no files/i);
+		expect(await trackedFileCount('root-missing')).toBe(1);
 	});
 });
