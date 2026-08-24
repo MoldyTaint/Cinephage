@@ -74,11 +74,21 @@ function getFirstString(...values: unknown[]): string | undefined {
 	return undefined;
 }
 
-function normalizeStreamType(value: string | undefined, url: string): StreamType {
+export function normalizeStreamType(value: string | undefined, url: string): StreamType {
 	const normalized = value?.toLowerCase();
 	if (normalized === 'mp4') return 'mp4';
-	if (normalized === 'dash' || url.includes('.mpd')) return 'dash';
-	if (normalized === 'm3u8' || normalized === 'hls') return normalized;
+	const isDash =
+		normalized === 'dash' ||
+		normalized === 'mpd' ||
+		normalized === 'application/dash+xml' ||
+		url.includes('.mpd');
+	if (isDash) return 'dash';
+	const isHls =
+		normalized === 'm3u8' ||
+		normalized === 'hls' ||
+		normalized === 'application/vnd.apple.mpegurl' ||
+		normalized === 'application/x-mpegurl';
+	if (isHls) return normalized === 'm3u8' || normalized === 'hls' ? normalized : 'hls';
 	return url.includes('.mp4') ? 'mp4' : url.includes('.mpd') ? 'dash' : 'hls';
 }
 

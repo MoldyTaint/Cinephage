@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterAll } from 'vitest';
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../../test/db-helper.js';
 import { indexers } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
+import { normalizeStreamType } from './LibraryStreamingModule.js';
 
 const testDb: TestDatabase = createTestDb();
 
@@ -316,6 +317,20 @@ describe('LibraryStreamingModule', () => {
 			expect(core.refreshLatestIdentity).toHaveBeenCalledWith(true);
 			expect(result.success).toBe(false);
 			expect(result.error).toContain('rejected authentication');
+		});
+	});
+
+	describe('normalizeStreamType', () => {
+		it.each([
+			['mpd', 'https://cdn.example.com/manifest?sig=abc', 'dash'],
+			['dash', 'https://cdn.example.com/manifest', 'dash'],
+			['application/dash+xml', 'https://cdn.example.com/manifest', 'dash'],
+			[undefined, 'https://cdn.example.com/index.mpd', 'dash'],
+			['application/vnd.apple.mpegurl', 'https://cdn.example.com/index', 'hls'],
+			[undefined, 'https://cdn.example.com/video.mp4?token=x', 'mp4'],
+			[undefined, 'https://cdn.example.com/index.m3u8', 'hls']
+		])('classifies type=%s url=%s as %s', (type, url, expected) => {
+			expect(normalizeStreamType(type ?? undefined, url)).toBe(expected);
 		});
 	});
 });

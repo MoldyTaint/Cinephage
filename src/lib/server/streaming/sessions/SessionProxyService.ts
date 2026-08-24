@@ -297,10 +297,14 @@ export class SessionProxyService {
 		baseUrl: string,
 		apiKey: string | undefined
 	): Promise<Response> {
-		const reachable = await this.probeMp4Reachable(session);
-		if (!reachable) {
+		const probe = await this.probeMp4Reachable(session);
+		if (!probe.ok) {
 			return new Response(
-				JSON.stringify({ error: 'Upstream stream unavailable', code: 'PLAYBACK_UNAVAILABLE' }),
+				JSON.stringify({
+					error: 'Upstream stream unavailable',
+					code: 'PLAYBACK_UNAVAILABLE',
+					upstreamStatus: probe.upstreamStatus ?? null
+				}),
 				{
 					status: 503,
 					headers: { 'Content-Type': 'application/json' }
@@ -334,7 +338,9 @@ ${segmentUrl.toString()}
 		});
 	}
 
-	private async probeMp4Reachable(session: PlaybackSession): Promise<boolean> {
+	private async probeMp4Reachable(
+		session: PlaybackSession
+	): Promise<{ ok: boolean; upstreamStatus?: number }> {
 		try {
 			const headers = buildUpstreamHeaders(session);
 			headers.Range = 'bytes=0-1';
@@ -342,7 +348,20 @@ ${segmentUrl.toString()}
 			if (response.body) {
 				await response.body.cancel();
 			}
-			return response.ok || response.status === 206;
+			const ok = response.ok || response.status === 206;
+			if (!ok) {
+				logger.warn(
+					{
+						sessionToken: session.token,
+						provider: session.provider,
+						entryUrl: session.entryUrl,
+						upstreamStatus: response.status,
+						...streamLog
+					},
+					'mp4 upstream returned an error status'
+				);
+			}
+			return { ok, upstreamStatus: response.status };
 		} catch (error) {
 			logger.warn(
 				{
@@ -354,7 +373,7 @@ ${segmentUrl.toString()}
 				},
 				'mp4 reachability probe failed'
 			);
-			return false;
+			return { ok: false };
 		}
 	}
 

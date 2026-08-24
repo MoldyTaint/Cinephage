@@ -348,4 +348,33 @@ describe('SessionProxyService.renderHeadResponse', () => {
 
 		expect(response.status).toBe(404);
 	});
+
+	it('surfaces the upstream HTTP status when the mp4 probe fails', async () => {
+		fetchWithTimeoutMock.mockResolvedValue(
+			new Response('Forbidden', { status: 403, headers: { 'Content-Type': 'text/plain' } })
+		);
+
+		const { getPlaybackSessionStore } = await import('./session-store');
+		const { getSessionProxyService } = await import('./SessionProxyService');
+
+		const session = getPlaybackSessionStore().createSession({
+			mediaType: 'movie',
+			tmdbId: 541134,
+			entryUrl: 'https://cdn.example.com/movie.mp4',
+			sourceType: 'mp4',
+			requestHeaders: {},
+			attempts: []
+		});
+
+		const response = await getSessionProxyService().renderLaunchResponse(
+			session,
+			BASE_URL,
+			'api-key',
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134/master.m3u8`)
+		);
+
+		expect(response.status).toBe(503);
+		const body = (await response.json()) as { upstreamStatus?: number };
+		expect(body.upstreamStatus).toBe(403);
+	});
 });
