@@ -1197,7 +1197,7 @@ export const mediaBrowserServerUpdateSchema = mediaBrowserServerCreateSchema.req
 export const mediaBrowserServerTestSchema = z.object({
 	host: z.string().url('Must be a valid URL'),
 	apiKey: z.string().min(1, 'API key is required'),
-	serverType: mediaBrowserServerTypeSchema.optional().default('jellyfin')
+	serverType: mediaBrowserServerTypeSchema.optional()
 });
 
 // MediaBrowser Type Exports
