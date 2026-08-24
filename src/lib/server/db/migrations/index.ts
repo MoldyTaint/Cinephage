@@ -127,6 +127,7 @@ import { migration_v127 } from './127-add-cinephage-api-identity-auto-sync.js';
 import { migration_v128 } from './128-add-diagnostic-report-tables.js';
 import { migration_v129 } from './129-add-rejected-releases-reason-columns.js';
 import { migration_v130 } from './130-add-rejected-releases-grab-fields.js';
+import { migration_v131 } from './131-purge-orphaned-unmatched-files.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -256,5 +257,6 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v127,
 	migration_v128,
 	migration_v129,
-	migration_v130
+	migration_v130,
+	migration_v131
 ];
