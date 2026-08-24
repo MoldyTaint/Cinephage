@@ -29,7 +29,7 @@ import { namingSettingsService } from './NamingSettingsService';
 import { moveFile, fileExists } from '$lib/server/downloadClients/import/FileTransfer';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
 import { rename, stat, readdir, rmdir } from 'node:fs/promises';
-import { chooseBestParsedRelease } from './preview-metadata';
+import { chooseBestParsedRelease, resolveAudioLanguages } from './preview-metadata';
 import {
 	getMediaBrowserManager,
 	getMediaBrowserNotifier
@@ -130,6 +130,7 @@ export class RenamePreviewService {
 		bitDepth?: string;
 		audioCodec?: string;
 		audioChannels?: string;
+		audioLanguages?: string[];
 		releaseGroup?: string;
 		edition?: string;
 		proper?: boolean;
@@ -146,6 +147,7 @@ export class RenamePreviewService {
 			bitDepth: parsed.bitDepth !== 'unknown' ? parsed.bitDepth : undefined,
 			audioCodec: parsed.audioCodec ?? undefined,
 			audioChannels: parsed.audioChannels ?? undefined,
+			audioLanguages: resolveAudioLanguages(undefined, parsed.languages),
 			releaseGroup: parsed.releaseGroup ?? undefined,
 			edition: parsed.edition ?? undefined,
 			proper: parsed.isProper,
@@ -1527,7 +1529,10 @@ export class RenamePreviewService {
 				audioCodec: file.mediaInfo?.audioCodec ?? parsedFromFilename.audioCodec,
 				audioChannels:
 					formatAudioChannels(file.mediaInfo?.audioChannels) ?? parsedFromFilename.audioChannels,
-				audioLanguages: file.mediaInfo?.audioLanguages,
+				audioLanguages: resolveAudioLanguages(
+					file.mediaInfo?.audioLanguages,
+					parsedFromFilename.audioLanguages
+				),
 
 				releaseGroup: file.releaseGroup ?? parsedFromFilename.releaseGroup,
 				proper: parsedFromFilename.proper,
@@ -1685,7 +1690,10 @@ export class RenamePreviewService {
 				audioCodec: file.mediaInfo?.audioCodec ?? parsedFromFilename.audioCodec,
 				audioChannels:
 					formatAudioChannels(file.mediaInfo?.audioChannels) ?? parsedFromFilename.audioChannels,
-				audioLanguages: file.mediaInfo?.audioLanguages,
+				audioLanguages: resolveAudioLanguages(
+					file.mediaInfo?.audioLanguages,
+					parsedFromFilename.audioLanguages
+				),
 				releaseGroup: file.releaseGroup ?? parsedFromFilename.releaseGroup,
 				proper: parsedFromFilename.proper,
 				repack: parsedFromFilename.repack,

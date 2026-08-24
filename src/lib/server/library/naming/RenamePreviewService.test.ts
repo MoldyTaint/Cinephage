@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import { createTestDb, destroyTestDb } from '../../../../test/db-helper';
 import { RenamePreviewService, type RenamePreviewResult } from './RenamePreviewService';
 import { NamingService, type MediaNamingInfo, DEFAULT_NAMING_CONFIG } from './NamingService';
-import { chooseBestParsedRelease } from './preview-metadata';
+import { chooseBestParsedRelease, resolveAudioLanguages } from './preview-metadata';
 import * as schema from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -106,6 +106,24 @@ describe('RenamePreviewService', () => {
 			});
 
 			expect(parsed.parsed.edition).toBe('Final Cut');
+		});
+	});
+
+	describe('audio language resolution', () => {
+		it('keeps audio languages from the ffprobe scan when present', () => {
+			expect(resolveAudioLanguages(['eng', 'fre'], ['ger'])).toEqual(['eng', 'fre']);
+		});
+
+		it('falls back to filename-parsed languages when the scan found none', () => {
+			expect(resolveAudioLanguages(undefined, ['ger'])).toEqual(['ger']);
+		});
+
+		it('treats an empty scan result as missing so the filename fallback applies', () => {
+			expect(resolveAudioLanguages([], ['ger'])).toEqual(['ger']);
+		});
+
+		it('yields undefined when neither source carries languages', () => {
+			expect(resolveAudioLanguages([], [])).toBeUndefined();
 		});
 	});
 
