@@ -98,6 +98,11 @@ type OrchestratorPrivateApi = {
 	): ReleaseResult[];
 	isSeasonOnlyTvSearch(criteria: SearchCriteria): boolean;
 	filterByIdOrTitleMatch(releases: ReleaseResult[], criteria: SearchCriteria): ReleaseResult[];
+	executeSeasonPackSupplementalSearch(
+		indexer: IIndexer,
+		criteria: SearchCriteria,
+		seenReleases: ReleaseResult[]
+	): Promise<ReleaseResult[]>;
 	filterOutNonVideoArtifacts(releases: ReleaseResult[], criteria: SearchCriteria): ReleaseResult[];
 	filterIndexers(
 		indexers: IIndexer[],
@@ -805,6 +810,36 @@ describe('SearchOrchestrator.filterBySeasonEpisode', () => {
 describe('SearchOrchestrator.filterByIdOrTitleMatch', () => {
 	const orchestrator = new SearchOrchestrator();
 
+	it('keeps season packs whose title year is the season air year, not the series first-air year', () => {
+		const releases = [createRelease({ title: 'Mr.Robot.S03.2017.1080p.WEB-DL.DDP5.1.H.264' })];
+
+		const criteria = createTvCriteria({
+			query: 'Mr. Robot',
+			searchTitles: ['Mr. Robot'],
+			tmdbId: 62560,
+			year: 2015,
+			season: 3
+		});
+
+		const filtered = privateApi(orchestrator).filterByIdOrTitleMatch(releases, criteria);
+		expect(filtered).toHaveLength(1);
+	});
+
+	it('still rejects season packs dated before the series first aired', () => {
+		const releases = [createRelease({ title: 'Mr.Robot.S03.2012.1080p.WEB-DL.DDP5.1.H.264' })];
+
+		const criteria = createTvCriteria({
+			query: 'Mr. Robot',
+			searchTitles: ['Mr. Robot'],
+			tmdbId: 62560,
+			year: 2015,
+			season: 3
+		});
+
+		const filtered = privateApi(orchestrator).filterByIdOrTitleMatch(releases, criteria);
+		expect(filtered).toHaveLength(0);
+	});
+
 	it('rejects wrong-year movie releases even without searchTitles', () => {
 		const releases = [
 			createRelease({ title: 'Now.You.See.Me.2013.1080p.BluRay.x264', indexerName: 'FakeIndexer' }),
@@ -994,6 +1029,51 @@ describe('SearchOrchestrator.filterByIdOrTitleMatch', () => {
 
 		const filtered = privateApi(orchestrator).filterByIdOrTitleMatch(releases, criteria);
 		expect(filtered).toHaveLength(1);
+	});
+});
+
+describe('SearchOrchestrator.executeSeasonPackSupplementalSearch', () => {
+	const orchestrator = new SearchOrchestrator();
+
+	it('does not duplicate the season token when the query already contains it', async () => {
+		const capturedQueries: string[] = [];
+		const indexer = buildIndexer({
+			search: async (criteria: { query?: string }) => {
+				capturedQueries.push(criteria.query ?? '');
+				return [];
+			}
+		});
+
+		const criteria = createTvCriteria({
+			query: 'Mr. Robot S03',
+			season: 3
+		});
+
+		await privateApi(orchestrator).executeSeasonPackSupplementalSearch(indexer, criteria, []);
+
+		expect(capturedQueries.length).toBeGreaterThan(0);
+		for (const q of capturedQueries) {
+			expect(q.match(/S03/gi)?.length ?? 0).toBe(1);
+		}
+	});
+
+	it('appends the season token when the query lacks one', async () => {
+		const capturedQueries: string[] = [];
+		const indexer = buildIndexer({
+			search: async (criteria: { query?: string }) => {
+				capturedQueries.push(criteria.query ?? '');
+				return [];
+			}
+		});
+
+		const criteria = createTvCriteria({ query: 'Mr. Robot', season: 3 });
+
+		await privateApi(orchestrator).executeSeasonPackSupplementalSearch(indexer, criteria, []);
+
+		expect(capturedQueries.length).toBeGreaterThan(0);
+		for (const q of capturedQueries) {
+			expect(q).toContain('Mr. Robot S03');
+		}
 	});
 });
 

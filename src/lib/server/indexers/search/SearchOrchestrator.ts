@@ -1516,23 +1516,19 @@ export class SearchOrchestrator {
 
 		// Each keyword targets a distinct category of season pack title.
 		// Searches fire in parallel so adding more keywords costs no extra latency.
-		const PACK_KEYWORDS = [
-			'Complete',
-			'BluRay',
-			'WEB-DL',
-			'WEBRip',
-			'2160p',
-			'1080p',
-			'Remux',
-			'HDTV'
-		];
+		// Keep the set small: torrent trackers rate-limit aggressively, and broad
+		// substrings (e.g. "WEB" matches WEB-DL and WEBRip) cover several variants.
+		const PACK_KEYWORDS = ['Complete', 'BluRay', 'WEB', '2160p', '1080p'];
 
 		const title = rawTitles[0];
+		// Don't duplicate the season token when the incoming query already has one
+		// (e.g. query "Mr. Robot S03" would otherwise become "... S03 S03 1080p").
+		const baseQuery = new RegExp(`\\b${seasonToken}\\b`, 'i').test(title)
+			? title
+			: `${title} ${seasonToken}`;
 		const settled = await Promise.allSettled(
 			PACK_KEYWORDS.map((keyword) =>
-				indexer.search(
-					createTextOnlyCriteria({ ...criteria, query: `${title} ${seasonToken} ${keyword}` })
-				)
+				indexer.search(createTextOnlyCriteria({ ...criteria, query: `${baseQuery} ${keyword}` }))
 			)
 		);
 
@@ -2694,7 +2690,14 @@ export class SearchOrchestrator {
 
 				// Year check: only applies when both the search criteria and the parsed
 				// release title carry a year. Missing year on either side is not a failure.
-				const yearMatch = !searchYear || !parsedRelease.year || parsedRelease.year === searchYear;
+				// Season targets additionally tolerate forward year drift: a season pack
+				// carries the SEASON's air year, not the series first-air year
+				// (e.g. "Show.S03.2017" for a show that first aired in 2015).
+				const yearMatch =
+					!searchYear ||
+					!parsedRelease.year ||
+					parsedRelease.year === searchYear ||
+					(isSeasonTarget && parsedRelease.year >= searchYear - 1);
 
 				if (!titleMatch || !yearMatch) {
 					// Interactive fallback for localized/transliterated indexer titles that
