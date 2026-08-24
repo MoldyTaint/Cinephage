@@ -92,11 +92,35 @@ const EPISODE_PATTERNS: Array<{
 }> = [
 	// Multi-season range with explicit episode notation:
 	// "S01E01-S08E99"
+	// When both sides share the same season ("s01e25 - s01e26"), this is an
+	// intra-season episode range, not a multi-season pack (#513).
 	{
-		pattern: /\bS(\d{1,2})[\s._-]?E\d{1,3}\s*[-–—]\s*S(\d{1,2})[\s._-]?E\d{1,3}\b/i,
+		pattern: /\bS(\d{1,2})[\s._-]?E(\d{1,3})\s*[-–—]\s*S(\d{1,2})[\s._-]?E(\d{1,3})\b/i,
 		extract: (match) => {
 			const startSeason = parseInt(match[1], 10);
-			const endSeason = parseInt(match[2], 10);
+			const startEpisode = parseInt(match[2], 10);
+			const endSeason = parseInt(match[3], 10);
+			const endEpisode = parseInt(match[4], 10);
+
+			if (endSeason === startSeason) {
+				const episodes: number[] = [];
+				if (
+					!Number.isNaN(startEpisode) &&
+					!Number.isNaN(endEpisode) &&
+					endEpisode >= startEpisode &&
+					endEpisode - startEpisode < 300
+				) {
+					for (let ep = startEpisode; ep <= endEpisode; ep++) {
+						episodes.push(ep);
+					}
+				}
+				return {
+					season: startSeason,
+					episodes: episodes.length > 0 ? episodes : [startEpisode],
+					isSeasonPack: false
+				};
+			}
+
 			if (endSeason > startSeason && endSeason - startSeason < 20) {
 				const seasons: number[] = [];
 				for (let s = startSeason; s <= endSeason; s++) {
@@ -330,9 +354,30 @@ const EPISODE_PATTERNS: Array<{
 		}
 	},
 
+	// Bracketed season/episode notation — common in renamed media libraries:
+	// "[3x13]", "[S03E13]", "[s01e25 - s01e26]"
+	// Must precede the unbracketed forms: their trailing lookaheads require
+	// whitespace/separator, which a closing bracket fails (#513).
+	{
+		pattern: /\[\s*S(\d{1,2})[\s._-]?E(\d{1,3})\s*\]/i,
+		extract: (match) => ({
+			season: parseInt(match[1], 10),
+			episodes: [parseInt(match[2], 10)],
+			isSeasonPack: false
+		})
+	},
+	{
+		pattern: /\[\s*(\d{1,2})x(\d{1,3})\s*\]/i,
+		extract: (match) => ({
+			season: parseInt(match[1], 10),
+			episodes: [parseInt(match[2], 10)],
+			isSeasonPack: false
+		})
+	},
+
 	// Alternate format: 1x05, 01x05, 1x05v2
 	{
-		pattern: /\b(\d{1,2})x(\d{1,3})(?:v\d+)?(?=[\s._-]|$)/i,
+		pattern: /\b(\d{1,2})x(\d{1,3})(?:v\d+)?(?=[\s._\]-]|$)/i,
 		extract: (match) => {
 			const season = parseInt(match[1], 10);
 			const episodes: number[] = [parseInt(match[2], 10)];
@@ -458,5 +503,11 @@ export function extractTitleBeforeEpisode(title: string): string {
 		}
 	}
 
-	return title.slice(0, earliestIndex).trim();
+	// Trim, then strip trailing separators left behind by the cut
+	// (e.g. "Breaking Bad - " when the episode marker was bracketed)
+	return title
+		.slice(0, earliestIndex)
+		.trim()
+		.replace(/[\s._\-–—]+$/, '')
+		.trim();
 }
