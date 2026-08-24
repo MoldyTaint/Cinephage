@@ -53,6 +53,24 @@ let initialized = false;
  * 3. Migration-era database - Backward compatible with old migration system
  */
 function runStartupMaintenance(): void {
+	// Maintenance must never brick boot: on constrained deployments a VACUUM
+	// can fail (OOM kill mid-write, pre-existing corruption) and a thrown
+	// error here previously left the whole app unstartable with no recovery
+	// path short of hand-editing the data directory (#513).
+	try {
+		runVacuumMaintenance();
+	} catch (err) {
+		logger.error(
+			{
+				err: err instanceof Error ? err : new Error(String(err))
+			},
+			'[DB] Startup maintenance failed; continuing without it. ' +
+				'If errors persist, restore from Settings > System > Database Backups.'
+		);
+	}
+}
+
+function runVacuumMaintenance(): void {
 	// One-time: switch from auto_vacuum=NONE to INCREMENTAL so deleted pages are
 	// reclaimed incrementally instead of building up as freelist bloat.
 	// PRAGMA auto_vacuum can only change outside a transaction and requires VACUUM
