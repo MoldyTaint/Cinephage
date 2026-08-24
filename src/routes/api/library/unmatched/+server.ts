@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { unmatchedFileService } from '$lib/server/library/unmatched-file-service.js';
+import { libraryJobService } from '$lib/server/library/jobs/LibraryJobService.js';
 import { logger } from '$lib/logging';
 import type { UnmatchedFilters } from '$lib/types/unmatched.js';
 
@@ -91,28 +92,37 @@ export const GET: RequestHandler = async ({ url }) => {
 
 /**
  * POST /api/library/unmatched
- * Process all unmatched files (attempt to auto-match them)
+ * Queue processing of all unmatched files (attempt to auto-match them).
+ *
+ * Matching hundreds of files takes minutes (TMDB lookups + throttling), so
+ * this enqueues per-root-folder jobs and returns immediately instead of
+ * running the work inline inside the request (#513). Progress is visible
+ * through the library jobs/task UI.
  */
 export const POST: RequestHandler = async () => {
 	try {
-		const result = await unmatchedFileService.processAllUnmatchedFiles();
+		const jobs = libraryJobService.enqueueMatchUnmatchedForAllFolders();
 
 		return json({
 			success: true,
-			data: result,
+			data: {
+				queued: true,
+				jobCount: jobs.length,
+				jobs
+			},
 			meta: {
 				timestamp: new Date().toISOString()
 			}
 		});
 	} catch (error) {
 		logger.error(
-			'[API] Error processing unmatched files',
+			'[API] Error queueing unmatched file processing',
 			error instanceof Error ? error : undefined
 		);
 		return json(
 			{
 				success: false,
-				error: error instanceof Error ? error.message : 'Failed to process unmatched files',
+				error: error instanceof Error ? error.message : 'Failed to queue unmatched file processing',
 				data: null
 			},
 			{ status: 500 }

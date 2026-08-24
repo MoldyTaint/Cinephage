@@ -11,6 +11,7 @@
 		Zap
 	} from 'lucide-svelte';
 	import { unmatchedFilesStore } from '$lib/stores/unmatched-files.svelte.js';
+	import { toasts } from '$lib/stores/toast.svelte';
 
 	let filter = $derived(unmatchedFilesStore.filters.mediaType || 'all');
 	let viewMode = $derived(unmatchedFilesStore.viewMode);
@@ -65,7 +66,10 @@
 		if (unmatchedFilesStore.pagination.total === 0) return;
 		isProcessing = true;
 		try {
-			await unmatchedFilesStore.processAll();
+			const result = await unmatchedFilesStore.processAll();
+			if (result?.queued) {
+				toasts.success(m.unmatched_filters_reprocessQueued());
+			}
 		} finally {
 			isProcessing = false;
 		}

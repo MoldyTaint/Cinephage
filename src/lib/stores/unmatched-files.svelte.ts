@@ -304,7 +304,9 @@ class UnmatchedFilesStore {
 			const result = await response.json();
 
 			if (result.success) {
-				// Reload to get updated list
+				// The work is queued as background jobs; matching happens over the
+				// next minutes. Reload once so rows reflect any immediate changes,
+				// then hand the queue info back to the caller for display.
 				await this.loadFiles();
 				return result.data;
 			} else {

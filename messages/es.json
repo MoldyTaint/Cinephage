@@ -4650,5 +4650,6 @@
 	"settings_system_backup_db_errorSave": "Error al guardar la configuración",
 	"settings_system_backup_db_errorBackup": "Error en la copia de seguridad",
 	"settings_system_backup_db_settingsSaved": "Configuración guardada",
-	"settings_system_backup_db_backupCreated": "Copia de seguridad creada correctamente"
+	"settings_system_backup_db_backupCreated": "Copia de seguridad creada correctamente",
+	"unmatched_filters_reprocessQueued": "Coincidencia en cola. Los archivos se procesarán en segundo plano."
 }

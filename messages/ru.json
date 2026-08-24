@@ -4650,5 +4650,6 @@
 	"settings_system_backup_db_errorSave": "Не удалось сохранить настройки",
 	"settings_system_backup_db_errorBackup": "Ошибка резервного копирования",
 	"settings_system_backup_db_settingsSaved": "Настройки сохранены",
-	"settings_system_backup_db_backupCreated": "Резервная копия успешно создана"
+	"settings_system_backup_db_backupCreated": "Резервная копия успешно создана",
+	"unmatched_filters_reprocessQueued": "Сопоставление поставлено в очередь. Файлы будут обработаны в фоне."
 }

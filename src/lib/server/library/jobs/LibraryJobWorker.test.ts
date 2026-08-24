@@ -196,3 +196,41 @@ describe('LibraryJobWorker', () => {
 		});
 	});
 });
+
+describe('match_unmatched cursor paging (issue #513)', () => {
+	it('advances by id-cursor so deleted rows cannot skip remaining files', async () => {
+		const processFn = vi
+			.fn()
+			// page 1: processes ids a1,a2 — both match and are deleted
+			.mockResolvedValueOnce({
+				results: [
+					{ fileId: 'a1', filePath: '/x/a1', matched: true, confidence: 1 },
+					{ fileId: 'a2', filePath: '/x/a2', matched: true, confidence: 1 }
+				],
+				hasMore: true,
+				nextCursor: 'a2'
+			})
+			// page 2: cursor a2 -> only a3 remains; old OFFSET logic would skip it
+			.mockResolvedValueOnce({
+				results: [{ fileId: 'a3', filePath: '/x/a3', matched: true, confidence: 1 }],
+				hasMore: false,
+				nextCursor: 'a3'
+			});
+
+		libraryJobService.enqueueJob({
+			type: 'match_unmatched',
+			rootFolderId: 'root-1',
+			dedupeKey: 'match_unmatched:root-1',
+			metadata: { rootFolderId: 'root-1' }
+		});
+
+		const worker = new LibraryJobWorker({
+			matchUnmatchedByRootFolder: processFn as never
+		});
+		await worker.processOne();
+
+		expect(processFn).toHaveBeenCalledTimes(2);
+		expect(processFn.mock.calls[0][2]).toBeNull();
+		expect(processFn.mock.calls[1][2]).toBe('a2');
+	});
+});

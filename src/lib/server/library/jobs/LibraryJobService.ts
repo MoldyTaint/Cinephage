@@ -1,6 +1,6 @@
 import { db } from '$lib/server/db/index.js';
-import { libraryJobs } from '$lib/server/db/schema.js';
-import { eq, and, desc, inArray, lt } from 'drizzle-orm';
+import { libraryJobs, unmatchedFiles } from '$lib/server/db/schema.js';
+import { eq, and, desc, inArray, lt, sql } from 'drizzle-orm';
 import { NotFoundError, ValidationError } from '$lib/errors/index.js';
 import type { EnqueueLibraryJobInput, LibraryJobType } from './types.js';
 
@@ -43,11 +43,41 @@ export class LibraryJobService {
 		});
 	}
 
+	/**
+	 * Enqueue match_unmatched jobs for every root folder that currently has
+	 * unmatched files. Used by the Unmatched page's "process all" action:
+	 * matching hundreds of files takes minutes and must not run inline inside
+	 * an HTTP request (#513).
+	 */
+	enqueueMatchUnmatchedForAllFolders(): { folderId: string; jobId: string }[] {
+		const folders = db
+			.selectDistinct({ rootFolderId: unmatchedFiles.rootFolderId })
+			.from(unmatchedFiles)
+			.all();
+
+		const enqueued: { folderId: string; jobId: string }[] = [];
+		for (const { rootFolderId } of folders) {
+			if (!rootFolderId) continue;
+			const job = this.enqueueJob({
+				type: 'match_unmatched',
+				rootFolderId,
+				dedupeKey: `match_unmatched:${rootFolderId}`,
+				metadata: { rootFolderId }
+			});
+			enqueued.push({ folderId: rootFolderId, jobId: job.id });
+		}
+		return enqueued;
+	}
+
 	enqueueJob(input: EnqueueLibraryJobInput) {
 		if (input.dedupeKey) {
 			// A job that has been 'running' for over an hour was almost certainly
 			// abandoned by a crash or kill signal. Reset it so it no longer blocks
 			// new jobs with the same dedupeKey.
+			//
+			// 'queued' jobs age out on createdAt for the same reason: a queued row
+			// with startedAt=NULL would otherwise block its dedupeKey forever if
+			// the worker ever failed to pick it up (#513).
 			const staleThreshold = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 			const now = new Date().toISOString();
 			db.update(libraryJobs)
@@ -60,8 +90,8 @@ export class LibraryJobService {
 				.where(
 					and(
 						eq(libraryJobs.dedupeKey, input.dedupeKey),
-						eq(libraryJobs.status, 'running'),
-						lt(libraryJobs.startedAt, staleThreshold)
+						inArray(libraryJobs.status, ['running', 'queued']),
+						lt(sql`COALESCE(${libraryJobs.startedAt}, ${libraryJobs.createdAt})`, staleThreshold)
 					)
 				)
 				.run();

@@ -5,6 +5,7 @@ import { LibraryJobService, libraryJobService } from './LibraryJobService.js';
 import { diskScanService } from '$lib/server/library/disk-scan.js';
 import { librarySchedulerService } from '$lib/server/library/library-scheduler.js';
 import { mediaMatcherService } from '$lib/server/library/media-matcher.js';
+import type { MatchResult } from '$lib/server/library/media-matcher.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 
@@ -22,6 +23,11 @@ export interface WorkerDeps {
 	jobService?: LibraryJobService;
 	scanRootFolder?: (rootFolderId: string) => Promise<ScanResultLike>;
 	scanAll?: () => Promise<ScanResultLike[]>;
+	matchUnmatchedByRootFolder?: (
+		rootFolderId: string,
+		limit?: number,
+		afterId?: string | null
+	) => Promise<{ results: MatchResult[]; hasMore: boolean; nextCursor: string | null }>;
 }
 
 export class LibraryJobWorker extends EventEmitter implements BackgroundService {
@@ -33,6 +39,11 @@ export class LibraryJobWorker extends EventEmitter implements BackgroundService 
 	private jobService: LibraryJobService;
 	private scanRootFolder: (rootFolderId: string) => Promise<ScanResultLike>;
 	private scanAll: () => Promise<ScanResultLike[]>;
+	private matchUnmatchedByRootFolder: (
+		rootFolderId: string,
+		limit?: number,
+		afterId?: string | null
+	) => Promise<{ results: MatchResult[]; hasMore: boolean; nextCursor: string | null }>;
 
 	constructor(deps: WorkerDeps = {}) {
 		super();
@@ -41,6 +52,10 @@ export class LibraryJobWorker extends EventEmitter implements BackgroundService 
 			deps.scanRootFolder ??
 			((rootFolderId: string) => librarySchedulerService.runFolderScan(rootFolderId));
 		this.scanAll = deps.scanAll ?? (() => librarySchedulerService.runFullScan());
+		this.matchUnmatchedByRootFolder =
+			deps.matchUnmatchedByRootFolder ??
+			((rootFolderId, limit, afterId) =>
+				mediaMatcherService.processUnmatchedByRootFolder(rootFolderId, limit, afterId));
 	}
 
 	get status(): ServiceStatus {
@@ -119,20 +134,18 @@ export class LibraryJobWorker extends EventEmitter implements BackgroundService 
 				});
 			} else if (queuedJob.type === 'match_unmatched') {
 				if (!queuedJob.rootFolderId) throw new Error('match_unmatched job missing rootFolderId');
-				let offset = 0;
+				// Keyset cursor: immune to rows disappearing mid-pass (matches delete
+				// their unmatched row). Absolute offsets skipped half the files (#513).
+				let cursor: string | null = null;
 				let hasMore = true;
 				let _matched = 0;
 				let total = 0;
 				while (hasMore) {
-					const page = await mediaMatcherService.processUnmatchedByRootFolder(
-						queuedJob.rootFolderId,
-						50,
-						offset
-					);
+					const page = await this.matchUnmatchedByRootFolder(queuedJob.rootFolderId, 50, cursor);
 					_matched += page.results.filter((r) => r.matched).length;
 					total += page.results.length;
 					hasMore = page.hasMore;
-					offset += 50;
+					cursor = page.nextCursor;
 
 					const reloaded = await this.jobService.getJob(queuedJob.id);
 					if (reloaded?.cancelRequested) break;
@@ -184,7 +197,22 @@ export class LibraryJobWorker extends EventEmitter implements BackgroundService 
 
 	private async processLoop(): Promise<void> {
 		while (this.running) {
-			const processed = await this.processOne();
+			// A claim/dispatch error must never kill the loop: a dead worker leaves
+			// every future job queued forever, which presents to users as "scan
+			// completes instantly but does nothing" (#513). Back off and retry.
+			let processed: boolean;
+			try {
+				processed = await this.processOne();
+			} catch (err) {
+				logger.error(
+					{ err: err instanceof Error ? err : new Error(String(err)) },
+					'[LibraryJobWorker] Job dispatch failed; retrying'
+				);
+				await new Promise<void>((resolve) => {
+					this.loopTimer = setTimeout(resolve, 5000);
+				});
+				continue;
+			}
 			if (!processed) {
 				await new Promise<void>((resolve) => {
 					this.loopTimer = setTimeout(resolve, 1000);

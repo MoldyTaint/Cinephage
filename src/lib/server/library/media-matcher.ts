@@ -19,7 +19,7 @@ import {
 	librarySettings,
 	rootFolders
 } from '$lib/server/db/schema.js';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, gt, asc } from 'drizzle-orm';
 import { tmdb, type SearchResult } from '$lib/server/tmdb.js';
 import { mediaInfoService } from './media-info.js';
 import { basename, dirname, extname, join, relative } from 'path';
@@ -758,17 +758,25 @@ export class MediaMatcherService {
 	async processUnmatchedByRootFolder(
 		rootFolderId: string,
 		limit = 50,
-		offset = 0
-	): Promise<{ results: MatchResult[]; hasMore: boolean }> {
+		afterId: string | null = null
+	): Promise<{ results: MatchResult[]; hasMore: boolean; nextCursor: string | null }> {
+		// Keyset pagination (WHERE id > cursor ORDER BY id): rows deleted by a
+		// successful match must not shift the window. Absolute OFFSET skips
+		// half the remaining files when matches remove rows mid-pass (#513).
 		const rows = await db
 			.select()
 			.from(unmatchedFiles)
-			.where(eq(unmatchedFiles.rootFolderId, rootFolderId))
-			.limit(limit + 1)
-			.offset(offset);
+			.where(
+				afterId
+					? and(eq(unmatchedFiles.rootFolderId, rootFolderId), gt(unmatchedFiles.id, afterId))
+					: eq(unmatchedFiles.rootFolderId, rootFolderId)
+			)
+			.orderBy(asc(unmatchedFiles.id))
+			.limit(limit + 1);
 
 		const hasMore = rows.length > limit;
 		const page = rows.slice(0, limit);
+		const nextCursor = page.length > 0 ? page[page.length - 1].id : afterId;
 		const results: MatchResult[] = [];
 
 		for (const file of page) {
@@ -794,7 +802,7 @@ export class MediaMatcherService {
 			await new Promise<void>((resolve) => setTimeout(resolve, 250));
 		}
 
-		return { results, hasMore };
+		return { results, hasMore, nextCursor };
 	}
 
 	/**
