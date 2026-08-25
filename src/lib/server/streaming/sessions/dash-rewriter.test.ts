@@ -117,8 +117,18 @@ describe('rewriteDashManifest', () => {
 </MPD>`;
 
 		const out = rewrite(mpd);
-		expect(out).toContain('/api/streaming/session/tok-123/segment/res-1.m4s?api_key=api-key');
+		expect(out).toContain(
+			'/api/streaming/session/tok-123/segment/res-1.m4s?api_key=api-key&dash_Number=$Number$'
+		);
 		expect(out).not.toContain('other.cdn.example.com');
+	});
+
+	it('preserves query parameters on same-origin segment URLs', () => {
+		const mpd = `<MPD><Period><SegmentList><SegmentURL media="seg-0.m4s?token=signed" /></SegmentList></Period></MPD>`;
+
+		const out = rewrite(mpd);
+
+		expect(out).toContain('/dash/seg-0.m4s?token=signed&api_key=api-key');
 	});
 
 	it('leaves non-URL values untouched', () => {

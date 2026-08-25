@@ -424,10 +424,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 					return `${baseUrl}/api/streaming/proxy/segment.${extension}?url=${encodeURIComponent(absoluteUrl)}&referer=${encodeURIComponent(referer)}`;
 				}
 			);
-			// Ensure VOD markers are present so players start from beginning
-			const vodPlaylist = ensureVodPlaylist(rewrittenPlaylist);
-
-			return new Response(vodPlaylist, {
+			return new Response(rewrittenPlaylist, {
 				status: 200,
 				headers: {
 					'Content-Type': 'application/vnd.apple.mpegurl',
@@ -468,61 +465,6 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		);
 	}
 };
-
-/**
- * Ensure playlist has VOD markers so players start from the beginning.
- * Without #EXT-X-ENDLIST and #EXT-X-PLAYLIST-TYPE:VOD, players treat
- * the stream as "live" and start at the end (live edge).
- */
-function ensureVodPlaylist(playlist: string): string {
-	const lines = playlist.split('\n');
-	const rewritten: string[] = [];
-	let hasPlaylistType = false;
-	let isMediaPlaylist = false;
-
-	// First pass: detect existing tags
-	for (const line of lines) {
-		const trimmed = line.trim();
-		if (trimmed.startsWith('#EXT-X-PLAYLIST-TYPE:')) hasPlaylistType = true;
-		// Media playlists have EXTINF (segment duration) tags, master playlists don't
-		if (trimmed.startsWith('#EXTINF:')) isMediaPlaylist = true;
-	}
-
-	// Only modify media playlists, not master playlists
-	if (!isMediaPlaylist) {
-		return playlist;
-	}
-
-	// Second pass: rewrite with VOD markers
-	for (const line of lines) {
-		const trimmed = line.trim();
-
-		// Add VOD type after EXTM3U if missing
-		if (trimmed === '#EXTM3U') {
-			rewritten.push(line);
-			if (!hasPlaylistType) {
-				rewritten.push('#EXT-X-PLAYLIST-TYPE:VOD');
-			}
-			continue;
-		}
-
-		// Skip ENDLIST - we'll add it at the very end to ensure correct positioning
-		if (trimmed === '#EXT-X-ENDLIST') {
-			continue;
-		}
-
-		rewritten.push(line);
-	}
-
-	// Always add ENDLIST at the end (we removed any existing one above)
-	// Remove trailing empty lines before adding ENDLIST
-	while (rewritten.length > 0 && rewritten[rewritten.length - 1].trim() === '') {
-		rewritten.pop();
-	}
-	rewritten.push('#EXT-X-ENDLIST');
-
-	return rewritten.join('\n');
-}
 
 export const OPTIONS: RequestHandler = async () => {
 	return new Response(null, {

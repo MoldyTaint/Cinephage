@@ -74,22 +74,105 @@ function getFirstString(...values: unknown[]): string | undefined {
 	return undefined;
 }
 
-export function normalizeStreamType(value: string | undefined, url: string): StreamType {
-	const normalized = value?.toLowerCase();
-	if (normalized === 'mp4') return 'mp4';
-	const isDash =
-		normalized === 'dash' ||
-		normalized === 'mpd' ||
-		normalized === 'application/dash+xml' ||
-		url.includes('.mpd');
-	if (isDash) return 'dash';
-	const isHls =
-		normalized === 'm3u8' ||
+interface NormalizedStreamFormat {
+	type: StreamType;
+	sourceFormat?: string;
+	sourceContentType?: string;
+}
+
+const DIRECT_MEDIA_TYPES: Record<string, string> = {
+	mp4: 'video/mp4',
+	'video/mp4': 'video/mp4',
+	m4v: 'video/mp4',
+	f4v: 'video/mp4',
+	mkv: 'video/x-matroska',
+	matroska: 'video/x-matroska',
+	'video/x-matroska': 'video/x-matroska',
+	webm: 'video/webm',
+	'video/webm': 'video/webm',
+	avi: 'video/x-msvideo',
+	'video/x-msvideo': 'video/x-msvideo',
+	mov: 'video/quicktime',
+	quicktime: 'video/quicktime',
+	'video/quicktime': 'video/quicktime',
+	mpeg: 'video/mpeg',
+	mpg: 'video/mpeg',
+	'video/mpeg': 'video/mpeg',
+	ts: 'video/mp2t',
+	m2ts: 'video/mp2t',
+	mpegts: 'video/mp2t',
+	'video/mp2t': 'video/mp2t',
+	ogg: 'video/ogg',
+	ogv: 'video/ogg',
+	'video/ogg': 'video/ogg',
+	flv: 'video/x-flv',
+	'video/x-flv': 'video/x-flv',
+	wmv: 'video/x-ms-wmv',
+	'video/x-ms-wmv': 'video/x-ms-wmv',
+	'3gp': 'video/3gpp',
+	'3gpp': 'video/3gpp',
+	'video/3gpp': 'video/3gpp',
+	h264: 'video/H264',
+	avc: 'video/H264',
+	'video/h264': 'video/H264',
+	h265: 'video/H265',
+	hevc: 'video/H265',
+	'video/h265': 'video/H265',
+	av1: 'video/AV1',
+	'video/av1': 'video/AV1'
+};
+
+function resolveDirectMediaType(format: string): string | undefined {
+	const mapped = DIRECT_MEDIA_TYPES[format];
+	if (mapped) return mapped;
+	const mediaType = format.split(';', 1)[0].trim();
+	if (/^(?:video|audio)\/[a-z0-9!#$&^_.+-]+$/i.test(mediaType)) return mediaType;
+	if (mediaType === 'application/ogg') return mediaType;
+	return undefined;
+}
+
+function normalizeStreamFormat(value: string | undefined, url: string): NormalizedStreamFormat {
+	const normalized = value?.trim().toLowerCase();
+	if (normalized === 'dash' || normalized === 'mpd' || normalized === 'application/dash+xml') {
+		return { type: 'dash', sourceFormat: normalized, sourceContentType: 'application/dash+xml' };
+	}
+	if (
 		normalized === 'hls' ||
+		normalized === 'm3u8' ||
 		normalized === 'application/vnd.apple.mpegurl' ||
-		normalized === 'application/x-mpegurl';
-	if (isHls) return normalized === 'm3u8' || normalized === 'hls' ? normalized : 'hls';
-	return url.includes('.mp4') ? 'mp4' : url.includes('.mpd') ? 'dash' : 'hls';
+		normalized === 'application/x-mpegurl'
+	) {
+		return {
+			type: 'hls',
+			sourceFormat: normalized,
+			sourceContentType: 'application/vnd.apple.mpegurl'
+		};
+	}
+	if (normalized) {
+		const sourceContentType = resolveDirectMediaType(normalized);
+		return {
+			type: sourceContentType === 'video/mp4' ? 'mp4' : 'file',
+			sourceFormat: normalized,
+			sourceContentType
+		};
+	}
+
+	if (/\.mpd(?:$|[?#])/i.test(url)) {
+		return { type: 'dash', sourceFormat: 'mpd', sourceContentType: 'application/dash+xml' };
+	}
+	if (/\.m3u8(?:$|[?#])/i.test(url)) {
+		return {
+			type: 'hls',
+			sourceFormat: 'm3u8',
+			sourceContentType: 'application/vnd.apple.mpegurl'
+		};
+	}
+	const extension = url.match(/\.([a-zA-Z0-9]+)(?:$|[?#])/)?.[1]?.toLowerCase();
+	const inferredContentType = extension ? resolveDirectMediaType(extension) : undefined;
+	return {
+		type: inferredContentType === 'video/mp4' ? 'mp4' : 'file',
+		sourceFormat: extension
+	};
 }
 
 function normalizeSubtitles(value: unknown): StreamSubtitle[] | undefined {
@@ -118,6 +201,12 @@ function normalizeSubtitles(value: unknown): StreamSubtitle[] | undefined {
 		});
 	}
 	return subtitles.length > 0 ? subtitles : undefined;
+}
+
+function normalizeFutureExpiry(value: unknown): number | undefined {
+	if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+	const seconds = value >= 1_000_000_000_000 ? Math.floor(value / 1000) : Math.floor(value);
+	return seconds > Math.floor(Date.now() / 1000) ? seconds : undefined;
 }
 
 function extractStreams(payload: CinephageApiResponse): unknown[] {
@@ -157,17 +246,27 @@ function normalizeSource(entry: unknown, apiBaseUrl: string): StreamSource | nul
 	const server = getFirstString(entry.server, entry.source, entry.sourceName, entry.name);
 	const provider = getFirstString(entry.provider, entry.providerId, entry.backend) ?? 'cinephage';
 	const language = getFirstString(entry.language, entry.audioLanguage, entry.audioLang, entry.lang);
-	const type = normalizeStreamType(
-		getFirstString(entry.protocol, entry.type, entry.streamType, entry.format),
+	const streamFormat = normalizeStreamFormat(
+		getFirstString(
+			entry.protocol,
+			entry.type,
+			entry.streamType,
+			entry.format,
+			entry.mimeType,
+			entry.contentType
+		),
 		url
 	);
 	return {
 		quality,
 		title: getFirstString(entry.title, entry.name, server, provider) ?? `${provider} stream`,
 		url,
-		type,
+		type: streamFormat.type,
+		sourceFormat: streamFormat.sourceFormat,
+		sourceContentType: streamFormat.sourceContentType,
 		referer,
-		requiresSegmentProxy: type !== 'mp4',
+		requiresSegmentProxy:
+			streamFormat.type === 'hls' || streamFormat.type === 'm3u8' || streamFormat.type === 'dash',
 		server,
 		language,
 		headers,
@@ -175,10 +274,7 @@ function normalizeSource(entry: unknown, apiBaseUrl: string): StreamSource | nul
 		subtitles: normalizeSubtitles(entry.subtitles ?? entry.tracks),
 		status: 'working',
 		requiresProxy: entry.requiresProxy === true,
-		expiresAt:
-			typeof entry.expiresAt === 'number' && Number.isFinite(entry.expiresAt)
-				? entry.expiresAt
-				: undefined
+		expiresAt: normalizeFutureExpiry(entry.expiresAt)
 	};
 }
 

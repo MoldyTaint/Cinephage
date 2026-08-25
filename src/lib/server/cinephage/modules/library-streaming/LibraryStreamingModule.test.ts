@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi, afterAll } from 'vitest';
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../../test/db-helper.js';
 import { indexers } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { normalizeStreamType } from './LibraryStreamingModule.js';
 
 const testDb: TestDatabase = createTestDb();
 
@@ -232,6 +231,7 @@ describe('LibraryStreamingModule', () => {
 		}
 
 		it('normalizes a dash source with string subtitles, requiresProxy and expiresAt', async () => {
+			const futureExpiry = Math.floor(Date.now() / 1000) + 3600;
 			const httpGet = vi.fn().mockResolvedValue({
 				status: 200,
 				body: JSON.stringify({
@@ -244,7 +244,7 @@ describe('LibraryStreamingModule', () => {
 					},
 					subtitles: ['https://cdn.example.com/sub/en.srt?signed'],
 					requiresProxy: true,
-					expiresAt: 1786206904
+					expiresAt: futureExpiry
 				})
 			});
 
@@ -256,11 +256,33 @@ describe('LibraryStreamingModule', () => {
 			const source = result.sources[0];
 			expect(source.type).toBe('dash');
 			expect(source.requiresProxy).toBe(true);
-			expect(source.expiresAt).toBe(1786206904);
+			expect(source.expiresAt).toBe(futureExpiry);
 			expect(source.headers?.Cookie).toContain('CloudFront-Policy=xyz');
 			expect(source.subtitles).toEqual([
 				{ url: 'https://cdn.example.com/sub/en.srt?signed', label: 'und', language: 'und' }
 			]);
+		});
+
+		it('keeps an obfuscated direct source as a file instead of assuming HLS', async () => {
+			const httpGet = vi.fn().mockResolvedValue({
+				status: 200,
+				body: JSON.stringify({
+					url: 'https://cdn.example.com/obfuscated/movie.jpeg?token=signed',
+					provider: 'Direct',
+					quality: '2160p',
+					protocol: 'mkv',
+					headers: { Referer: 'https://player.example.com/' }
+				})
+			});
+
+			const mod = new LibraryStreamingModule(settings, createFakeCore(httpGet) as never);
+			const result = await mod.getStreams({ tmdbId: 550, type: 'movie' });
+
+			expect(result.success).toBe(true);
+			expect(result.sources[0].type).toBe('file');
+			expect(result.sources[0].sourceFormat).toBe('mkv');
+			expect(result.sources[0].sourceContentType).toBe('video/x-matroska');
+			expect(result.sources[0].requiresSegmentProxy).toBe(false);
 		});
 
 		it('toggles the version format and retries once on 401', async () => {
@@ -317,20 +339,6 @@ describe('LibraryStreamingModule', () => {
 			expect(core.refreshLatestIdentity).toHaveBeenCalledWith(true);
 			expect(result.success).toBe(false);
 			expect(result.error).toContain('rejected authentication');
-		});
-	});
-
-	describe('normalizeStreamType', () => {
-		it.each([
-			['mpd', 'https://cdn.example.com/manifest?sig=abc', 'dash'],
-			['dash', 'https://cdn.example.com/manifest', 'dash'],
-			['application/dash+xml', 'https://cdn.example.com/manifest', 'dash'],
-			[undefined, 'https://cdn.example.com/index.mpd', 'dash'],
-			['application/vnd.apple.mpegurl', 'https://cdn.example.com/index', 'hls'],
-			[undefined, 'https://cdn.example.com/video.mp4?token=x', 'mp4'],
-			[undefined, 'https://cdn.example.com/index.m3u8', 'hls']
-		])('classifies type=%s url=%s as %s', (type, url, expected) => {
-			expect(normalizeStreamType(type ?? undefined, url)).toBe(expected);
 		});
 	});
 });

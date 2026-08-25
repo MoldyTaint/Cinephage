@@ -200,8 +200,8 @@ export class StrmService {
 	 * HTTP URLs deliberately have no `.m3u` suffix: Jellyfin refuses to remux
 	 * any HTTP path containing `.m3u` (MediaSourceManager.SupportsDirectStream),
 	 * forcing a DirectPlay handover. The extension-less route serves the real
-	 * media type (progressive mp4 for mp4 sources, rewritten HLS otherwise)
-	 * and is identified by response Content-Type.
+	 * source format (HLS, DASH, MP4, or another direct container), identified
+	 * by its response Content-Type. No source is relabelled or remuxed here.
 	 */
 	async generateStrmContent(options: StrmCreateOptions): Promise<string> {
 		const { mediaType, tmdbId, season, episode, baseUrl, apiKey: providedApiKey } = options;
@@ -223,11 +223,12 @@ export class StrmService {
 			}
 		}
 
-		// For stream:// protocol (internal use), don't add API key
+		// For stream:// protocol (internal use), don't add API key. Keep the path
+		// extension-less so it never advertises a non-HLS source as an .m3u8 file.
 		if (mediaType === 'movie') {
-			return `${baseUrl}/api/streaming/session/movie/${tmdbId}/master.m3u8`;
+			return `${baseUrl}/api/streaming/session/movie/${tmdbId}`;
 		} else {
-			return `${baseUrl}/api/streaming/session/tv/${tmdbId}/${season}/${episode}/master.m3u8`;
+			return `${baseUrl}/api/streaming/session/tv/${tmdbId}/${season}/${episode}`;
 		}
 	}
 

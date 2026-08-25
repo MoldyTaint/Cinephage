@@ -48,8 +48,8 @@ async function resolveEpisodeSession(
  * Source-aware launch entry for .strm files. The path deliberately has no
  * `.m3u` suffix so media servers (Jellyfin) treat the source as remuxable —
  * Jellyfin's SupportsDirectStream rejects any HTTP path containing `.m3u`.
- * mp4 sources stream as progressive mp4; HLS sources get the rewritten
- * playlist (identified by Content-Type).
+ * Each source keeps its real format: manifests are only rewritten to retain
+ * authenticated proxy URLs, while direct containers are streamed unchanged.
  */
 export const GET: RequestHandler = async ({ params, request, url }) => {
 	const { session, error, invalid, code } = await resolveEpisodeSession(
@@ -92,7 +92,8 @@ export const OPTIONS: RequestHandler = async () => {
 		headers: {
 			'Access-Control-Allow-Origin': '*',
 			'Access-Control-Allow-Methods': 'GET, OPTIONS, HEAD',
-			'Access-Control-Allow-Headers': 'Range, Content-Type'
+			'Access-Control-Allow-Headers':
+				'Range, If-Range, If-None-Match, If-Modified-Since, Content-Type'
 		}
 	});
 };
