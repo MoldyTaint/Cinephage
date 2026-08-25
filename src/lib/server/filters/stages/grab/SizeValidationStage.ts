@@ -4,8 +4,8 @@ import type { GrabDecisionContext } from './types.js';
 export class SizeValidationStage implements DecisionStage<GrabDecisionContext> {
 	name = 'sizeValidation';
 
-	isEnabled(_ctx: GrabDecisionContext): boolean {
-		return true;
+	isEnabled(ctx: GrabDecisionContext): boolean {
+		return !ctx.options.force;
 	}
 
 	async evaluate(ctx: GrabDecisionContext): Promise<StageResult> {
