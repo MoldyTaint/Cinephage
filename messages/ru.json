@@ -1220,7 +1220,6 @@
 	"library_movieFilesTab_unknownTotalSize": "Неизвестный общий размер",
 	"library_movieHeader_autoGrab": "Автозахват",
 	"library_movieHeader_autoGrabTooltip": "Автоматически искать и захватывать фильм",
-	"library_movieHeader_backToLibrary": "Назад к ",
 	"library_movieHeader_failed": "Не удалось",
 	"library_movieHeader_grabbed": "Захвачен",
 	"library_movieHeader_imdbLink": "IMDb",

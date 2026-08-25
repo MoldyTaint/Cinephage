@@ -1220,7 +1220,6 @@
 	"library_movieFilesTab_unknownTotalSize": "Unknown total size",
 	"library_movieHeader_autoGrab": "Auto-grab",
 	"library_movieHeader_autoGrabTooltip": "Automatically search and grab movie",
-	"library_movieHeader_backToLibrary": "Back to ",
 	"library_movieHeader_failed": "Failed",
 	"library_movieHeader_grabbed": "Grabbed",
 	"library_movieHeader_imdbLink": "IMDb",
