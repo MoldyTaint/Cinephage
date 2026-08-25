@@ -42,13 +42,13 @@
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { createSubtitleProgress } from '$lib/stores/subtitleProgress.svelte';
 	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
+	import { MOVIES_RETURN_URL_KEY as RETURN_URL_KEY } from '$lib/utils/library-return-urls';
 	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
 	import * as m from '$lib/paraglide/messages.js';
 
 	let { data } = $props();
 
 	const SCROLL_KEY = 'cinephage:library:movies:scrollY';
-	const RETURN_URL_KEY = 'cinephage:library:movies:returnUrl';
 
 	beforeNavigate(({ to }) => {
 		if (to?.url.pathname.startsWith('/library/movie/')) {
