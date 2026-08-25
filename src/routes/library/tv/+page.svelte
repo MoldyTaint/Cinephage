@@ -44,12 +44,15 @@
 	let { data } = $props();
 
 	const SCROLL_KEY = 'cinephage:library:tv:scrollY';
+	const RETURN_URL_KEY = 'cinephage:library:tv:returnUrl';
 
 	beforeNavigate(({ to }) => {
 		if (to?.url.pathname.startsWith('/library/tv/')) {
 			localStorage.setItem(SCROLL_KEY, String(window.scrollY));
+			localStorage.setItem(RETURN_URL_KEY, to.url.pathname + to.url.search);
 		} else {
 			localStorage.removeItem(SCROLL_KEY);
+			localStorage.removeItem(RETURN_URL_KEY);
 		}
 	});
 
