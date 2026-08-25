@@ -53,7 +53,7 @@
 	beforeNavigate(({ to }) => {
 		if (to?.url.pathname.startsWith('/library/movie/')) {
 			localStorage.setItem(SCROLL_KEY, String(window.scrollY));
-			localStorage.setItem(RETURN_URL_KEY, to.url.pathname + to.url.search);
+			localStorage.setItem(RETURN_URL_KEY, window.location.pathname + window.location.search);
 		} else {
 			localStorage.removeItem(SCROLL_KEY);
 			localStorage.removeItem(RETURN_URL_KEY);
