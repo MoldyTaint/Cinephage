@@ -31,8 +31,10 @@
 	import { CheckSquare, FileEdit, RefreshCw, X } from 'lucide-svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { goto, afterNavigate } from '$app/navigation';
+	import { browser } from '$app/environment';
 	import { resolvePath } from '$lib/utils/routing';
+	import { TV_RETURN_URL_KEY } from '$lib/utils/library-return-urls';
 	import { createDynamicSSE } from '$lib/sse';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { createSubtitleProgress } from '$lib/stores/subtitleProgress.svelte';
@@ -54,6 +56,14 @@
 	const series = $derived(seriesState ?? data.series);
 	const seasons = $derived(seasonsState ?? data.seasons);
 	const queueItems = $derived(queueItemsState ?? data.queueItems);
+
+	let tvBackHref = $state<string | null>(null);
+
+	afterNavigate(() => {
+		if (!browser) return;
+		const stored = localStorage.getItem(TV_RETURN_URL_KEY);
+		tvBackHref = stored && stored.split('?')[0] === resolvePath('/library/tv') ? stored : null;
+	});
 
 	function computeSeriesEpisodeStats(seasonList: PageData['seasons']) {
 		const regularSeasons = seasonList.filter((season) => season.seasonNumber > 0);
@@ -1678,6 +1688,7 @@
 		configuredProviders={data.configuredMetadataProviders}
 		librarySlug={data.librarySlug}
 		libraryName={data.libraryName}
+		backHref={tvBackHref}
 		refreshing={isRefreshing}
 		{refreshProgress}
 		episodeCount={seriesForDisplay.episodeCount}

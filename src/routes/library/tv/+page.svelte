@@ -40,11 +40,11 @@
 	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import { seriesStatusFilterOptions } from '$lib/utils/format-status.js';
+	import { TV_RETURN_URL_KEY as RETURN_URL_KEY } from '$lib/utils/library-return-urls';
 
 	let { data } = $props();
 
 	const SCROLL_KEY = 'cinephage:library:tv:scrollY';
-	const RETURN_URL_KEY = 'cinephage:library:tv:returnUrl';
 
 	beforeNavigate(({ to }) => {
 		if (to?.url.pathname.startsWith('/library/tv/')) {
