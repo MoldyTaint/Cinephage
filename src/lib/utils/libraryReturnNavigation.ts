@@ -1,0 +1,54 @@
+export type LibrarySection = 'movies' | 'tv';
+
+export interface LibraryNavigationContext {
+	section: LibrarySection;
+	kind: 'list' | 'detail';
+	listPath: '/library/movies' | '/library/tv';
+}
+
+const MOVIES_LIST = '/library/movies' as const;
+const TV_LIST = '/library/tv' as const;
+
+export function getLibraryNavigationContext(pathname: string): LibraryNavigationContext | null {
+	if (pathname === MOVIES_LIST) {
+		return { section: 'movies', kind: 'list', listPath: MOVIES_LIST };
+	}
+	if (/^\/library\/movie\/[^/]+$/.test(pathname)) {
+		return { section: 'movies', kind: 'detail', listPath: MOVIES_LIST };
+	}
+	if (pathname === TV_LIST) {
+		return { section: 'tv', kind: 'list', listPath: TV_LIST };
+	}
+	if (/^\/library\/tv\/[^/]+$/.test(pathname)) {
+		return { section: 'tv', kind: 'detail', listPath: TV_LIST };
+	}
+	return null;
+}
+
+/**
+ * Build the canonical detail URL for a navigation originating from a library list.
+ * The exact list pathname + query string is written into returnTo so the detail
+ * page can restore every active filter, sort option, sub-library, and text search.
+ */
+export function getLibraryDetailWithReturnTo(
+	fromPathname: string,
+	fromSearch: string,
+	target: string
+): string | null {
+	const from = getLibraryNavigationContext(fromPathname);
+	if (!from || from.kind !== 'list') return null;
+
+	try {
+		const targetUrl = new URL(target, 'http://cinephage.local');
+		if (targetUrl.origin !== 'http://cinephage.local') return null;
+
+		const to = getLibraryNavigationContext(targetUrl.pathname);
+		if (!to || to.kind !== 'detail' || to.section !== from.section) return null;
+
+		const returnTo = `${fromPathname}${fromSearch}`;
+		targetUrl.searchParams.set('returnTo', returnTo);
+		return `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
+	} catch {
+		return null;
+	}
+}
