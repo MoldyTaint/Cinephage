@@ -897,7 +897,9 @@
 								</div>
 								{#if !collapsedGroups.has(group.name ?? '__none__')}
 									{#if viewPreferences.viewMode === 'grid'}
-										<div class="grid grid-cols-3 gap-3 pt-2 sm:gap-4 lg:grid-cols-9">
+										<div
+											class="grid grid-cols-3 gap-3 pt-2 sm:grid-cols-4 sm:gap-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-9"
+										>
 											{#each group.movies as movie (movie.id)}
 												<LibraryMediaCard
 													item={movie}
@@ -930,7 +932,9 @@
 						{/each}
 					{:else}
 						{#if viewPreferences.viewMode === 'grid'}
-							<div class="grid grid-cols-3 gap-3 sm:gap-4 lg:grid-cols-9">
+							<div
+								class="grid grid-cols-3 gap-3 sm:grid-cols-4 sm:gap-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-9"
+							>
 								{#each renderer.visible as movie (movie.id)}
 									<LibraryMediaCard
 										item={movie}
