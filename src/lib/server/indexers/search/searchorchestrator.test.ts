@@ -223,6 +223,82 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 		expect(captured.some((c) => isMovieSearch(c) && c.year === undefined)).toBe(true);
 	});
 
+	it('returns movie results without waiting for slower redundant variants', async () => {
+		const orchestrator = new SearchOrchestrator();
+		let releaseSlowVariant!: () => void;
+		const slowGate = new Promise<void>((resolve) => {
+			releaseSlowVariant = resolve;
+		});
+
+		const fakeIndexer = buildIndexer({
+			search: async (criteria) => {
+				if (isMovieSearch(criteria) && criteria.year !== undefined) {
+					await slowGate;
+					return [];
+				}
+				return [createRelease({ guid: 'grown-ups-noyear', title: 'Grown Ups 2 2013 1080p' })];
+			}
+		});
+
+		const criteria = createMovieCriteria({ query: 'Grown Ups 2', year: 2013 });
+		const searchPromise = privateApi(orchestrator).executeMultiTitleTextSearch(
+			fakeIndexer,
+			criteria
+		);
+
+		const outcome = await Promise.race([
+			searchPromise.then((releases) => ({ state: 'resolved' as const, releases })),
+			new Promise<{ state: 'pending' }>((resolve) =>
+				setTimeout(() => resolve({ state: 'pending' }), 100)
+			)
+		]);
+
+		expect(outcome.state).toBe('resolved');
+		if (outcome.state === 'resolved') {
+			expect(outcome.releases.map((release) => release.guid)).toContain('grown-ups-noyear');
+		}
+
+		releaseSlowVariant();
+		await searchPromise;
+	});
+
+	it('keeps waiting for all TV episode-format variants before merging', async () => {
+		const orchestrator = new SearchOrchestrator();
+		let releaseSlowVariant!: () => void;
+		const slowGate = new Promise<void>((resolve) => {
+			releaseSlowVariant = resolve;
+		});
+
+		const fakeIndexer = buildIndexer({
+			search: async (criteria) => {
+				const tv = isTvSearch(criteria) ? criteria : undefined;
+				if (tv?.preferredEpisodeFormat === 'standard') {
+					await slowGate;
+					return [];
+				}
+				return [createRelease({ guid: 'show-european', title: 'My Show 1x05 720p' })];
+			}
+		});
+
+		const criteria = createTvCriteria({ query: 'My Show', season: 1, episode: 5 });
+		const searchPromise = privateApi(orchestrator).executeMultiTitleTextSearch(
+			fakeIndexer,
+			criteria
+		);
+
+		const outcome = await Promise.race([
+			searchPromise.then((releases) => ({ state: 'resolved' as const, releases })),
+			new Promise<{ state: 'pending' }>((resolve) =>
+				setTimeout(() => resolve({ state: 'pending' }), 100)
+			)
+		]);
+
+		expect(outcome.state).toBe('pending');
+
+		releaseSlowVariant();
+		await searchPromise;
+	});
+
 	it('adds title-only fallback variant for interactive TV episode searches', async () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: SearchCriteria[] = [];

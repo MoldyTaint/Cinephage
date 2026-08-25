@@ -1374,11 +1374,22 @@ export class SearchOrchestrator {
 			}
 
 			const batch = variantCriteria.slice(i, i + BATCH_SIZE);
-			const settled = await Promise.allSettled(batch.map((vc) => indexer.search(vc)));
+			// Movie variants are redundant reformulations of the same query
+			// (title±year), so the first variant that returns results answers the
+			// search - don't block on slower siblings stuck in Cloudflare bypass,
+			// or their stall eats the whole per-indexer timeout and discards the
+			// results already parsed (TV episode formats are alternative encodings,
+			// not nested queries, so they still merge every variant).
+			const earlyExitOnResults = isMovieSearch(criteria);
+			const { settled } = await this.settleVariantBatch(
+				batch.map((vc) => indexer.search(vc)),
+				earlyExitOnResults
+			);
 
-			for (let j = 0; j < settled.length; j++) {
+			for (let j = 0; j < batch.length; j++) {
 				const vc = batch[j];
 				const result = settled[j];
+				if (!result) continue;
 				if (result.status === 'fulfilled') {
 					successfulVariants++;
 					for (const release of result.value) {
@@ -1708,6 +1719,57 @@ export class SearchOrchestrator {
 	): Promise<{ releases: ReleaseResult[]; searchMethod: 'text' }> {
 		const releases = await indexer.search(criteria);
 		return { releases, searchMethod: 'text' };
+	}
+
+	/**
+	 * Await a batch of variant searches. With `earlyExitOnResults`, resolve as
+	 * soon as any variant fulfills with non-empty results; slower siblings keep
+	 * running in the background and their outcomes are ignored (their rejections
+	 * stay handled, and the outer AbortController cancels them on timeout).
+	 * Entries for still-in-flight variants remain unset when we resolve early.
+	 */
+	private settleVariantBatch(
+		promises: Promise<ReleaseResult[]>[],
+		earlyExitOnResults: boolean
+	): Promise<{ settled: PromiseSettledResult<ReleaseResult[]>[] }> {
+		if (!earlyExitOnResults) {
+			return Promise.allSettled(promises).then((settled) => ({ settled }));
+		}
+
+		return new Promise((resolve) => {
+			const settled: PromiseSettledResult<ReleaseResult[]>[] = new Array(promises.length);
+			let pending = promises.length;
+			let finished = false;
+
+			const finishIfAllSettled = () => {
+				if (!finished && pending === 0) {
+					finished = true;
+					resolve({ settled });
+				}
+			};
+
+			promises.forEach((promise, index) => {
+				promise.then(
+					(value) => {
+						if (finished) return;
+						settled[index] = { status: 'fulfilled', value };
+						pending -= 1;
+						if (Array.isArray(value) && value.length > 0) {
+							finished = true;
+							resolve({ settled });
+							return;
+						}
+						finishIfAllSettled();
+					},
+					(reason) => {
+						if (finished) return;
+						settled[index] = { status: 'rejected', reason };
+						pending -= 1;
+						finishIfAllSettled();
+					}
+				);
+			});
+		});
 	}
 
 	/** Create a timeout promise */
