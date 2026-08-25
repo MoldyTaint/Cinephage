@@ -1,7 +1,6 @@
 import { describe, it, expect, afterAll, beforeEach, vi } from 'vitest';
 
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../test/db-helper.js';
-import { eq } from 'drizzle-orm';
 
 const testDb: TestDatabase = createTestDb();
 
