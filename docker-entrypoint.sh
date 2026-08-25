@@ -279,8 +279,9 @@ if [ ! -f "$CAMOUFOX_MARKER" ]; then
   # Stage into the persisted cache volume instead of the container overlay: an install
   # killed mid-extraction leaves its staging zip behind, and sweep-on-boot keeps that
   # bounded. Extraction runs silently after the download progress bar finishes.
+  mkdir -p "$CAMOUFOX_TMP_DIR" 2>/dev/null || true
   FETCH_START="$(date +%s)"
-  echo "Fetching Camoufox..."
+  echo "Fetching Camoufox (extraction runs silently after the download bar finishes)..."
   if HOME="$HOME" TMPDIR="$CAMOUFOX_TMP_DIR" ./node_modules/.bin/camoufox-js fetch; then
     FETCH_END="$(date +%s)"
     echo "Camoufox fetched successfully in $((FETCH_END - FETCH_START))s"
