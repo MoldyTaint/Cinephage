@@ -934,6 +934,7 @@
 	"library_import_applyDestinationToMedia": "Apply Destination to Media",
 	"library_import_applyMatchToSeason": "Apply Match to Season",
 	"library_import_autoDetect": "Auto Detect",
+	"library_backTo": "Back to {name}",
 	"library_import_backToLibraryItem": "Back to Library Item",
 	"library_import_backToReview": "Back to Review",
 	"library_import_badgeImported": "Imported",

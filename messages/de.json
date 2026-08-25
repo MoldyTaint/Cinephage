@@ -934,6 +934,7 @@
 	"library_import_applyDestinationToMedia": "Zielordner auf Medium anwenden",
 	"library_import_applyMatchToSeason": "Übereinstimmung auf Staffel anwenden",
 	"library_import_autoDetect": "Automatisch erkennen",
+	"library_backTo": "Zurück zu {name}",
 	"library_import_backToLibraryItem": "Zurück zum Bibliothekseintrag",
 	"library_import_backToReview": "Zurück zur Überprüfung",
 	"library_import_badgeImported": "Importiert",

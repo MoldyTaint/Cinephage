@@ -934,6 +934,7 @@
 	"library_import_applyDestinationToMedia": "Применить назначение к медиа",
 	"library_import_applyMatchToSeason": "Применить совпадение к сезону",
 	"library_import_autoDetect": "Автоопределение",
+	"library_backTo": "Назад к {name}",
 	"library_import_backToLibraryItem": "Назад к элементу библиотеки",
 	"library_import_backToReview": "Назад к проверке",
 	"library_import_badgeImported": "Импортировано",
