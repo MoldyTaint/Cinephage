@@ -49,6 +49,7 @@ export DATA_DIR INDEXER_DEFINITIONS_PATH EXTERNAL_LISTS_PRESETS_PATH \
 HOME="${CONFIG_ROOT}/cache/home"
 export HOME
 CAMOUFOX_CACHE_DIR="${HOME}/.cache/camoufox"
+CAMOUFOX_TMP_DIR="${CONFIG_ROOT}/cache/tmp"
 CAMOUFOX_NOTICE_FILE="${CONFIG_ROOT}/README-DO-NOT-DELETE-CAMOUFOX-CACHE.txt"
 OWNERSHIP_STAMP_FILE="${CONFIG_ROOT}/.cinephage-ownership-stamp"
 export CAMOUFOX_PATH="$CAMOUFOX_CACHE_DIR"
@@ -153,6 +154,7 @@ if [ "$(id -u)" = "0" ] && [ -z "${CINEPHAGE_REEXEC:-}" ]; then
     "$EXTERNAL_LISTS_PRESETS_PATH" \
     "$INDEXER_CUSTOM_DEFINITIONS_PATH" \
     "$EXTERNAL_LISTS_CUSTOM_PRESETS_PATH" \
+    "$CAMOUFOX_TMP_DIR" \
     "$CAMOUFOX_CACHE_DIR"
 
   if [ "$CONFIG_MOUNTED" = "1" ]; then
@@ -181,8 +183,12 @@ if [ "$(id -u)" = "0" ] && [ -z "${CINEPHAGE_REEXEC:-}" ]; then
       "$EXTERNAL_LISTS_CUSTOM_PRESETS_PATH" \
       "$HOME" \
       "$CAMOUFOX_CACHE_DIR" \
+      "$CAMOUFOX_TMP_DIR" \
       "$OWNERSHIP_STAMP_FILE" 2>/dev/null || true
   fi
+
+  # Reclaim disk from camoufox installs killed mid-extraction (staged zip lives in TMPDIR).
+  rm -rf "${CAMOUFOX_TMP_DIR:?}"/camoufox-* 2>/dev/null || true
 
   export CINEPHAGE_REEXEC=1
   exec gosu "${TARGET_UID}:${TARGET_GID}" "$0" "$@"
@@ -263,14 +269,27 @@ mkdir -p "$INDEXER_CUSTOM_DEFINITIONS_PATH" "$EXTERNAL_LISTS_CUSTOM_PRESETS_PATH
 CAMOUFOX_MARKER="$CAMOUFOX_CACHE_DIR/version.json"
 
 if [ ! -f "$CAMOUFOX_MARKER" ]; then
-  echo "Downloading Camoufox (first run only, ~80MB)..."
+  if has_contents "$CAMOUFOX_CACHE_DIR"; then
+    echo "Incomplete Camoufox install detected (missing version marker); re-downloading..."
+  else
+    echo "Downloading Camoufox (first run only; large download, may take several minutes)..."
+  fi
   mkdir -p "$CAMOUFOX_CACHE_DIR"
 
-  if ! HOME="$HOME" ./node_modules/.bin/camoufox-js fetch; then
+  # Stage into the persisted cache volume instead of the container overlay: an install
+  # killed mid-extraction leaves its staging zip behind, and sweep-on-boot keeps that
+  # bounded. Extraction runs silently after the download progress bar finishes.
+  FETCH_START="$(date +%s)"
+  echo "Fetching Camoufox..."
+  if HOME="$HOME" TMPDIR="$CAMOUFOX_TMP_DIR" ./node_modules/.bin/camoufox-js fetch; then
+    FETCH_END="$(date +%s)"
+    echo "Camoufox fetched successfully in $((FETCH_END - FETCH_START))s"
+    echo "Camoufox installed ($(du -sh "$CAMOUFOX_CACHE_DIR" | cut -f1)) at $CAMOUFOX_CACHE_DIR"
+  else
     echo "Warning: Failed to download Camoufox browser. Captcha solving will be unavailable."
   fi
 else
-  echo "Camoufox already installed at $CAMOUFOX_CACHE_DIR"
+  echo "Camoufox already installed at $CAMOUFOX_CACHE_DIR ($(du -sh "$CAMOUFOX_CACHE_DIR" | cut -f1))"
 fi
 
 echo "Starting Cinephage..."
