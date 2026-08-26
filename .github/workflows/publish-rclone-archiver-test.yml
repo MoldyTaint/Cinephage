@@ -1,0 +1,154 @@
+name: Publish rclone archiver test image
+
+on:
+  push:
+    branches: [rclone-archiver]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  REGISTRY: ghcr.io
+  IMAGE_TAG: rclone-archiver-test
+  APP_VERSION: rclone-archiver-test
+
+concurrency:
+  group: publish-rclone-archiver-test
+  cancel-in-progress: true
+
+jobs:
+  build-amd64:
+    name: Build, test, and push amd64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build local health-check image
+        run: |
+          docker buildx build --load \
+            -t cinephage:rclone-archiver-test \
+            --build-arg APP_VERSION=${{ env.APP_VERSION }} \
+            --build-arg APP_SOURCE=https://github.com/vampywiz17/Cinephage \
+            --build-arg VCS_REF=${{ github.sha }} \
+            .
+
+      - name: Test Docker image
+        run: |
+          docker run -d --name cinephage-test \
+            -p 3000:3000 \
+            -e ORIGIN=http://localhost:3000 \
+            -e BETTER_AUTH_SECRET=ci-healthcheck-secret-change-in-production \
+            cinephage:rclone-archiver-test
+
+          for i in {1..12}; do
+            if curl -sf http://localhost:3000/api/health; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Waiting for container... ($i/12)"
+            sleep 5
+          done
+
+          echo "Health check failed"
+          docker logs cinephage-test
+          exit 1
+
+      - name: Cleanup test container
+        if: always()
+        run: docker rm -f cinephage-test || true
+
+      - name: Build and push amd64 image
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:${{ env.IMAGE_TAG }}-amd64
+          build-args: |
+            APP_VERSION=${{ env.APP_VERSION }}
+            APP_SOURCE=https://github.com/vampywiz17/Cinephage
+            VCS_REF=${{ github.sha }}
+          cache-from: type=gha,scope=rclone-archiver-amd64
+          cache-to: type=gha,mode=max,scope=rclone-archiver-amd64
+
+  build-arm64:
+    name: Build and push arm64
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push arm64 image
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LC }}:${{ env.IMAGE_TAG }}-arm64
+          build-args: |
+            APP_VERSION=${{ env.APP_VERSION }}
+            APP_SOURCE=https://github.com/vampywiz17/Cinephage
+            VCS_REF=${{ github.sha }}
+          cache-from: type=gha,scope=rclone-archiver-arm64
+          cache-to: type=gha,mode=max,scope=rclone-archiver-arm64
+
+  manifest:
+    name: Create multi-arch manifest
+    runs-on: ubuntu-latest
+    needs: [build-amd64, build-arm64]
+
+    steps:
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Create and push multi-arch manifest
+        run: |
+          docker buildx imagetools create \
+            -t "${REGISTRY}/${IMAGE_NAME_LC}:${IMAGE_TAG}" \
+            "${REGISTRY}/${IMAGE_NAME_LC}:${IMAGE_TAG}-amd64" \
+            "${REGISTRY}/${IMAGE_NAME_LC}:${IMAGE_TAG}-arm64"
