@@ -31,6 +31,7 @@ export interface ArchiveProgressContext {
 	onTotal?: (totalBytes: number) => void;
 	onFileStart?: (fileId: string, path: string, completedBytes: number) => void;
 	onProgress?: (completedBytes: number) => void;
+	onRemoteStart?: (jobid: number) => void;
 }
 
 export class ArchiveService {
@@ -129,7 +130,8 @@ export class ArchiveService {
 			progress?.onFileStart?.(file.id, file.relativePath, completedBytes);
 			const destination = await client.uploadFile(sourcePath, destinationDirectory, {
 				group: progress?.group,
-				onProgress: (fileBytes) => progress?.onProgress?.(completedBytes + fileBytes)
+				onProgress: (fileBytes) => progress?.onProgress?.(completedBytes + fileBytes),
+				onRemoteStart: progress?.onRemoteStart
 			});
 			completedBytes += file.size ?? 0;
 			progress?.onProgress?.(completedBytes);

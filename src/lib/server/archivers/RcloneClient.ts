@@ -39,6 +39,16 @@ export interface RcloneStats {
 	}>;
 }
 
+interface RcloneAsyncJobStart {
+	jobid?: number;
+}
+
+interface RcloneAsyncJobStatus {
+	finished?: boolean;
+	success?: boolean;
+	error?: string;
+}
+
 export class RcloneClient {
 	private readonly endpoint: string;
 	private readonly username: string | null;
@@ -72,7 +82,11 @@ export class RcloneClient {
 	async uploadFile(
 		sourcePath: string,
 		destinationDirectory = '',
-		options: { group?: string; onProgress?: (bytes: number) => void } = {}
+		options: {
+			group?: string;
+			onProgress?: (bytes: number) => void;
+			onRemoteStart?: (jobid: number) => void;
+		} = {}
 	): Promise<string> {
 		const filename = basename(sourcePath);
 		const remoteDirectory = this.joinRemotePath(this.basePath, destinationDirectory);
@@ -80,6 +94,7 @@ export class RcloneClient {
 		url.searchParams.set('fs', `${this.remote}:`);
 		url.searchParams.set('remote', remoteDirectory);
 		if (options.group) url.searchParams.set('_group', options.group);
+		url.searchParams.set('_async', 'true');
 
 		const boundary = `cinephage-${randomUUID()}`;
 		const safeFilename = filename.replace(/[\r\n"]/g, '_');
@@ -96,6 +111,12 @@ export class RcloneClient {
 		const response = await this.uploadRequest(url, headers, body);
 
 		if (!response.ok) throw await this.responseError(response);
+		const asyncJob = (await response.json()) as RcloneAsyncJobStart;
+		if (!Number.isInteger(asyncJob.jobid)) {
+			throw new Error('rclone RC operations/uploadfile did not return an async job ID');
+		}
+		options.onRemoteStart?.(asyncJob.jobid!);
+		await this.waitForJob(asyncJob.jobid!);
 		return `${this.remote}:${this.joinRemotePath(remoteDirectory, filename)}`;
 	}
 
@@ -178,6 +199,19 @@ export class RcloneClient {
 		});
 		if (!response.ok) throw await this.responseError(response);
 		return (await response.json()) as T;
+	}
+
+	private async waitForJob(jobid: number): Promise<void> {
+		while (true) {
+			const status = await this.jsonRequest<RcloneAsyncJobStatus>('job/status', { jobid }, 10_000);
+			if (status.finished) {
+				if (!status.success) {
+					throw new Error(`rclone async job ${jobid} failed: ${status.error || 'unknown error'}`);
+				}
+				return;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+		}
 	}
 
 	private buildUrl(command: string): URL {

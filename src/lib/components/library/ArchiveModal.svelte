@@ -41,6 +41,7 @@
 	let speed = $state(0);
 	let eta = $state<number | null>(null);
 	let currentFile = $state<string | null>(null);
+	let archivePhase = $state<'queued' | 'sending' | 'uploading' | 'completed' | 'failed'>('queued');
 	let activeJobId = $state<string | null>(null);
 	let trackingWarning = $state<string | null>(null);
 	let initializedForOpen = $state(false);
@@ -57,6 +58,7 @@
 			speed = 0;
 			eta = null;
 			currentFile = null;
+			archivePhase = 'queued';
 			activeJobId = null;
 			trackingWarning = null;
 			error = null;
@@ -133,6 +135,7 @@
 			speed = job.rcloneStats?.speed ?? 0;
 			eta = job.rcloneStats?.eta ?? null;
 			currentFile = job.currentFile;
+			archivePhase = job.phase;
 			if (job.state === 'completed') return;
 			if (job.state === 'failed') throw new Error(job.error || 'Archive failed');
 			await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -163,6 +166,13 @@
 						<span class="min-w-0 truncate">{currentFile ?? 'Preparing archive…'}</span><span
 							class="font-medium">{progress}%</span
 						>
+					</div>
+					<div class="mb-2 text-xs text-base-content/60">
+						{archivePhase === 'uploading'
+							? 'Uploading to archive storage…'
+							: archivePhase === 'sending'
+								? 'Sending file to rclone…'
+								: 'Preparing archive…'}
 					</div>
 					<progress class="progress w-full progress-primary" value={progress} max="100"></progress>
 					<div class="mt-2 flex justify-between text-xs text-base-content/60">

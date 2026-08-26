@@ -7,10 +7,12 @@ import { RcloneClient, type RcloneStats } from './RcloneClient.js';
 import type { ArchiveFileResult } from './types.js';
 
 export type ArchiveJobState = 'queued' | 'running' | 'completed' | 'failed';
+export type ArchiveJobPhase = 'queued' | 'sending' | 'uploading' | 'completed' | 'failed';
 
 export interface ArchiveJobStatus {
 	id: string;
 	state: ArchiveJobState;
+	phase: ArchiveJobPhase;
 	mediaType: 'movie' | 'series';
 	mediaId: string;
 	group: string;
@@ -18,6 +20,7 @@ export interface ArchiveJobStatus {
 	transferredBytes: number;
 	progress: number;
 	currentFile: string | null;
+	rcloneJobId: number | null;
 	error: string | null;
 	results: ArchiveFileResult[];
 	startedAt: string;
@@ -38,6 +41,7 @@ export class ArchiveJobManager {
 		const job: InternalJob = {
 			id,
 			state: 'queued',
+			phase: 'queued',
 			mediaType,
 			mediaId,
 			archiverId: input.archiverId,
@@ -45,6 +49,7 @@ export class ArchiveJobManager {
 			totalBytes: 0,
 			transferredBytes: 0,
 			currentFile: null,
+			rcloneJobId: null,
 			error: null,
 			results: [],
 			startedAt: new Date().toISOString(),
@@ -81,8 +86,11 @@ export class ArchiveJobManager {
 				// Local stream counters remain available if stats are unsupported/unavailable.
 			}
 		}
-		const transferredBytes = Math.max(job.transferredBytes, rcloneStats?.bytes ?? 0);
+		const remoteBytes = rcloneStats?.bytes ?? 0;
+		const transferredBytes = job.phase === 'uploading' ? remoteBytes : job.transferredBytes;
 		const totalBytes = Math.max(job.totalBytes, rcloneStats?.totalBytes ?? 0);
+		const totalWorkBytes = totalBytes * 2;
+		const completedWorkBytes = job.transferredBytes + remoteBytes;
 		const { archiverId: _archiverId, ...publicJob } = job;
 		return {
 			...publicJob,
@@ -91,8 +99,8 @@ export class ArchiveJobManager {
 			progress:
 				job.state === 'completed'
 					? 100
-					: totalBytes > 0
-						? Math.min(99, Math.round((transferredBytes / totalBytes) * 100))
+					: totalWorkBytes > 0
+						? Math.min(99, Math.round((completedWorkBytes / totalWorkBytes) * 100))
 						: 0,
 			rcloneStats
 		};
@@ -100,15 +108,33 @@ export class ArchiveJobManager {
 
 	private async run(job: InternalJob, input: ArchiveMediaInput): Promise<void> {
 		job.state = 'running';
+		job.phase = 'sending';
 		try {
 			const context = {
 				group: job.group,
 				onTotal: (bytes: number) => (job.totalBytes = bytes),
 				onFileStart: (_id: string, path: string, completedBytes: number) => {
+					job.phase = 'sending';
 					job.currentFile = path;
+					job.rcloneJobId = null;
 					job.transferredBytes = completedBytes;
 				},
-				onProgress: (bytes: number) => (job.transferredBytes = bytes)
+				onProgress: (bytes: number) => (job.transferredBytes = bytes),
+				onRemoteStart: (rcloneJobId: number) => {
+					job.phase = 'uploading';
+					job.rcloneJobId = rcloneJobId;
+					logger.info(
+						{
+							component: 'ArchiveJobManager',
+							logDomain: 'imports',
+							jobId: job.id,
+							rcloneJobId,
+							currentFile: job.currentFile,
+							stagedBytes: job.transferredBytes
+						},
+						'Archive source staged; rclone remote upload started'
+					);
+				}
 			};
 			job.results =
 				job.mediaType === 'movie'
@@ -117,11 +143,13 @@ export class ArchiveJobManager {
 			job.transferredBytes = job.totalBytes;
 			job.currentFile = null;
 			job.state = 'completed';
+			job.phase = 'completed';
 			logger.info(
 				{
 					component: 'ArchiveJobManager',
 					logDomain: 'imports',
 					jobId: job.id,
+					rcloneJobId: job.rcloneJobId,
 					fileCount: job.results.length,
 					transferredBytes: job.transferredBytes,
 					durationMs: Date.now() - new Date(job.startedAt).getTime()
@@ -130,6 +158,7 @@ export class ArchiveJobManager {
 			);
 		} catch (error) {
 			job.state = 'failed';
+			job.phase = 'failed';
 			job.error = error instanceof Error ? error.message : String(error);
 			logger.error(
 				{
@@ -137,6 +166,7 @@ export class ArchiveJobManager {
 					component: 'ArchiveJobManager',
 					logDomain: 'imports',
 					jobId: job.id,
+					rcloneJobId: job.rcloneJobId,
 					archiverId: job.archiverId,
 					mediaType: job.mediaType,
 					mediaId: job.mediaId,

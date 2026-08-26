@@ -40,6 +40,11 @@ describe('RcloneClient', () => {
 		let requestBody = Buffer.alloc(0);
 		let requestHeaders = new Headers();
 		const progress: number[] = [];
+		const remoteJobs: number[] = [];
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(Response.json({ finished: true, success: true, error: '' }));
+		vi.stubGlobal('fetch', fetchMock);
 		const server = createServer(async (request, response) => {
 			requestUrl = `http://${request.headers.host}${request.url}`;
 			requestHeaders = new Headers(request.headers as Record<string, string>);
@@ -47,7 +52,7 @@ describe('RcloneClient', () => {
 			for await (const chunk of request) chunks.push(Buffer.from(chunk));
 			requestBody = Buffer.concat(chunks);
 			response.setHeader('Content-Type', 'application/json');
-			response.end('{}');
+			response.end('{"jobid":42}');
 		});
 		await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
 		const address = server.address();
@@ -59,7 +64,8 @@ describe('RcloneClient', () => {
 				'Movie',
 				{
 					group: 'cinephage/archive/job-id',
-					onProgress: (bytes) => progress.push(bytes)
+					onProgress: (bytes) => progress.push(bytes),
+					onRemoteStart: (jobid) => remoteJobs.push(jobid)
 				}
 			);
 
@@ -68,10 +74,15 @@ describe('RcloneClient', () => {
 			expect(parsedUrl.searchParams.get('fs')).toBe('archive:');
 			expect(parsedUrl.searchParams.get('remote')).toBe('Media/Movie');
 			expect(parsedUrl.searchParams.get('_group')).toBe('cinephage/archive/job-id');
+			expect(parsedUrl.searchParams.get('_async')).toBe('true');
 			expect(requestBody.toString()).toContain('filename="Movie.mkv"');
 			expect(requestBody.toString()).toContain('video');
 			expect(Number(requestHeaders.get('Content-Length'))).toBe(requestBody.length);
 			expect(progress.at(-1)).toBe(5);
+			expect(remoteJobs).toEqual([42]);
+			expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toEqual({
+				jobid: 42
+			});
 			expect(destination).toBe('archive:Media/Movie/Movie.mkv');
 		} finally {
 			await new Promise<void>((resolve, reject) =>
