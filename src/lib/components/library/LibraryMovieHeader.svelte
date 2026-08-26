@@ -24,7 +24,8 @@
 		MoreHorizontal,
 		ArrowLeft,
 		Eye,
-		EyeOff
+		EyeOff,
+		Archive
 	} from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { formatBytes, formatLanguage, formatDisplayDateShort } from '$lib/utils/format.js';
@@ -89,6 +90,8 @@
 		onAutoSearch?: () => void;
 		onSearch?: () => void;
 		onImport?: () => void;
+		onArchive?: () => void;
+		hasArchiveFiles?: boolean;
 		onEdit?: () => void;
 		onDelete?: () => void;
 		onScoreClick?: () => void;
@@ -110,6 +113,8 @@
 		onAutoSearch,
 		onSearch,
 		onImport,
+		onArchive,
+		hasArchiveFiles = false,
 		onEdit,
 		onDelete,
 		onScoreClick
@@ -300,6 +305,16 @@
 				<button class="btn hidden gap-1.5 btn-ghost btn-sm sm:flex" onclick={onImport}>
 					<Download size={14} />
 					{m.action_import()}
+				</button>
+			{/if}
+			{#if onArchive}
+				<button
+					class="btn hidden gap-1.5 btn-ghost btn-sm sm:flex"
+					onclick={onArchive}
+					disabled={!hasArchiveFiles}
+					title={!hasArchiveFiles ? 'No local files to archive' : 'Archive files'}
+				>
+					<Archive size={14} /> Archive
 				</button>
 			{/if}
 			<div class="dropdown dropdown-end hidden sm:block">
@@ -769,6 +784,13 @@
 				tabindex="0"
 				class="menu dropdown-content z-50 mb-2 w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
 			>
+				{#if onArchive}
+					<li>
+						<button onclick={onArchive} disabled={!hasArchiveFiles}>
+							<Archive size={16} /> Archive
+						</button>
+					</li>
+				{/if}
 				<li>
 					<button class="text-error" onclick={onDelete}>
 						<Trash2 size={16} />

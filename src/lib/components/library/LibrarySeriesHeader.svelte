@@ -20,7 +20,8 @@
 		MoreHorizontal,
 		ArrowLeft,
 		Eye,
-		EyeOff
+		EyeOff,
+		Archive
 	} from 'lucide-svelte';
 	import {
 		formatLanguage,
@@ -94,6 +95,8 @@
 		onSubtitleAutoSearch?: () => void;
 		subtitleAutoSearching?: boolean;
 		onImport?: () => void;
+		onArchive?: () => void;
+		hasArchiveFiles?: boolean;
 		onEdit?: () => void;
 		onDelete?: () => void;
 		onRefresh?: () => void;
@@ -123,6 +126,8 @@
 		onSubtitleAutoSearch,
 		subtitleAutoSearching = false,
 		onImport,
+		onArchive,
+		hasArchiveFiles = false,
 		onEdit,
 		onDelete,
 		onRefresh
@@ -236,6 +241,16 @@
 				<Package size={14} />
 				{m.library_seriesHeader_seasonPacks()}
 			</button>
+			{#if onArchive}
+				<button
+					class="btn hidden gap-1.5 btn-ghost btn-sm sm:flex"
+					onclick={onArchive}
+					disabled={!hasArchiveFiles}
+					title={!hasArchiveFiles ? 'No local files to archive' : 'Archive files'}
+				>
+					<Archive size={14} /> Archive
+				</button>
+			{/if}
 			<!-- Overflow menu (desktop only) -->
 			<div class="dropdown dropdown-end hidden sm:block">
 				<button tabindex="0" class="btn btn-ghost btn-sm">
@@ -719,6 +734,13 @@
 				tabindex="0"
 				class="menu dropdown-content z-50 mb-2 w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
 			>
+				{#if onArchive}
+					<li>
+						<button onclick={onArchive} disabled={!hasArchiveFiles}>
+							<Archive size={16} /> Archive
+						</button>
+					</li>
+				{/if}
 				<li>
 					<button onclick={onRefresh} disabled={refreshing}>
 						<RefreshCw size={16} />

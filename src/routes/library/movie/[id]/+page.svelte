@@ -6,7 +6,8 @@
 		MovieFilesTab,
 		MovieEditModal,
 		RenamePreviewModal,
-		ScoreDetailModal
+		ScoreDetailModal,
+		ArchiveModal
 	} from '$lib/components/library';
 	import type { FileScoreResponse } from '$lib/types/score';
 	import { MediaSearchModal } from '$lib/components/search';
@@ -188,6 +189,7 @@
 	let deletingFileId = $state<string | null>(null);
 	let deletingFileName = $state<string | null>(null);
 	let isScoreModalOpen = $state(false);
+	let isArchiveModalOpen = $state(false);
 	let isSaving = $state(false);
 	let isDeleting = $state(false);
 	let isDeletingFile = $state(false);
@@ -219,6 +221,24 @@
 	const collectionParts = $derived(
 		(data.collection?.parts ?? []).filter((p) => p.tmdbId !== movie.tmdbId)
 	);
+	const archiveItems = $derived(
+		movie.files.map((file) => ({
+			id: file.id,
+			label: getFileName(file.relativePath),
+			path: file.relativePath,
+			size: file.size
+		}))
+	);
+
+	function handleArchived(fileIds: string[], sourcesDeleted: boolean) {
+		if (sourcesDeleted) {
+			movie.files = movie.files.filter((file) => !fileIds.includes(file.id));
+			movie.hasFile = movie.files.length > 0;
+		}
+		toasts.success(
+			sourcesDeleted ? 'Files archived and local sources removed' : 'Files archived successfully'
+		);
+	}
 	const missingParts = $derived(collectionParts.filter((p) => !p.inLibrary));
 	const trackedMissingFile = $derived(collectionParts.filter((p) => p.inLibrary && !p.hasFile));
 	const trackedMissingSubtitles = $derived(
@@ -856,6 +876,8 @@
 		onAutoSearch={handleAutoSearch}
 		onSearch={handleSearch}
 		onImport={handleImport}
+		onArchive={() => (isArchiveModalOpen = true)}
+		hasArchiveFiles={movie.files.length > 0}
 		onEdit={handleEdit}
 		onDelete={handleDelete}
 		onScoreClick={handleScoreClick}
@@ -1515,6 +1537,15 @@
 		</div>
 	</div>
 </div>
+
+<ArchiveModal
+	open={isArchiveModalOpen}
+	mediaType="movie"
+	mediaId={movie.id}
+	items={archiveItems}
+	onClose={() => (isArchiveModalOpen = false)}
+	onArchived={handleArchived}
+/>
 
 <!-- Edit Modal -->
 <MovieEditModal

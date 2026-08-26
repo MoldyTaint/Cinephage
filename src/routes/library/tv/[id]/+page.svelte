@@ -5,7 +5,8 @@
 		LibrarySeriesHeader,
 		SeasonAccordion,
 		SeriesEditModal,
-		RenamePreviewModal
+		RenamePreviewModal,
+		ArchiveModal
 	} from '$lib/components/library';
 	import { TVSeriesSidebar, BulkActionBar } from '$lib/components/library/tv';
 	import { MediaSearchModal } from '$lib/components/search';
@@ -85,6 +86,33 @@
 			0
 		)
 	);
+	const archiveItems = $derived.by(() => {
+		const byFile = new SvelteMap<
+			string,
+			{ id: string; labels: string[]; path: string; size: number | null }
+		>();
+		for (const season of seasons) {
+			for (const episode of season.episodes) {
+				if (!episode.file) continue;
+				const label = `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}${episode.title ? ` — ${episode.title}` : ''}`;
+				const existing = byFile.get(episode.file.id);
+				if (existing) existing.labels.push(label);
+				else
+					byFile.set(episode.file.id, {
+						id: episode.file.id,
+						labels: [label],
+						path: episode.file.relativePath,
+						size: episode.file.size
+					});
+			}
+		}
+		return [...byFile.values()].map((item) => ({
+			id: item.id,
+			label: item.labels.join(', '),
+			path: item.path,
+			size: item.size
+		}));
+	});
 
 	$effect(() => {
 		const incomingSeriesId = data.series.id;
@@ -280,6 +308,7 @@
 	let isSearchModalOpen = $state(false);
 	let isRenameModalOpen = $state(false);
 	let isDeleteModalOpen = $state(false);
+	let isArchiveModalOpen = $state(false);
 	let cascadeMonitorOpen = $state(false);
 	let isSaving = $state(false);
 	let isRefreshing = $state(false);
@@ -521,6 +550,36 @@
 			...(series.year ? [`year=${encodeURIComponent(String(series.year))}`] : [])
 		].join('&');
 		void goto(resolvePath(`/library/import?${query}`));
+	}
+
+	function handleArchived(fileIds: string[], sourcesDeleted: boolean) {
+		if (sourcesDeleted) {
+			const removed = new Set(fileIds);
+			const updatedSeasons = seasons.map((season) => {
+				const updatedEpisodes = season.episodes.map((episode) =>
+					episode.file && removed.has(episode.file.id)
+						? { ...episode, file: null, hasFile: false }
+						: episode
+				);
+				return {
+					...season,
+					episodes: updatedEpisodes,
+					episodeFileCount: updatedEpisodes.filter((episode) => episode.file !== null).length
+				};
+			});
+			seasonsState = updatedSeasons;
+			if (seriesState) {
+				const { totalEpisodes, totalFiles } = computeSeriesEpisodeStats(updatedSeasons);
+				seriesState = {
+					...seriesState,
+					episodeFileCount: totalFiles,
+					percentComplete: totalEpisodes > 0 ? Math.round((totalFiles / totalEpisodes) * 100) : 0
+				};
+			}
+		}
+		toasts.success(
+			sourcesDeleted ? 'Files archived and local sources removed' : 'Files archived successfully'
+		);
 	}
 
 	function buildProviderSearchLink(provider: 'anilist' | 'mal'): string {
@@ -1695,6 +1754,8 @@
 		onSubtitleAutoSearch={handleSubtitleAutoSearchSeries}
 		subtitleAutoSearching={subtitleAutoSearchingSeries}
 		onImport={handleImport}
+		onArchive={() => (isArchiveModalOpen = true)}
+		hasArchiveFiles={archiveItems.length > 0}
 		onEdit={handleEdit}
 		onDelete={handleDelete}
 		onRefresh={handleRefresh}
@@ -1801,6 +1862,15 @@
 	onClear={clearSelection}
 	onSubtitleAutoSearch={handleBulkSubtitleAutoSearch}
 	onSubtitleSync={isStreamerProfile ? undefined : handleBulkSubtitleSyncSelected}
+/>
+
+<ArchiveModal
+	open={isArchiveModalOpen}
+	mediaType="series"
+	mediaId={series.id}
+	items={archiveItems}
+	onClose={() => (isArchiveModalOpen = false)}
+	onArchived={handleArchived}
 />
 
 <!-- Edit Modal -->

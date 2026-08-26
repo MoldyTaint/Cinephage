@@ -6,7 +6,8 @@
 		Captions,
 		Languages,
 		Monitor,
-		Archive
+		Archive,
+		ArchiveRestore
 	} from 'lucide-svelte';
 	import { SettingsTabNav } from '$lib/components/settings';
 	import * as m from '$lib/paraglide/messages.js';
@@ -43,6 +44,11 @@
 			href: '/settings/integrations/media-browsers',
 			label: m.nav_mediaServers(),
 			icon: Monitor
+		},
+		{
+			href: '/settings/integrations/archivers',
+			label: 'Archivers',
+			icon: ArchiveRestore
 		},
 		{
 			href: '/settings/integrations/streaming',

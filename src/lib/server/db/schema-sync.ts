@@ -1117,6 +1117,24 @@ const TABLE_DEFINITIONS: string[] = [
 		"updated_at" text
 	)`,
 
+	`CREATE TABLE IF NOT EXISTS "archivers" (
+		"id" text PRIMARY KEY NOT NULL,
+		"name" text NOT NULL,
+		"type" text NOT NULL DEFAULT 'rclone' CHECK ("type" IN ('rclone')),
+		"endpoint" text NOT NULL,
+		"username" text,
+		"password" text,
+		"remote" text NOT NULL,
+		"base_path" text NOT NULL DEFAULT '',
+		"timeout_seconds" integer NOT NULL DEFAULT 3600,
+		"enabled" integer NOT NULL DEFAULT 1,
+		"last_tested_at" text,
+		"test_result" text,
+		"test_error" text,
+		"created_at" text,
+		"updated_at" text
+	)`,
+
 	`CREATE TABLE IF NOT EXISTS "media_server_synced_items" (
 		"id" text PRIMARY KEY NOT NULL,
 		"server_id" text NOT NULL REFERENCES "media_browser_servers"("id") ON DELETE CASCADE,

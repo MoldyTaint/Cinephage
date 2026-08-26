@@ -11,6 +11,7 @@ import { decryptDebridToken, encryptDebridToken } from '$lib/server/crypto/debri
 import { db } from '$lib/server/db';
 import { getCookieStore } from '$lib/server/indexers/auth/CookieStore.js';
 import {
+	archivers,
 	captchaSolverSettings,
 	channelCategories,
 	channelLineupBackups,
@@ -72,6 +73,7 @@ type TableName =
 	| 'subtitleSettings'
 	| 'indexers'
 	| 'nntpServers'
+	| 'archivers'
 	| 'mediaBrowserServers'
 	| 'stalkerPortals'
 	| 'livetvAccounts'
@@ -275,6 +277,12 @@ const TABLES: TableBackupConfig[] = [
 		conflictTarget: nntpServers.id
 	},
 	{
+		name: 'archivers',
+		table: archivers,
+		getRecordKey: (row) => String(row.id),
+		conflictTarget: archivers.id
+	},
+	{
 		name: 'mediaBrowserServers',
 		table: mediaBrowserServers,
 		getRecordKey: (row) => String(row.id),
@@ -373,7 +381,7 @@ const SECTIONS: Array<{
 	{
 		id: 'integrations',
 		label: 'External Integrations',
-		tableNames: ['mediaBrowserServers', 'smartLists']
+		tableNames: ['archivers', 'mediaBrowserServers', 'smartLists']
 	},
 	{
 		id: 'liveTv',

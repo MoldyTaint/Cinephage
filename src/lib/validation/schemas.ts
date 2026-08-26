@@ -1154,6 +1154,47 @@ export const cinephageModuleUpdateSchema = z.object({
 export type CinephageModuleUpdate = z.infer<typeof cinephageModuleUpdateSchema>;
 
 // ============================================================
+// Archiver schemas
+// ============================================================
+
+export const archiverCreateSchema = z.object({
+	name: z.string().trim().min(1).max(100),
+	type: z.literal('rclone').default('rclone'),
+	endpoint: z.string().trim().url('Must be a valid URL'),
+	username: z.string().trim().max(200).optional().nullable(),
+	password: z.string().max(500).optional().nullable(),
+	remote: z
+		.string()
+		.trim()
+		.min(1, 'Remote is required')
+		.regex(/^[^/\\:]+:?$/, 'Use an rclone remote name such as archive:'),
+	basePath: z.string().trim().max(1000).default(''),
+	timeoutSeconds: z.number().int().min(30).max(86400).default(3600),
+	enabled: z.boolean().default(true)
+});
+
+export const archiverUpdateSchema = archiverCreateSchema.required().partial();
+export const archiverTestSchema = archiverCreateSchema.pick({
+	endpoint: true,
+	username: true,
+	password: true,
+	remote: true,
+	basePath: true,
+	timeoutSeconds: true
+});
+export const archiveMediaSchema = z.object({
+	archiverId: z.string().uuid(),
+	fileIds: z.array(z.string().uuid()).min(1, 'Select at least one file'),
+	deleteSource: z.boolean().default(false),
+	createFolder: z.boolean().default(false)
+});
+
+export type ArchiverCreate = z.infer<typeof archiverCreateSchema>;
+export type ArchiverUpdate = z.infer<typeof archiverUpdateSchema>;
+export type ArchiverTest = z.infer<typeof archiverTestSchema>;
+export type ArchiveMediaInput = z.infer<typeof archiveMediaSchema>;
+
+// ============================================================
 // Media server notification schemas
 // ============================================================
 

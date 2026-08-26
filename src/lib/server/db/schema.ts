@@ -3009,6 +3009,38 @@ export const mediaBrowserServers = sqliteTable('media_browser_servers', {
 export type MediaBrowserServerRecord = typeof mediaBrowserServers.$inferSelect;
 export type NewMediaBrowserServerRecord = typeof mediaBrowserServers.$inferInsert;
 
+// ============================================================================
+// ARCHIVER INTEGRATIONS
+// ============================================================================
+
+/**
+ * Archive targets. The initial implementation supports rclone's RC API and is
+ * intentionally modelled as a generic integration so more archivers can be
+ * added without changing the library archive workflow.
+ */
+export const archivers = sqliteTable('archivers', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => randomUUID()),
+	name: text('name').notNull(),
+	type: text('type', { enum: ['rclone'] }).notNull().default('rclone'),
+	endpoint: text('endpoint').notNull(),
+	username: text('username'),
+	password: text('password'),
+	remote: text('remote').notNull(),
+	basePath: text('base_path').notNull().default(''),
+	timeoutSeconds: integer('timeout_seconds').notNull().default(3600),
+	enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+	lastTestedAt: text('last_tested_at'),
+	testResult: text('test_result'),
+	testError: text('test_error'),
+	createdAt: text('created_at').$defaultFn(() => new Date().toISOString()),
+	updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
+});
+
+export type ArchiverRecord = typeof archivers.$inferSelect;
+export type NewArchiverRecord = typeof archivers.$inferInsert;
+
 export const mediaServerSyncedItems = sqliteTable(
 	'media_server_synced_items',
 	{
