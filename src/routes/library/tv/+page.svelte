@@ -69,7 +69,18 @@
 	// Selection state
 	let selectedSeries = new SvelteSet<string>();
 	let showCheckboxes = $state(false);
-	let searchQuery = $state('');
+	let searchQuery = $state(page.url.searchParams.get('q') ?? '');
+
+	// Keep the title search in the URL so refresh/back-navigation restores it and
+	// the returnUrl snapshot captures it. replaceState avoids a navigation per keystroke.
+	$effect(() => {
+		const query = searchQuery.trim();
+		const url = new URL(window.location.href);
+		if (query) url.searchParams.set('q', query);
+		else url.searchParams.delete('q');
+		history.replaceState(history.state, '', url.pathname + url.search);
+	});
+
 	let drawerOpen = $state(false);
 
 	const filteredSeries = $derived(
@@ -455,6 +466,9 @@
 
 	function updateUrlParam(key: string, value: string) {
 		const url = new URL(page.url);
+		const query = searchQuery.trim();
+		if (query) url.searchParams.set('q', query);
+		else url.searchParams.delete('q');
 		if (key === 'library') {
 			if (!value || value === defaultLibrarySlug) {
 				url.searchParams.delete(key);
@@ -470,10 +484,12 @@
 	}
 
 	function clearFilters() {
+		searchQuery = '';
 		const url = new URL(resolve('/library/tv'), page.url.origin);
 		if (data.libraryScope?.isSubLibraryScope && data.libraryScope?.selected?.slug) {
 			url.searchParams.set('library', data.libraryScope.selected.slug);
 		}
+		url.searchParams.delete('q');
 		goto(resolvePath(url.pathname + url.search), { keepFocus: true, noScroll: true });
 	}
 
