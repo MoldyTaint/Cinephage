@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { logger } from '$lib/logging';
 import type { ArchiveMediaInput } from '$lib/validation/schemas.js';
 import { getArchiverManager } from './ArchiverManager.js';
 import { getArchiveService } from './ArchiveService.js';
@@ -50,6 +51,20 @@ export class ArchiveJobManager {
 			completedAt: null
 		};
 		this.jobs.set(id, job);
+		logger.info(
+			{
+				component: 'ArchiveJobManager',
+				logDomain: 'imports',
+				jobId: id,
+				archiverId: input.archiverId,
+				mediaType,
+				mediaId,
+				fileCount: input.fileIds.length,
+				deleteSource: input.deleteSource,
+				createFolder: input.createFolder
+			},
+			'Archive job queued'
+		);
 		void this.run(job, input);
 		return id;
 	}
@@ -102,9 +117,35 @@ export class ArchiveJobManager {
 			job.transferredBytes = job.totalBytes;
 			job.currentFile = null;
 			job.state = 'completed';
+			logger.info(
+				{
+					component: 'ArchiveJobManager',
+					logDomain: 'imports',
+					jobId: job.id,
+					fileCount: job.results.length,
+					transferredBytes: job.transferredBytes,
+					durationMs: Date.now() - new Date(job.startedAt).getTime()
+				},
+				'Archive job completed'
+			);
 		} catch (error) {
 			job.state = 'failed';
 			job.error = error instanceof Error ? error.message : String(error);
+			logger.error(
+				{
+					err: error,
+					component: 'ArchiveJobManager',
+					logDomain: 'imports',
+					jobId: job.id,
+					archiverId: job.archiverId,
+					mediaType: job.mediaType,
+					mediaId: job.mediaId,
+					currentFile: job.currentFile,
+					transferredBytes: job.transferredBytes,
+					totalBytes: job.totalBytes
+				},
+				'Archive job failed'
+			);
 		} finally {
 			job.completedAt = new Date().toISOString();
 		}

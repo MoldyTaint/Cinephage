@@ -41,6 +41,8 @@
 	let speed = $state(0);
 	let eta = $state<number | null>(null);
 	let currentFile = $state<string | null>(null);
+	let activeJobId = $state<string | null>(null);
+	let trackingWarning = $state<string | null>(null);
 	let initializedForOpen = $state(false);
 
 	$effect(() => {
@@ -55,6 +57,8 @@
 			speed = 0;
 			eta = null;
 			currentFile = null;
+			activeJobId = null;
+			trackingWarning = null;
 			error = null;
 			void loadArchivers();
 		} else if (!open) initializedForOpen = false;
@@ -92,19 +96,36 @@
 				mediaType === 'movie'
 					? await archiveMovieFiles(mediaId, input)
 					: await archiveSeriesFiles(mediaId, input);
+			activeJobId = response.jobId;
 			await waitForJob(response.jobId);
 			onArchived(selectedIds, deleteSource);
 			onClose();
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : 'Archive failed';
+			const message = cause instanceof Error ? cause.message : 'Archive failed';
+			error = activeJobId ? `${message} (job ${activeJobId})` : message;
 		} finally {
 			submitting = false;
 		}
 	}
 
 	async function waitForJob(jobId: string): Promise<void> {
+		let consecutiveFetchFailures = 0;
 		while (true) {
-			const response = await getArchiveJob(jobId);
+			let response: Awaited<ReturnType<typeof getArchiveJob>>;
+			try {
+				response = await getArchiveJob(jobId);
+				consecutiveFetchFailures = 0;
+				trackingWarning = null;
+			} catch (cause) {
+				consecutiveFetchFailures += 1;
+				const detail = cause instanceof Error ? cause.message : 'Unknown tracking error';
+				if (consecutiveFetchFailures >= 5) {
+					throw new Error(`Lost connection while tracking the archive: ${detail}`, { cause });
+				}
+				trackingWarning = `Archive is still running; reconnecting (${consecutiveFetchFailures}/5)…`;
+				await new Promise((resolve) => setTimeout(resolve, 2000));
+				continue;
+			}
 			const job = response.job;
 			progress = job.progress;
 			transferredBytes = job.transferredBytes;
@@ -123,6 +144,7 @@
 	<ModalHeader title="Archive files" {onClose} />
 	<div class="space-y-5 p-6">
 		{#if error}<div class="alert text-sm alert-error">{error}</div>{/if}
+		{#if trackingWarning}<div class="alert text-sm alert-warning">{trackingWarning}</div>{/if}
 		{#if loading}<div class="flex justify-center p-8">
 				<Loader2 class="animate-spin" />
 			</div>
@@ -149,6 +171,9 @@
 								· ETA {Math.max(0, Math.round(eta))}s{/if}</span
 						>
 					</div>
+					{#if activeJobId}<div class="mt-1 text-[10px] text-base-content/40">
+							Job: {activeJobId}
+						</div>{/if}
 				</div>
 			{/if}
 			<label class="form-control"

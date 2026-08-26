@@ -1,6 +1,11 @@
 import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import type { ArchiverTestResult } from './types.js';
 
 export interface RcloneClientConfig {
@@ -83,23 +88,19 @@ export class RcloneClient {
 		);
 		const suffix = Buffer.from(`\r\n--${boundary}--\r\n`);
 		const body = this.multipartStream(prefix, sourcePath, suffix, options.onProgress);
+		const sourceSize = (await stat(sourcePath)).size;
 		const headers = this.headers();
 		headers.set('Content-Type', `multipart/form-data; boundary=${boundary}`);
+		headers.set('Content-Length', String(prefix.length + sourceSize + suffix.length));
 
-		const response = await fetch(url, {
-			method: 'POST',
-			headers,
-			body: body as unknown as BodyInit,
-			duplex: 'half',
-			signal: AbortSignal.timeout(this.timeoutMs)
-		} as RequestInit & { duplex: 'half' });
+		const response = await this.uploadRequest(url, headers, body);
 
 		if (!response.ok) throw await this.responseError(response);
 		return `${this.remote}:${this.joinRemotePath(remoteDirectory, filename)}`;
 	}
 
 	async getStats(group: string): Promise<RcloneStats> {
-		return this.jsonRequest<RcloneStats>('core/stats', { group });
+		return this.jsonRequest<RcloneStats>('core/stats', { group }, 2500);
 	}
 
 	private async *multipartStream(
@@ -118,17 +119,62 @@ export class RcloneClient {
 		yield suffix;
 	}
 
+	private async uploadRequest(
+		url: URL,
+		headers: Headers,
+		body: AsyncIterable<Buffer>
+	): Promise<Response> {
+		try {
+			return await new Promise<Response>((resolve, reject) => {
+				const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(
+					url,
+					{ method: 'POST', headers: Object.fromEntries(headers.entries()) },
+					(response) => {
+						const chunks: Buffer[] = [];
+						response.on('data', (chunk: Buffer) => chunks.push(chunk));
+						response.on('error', reject);
+						response.on('end', () => {
+							const responseHeaders = new Headers();
+							for (let index = 0; index < response.rawHeaders.length; index += 2) {
+								responseHeaders.append(
+									response.rawHeaders[index]!,
+									response.rawHeaders[index + 1]!
+								);
+							}
+							resolve(
+								new Response(Buffer.concat(chunks), {
+									status: response.statusCode ?? 500,
+									statusText: response.statusMessage,
+									headers: responseHeaders
+								})
+							);
+						});
+					}
+				);
+				request.setTimeout(this.timeoutMs, () => {
+					request.destroy(new Error(`no network activity for ${this.timeoutMs / 1000} seconds`));
+				});
+				request.on('error', reject);
+				void pipeline(Readable.from(body), request).catch(reject);
+			});
+		} catch (error) {
+			throw this.transportError('operations/uploadfile', url, error);
+		}
+	}
+
 	private async jsonRequest<T = Record<string, unknown>>(
 		command: string,
-		payload: Record<string, unknown>
+		payload: Record<string, unknown>,
+		timeoutMs = Math.min(this.timeoutMs, 30_000)
 	): Promise<T> {
 		const headers = this.headers();
 		headers.set('Content-Type', 'application/json');
-		const response = await fetch(this.buildUrl(command), {
+		const url = this.buildUrl(command);
+		const response = await this.fetchRc(command, url, {
 			method: 'POST',
 			headers,
 			body: JSON.stringify(payload),
-			signal: AbortSignal.timeout(Math.min(this.timeoutMs, 30_000))
+			signal: AbortSignal.timeout(timeoutMs)
 		});
 		if (!response.ok) throw await this.responseError(response);
 		return (await response.json()) as T;
@@ -136,6 +182,32 @@ export class RcloneClient {
 
 	private buildUrl(command: string): URL {
 		return new URL(`${this.endpoint}/${command}`);
+	}
+
+	private async fetchRc(command: string, url: URL, init: RequestInit): Promise<Response> {
+		try {
+			return await fetch(url, init);
+		} catch (error) {
+			throw this.transportError(command, url, error);
+		}
+	}
+
+	private transportError(command: string, url: URL, error: unknown): Error {
+		const outerMessage = error instanceof Error ? error.message : String(error);
+		const nestedCause = error instanceof Error ? error.cause : undefined;
+		const nestedMessage =
+			nestedCause instanceof Error
+				? nestedCause.message
+				: nestedCause && typeof nestedCause === 'object' && 'message' in nestedCause
+					? String(nestedCause.message)
+					: null;
+		const detail =
+			nestedMessage && nestedMessage !== outerMessage
+				? `${outerMessage}: ${nestedMessage}`
+				: outerMessage;
+		return new Error(`rclone RC ${command} request to ${url.origin} failed: ${detail}`, {
+			cause: error
+		});
 	}
 
 	private headers(): Headers {

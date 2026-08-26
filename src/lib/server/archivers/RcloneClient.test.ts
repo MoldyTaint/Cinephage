@@ -1,4 +1,5 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -37,23 +38,30 @@ describe('RcloneClient', () => {
 		await writeFile(sourcePath, 'video');
 		let requestUrl = '';
 		let requestBody = Buffer.alloc(0);
+		let requestHeaders = new Headers();
 		const progress: number[] = [];
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(async (url: URL, init: RequestInit) => {
-				requestUrl = String(url);
-				const chunks: Buffer[] = [];
-				for await (const chunk of init.body as unknown as AsyncIterable<Buffer>) chunks.push(chunk);
-				requestBody = Buffer.concat(chunks);
-				return Response.json({});
-			})
-		);
+		const server = createServer(async (request, response) => {
+			requestUrl = `http://${request.headers.host}${request.url}`;
+			requestHeaders = new Headers(request.headers as Record<string, string>);
+			const chunks: Buffer[] = [];
+			for await (const chunk of request) chunks.push(Buffer.from(chunk));
+			requestBody = Buffer.concat(chunks);
+			response.setHeader('Content-Type', 'application/json');
+			response.end('{}');
+		});
+		await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+		const address = server.address();
+		if (!address || typeof address === 'string') throw new Error('Test server did not bind');
 
 		try {
-			const destination = await createClient().uploadFile(sourcePath, 'Movie', {
-				group: 'cinephage/archive/job-id',
-				onProgress: (bytes) => progress.push(bytes)
-			});
+			const destination = await createClient(`http://127.0.0.1:${address.port}`).uploadFile(
+				sourcePath,
+				'Movie',
+				{
+					group: 'cinephage/archive/job-id',
+					onProgress: (bytes) => progress.push(bytes)
+				}
+			);
 
 			const parsedUrl = new URL(requestUrl);
 			expect(parsedUrl.pathname).toBe('/operations/uploadfile');
@@ -62,11 +70,30 @@ describe('RcloneClient', () => {
 			expect(parsedUrl.searchParams.get('_group')).toBe('cinephage/archive/job-id');
 			expect(requestBody.toString()).toContain('filename="Movie.mkv"');
 			expect(requestBody.toString()).toContain('video');
+			expect(Number(requestHeaders.get('Content-Length'))).toBe(requestBody.length);
 			expect(progress.at(-1)).toBe(5);
 			expect(destination).toBe('archive:Media/Movie/Movie.mkv');
 		} finally {
+			await new Promise<void>((resolve, reject) =>
+				server.close((error) => (error ? reject(error) : resolve()))
+			);
 			await rm(directory, { recursive: true, force: true });
 		}
+	});
+
+	it('includes the RC command and endpoint when the transport fails', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockRejectedValue(
+				new TypeError('fetch failed', {
+					cause: new Error('ECONNREFUSED')
+				})
+			)
+		);
+
+		await expect(createClient().getStats('cinephage/archive/job-id')).rejects.toThrow(
+			'rclone RC core/stats request to http://rclone:5572 failed: fetch failed: ECONNREFUSED'
+		);
 	});
 
 	it('requests process statistics for the archive group', async () => {
@@ -84,9 +111,9 @@ describe('RcloneClient', () => {
 	});
 });
 
-function createClient(): RcloneClient {
+function createClient(endpoint = 'http://rclone:5572/'): RcloneClient {
 	return new RcloneClient({
-		endpoint: 'http://rclone:5572/',
+		endpoint,
 		username: 'cinephage',
 		password: 'secret',
 		remote: 'archive:',
