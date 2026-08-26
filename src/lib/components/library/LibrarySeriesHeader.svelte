@@ -97,6 +97,8 @@
 		onImport?: () => void;
 		onArchive?: () => void;
 		hasArchiveFiles?: boolean;
+		archivedFileCount?: number;
+		archiveStatusLoading?: boolean;
 		onEdit?: () => void;
 		onDelete?: () => void;
 		onRefresh?: () => void;
@@ -128,6 +130,8 @@
 		onImport,
 		onArchive,
 		hasArchiveFiles = false,
+		archivedFileCount = 0,
+		archiveStatusLoading = false,
 		onEdit,
 		onDelete,
 		onRefresh
@@ -246,9 +250,20 @@
 					class="btn hidden gap-1.5 btn-ghost btn-sm sm:flex"
 					onclick={onArchive}
 					disabled={!hasArchiveFiles}
-					title={!hasArchiveFiles ? 'No local files to archive' : 'Archive files'}
+					title={archiveStatusLoading
+						? 'Checking archive storage…'
+						: archivedFileCount > 0
+							? `${archivedFileCount} archived file(s)`
+							: !hasArchiveFiles
+								? 'No local files to archive'
+								: 'Archive files'}
 				>
 					<Archive size={14} /> Archive
+					{#if archiveStatusLoading}
+						<span class="loading loading-xs loading-spinner"></span>
+					{:else if archivedFileCount > 0}
+						<span class="badge badge-xs badge-success">{archivedFileCount}</span>
+					{/if}
 				</button>
 			{/if}
 			<!-- Overflow menu (desktop only) -->
@@ -738,6 +753,11 @@
 					<li>
 						<button onclick={onArchive} disabled={!hasArchiveFiles}>
 							<Archive size={16} /> Archive
+							{#if archiveStatusLoading}
+								<span class="loading loading-xs loading-spinner"></span>
+							{:else if archivedFileCount > 0}
+								<span class="badge badge-xs badge-success">{archivedFileCount}</span>
+							{/if}
 						</button>
 					</li>
 				{/if}

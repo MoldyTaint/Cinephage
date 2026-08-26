@@ -113,6 +113,28 @@ describe('RcloneClient', () => {
 			group: 'cinephage/archive/job-id'
 		});
 	});
+
+	it('lists archived files recursively below the configured base path', async () => {
+		const fetchMock = vi.fn().mockResolvedValue(
+			Response.json({
+				list: [
+					{ Path: 'Season 01/Episode.mkv', Size: 123, IsDir: false },
+					{ Path: 'Season 01', Size: -1, IsDir: true }
+				]
+			})
+		);
+		vi.stubGlobal('fetch', fetchMock);
+
+		await expect(createClient().listFiles('Example Series', false)).resolves.toEqual([
+			{ Path: 'Season 01/Episode.mkv', Size: 123, IsDir: false }
+		]);
+		const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+		expect(JSON.parse(String(request.body))).toEqual({
+			fs: 'archive:',
+			remote: 'Media/Example Series',
+			opt: { recurse: false, filesOnly: true, noModTime: true, noMimeType: true }
+		});
+	});
 });
 
 function createClient(endpoint = 'http://rclone:5572/'): RcloneClient {

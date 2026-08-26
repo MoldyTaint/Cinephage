@@ -39,6 +39,17 @@ export interface RcloneStats {
 	}>;
 }
 
+export interface RcloneListItem {
+	Path?: string;
+	Name?: string;
+	Size?: number;
+	IsDir?: boolean;
+}
+
+interface RcloneListResponse {
+	list?: RcloneListItem[];
+}
+
 export class RcloneClient {
 	private readonly endpoint: string;
 	private readonly username: string | null;
@@ -105,6 +116,24 @@ export class RcloneClient {
 
 	async getStats(group: string): Promise<RcloneStats> {
 		return this.jsonRequest<RcloneStats>('core/stats', { group }, 2500);
+	}
+
+	async listFiles(directory: string, recurse = true): Promise<RcloneListItem[]> {
+		const response = await this.jsonRequest<RcloneListResponse>(
+			'operations/list',
+			{
+				fs: `${this.remote}:`,
+				remote: this.joinRemotePath(this.basePath, directory),
+				opt: {
+					recurse,
+					filesOnly: true,
+					noModTime: true,
+					noMimeType: true
+				}
+			},
+			10_000
+		);
+		return (response.list ?? []).filter((item) => !item.IsDir);
 	}
 
 	private async *multipartStream(

@@ -17,6 +17,7 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { todayDateString } from '$lib/utils/format.js';
 	import { autoSearchSubtitles, syncSubtitle, deleteSubtitle } from '$lib/api/subtitles.js';
+	import { getSeriesArchiveStatus } from '$lib/api/archivers.js';
 	import {
 		updateSeries,
 		getSeries,
@@ -309,6 +310,8 @@
 	let isRenameModalOpen = $state(false);
 	let isDeleteModalOpen = $state(false);
 	let isArchiveModalOpen = $state(false);
+	let archivedFileCount = $state(0);
+	let archiveStatusLoading = $state(true);
 	let cascadeMonitorOpen = $state(false);
 	let isSaving = $state(false);
 	let isRefreshing = $state(false);
@@ -318,6 +321,23 @@
 	let resolvingProvider = $state<'anilist' | 'mal'>('anilist');
 	let providerRefInput = $state('');
 	let isSavingProviderRef = $state(false);
+
+	$effect(() => {
+		const seriesId = series.id;
+		void loadArchiveStatus(seriesId);
+	});
+
+	async function loadArchiveStatus(seriesId: string) {
+		archiveStatusLoading = true;
+		try {
+			const response = await getSeriesArchiveStatus(seriesId);
+			archivedFileCount = response.status.totalFiles;
+		} catch {
+			archivedFileCount = 0;
+		} finally {
+			archiveStatusLoading = false;
+		}
+	}
 
 	// Selection state
 	let selectedEpisodes = new SvelteSet<string>();
@@ -580,6 +600,7 @@
 		toasts.success(
 			sourcesDeleted ? 'Files archived and local sources removed' : 'Files archived successfully'
 		);
+		void loadArchiveStatus(series.id);
 	}
 
 	function buildProviderSearchLink(provider: 'anilist' | 'mal'): string {
@@ -1756,6 +1777,8 @@
 		onImport={handleImport}
 		onArchive={() => (isArchiveModalOpen = true)}
 		hasArchiveFiles={archiveItems.length > 0}
+		{archivedFileCount}
+		{archiveStatusLoading}
 		onEdit={handleEdit}
 		onDelete={handleDelete}
 		onRefresh={handleRefresh}

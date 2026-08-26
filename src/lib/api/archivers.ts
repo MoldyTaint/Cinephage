@@ -1,6 +1,7 @@
 import { apiDelete, apiGet, apiPost, apiPut } from './client.js';
 import type { ArchiverPublic } from '$lib/server/archivers/types.js';
 import type { ArchiveJobStatus } from '$lib/server/archivers/ArchiveJobManager.js';
+import type { MediaArchiveStatus } from '$lib/server/archivers/ArchiveStatusService.js';
 import type { ArchiverCreate, ArchiverTest, ArchiverUpdate } from '$lib/validation/schemas.js';
 
 export const getArchivers = (enabledOnly = false) =>
@@ -21,6 +22,10 @@ export const archiveSeriesFiles = (seriesId: string, input: ArchiveRequest) =>
 	apiPost<{ jobId: string }>(`/api/library/series/${seriesId}/archive`, input);
 export const getArchiveJob = (id: string) =>
 	apiGet<{ job: ArchiveJobStatus }>(`/api/archivers/jobs/${id}`);
+export const getMovieArchiveStatus = (movieId: string) =>
+	apiGet<{ status: MediaArchiveStatus }>(`/api/library/movies/${movieId}/archive-status`);
+export const getSeriesArchiveStatus = (seriesId: string) =>
+	apiGet<{ status: MediaArchiveStatus }>(`/api/library/series/${seriesId}/archive-status`);
 
 export interface ArchiveRequest {
 	archiverId: string;

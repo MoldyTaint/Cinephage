@@ -22,6 +22,7 @@
 	} from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { autoSearchSubtitles, syncSubtitle } from '$lib/api/subtitles.js';
+	import { getMovieArchiveStatus } from '$lib/api/archivers.js';
 	import {
 		getMovie,
 		updateMovie,
@@ -190,6 +191,8 @@
 	let deletingFileName = $state<string | null>(null);
 	let isScoreModalOpen = $state(false);
 	let isArchiveModalOpen = $state(false);
+	let archivedFileCount = $state(0);
+	let archiveStatusLoading = $state(true);
 	let isSaving = $state(false);
 	let isDeleting = $state(false);
 	let isDeletingFile = $state(false);
@@ -230,6 +233,23 @@
 		}))
 	);
 
+	$effect(() => {
+		const movieId = movie.id;
+		void loadArchiveStatus(movieId);
+	});
+
+	async function loadArchiveStatus(movieId: string) {
+		archiveStatusLoading = true;
+		try {
+			const response = await getMovieArchiveStatus(movieId);
+			archivedFileCount = response.status.totalFiles;
+		} catch {
+			archivedFileCount = 0;
+		} finally {
+			archiveStatusLoading = false;
+		}
+	}
+
 	function handleArchived(fileIds: string[], sourcesDeleted: boolean) {
 		if (sourcesDeleted) {
 			movie.files = movie.files.filter((file) => !fileIds.includes(file.id));
@@ -238,6 +258,7 @@
 		toasts.success(
 			sourcesDeleted ? 'Files archived and local sources removed' : 'Files archived successfully'
 		);
+		void loadArchiveStatus(movie.id);
 	}
 	const missingParts = $derived(collectionParts.filter((p) => !p.inLibrary));
 	const trackedMissingFile = $derived(collectionParts.filter((p) => p.inLibrary && !p.hasFile));
@@ -878,6 +899,8 @@
 		onImport={handleImport}
 		onArchive={() => (isArchiveModalOpen = true)}
 		hasArchiveFiles={movie.files.length > 0}
+		{archivedFileCount}
+		{archiveStatusLoading}
 		onEdit={handleEdit}
 		onDelete={handleDelete}
 		onScoreClick={handleScoreClick}

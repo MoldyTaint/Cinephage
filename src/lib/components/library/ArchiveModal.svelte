@@ -224,9 +224,14 @@
 			</div>
 			<label class="label cursor-pointer justify-start gap-3"
 				><input class="checkbox checkbox-sm" type="checkbox" bind:checked={createFolder} /><span
-					><span class="block text-sm font-medium">Create a directory from each file name</span
+					><span class="block text-sm font-medium"
+						>{mediaType === 'movie'
+							? 'Create a directory from the movie title'
+							: 'Create series and season directories'}</span
 					><span class="text-xs text-base-content/50"
-						>The extension is removed from the directory name.</span
+						>{mediaType === 'movie'
+							? 'All selected quality versions are placed in the same movie directory.'
+							: 'Files are placed under Series title / Season XX.'}</span
 					></span
 				></label
 			>

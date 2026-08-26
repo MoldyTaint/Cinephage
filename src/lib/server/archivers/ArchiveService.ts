@@ -1,4 +1,4 @@
-import { basename, extname, join } from 'node:path';
+import { join } from 'node:path';
 import { unlink } from 'node:fs/promises';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.js';
@@ -16,6 +16,11 @@ import { resolvePathWithinRoot } from '$lib/server/filesystem/delete-helpers.js'
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 import { getArchiverManager } from './ArchiverManager.js';
 import { RcloneClient } from './RcloneClient.js';
+import {
+	movieArchiveDirectory,
+	seasonArchiveDirectory,
+	seriesArchiveDirectory
+} from './archivePaths.js';
 import type { ArchiveFileResult } from './types.js';
 
 interface SourceFile {
@@ -24,6 +29,10 @@ interface SourceFile {
 	size: number | null;
 	parentPath: string;
 	rootPath: string | null;
+	mediaTitle: string;
+	mediaOriginalTitle: string | null;
+	mediaPreferOriginalTitle: boolean | null;
+	seasonNumber?: number;
 }
 
 export interface ArchiveProgressContext {
@@ -46,7 +55,10 @@ export class ArchiveService {
 				relativePath: movieFiles.relativePath,
 				size: movieFiles.size,
 				parentPath: movies.path,
-				rootPath: rootFolders.path
+				rootPath: rootFolders.path,
+				mediaTitle: movies.title,
+				mediaOriginalTitle: movies.originalTitle,
+				mediaPreferOriginalTitle: movies.preferOriginalTitle
 			})
 			.from(movieFiles)
 			.innerJoin(movies, eq(movieFiles.movieId, movies.id))
@@ -54,7 +66,15 @@ export class ArchiveService {
 			.where(and(eq(movieFiles.movieId, movieId), inArray(movieFiles.id, input.fileIds)));
 
 		this.assertAllFilesFound(files, input.fileIds);
-		const results = await this.upload(files, input, progress);
+		const movieDirectory =
+			input.createFolder && files[0]
+				? movieArchiveDirectory({
+						title: files[0].mediaTitle,
+						originalTitle: files[0].mediaOriginalTitle,
+						preferOriginalTitle: files[0].mediaPreferOriginalTitle
+					})
+				: '';
+		const results = await this.upload(files, input, progress, () => movieDirectory);
 		if (input.deleteSource) {
 			await this.removeSources(files);
 			await db.delete(movieFiles).where(inArray(movieFiles.id, input.fileIds));
@@ -83,7 +103,11 @@ export class ArchiveService {
 				relativePath: episodeFiles.relativePath,
 				size: episodeFiles.size,
 				parentPath: series.path,
-				rootPath: rootFolders.path
+				rootPath: rootFolders.path,
+				mediaTitle: series.title,
+				mediaOriginalTitle: series.originalTitle,
+				mediaPreferOriginalTitle: series.preferOriginalTitle,
+				seasonNumber: episodeFiles.seasonNumber
 			})
 			.from(episodeFiles)
 			.innerJoin(series, eq(episodeFiles.seriesId, series.id))
@@ -91,7 +115,19 @@ export class ArchiveService {
 			.where(and(eq(episodeFiles.seriesId, seriesId), inArray(episodeFiles.id, input.fileIds)));
 
 		this.assertAllFilesFound(files, input.fileIds);
-		const results = await this.upload(files, input, progress);
+		const seriesDirectory =
+			input.createFolder && files[0]
+				? seriesArchiveDirectory({
+						title: files[0].mediaTitle,
+						originalTitle: files[0].mediaOriginalTitle,
+						preferOriginalTitle: files[0].mediaPreferOriginalTitle
+					})
+				: '';
+		const results = await this.upload(files, input, progress, (file) =>
+			seriesDirectory && file.seasonNumber !== undefined
+				? join(seriesDirectory, seasonArchiveDirectory(file.seasonNumber))
+				: ''
+		);
 		if (input.deleteSource) {
 			await this.removeSources(files);
 			await db.delete(episodeFiles).where(inArray(episodeFiles.id, input.fileIds));
@@ -108,7 +144,8 @@ export class ArchiveService {
 	private async upload(
 		files: SourceFile[],
 		input: ArchiveMediaInput,
-		progress?: ArchiveProgressContext
+		progress: ArchiveProgressContext | undefined,
+		destinationDirectoryFor: (file: SourceFile) => string
 	): Promise<ArchiveFileResult[]> {
 		const record = await getArchiverManager().getRecord(input.archiverId);
 		if (!record || !record.enabled) throw new Error('Archiver not found or disabled');
@@ -124,9 +161,7 @@ export class ArchiveService {
 				file.rootPath,
 				join(file.parentPath, file.relativePath)
 			);
-			const destinationDirectory = input.createFolder
-				? this.safeRemoteSegment(basename(file.relativePath, extname(file.relativePath)))
-				: '';
+			const destinationDirectory = destinationDirectoryFor(file);
 			progress?.onFileStart?.(file.id, file.relativePath, completedBytes);
 			const destination = await client.uploadFile(sourcePath, destinationDirectory, {
 				group: progress?.group,
@@ -203,15 +238,6 @@ export class ArchiveService {
 			.update(series)
 			.set({ episodeFileCount: availableIds.size })
 			.where(eq(series.id, seriesId));
-	}
-
-	private safeRemoteSegment(value: string): string {
-		return (
-			value
-				.replace(/[\\/:*?"<>|]/g, '_')
-				.replace(/^\.+|\.+$/g, '')
-				.trim() || 'archive'
-		);
 	}
 }
 
