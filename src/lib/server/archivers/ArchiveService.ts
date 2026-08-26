@@ -15,7 +15,7 @@ import type { ArchiveMediaInput } from '$lib/validation/schemas.js';
 import { resolvePathWithinRoot } from '$lib/server/filesystem/delete-helpers.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 import { getArchiverManager } from './ArchiverManager.js';
-import { RcloneClient } from './RcloneClient.js';
+import { RcloneClient, type RcloneStats } from './RcloneClient.js';
 import type { ArchiveFileResult } from './types.js';
 
 interface SourceFile {
@@ -32,6 +32,7 @@ export interface ArchiveProgressContext {
 	onFileStart?: (fileId: string, path: string, completedBytes: number) => void;
 	onProgress?: (completedBytes: number) => void;
 	onRemoteStart?: (jobid: number) => void;
+	onRemoteProgress?: (stats: RcloneStats) => void;
 }
 
 export class ArchiveService {
@@ -131,7 +132,8 @@ export class ArchiveService {
 			const destination = await client.uploadFile(sourcePath, destinationDirectory, {
 				group: progress?.group,
 				onProgress: (fileBytes) => progress?.onProgress?.(completedBytes + fileBytes),
-				onRemoteStart: progress?.onRemoteStart
+				onRemoteStart: progress?.onRemoteStart,
+				onRemoteProgress: progress?.onRemoteProgress
 			});
 			completedBytes += file.size ?? 0;
 			progress?.onProgress?.(completedBytes);

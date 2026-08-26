@@ -41,9 +41,15 @@ describe('RcloneClient', () => {
 		let requestHeaders = new Headers();
 		const progress: number[] = [];
 		const remoteJobs: number[] = [];
-		const fetchMock = vi
-			.fn()
-			.mockResolvedValue(Response.json({ finished: true, success: true, error: '' }));
+		const remoteProgress: number[] = [];
+		const fetchMock = vi.fn().mockResolvedValue(
+			Response.json({
+				finished: true,
+				success: true,
+				error: '',
+				progress: { bytes: 5, totalBytes: 5, speed: 1024 }
+			})
+		);
 		vi.stubGlobal('fetch', fetchMock);
 		const server = createServer(async (request, response) => {
 			requestUrl = `http://${request.headers.host}${request.url}`;
@@ -65,7 +71,8 @@ describe('RcloneClient', () => {
 				{
 					group: 'cinephage/archive/job-id',
 					onProgress: (bytes) => progress.push(bytes),
-					onRemoteStart: (jobid) => remoteJobs.push(jobid)
+					onRemoteStart: (jobid) => remoteJobs.push(jobid),
+					onRemoteProgress: (stats) => remoteProgress.push(stats.bytes ?? 0)
 				}
 			);
 
@@ -80,6 +87,7 @@ describe('RcloneClient', () => {
 			expect(Number(requestHeaders.get('Content-Length'))).toBe(requestBody.length);
 			expect(progress.at(-1)).toBe(5);
 			expect(remoteJobs).toEqual([42]);
+			expect(remoteProgress).toEqual([5]);
 			expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toEqual({
 				jobid: 42
 			});

@@ -47,6 +47,7 @@ interface RcloneAsyncJobStatus {
 	finished?: boolean;
 	success?: boolean;
 	error?: string;
+	progress?: RcloneStats;
 }
 
 export class RcloneClient {
@@ -86,6 +87,7 @@ export class RcloneClient {
 			group?: string;
 			onProgress?: (bytes: number) => void;
 			onRemoteStart?: (jobid: number) => void;
+			onRemoteProgress?: (stats: RcloneStats) => void;
 		} = {}
 	): Promise<string> {
 		const filename = basename(sourcePath);
@@ -116,7 +118,7 @@ export class RcloneClient {
 			throw new Error('rclone RC operations/uploadfile did not return an async job ID');
 		}
 		options.onRemoteStart?.(asyncJob.jobid!);
-		await this.waitForJob(asyncJob.jobid!);
+		await this.waitForJob(asyncJob.jobid!, options.onRemoteProgress);
 		return `${this.remote}:${this.joinRemotePath(remoteDirectory, filename)}`;
 	}
 
@@ -201,9 +203,13 @@ export class RcloneClient {
 		return (await response.json()) as T;
 	}
 
-	private async waitForJob(jobid: number): Promise<void> {
+	private async waitForJob(
+		jobid: number,
+		onProgress?: (stats: RcloneStats) => void
+	): Promise<void> {
 		while (true) {
 			const status = await this.jsonRequest<RcloneAsyncJobStatus>('job/status', { jobid }, 10_000);
+			if (status.progress) onProgress?.(status.progress);
 			if (status.finished) {
 				if (!status.success) {
 					throw new Error(`rclone async job ${jobid} failed: ${status.error || 'unknown error'}`);

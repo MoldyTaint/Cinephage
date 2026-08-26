@@ -1,9 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { logger } from '$lib/logging';
 import type { ArchiveMediaInput } from '$lib/validation/schemas.js';
-import { getArchiverManager } from './ArchiverManager.js';
 import { getArchiveService } from './ArchiveService.js';
-import { RcloneClient, type RcloneStats } from './RcloneClient.js';
+import type { RcloneStats } from './RcloneClient.js';
 import type { ArchiveFileResult } from './types.js';
 
 export type ArchiveJobState = 'queued' | 'running' | 'completed' | 'failed';
@@ -30,6 +29,7 @@ export interface ArchiveJobStatus {
 
 interface InternalJob extends Omit<ArchiveJobStatus, 'progress' | 'rcloneStats'> {
 	archiverId: string;
+	rcloneStats: RcloneStats | null;
 }
 
 export class ArchiveJobManager {
@@ -50,6 +50,7 @@ export class ArchiveJobManager {
 			transferredBytes: 0,
 			currentFile: null,
 			rcloneJobId: null,
+			rcloneStats: null,
 			error: null,
 			results: [],
 			startedAt: new Date().toISOString(),
@@ -77,15 +78,7 @@ export class ArchiveJobManager {
 	async get(id: string): Promise<ArchiveJobStatus | null> {
 		const job = this.jobs.get(id);
 		if (!job) return null;
-		let rcloneStats: RcloneStats | null = null;
-		if (job.state === 'running') {
-			try {
-				const record = await getArchiverManager().getRecord(job.archiverId);
-				if (record) rcloneStats = await new RcloneClient(record).getStats(job.group);
-			} catch {
-				// Local stream counters remain available if stats are unsupported/unavailable.
-			}
-		}
+		const rcloneStats = job.rcloneStats;
 		const remoteBytes = rcloneStats?.bytes ?? 0;
 		const transferredBytes = job.phase === 'uploading' ? remoteBytes : job.transferredBytes;
 		const totalBytes = Math.max(job.totalBytes, rcloneStats?.totalBytes ?? 0);
@@ -117,6 +110,7 @@ export class ArchiveJobManager {
 					job.phase = 'sending';
 					job.currentFile = path;
 					job.rcloneJobId = null;
+					job.rcloneStats = null;
 					job.transferredBytes = completedBytes;
 				},
 				onProgress: (bytes: number) => (job.transferredBytes = bytes),
@@ -134,7 +128,8 @@ export class ArchiveJobManager {
 						},
 						'Archive source staged; rclone remote upload started'
 					);
-				}
+				},
+				onRemoteProgress: (stats: RcloneStats) => (job.rcloneStats = stats)
 			};
 			job.results =
 				job.mediaType === 'movie'
