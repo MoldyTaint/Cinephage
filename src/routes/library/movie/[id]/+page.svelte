@@ -23,6 +23,7 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { autoSearchSubtitles, syncSubtitle } from '$lib/api/subtitles.js';
 	import { getMovieArchiveStatus } from '$lib/api/archivers.js';
+	import type { MediaArchiveStatus } from '$lib/server/archivers/ArchiveStatusService.js';
 	import {
 		getMovie,
 		updateMovie,
@@ -192,6 +193,7 @@
 	let isScoreModalOpen = $state(false);
 	let isArchiveModalOpen = $state(false);
 	let archivedFileCount = $state(0);
+	let archiveStatus = $state<MediaArchiveStatus | null>(null);
 	let archiveStatusLoading = $state(true);
 	let isSaving = $state(false);
 	let isDeleting = $state(false);
@@ -242,8 +244,10 @@
 		archiveStatusLoading = true;
 		try {
 			const response = await getMovieArchiveStatus(movieId);
+			archiveStatus = response.status;
 			archivedFileCount = response.status.totalFiles;
 		} catch {
+			archiveStatus = null;
 			archivedFileCount = 0;
 		} finally {
 			archiveStatusLoading = false;
@@ -1566,6 +1570,8 @@
 	mediaType="movie"
 	mediaId={movie.id}
 	items={archiveItems}
+	{archiveStatus}
+	{archiveStatusLoading}
 	onClose={() => (isArchiveModalOpen = false)}
 	onArchived={handleArchived}
 />

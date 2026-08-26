@@ -18,6 +18,7 @@
 	import { todayDateString } from '$lib/utils/format.js';
 	import { autoSearchSubtitles, syncSubtitle, deleteSubtitle } from '$lib/api/subtitles.js';
 	import { getSeriesArchiveStatus } from '$lib/api/archivers.js';
+	import type { MediaArchiveStatus } from '$lib/server/archivers/ArchiveStatusService.js';
 	import {
 		updateSeries,
 		getSeries,
@@ -311,6 +312,7 @@
 	let isDeleteModalOpen = $state(false);
 	let isArchiveModalOpen = $state(false);
 	let archivedFileCount = $state(0);
+	let archiveStatus = $state<MediaArchiveStatus | null>(null);
 	let archiveStatusLoading = $state(true);
 	let cascadeMonitorOpen = $state(false);
 	let isSaving = $state(false);
@@ -331,8 +333,10 @@
 		archiveStatusLoading = true;
 		try {
 			const response = await getSeriesArchiveStatus(seriesId);
+			archiveStatus = response.status;
 			archivedFileCount = response.status.totalFiles;
 		} catch {
+			archiveStatus = null;
 			archivedFileCount = 0;
 		} finally {
 			archiveStatusLoading = false;
@@ -1892,6 +1896,8 @@
 	mediaType="series"
 	mediaId={series.id}
 	items={archiveItems}
+	{archiveStatus}
+	{archiveStatusLoading}
 	onClose={() => (isArchiveModalOpen = false)}
 	onArchived={handleArchived}
 />

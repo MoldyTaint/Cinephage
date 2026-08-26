@@ -8,6 +8,7 @@
 		getArchiveJob
 	} from '$lib/api/archivers.js';
 	import type { ArchiverPublic } from '$lib/server/archivers/types.js';
+	import type { MediaArchiveStatus } from '$lib/server/archivers/ArchiveStatusService.js';
 	import { formatBytes } from '$lib/utils/format.js';
 
 	export interface ArchiveItem {
@@ -22,11 +23,22 @@
 		mediaType: 'movie' | 'series';
 		mediaId: string;
 		items: ArchiveItem[];
+		archiveStatus?: MediaArchiveStatus | null;
+		archiveStatusLoading?: boolean;
 		onClose: () => void;
 		onArchived: (fileIds: string[], sourcesDeleted: boolean) => void;
 	}
 
-	let { open, mediaType, mediaId, items, onClose, onArchived }: Props = $props();
+	let {
+		open,
+		mediaType,
+		mediaId,
+		items,
+		archiveStatus = null,
+		archiveStatusLoading = false,
+		onClose,
+		onArchived
+	}: Props = $props();
 	let archivers = $state<ArchiverPublic[]>([]);
 	let archiverId = $state('');
 	let selectedIds = $state<string[]>([]);
@@ -45,6 +57,12 @@
 	let activeJobId = $state<string | null>(null);
 	let trackingWarning = $state<string | null>(null);
 	let initializedForOpen = $state(false);
+	const allSelected = $derived(items.length > 0 && selectedIds.length === items.length);
+	const partiallySelected = $derived(selectedIds.length > 0 && !allSelected);
+	const archivedIds = $derived(
+		archiveStatus?.archivers.find((archiver) => archiver.archiverId === archiverId)
+			?.archivedFileIds ?? []
+	);
 
 	$effect(() => {
 		if (open && !initializedForOpen) {
@@ -81,6 +99,10 @@
 
 	function toggle(id: string, checked: boolean) {
 		selectedIds = checked ? [...selectedIds, id] : selectedIds.filter((value) => value !== id);
+	}
+
+	function toggleAll(checked: boolean) {
+		selectedIds = checked ? items.map((item) => item.id) : [];
 	}
 
 	async function submit() {
@@ -197,9 +219,20 @@
 			>
 			<div>
 				<div class="mb-2 flex items-center justify-between">
-					<span class="font-medium">Files</span><span class="text-xs text-base-content/60"
-						>{selectedIds.length} selected</span
-					>
+					<label class="flex cursor-pointer items-center gap-2">
+						<input
+							class="checkbox checkbox-sm"
+							type="checkbox"
+							checked={allSelected}
+							indeterminate={partiallySelected}
+							onchange={(event) => toggleAll(event.currentTarget.checked)}
+						/>
+						<span class="font-medium">Files</span>
+					</label>
+					<span class="text-xs text-base-content/60">
+						{#if archiveStatusLoading}<Loader2 class="inline size-3 animate-spin" />{/if}
+						{selectedIds.length} selected
+					</span>
 				</div>
 				<div
 					class="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-base-content/10 p-2"
@@ -212,9 +245,11 @@
 								checked={selectedIds.includes(item.id)}
 								onchange={(event) => toggle(item.id, event.currentTarget.checked)}
 							/><span class="min-w-0 flex-1"
-								><span class="block text-sm font-medium">{item.label}</span><span
-									class="block truncate text-xs text-base-content/50">{item.path}</span
-								></span
+								><span class="flex items-center gap-2 text-sm font-medium"
+									><span>{item.label}</span>{#if archivedIds.includes(item.id)}<span
+											class="badge badge-sm badge-success">Archived</span
+										>{/if}</span
+								><span class="block truncate text-xs text-base-content/50">{item.path}</span></span
 							>{#if item.size != null}<span class="text-xs text-base-content/60"
 									>{formatBytes(item.size)}</span
 								>{/if}</label

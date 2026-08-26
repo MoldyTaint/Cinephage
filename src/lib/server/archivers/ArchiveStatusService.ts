@@ -14,6 +14,7 @@ export interface ArchivePresence {
 	archiverName: string;
 	path: string;
 	matchedPaths: string[];
+	archivedFileIds: string[];
 	fileCount: number;
 	totalBytes: number;
 	error: string | null;
@@ -23,7 +24,18 @@ export interface MediaArchiveStatus {
 	archived: boolean;
 	totalFiles: number;
 	totalBytes: number;
+	archivedFileIds: string[];
 	archivers: ArchivePresence[];
+}
+
+interface MediaFileReference {
+	id: string;
+	relativePath: string;
+}
+
+interface CandidateDirectory {
+	path: string;
+	fileId?: string;
 }
 
 export class ArchiveStatusService {
@@ -39,13 +51,16 @@ export class ArchiveStatusService {
 			.limit(1);
 		if (!movie) return null;
 		const files = await db
-			.select({ relativePath: movieFiles.relativePath })
+			.select({ id: movieFiles.id, relativePath: movieFiles.relativePath })
 			.from(movieFiles)
 			.where(eq(movieFiles.movieId, movieId));
 		return this.inspect(
 			movieArchiveDirectory(movie),
-			files.map((file) => this.legacyFileDirectory(file.relativePath)),
-			files.map((file) => basename(file.relativePath))
+			files.map((file) => ({
+				path: this.legacyFileDirectory(file.relativePath),
+				fileId: file.id
+			})),
+			files
 		);
 	}
 
@@ -61,23 +76,27 @@ export class ArchiveStatusService {
 			.limit(1);
 		if (!show) return null;
 		const files = await db
-			.select({ relativePath: episodeFiles.relativePath })
+			.select({ id: episodeFiles.id, relativePath: episodeFiles.relativePath })
 			.from(episodeFiles)
 			.where(eq(episodeFiles.seriesId, seriesId));
-		return this.inspect(
-			seriesArchiveDirectory(show),
-			[],
-			files.map((file) => basename(file.relativePath))
-		);
+		return this.inspect(seriesArchiveDirectory(show), [], files);
 	}
 
 	private async inspect(
 		mediaDirectory: string,
-		legacyDirectories: string[],
-		mediaFileNames: string[]
+		legacyDirectories: CandidateDirectory[],
+		mediaFiles: MediaFileReference[]
 	): Promise<MediaArchiveStatus> {
 		const records = await db.select().from(archivers).where(eq(archivers.enabled, true));
-		const candidateDirectories = [...new Set([mediaDirectory, ...legacyDirectories])];
+		const candidateDirectories: CandidateDirectory[] = [
+			{ path: mediaDirectory },
+			...legacyDirectories.filter((candidate) => candidate.path !== mediaDirectory)
+		];
+		const idsByFileName = new Map<string, string[]>();
+		for (const file of mediaFiles) {
+			const fileName = basename(file.relativePath);
+			idsByFileName.set(fileName, [...(idsByFileName.get(fileName) ?? []), file.id]);
+		}
 		const results = await Promise.all(
 			records.map(async (record): Promise<ArchivePresence> => {
 				const client = new RcloneClient(record);
@@ -85,12 +104,19 @@ export class ArchiveStatusService {
 				let totalBytes = 0;
 				let firstError: string | null = null;
 				const matchedPaths: string[] = [];
+				const archivedFileIds = new Set<string>();
 				for (const directory of candidateDirectories) {
 					try {
-						const files = await client.listFiles(directory);
-						if (files.length > 0) matchedPaths.push(directory);
+						const files = await client.listFiles(directory.path);
+						if (files.length > 0) matchedPaths.push(directory.path);
 						fileCount += files.length;
 						totalBytes += files.reduce((total, file) => total + (file.Size ?? 0), 0);
+						if (directory.fileId && files.length > 0) archivedFileIds.add(directory.fileId);
+						for (const file of files) {
+							for (const id of idsByFileName.get(file.Name ?? basename(file.Path ?? '')) ?? []) {
+								archivedFileIds.add(id);
+							}
+						}
 					} catch (error) {
 						const message = error instanceof Error ? error.message : String(error);
 						const missing = /not found|directory not found|doesn't exist|does not exist/i.test(
@@ -99,15 +125,20 @@ export class ArchiveStatusService {
 						if (!missing && firstError === null) firstError = message;
 					}
 				}
-				if (mediaFileNames.length > 0) {
+				if (mediaFiles.length > 0) {
 					try {
-						const wantedNames = new Set(mediaFileNames);
+						const wantedNames = new Set(idsByFileName.keys());
 						const rootMatches = (await client.listFiles('', false)).filter((file) =>
 							wantedNames.has(file.Name ?? basename(file.Path ?? ''))
 						);
 						if (rootMatches.length > 0) matchedPaths.push('');
 						fileCount += rootMatches.length;
 						totalBytes += rootMatches.reduce((total, file) => total + (file.Size ?? 0), 0);
+						for (const file of rootMatches) {
+							for (const id of idsByFileName.get(file.Name ?? basename(file.Path ?? '')) ?? []) {
+								archivedFileIds.add(id);
+							}
+						}
 					} catch (error) {
 						const message = error instanceof Error ? error.message : String(error);
 						if (firstError === null) firstError = message;
@@ -118,16 +149,19 @@ export class ArchiveStatusService {
 					archiverName: record.name,
 					path: mediaDirectory,
 					matchedPaths,
+					archivedFileIds: [...archivedFileIds],
 					fileCount,
 					totalBytes,
 					error: firstError
 				};
 			})
 		);
+		const archivedFileIds = [...new Set(results.flatMap((result) => result.archivedFileIds))];
 		return {
 			archived: results.some((result) => result.fileCount > 0),
 			totalFiles: results.reduce((total, result) => total + result.fileCount, 0),
 			totalBytes: results.reduce((total, result) => total + result.totalBytes, 0),
+			archivedFileIds,
 			archivers: results
 		};
 	}
