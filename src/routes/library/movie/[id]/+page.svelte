@@ -254,14 +254,19 @@
 		}
 	}
 
-	function handleArchived(fileIds: string[], sourcesDeleted: boolean) {
+	function handleArchived(fileIds: string[], sourcesDeleted: boolean, libraryPathUpdated: boolean) {
 		if (sourcesDeleted) {
 			movie.files = movie.files.filter((file) => !fileIds.includes(file.id));
 			movie.hasFile = movie.files.length > 0;
 		}
 		toasts.success(
-			sourcesDeleted ? 'Files archived and local sources removed' : 'Files archived successfully'
+			libraryPathUpdated
+				? 'Files archived and library path updated'
+				: sourcesDeleted
+					? 'Files archived and local sources removed'
+					: 'Files archived successfully'
 		);
+		if (libraryPathUpdated) void invalidateAll();
 		void loadArchiveStatus(movie.id);
 	}
 	const missingParts = $derived(collectionParts.filter((p) => !p.inLibrary));

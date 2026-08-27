@@ -26,7 +26,7 @@
 		archiveStatus?: MediaArchiveStatus | null;
 		archiveStatusLoading?: boolean;
 		onClose: () => void;
-		onArchived: (fileIds: string[], sourcesDeleted: boolean) => void;
+		onArchived: (fileIds: string[], sourcesDeleted: boolean, libraryPathUpdated: boolean) => void;
 	}
 
 	let {
@@ -44,6 +44,7 @@
 	let selectedIds = $state<string[]>([]);
 	let deleteSource = $state(false);
 	let createFolder = $state(false);
+	let updateLibraryPath = $state(false);
 	let loading = $state(false);
 	let submitting = $state(false);
 	let error = $state<string | null>(null);
@@ -59,6 +60,14 @@
 	let initializedForOpen = $state(false);
 	const allSelected = $derived(items.length > 0 && selectedIds.length === items.length);
 	const partiallySelected = $derived(selectedIds.length > 0 && !allSelected);
+	const selectedArchiver = $derived(archivers.find((archiver) => archiver.id === archiverId));
+	const mountedRootConfigured = $derived(Boolean(selectedArchiver?.mountedRootFolderId));
+	const mountedRootCompatible = $derived(
+		mountedRootConfigured &&
+			selectedArchiver?.mountedRootFolderMediaType === (mediaType === 'movie' ? 'movie' : 'tv')
+	);
+	const pathUpdateAvailable = $derived(mountedRootCompatible && allSelected);
+	const deleteSourceAvailable = $derived(!mountedRootConfigured || pathUpdateAvailable);
 	const archivedIds = $derived(
 		archiveStatus?.archivers.find((archiver) => archiver.archiverId === archiverId)
 			?.archivedFileIds ?? []
@@ -70,6 +79,7 @@
 			selectedIds = items.map((item) => item.id);
 			deleteSource = false;
 			createFolder = false;
+			updateLibraryPath = false;
 			progress = 0;
 			transferredBytes = 0;
 			totalBytes = 0;
@@ -82,6 +92,13 @@
 			error = null;
 			void loadArchivers();
 		} else if (!open) initializedForOpen = false;
+	});
+
+	$effect(() => {
+		if (!pathUpdateAvailable) updateLibraryPath = false;
+		if (!deleteSourceAvailable) deleteSource = false;
+		if (deleteSource && pathUpdateAvailable) updateLibraryPath = true;
+		if (updateLibraryPath) createFolder = true;
 	});
 
 	async function loadArchivers() {
@@ -114,7 +131,8 @@
 				archiverId,
 				fileIds: selectedIds,
 				deleteSource,
-				createFolder
+				createFolder,
+				updateLibraryPath
 			};
 			const response =
 				mediaType === 'movie'
@@ -122,7 +140,7 @@
 					: await archiveSeriesFiles(mediaId, input);
 			activeJobId = response.jobId;
 			await waitForJob(response.jobId);
-			onArchived(selectedIds, deleteSource);
+			onArchived(selectedIds, deleteSource && !updateLibraryPath, updateLibraryPath);
 			onClose();
 		} catch (cause) {
 			const message = cause instanceof Error ? cause.message : 'Archive failed';
@@ -258,7 +276,12 @@
 				</div>
 			</div>
 			<label class="label cursor-pointer justify-start gap-3"
-				><input class="checkbox checkbox-sm" type="checkbox" bind:checked={createFolder} /><span
+				><input
+					class="checkbox checkbox-sm"
+					type="checkbox"
+					bind:checked={createFolder}
+					disabled={updateLibraryPath}
+				/><span
 					><span class="block text-sm font-medium"
 						>{mediaType === 'movie'
 							? 'Create a directory from the movie title'
@@ -270,15 +293,43 @@
 					></span
 				></label
 			>
+			<label
+				class={`label justify-start gap-3 ${pathUpdateAvailable ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
+				><input
+					class="checkbox checkbox-sm checkbox-primary"
+					type="checkbox"
+					checked={updateLibraryPath}
+					disabled={!pathUpdateAvailable || deleteSource}
+					onchange={(event) =>
+						(updateLibraryPath = (event.currentTarget as HTMLInputElement).checked)}
+				/><span
+					><span class="block text-sm font-medium"
+						>Update the library path to the archive mount</span
+					><span class="text-xs text-base-content/50"
+						>{#if !selectedArchiver?.mountedRootFolderId}
+							Configure a mounted root folder on this archiver to enable path updates.
+						{:else if selectedArchiver.mountedRootFolderMediaType !== (mediaType === 'movie' ? 'movie' : 'tv')}
+							The configured mounted root folder is for a different media type.
+						{:else if !allSelected}
+							Select every file for this movie or series to update its shared library path.
+						{:else}
+							The media and file paths will point to {selectedArchiver.mountedRootFolderPath}.
+						{/if}</span
+					></span
+				></label
+			>
 			<label class="label cursor-pointer justify-start gap-3"
 				><input
 					class="checkbox checkbox-sm checkbox-error"
 					type="checkbox"
 					bind:checked={deleteSource}
+					disabled={!deleteSourceAvailable}
 				/><span
 					><span class="block text-sm font-medium">Delete source files after upload</span><span
 						class="text-xs text-warning"
-						>Sources are deleted only after every selected upload succeeds.</span
+						>{deleteSourceAvailable
+							? 'Sources are deleted only after every selected upload succeeds.'
+							: 'Select every file and use a matching mounted root folder before deleting sources.'}</span
 					></span
 				></label
 			>

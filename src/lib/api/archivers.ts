@@ -32,4 +32,5 @@ export interface ArchiveRequest {
 	fileIds: string[];
 	deleteSource: boolean;
 	createFolder: boolean;
+	updateLibraryPath: boolean;
 }

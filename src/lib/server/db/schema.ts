@@ -3023,12 +3023,17 @@ export const archivers = sqliteTable('archivers', {
 		.primaryKey()
 		.$defaultFn(() => randomUUID()),
 	name: text('name').notNull(),
-	type: text('type', { enum: ['rclone'] }).notNull().default('rclone'),
+	type: text('type', { enum: ['rclone'] })
+		.notNull()
+		.default('rclone'),
 	endpoint: text('endpoint').notNull(),
 	username: text('username'),
 	password: text('password'),
 	remote: text('remote').notNull(),
 	basePath: text('base_path').notNull().default(''),
+	mountedRootFolderId: text('mounted_root_folder_id').references(() => rootFolders.id, {
+		onDelete: 'set null'
+	}),
 	timeoutSeconds: integer('timeout_seconds').notNull().default(3600),
 	enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
 	lastTestedAt: text('last_tested_at'),

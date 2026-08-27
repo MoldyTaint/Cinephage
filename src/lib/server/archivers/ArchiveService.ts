@@ -7,6 +7,7 @@ import {
 	episodes,
 	movieFiles,
 	movies,
+	libraryRootFolders,
 	rootFolders,
 	seasons,
 	series
@@ -18,8 +19,10 @@ import { getArchiverManager } from './ArchiverManager.js';
 import { RcloneClient } from './RcloneClient.js';
 import {
 	movieArchiveDirectory,
+	movieArchiveFilePath,
 	seasonArchiveDirectory,
-	seriesArchiveDirectory
+	seriesArchiveDirectory,
+	seriesArchiveFilePath
 } from './archivePaths.js';
 import type { ArchiveFileResult } from './types.js';
 
@@ -33,6 +36,12 @@ interface SourceFile {
 	mediaOriginalTitle: string | null;
 	mediaPreferOriginalTitle: boolean | null;
 	seasonNumber?: number;
+}
+
+interface MountedRootFolder {
+	id: string;
+	mediaType: string;
+	libraryId: string | null;
 }
 
 export interface ArchiveProgressContext {
@@ -74,9 +83,15 @@ export class ArchiveService {
 						preferOriginalTitle: files[0].mediaPreferOriginalTitle
 					})
 				: '';
+		const mountedRoot = await this.validatePathRewrite('movie', movieId, input, movieDirectory);
 		const results = await this.upload(files, input, progress, () => movieDirectory);
 		if (input.deleteSource) {
 			await this.removeSources(files);
+		}
+		if (input.updateLibraryPath && mountedRoot) {
+			this.updateMovieLocation(movieId, files, mountedRoot, movieDirectory);
+			libraryMediaEvents.emitMovieUpdated(movieId);
+		} else if (input.deleteSource) {
 			await db.delete(movieFiles).where(inArray(movieFiles.id, input.fileIds));
 			const [remaining] = await db
 				.select({ id: movieFiles.id })
@@ -123,6 +138,7 @@ export class ArchiveService {
 						preferOriginalTitle: files[0].mediaPreferOriginalTitle
 					})
 				: '';
+		const mountedRoot = await this.validatePathRewrite('series', seriesId, input, seriesDirectory);
 		const results = await this.upload(files, input, progress, (file) =>
 			seriesDirectory && file.seasonNumber !== undefined
 				? join(seriesDirectory, seasonArchiveDirectory(file.seasonNumber))
@@ -130,6 +146,11 @@ export class ArchiveService {
 		);
 		if (input.deleteSource) {
 			await this.removeSources(files);
+		}
+		if (input.updateLibraryPath && mountedRoot) {
+			this.updateSeriesLocation(seriesId, files, mountedRoot, seriesDirectory);
+			libraryMediaEvents.emitSeriesUpdated(seriesId);
+		} else if (input.deleteSource) {
 			await db.delete(episodeFiles).where(inArray(episodeFiles.id, input.fileIds));
 			await this.refreshSeriesFileFlags(seriesId);
 			libraryMediaEvents.emitLibraryDataChanged({
@@ -139,6 +160,106 @@ export class ArchiveService {
 			});
 		}
 		return results;
+	}
+
+	private async validatePathRewrite(
+		mediaType: 'movie' | 'series',
+		mediaId: string,
+		input: ArchiveMediaInput,
+		mediaDirectory: string
+	): Promise<MountedRootFolder | null> {
+		if (!input.updateLibraryPath) return null;
+		if (!input.createFolder || !mediaDirectory) {
+			throw new Error('Create metadata directories to update the library path');
+		}
+
+		const archiver = await getArchiverManager().getRecord(input.archiverId);
+		if (!archiver?.mountedRootFolderId) {
+			throw new Error('The selected archiver has no mounted Cinephage root folder');
+		}
+		const [mountedRoot] = await db
+			.select({
+				id: rootFolders.id,
+				mediaType: rootFolders.mediaType,
+				libraryId: libraryRootFolders.libraryId
+			})
+			.from(rootFolders)
+			.leftJoin(libraryRootFolders, eq(libraryRootFolders.rootFolderId, rootFolders.id))
+			.where(eq(rootFolders.id, archiver.mountedRootFolderId))
+			.limit(1);
+		if (!mountedRoot) throw new Error('The archiver mounted root folder no longer exists');
+		const expectedType = mediaType === 'movie' ? 'movie' : 'tv';
+		if (mountedRoot.mediaType !== expectedType) {
+			throw new Error(
+				`The mounted root folder is for ${mountedRoot.mediaType === 'movie' ? 'movies' : 'TV shows'}`
+			);
+		}
+
+		const trackedFiles =
+			mediaType === 'movie'
+				? await db
+						.select({ id: movieFiles.id })
+						.from(movieFiles)
+						.where(eq(movieFiles.movieId, mediaId))
+				: await db
+						.select({ id: episodeFiles.id })
+						.from(episodeFiles)
+						.where(eq(episodeFiles.seriesId, mediaId));
+		const selected = new Set(input.fileIds);
+		if (trackedFiles.some((file) => !selected.has(file.id))) {
+			throw new Error('Select every file for this library item before updating its path');
+		}
+		return mountedRoot;
+	}
+
+	private updateMovieLocation(
+		movieId: string,
+		files: SourceFile[],
+		mountedRoot: MountedRootFolder,
+		movieDirectory: string
+	): void {
+		db.transaction((tx) => {
+			tx.update(movies)
+				.set({
+					rootFolderId: mountedRoot.id,
+					path: movieDirectory,
+					...(mountedRoot.libraryId ? { libraryId: mountedRoot.libraryId } : {})
+				})
+				.where(eq(movies.id, movieId))
+				.run();
+			for (const file of files) {
+				tx.update(movieFiles)
+					.set({ relativePath: movieArchiveFilePath(file.relativePath) })
+					.where(eq(movieFiles.id, file.id))
+					.run();
+			}
+		});
+	}
+
+	private updateSeriesLocation(
+		seriesId: string,
+		files: SourceFile[],
+		mountedRoot: MountedRootFolder,
+		seriesDirectory: string
+	): void {
+		db.transaction((tx) => {
+			tx.update(series)
+				.set({
+					rootFolderId: mountedRoot.id,
+					path: seriesDirectory,
+					...(mountedRoot.libraryId ? { libraryId: mountedRoot.libraryId } : {})
+				})
+				.where(eq(series.id, seriesId))
+				.run();
+			for (const file of files) {
+				tx.update(episodeFiles)
+					.set({
+						relativePath: seriesArchiveFilePath(file.relativePath, file.seasonNumber ?? 0)
+					})
+					.where(eq(episodeFiles.id, file.id))
+					.run();
+			}
+		});
 	}
 
 	private async upload(

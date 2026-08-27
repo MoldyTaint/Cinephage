@@ -136,8 +136,9 @@ import {
  * Version 125: Add api_token and remove_after_import columns to download_clients (debrid support)
  * Version 126: Add metadata_language and prefer_original_title columns to movies and series tables
  * Version 127: Add cinephage_api_config identity auto-sync columns (latest_version, latest_commit, auto_update)
+ * Version 133: Link archivers to an optional mounted root folder for library path updates
  */
-export const CURRENT_SCHEMA_VERSION = 128;
+export const CURRENT_SCHEMA_VERSION = 133;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -1126,6 +1127,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"password" text,
 		"remote" text NOT NULL,
 		"base_path" text NOT NULL DEFAULT '',
+		"mounted_root_folder_id" text REFERENCES "root_folders"("id") ON DELETE SET NULL,
 		"timeout_seconds" integer NOT NULL DEFAULT 3600,
 		"enabled" integer NOT NULL DEFAULT 1,
 		"last_tested_at" text,

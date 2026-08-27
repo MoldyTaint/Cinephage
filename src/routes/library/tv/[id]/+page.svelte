@@ -34,7 +34,7 @@
 	import { CheckSquare, FileEdit, RefreshCw, X } from 'lucide-svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
 	import { createDynamicSSE } from '$lib/sse';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
@@ -576,7 +576,7 @@
 		void goto(resolvePath(`/library/import?${query}`));
 	}
 
-	function handleArchived(fileIds: string[], sourcesDeleted: boolean) {
+	function handleArchived(fileIds: string[], sourcesDeleted: boolean, libraryPathUpdated: boolean) {
 		if (sourcesDeleted) {
 			const removed = new Set(fileIds);
 			const updatedSeasons = seasons.map((season) => {
@@ -602,8 +602,13 @@
 			}
 		}
 		toasts.success(
-			sourcesDeleted ? 'Files archived and local sources removed' : 'Files archived successfully'
+			libraryPathUpdated
+				? 'Files archived and library path updated'
+				: sourcesDeleted
+					? 'Files archived and local sources removed'
+					: 'Files archived successfully'
 		);
+		if (libraryPathUpdated) void invalidateAll();
 		void loadArchiveStatus(series.id);
 	}
 

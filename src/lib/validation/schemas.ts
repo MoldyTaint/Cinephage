@@ -1169,6 +1169,7 @@ export const archiverCreateSchema = z.object({
 		.min(1, 'Remote is required')
 		.regex(/^[^/\\:]+:?$/, 'Use an rclone remote name such as archive:'),
 	basePath: z.string().trim().max(1000).default(''),
+	mountedRootFolderId: z.string().uuid().optional().nullable(),
 	timeoutSeconds: z.number().int().min(30).max(86400).default(3600),
 	enabled: z.boolean().default(true)
 });
@@ -1186,7 +1187,8 @@ export const archiveMediaSchema = z.object({
 	archiverId: z.string().uuid(),
 	fileIds: z.array(z.string().uuid()).min(1, 'Select at least one file'),
 	deleteSource: z.boolean().default(false),
-	createFolder: z.boolean().default(false)
+	createFolder: z.boolean().default(false),
+	updateLibraryPath: z.boolean().default(false)
 });
 
 export type ArchiverCreate = z.infer<typeof archiverCreateSchema>;

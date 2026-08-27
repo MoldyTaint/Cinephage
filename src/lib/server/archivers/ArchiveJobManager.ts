@@ -80,7 +80,8 @@ export class ArchiveJobManager {
 				mediaId,
 				fileCount: input.fileIds.length,
 				deleteSource: input.deleteSource,
-				createFolder: input.createFolder
+				createFolder: input.createFolder,
+				updateLibraryPath: input.updateLibraryPath
 			},
 			'Archive job queued'
 		);
@@ -123,6 +124,15 @@ export class ArchiveJobManager {
 	private async run(job: InternalJob, input: ArchiveMediaInput): Promise<void> {
 		job.state = 'running';
 		job.phase = 'sending';
+		try {
+			const archiver = await getArchiverManager().getRecord(job.archiverId);
+			if (input.deleteSource && archiver?.mountedRootFolderId) {
+				input.updateLibraryPath = true;
+				input.createFolder = true;
+			}
+		} catch {
+			// ArchiveService performs the authoritative archiver validation below.
+		}
 		const activity = await this.startActivity(job, input);
 		try {
 			const context = {
@@ -173,7 +183,8 @@ export class ArchiveJobManager {
 						fileNames: job.results.map((result) => basename(result.destination)),
 						destinations: job.results.map((result) => result.destination),
 						deleteSource: input.deleteSource,
-						createFolder: input.createFolder
+						createFolder: input.createFolder,
+						updateLibraryPath: input.updateLibraryPath
 					});
 				} catch (historyError) {
 					logger.warn({ err: historyError, jobId: job.id }, 'Failed to complete archive history');
@@ -269,7 +280,8 @@ export class ArchiveJobManager {
 							basePath: context.basePath,
 							fileCount: input.fileIds.length,
 							deleteSource: input.deleteSource,
-							createFolder: input.createFolder
+							createFolder: input.createFolder,
+							updateLibraryPath: input.updateLibraryPath
 						}
 					})
 					.where(eq(taskHistory.id, historyId));

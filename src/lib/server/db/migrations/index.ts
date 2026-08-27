@@ -129,6 +129,7 @@ import { migration_v129 } from './129-add-rejected-releases-reason-columns.js';
 import { migration_v130 } from './130-add-rejected-releases-grab-fields.js';
 import { migration_v131 } from './131-purge-orphaned-unmatched-files.js';
 import { migration_v132 } from './132-add-archivers.js';
+import { migration_v133 } from './133-add-archiver-mounted-root-folder.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -260,5 +261,6 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v129,
 	migration_v130,
 	migration_v131,
-	migration_v132
+	migration_v132,
+	migration_v133
 ];
