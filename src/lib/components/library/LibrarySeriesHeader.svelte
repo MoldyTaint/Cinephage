@@ -78,6 +78,7 @@
 		configuredProviders?: { anilist: boolean; mal: boolean };
 		librarySlug?: string | null;
 		libraryName?: string | null;
+		backHref?: string | null;
 		refreshing?: boolean;
 		refreshProgress?: RefreshProgress | null;
 		missingEpisodeCount?: number;
@@ -111,6 +112,7 @@
 		configuredProviders = { anilist: false, mal: false },
 		librarySlug = null,
 		libraryName = null,
+		backHref = null,
 		refreshing = false,
 		refreshProgress: _refreshProgress = null,
 		missingEpisodeCount = 0,
@@ -213,11 +215,15 @@
 	<!-- Top action bar -->
 	<div class="flex items-center justify-between gap-2">
 		<a
-			href={resolvePath(librarySlug ? `/library/tv?library=${librarySlug}` : '/library/tv')}
+			href={resolvePath(
+				backHref ?? (librarySlug ? `/library/tv?library=${librarySlug}` : '/library/tv')
+			)}
 			class="btn gap-1.5 btn-ghost text-base-content/60 btn-sm"
 		>
 			<ArrowLeft size={16} />
-			<span class="sm:inline">{libraryName ?? m.library_movieHeader_backToLibrary()}</span>
+			<span class="sm:inline"
+				>{m.library_backTo({ name: libraryName ?? m.library_tv_heading() })}</span
+			>
 		</a>
 		<div class="flex shrink-0 items-center gap-1 sm:gap-2">
 			<!-- MonitorToggle hidden on mobile (shown in bottom bar) -->

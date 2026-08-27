@@ -46,8 +46,10 @@
 		Info
 	} from 'lucide-svelte';
 	import { page } from '$app/state';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, invalidateAll, afterNavigate } from '$app/navigation';
+	import { browser } from '$app/environment';
 	import { resolvePath } from '$lib/utils/routing';
+	import { MOVIES_RETURN_URL_KEY } from '$lib/utils/library-return-urls';
 	import { createDynamicSSE } from '$lib/sse';
 	import { getFileName } from '$lib/utils/format.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
@@ -65,6 +67,15 @@
 	let lastMovieId = $state<string | null>(null);
 	const movie = $derived(movieState ?? data.movie);
 	const queueItem = $derived(queueItemState === undefined ? data.queueItem : queueItemState);
+
+	let moviesBackHref = $state<string | null>(null);
+
+	afterNavigate(() => {
+		if (!browser) return;
+		const stored = localStorage.getItem(MOVIES_RETURN_URL_KEY);
+		moviesBackHref =
+			stored && stored.split('?')[0] === resolvePath('/library/movies') ? stored : null;
+	});
 
 	function describeError(error: unknown, fallback: string): string {
 		return error instanceof Error ? error.message : fallback;
@@ -898,6 +909,7 @@
 		{movie}
 		librarySlug={data.librarySlug}
 		libraryName={data.libraryName}
+		backHref={moviesBackHref}
 		tmdbMovie={data.tmdbDetails}
 		defaultRegion={page.data.defaultRegion}
 		configuredProviders={data.configuredMetadataProviders}

@@ -42,6 +42,7 @@
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { createSubtitleProgress } from '$lib/stores/subtitleProgress.svelte';
 	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
+	import { MOVIES_RETURN_URL_KEY as RETURN_URL_KEY } from '$lib/utils/library-return-urls';
 	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
 	import * as m from '$lib/paraglide/messages.js';
 
@@ -52,8 +53,10 @@
 	beforeNavigate(({ to }) => {
 		if (to?.url.pathname.startsWith('/library/movie/')) {
 			localStorage.setItem(SCROLL_KEY, String(window.scrollY));
+			localStorage.setItem(RETURN_URL_KEY, window.location.pathname + window.location.search);
 		} else {
 			localStorage.removeItem(SCROLL_KEY);
+			localStorage.removeItem(RETURN_URL_KEY);
 		}
 	});
 
@@ -70,7 +73,18 @@
 	// Selection state
 	let selectedMovies = new SvelteSet<string>();
 	let showCheckboxes = $state(false);
-	let searchQuery = $state('');
+	let searchQuery = $state(page.url.searchParams.get('q') ?? '');
+
+	// Keep the title search in the URL so refresh/back-navigation restores it and
+	// the returnUrl snapshot captures it. replaceState avoids a navigation per keystroke.
+	$effect(() => {
+		const query = searchQuery.trim();
+		const url = new URL(window.location.href);
+		if (query) url.searchParams.set('q', query);
+		else url.searchParams.delete('q');
+		history.replaceState(history.state, '', url.pathname + url.search);
+	});
+
 	let collapsedGroups = new SvelteSet<string>();
 	let drawerOpen = $state(false);
 	let collectionSubtitleAutoSearching = new SvelteSet<number>();
@@ -526,6 +540,9 @@
 
 	function updateUrlParam(key: string, value: string) {
 		const url = new URL(page.url);
+		const query = searchQuery.trim();
+		if (query) url.searchParams.set('q', query);
+		else url.searchParams.delete('q');
 		if (key === 'library') {
 			if (!value || value === defaultLibrarySlug) {
 				url.searchParams.delete(key);
@@ -541,10 +558,12 @@
 	}
 
 	function clearFilters() {
+		searchQuery = '';
 		const url = new URL(resolve('/library/movies'), page.url.origin);
 		if (data.libraryScope?.isSubLibraryScope && data.libraryScope?.selected?.slug) {
 			url.searchParams.set('library', data.libraryScope.selected.slug);
 		}
+		url.searchParams.delete('q');
 		goto(resolvePath(url.pathname + url.search), { keepFocus: true, noScroll: true });
 	}
 
