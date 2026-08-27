@@ -252,7 +252,7 @@ export class SearchOrchestrator {
 	private enhancedCache: Map<
 		string,
 		{
-			releases: EnhancedReleaseResult[];
+			releases: ReleaseResult[];
 			indexerResults: IndexerSearchResult[];
 			rejectedIndexers: RejectedIndexer[];
 			cachedAt: number;
@@ -299,51 +299,58 @@ export class SearchOrchestrator {
 
 		const { eligible: eligibleIndexers, rejected: rejectedIndexers } = indexerFilterResult;
 
+		// Cache raw indexer results only. Downstream processing (blocklist,
+		// season/episode, category, language boost, ranking, limit) re-runs on
+		// every request, including cache hits, since it depends on state that
+		// can change between requests.
+		let allReleases: ReleaseResult[] = [];
+		let fromCache = false;
 		if (opts.useCache) {
 			const cached = this.cache.get(enrichedCriteria);
 			if (cached) {
 				logger.debug({ resultCount: cached.length }, 'Cache hit');
-				return {
-					releases: cached,
-					totalResults: cached.length,
-					searchTimeMs: Date.now() - startTime,
-					fromCache: true,
-					indexerResults: []
-				};
+				allReleases = [...cached];
+				fromCache = true;
 			}
 		}
 
-		if (eligibleIndexers.length === 0) {
-			logger.warn(
-				{
-					criteria: criteriaToString(criteria)
-				},
-				'No eligible indexers for search'
+		if (!fromCache) {
+			if (eligibleIndexers.length === 0) {
+				logger.warn(
+					{
+						criteria: criteriaToString(criteria)
+					},
+					'No eligible indexers for search'
+				);
+				return {
+					releases: [],
+					totalResults: 0,
+					searchTimeMs: Date.now() - startTime,
+					fromCache: false,
+					indexerResults: [],
+					rejectedIndexers
+				};
+			}
+
+			// Sort by priority
+			eligibleIndexers.sort((a, b) => {
+				const statusA = this.statusTracker.getStatusSync(a.id);
+				const statusB = this.statusTracker.getStatusSync(b.id);
+				return statusA.priority - statusB.priority;
+			});
+
+			// Execute searches with enriched criteria (includes IMDB ID if looked up)
+			allReleases = await this.executeSearches(
+				eligibleIndexers,
+				enrichedCriteria,
+				indexerResults,
+				opts
 			);
-			return {
-				releases: [],
-				totalResults: 0,
-				searchTimeMs: Date.now() - startTime,
-				fromCache: false,
-				indexerResults: [],
-				rejectedIndexers
-			};
+
+			if (opts.useCache && allReleases.length > 0) {
+				this.cache.set(enrichedCriteria, [...allReleases]);
+			}
 		}
-
-		// Sort by priority
-		eligibleIndexers.sort((a, b) => {
-			const statusA = this.statusTracker.getStatusSync(a.id);
-			const statusB = this.statusTracker.getStatusSync(b.id);
-			return statusA.priority - statusB.priority;
-		});
-
-		// Execute searches with enriched criteria (includes IMDB ID if looked up)
-		const allReleases = await this.executeSearches(
-			eligibleIndexers,
-			enrichedCriteria,
-			indexerResults,
-			opts
-		);
 
 		// Deduplicate
 		const { releases: deduped } = this.deduplicator.deduplicate(allReleases);
@@ -378,16 +385,11 @@ export class SearchOrchestrator {
 		// Apply limit (only if explicitly specified)
 		const limited = criteria.limit ? ranked.slice(0, criteria.limit) : ranked;
 
-		// Cache results (use enriched criteria for cache key consistency)
-		if (opts.useCache && limited.length > 0) {
-			this.cache.set(enrichedCriteria, limited);
-		}
-
 		const result: SearchResult = {
 			releases: limited,
 			totalResults: allReleases.length,
 			searchTimeMs: Date.now() - startTime,
-			fromCache: false,
+			fromCache,
 			indexerResults,
 			rejectedIndexers
 		};
@@ -436,63 +438,76 @@ export class SearchOrchestrator {
 
 		const { eligible: eligibleIndexers, rejected: rejectedIndexers } = indexerFilterResult;
 
-		if (opts.useCache && opts.searchSource === 'interactive') {
-			const cacheKey = this.cache.generateKey(enrichedCriteria);
-			const cached = this.enhancedCache.get(cacheKey);
+		// Cache raw indexer results only (keyed by criteria + protocol filter).
+		// Everything downstream (blocklist, filters, language boost, scoring,
+		// enhanced dedup, limit) depends on state that can change between
+		// requests (scoring profile, blocklist, language, limit), so it must
+		// re-run on every request, including cache hits.
+		const interactiveCacheKey =
+			opts.useCache && opts.searchSource === 'interactive'
+				? this.cache.generateKey(enrichedCriteria, {
+						pf: [...(opts.protocolFilter ?? [])].sort().join(',')
+					})
+				: null;
+
+		let allReleases: ReleaseResult[] = [];
+		let fromCache = false;
+		if (interactiveCacheKey) {
+			const cached = this.enhancedCache.get(interactiveCacheKey);
 			if (cached && Date.now() - cached.cachedAt < SearchOrchestrator.ENHANCED_CACHE_TTL_MS) {
 				logger.debug({ resultCount: cached.releases.length }, 'Enhanced search cache hit');
+				allReleases = [...cached.releases];
+				indexerResults.push(...cached.indexerResults);
+				fromCache = true;
+			} else if (cached) {
+				this.enhancedCache.delete(interactiveCacheKey);
+			}
+		}
+
+		if (!fromCache) {
+			if (eligibleIndexers.length === 0) {
+				logger.warn(
+					{
+						criteria: criteriaToString(enrichedCriteria)
+					},
+					'No eligible indexers for search'
+				);
 				return {
-					releases: cached.releases,
-					totalResults: cached.releases.length,
-					afterDedup: cached.releases.length,
-					afterFiltering: cached.releases.length,
-					afterEnrichment: cached.releases.length,
+					releases: [],
+					totalResults: 0,
 					rejectedCount: 0,
 					searchTimeMs: Date.now() - startTime,
 					enrichTimeMs: 0,
-					fromCache: true,
-					indexerResults: cached.indexerResults,
-					rejectedIndexers: cached.rejectedIndexers
+					fromCache: false,
+					indexerResults: [],
+					rejectedIndexers
 				};
 			}
-			if (cached) {
-				this.enhancedCache.delete(cacheKey);
+
+			// Sort by priority
+			eligibleIndexers.sort((a, b) => {
+				const statusA = this.statusTracker.getStatusSync(a.id);
+				const statusB = this.statusTracker.getStatusSync(b.id);
+				return statusA.priority - statusB.priority;
+			});
+
+			// Execute searches
+			allReleases = await this.executeSearches(
+				eligibleIndexers,
+				enrichedCriteria,
+				indexerResults,
+				opts
+			);
+
+			if (interactiveCacheKey && allReleases.length > 0) {
+				this.enhancedCache.set(interactiveCacheKey, {
+					releases: [...allReleases],
+					indexerResults: [...indexerResults],
+					rejectedIndexers,
+					cachedAt: Date.now()
+				});
 			}
 		}
-
-		if (eligibleIndexers.length === 0) {
-			logger.warn(
-				{
-					criteria: criteriaToString(enrichedCriteria)
-				},
-				'No eligible indexers for search'
-			);
-			return {
-				releases: [],
-				totalResults: 0,
-				rejectedCount: 0,
-				searchTimeMs: Date.now() - startTime,
-				enrichTimeMs: 0,
-				fromCache: false,
-				indexerResults: [],
-				rejectedIndexers
-			};
-		}
-
-		// Sort by priority
-		eligibleIndexers.sort((a, b) => {
-			const statusA = this.statusTracker.getStatusSync(a.id);
-			const statusB = this.statusTracker.getStatusSync(b.id);
-			return statusA.priority - statusB.priority;
-		});
-
-		// Execute searches
-		const allReleases = await this.executeSearches(
-			eligibleIndexers,
-			enrichedCriteria,
-			indexerResults,
-			opts
-		);
 
 		const searchTimeMs = Date.now() - startTime;
 
@@ -664,21 +679,11 @@ export class SearchOrchestrator {
 			rejectedCount: enrichResult.rejectedCount,
 			searchTimeMs,
 			enrichTimeMs: enrichResult.enrichTimeMs,
-			fromCache: false,
+			fromCache,
 			indexerResults,
 			rejectedIndexers,
 			scoringProfileId: enrichResult.scoringProfile?.id
 		};
-
-		if (opts.useCache && opts.searchSource === 'interactive' && withWeights.length > 0) {
-			const cacheKey = this.cache.generateKey(enrichedCriteria);
-			this.enhancedCache.set(cacheKey, {
-				releases: withWeights,
-				indexerResults,
-				rejectedIndexers,
-				cachedAt: Date.now()
-			});
-		}
 
 		logger.info(
 			{

@@ -254,4 +254,15 @@ export interface IDownloadClient {
 	 * @param id - Download ID/hash
 	 */
 	getFiles?(id: string): Promise<DownloadFileInfo[]>;
+
+	/**
+	 * Exclude specific files (by index) from a download so they are never
+	 * downloaded to disk. Optional - only implemented by clients that support
+	 * per-file priority. Used to strip bundled dangerous files (e.g. executables)
+	 * from a release without discarding the whole download.
+	 *
+	 * @param id - Download ID/hash
+	 * @param indices - File indices to exclude
+	 */
+	excludeFiles?(id: string, indices: number[]): Promise<void>;
 }

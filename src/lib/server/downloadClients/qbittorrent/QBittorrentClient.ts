@@ -1104,4 +1104,15 @@ export class QBittorrentClient implements IDownloadClient {
 			size: f.size
 		}));
 	}
+
+	/**
+	 * Exclude files from being downloaded by setting their priority to 0.
+	 * Excluded files never reach disk; the torrent keeps downloading the rest.
+	 */
+	async excludeFiles(hash: string, indices: number[]): Promise<void> {
+		if (indices.length === 0) {
+			return;
+		}
+		await this.setFilePriority(hash, indices, 0);
+	}
 }

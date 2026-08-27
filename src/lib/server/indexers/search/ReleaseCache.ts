@@ -31,7 +31,7 @@ const DEFAULT_MAX_SIZE = 500;
 /**
  * Cache version - increment when cache format changes.
  */
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 
 /**
  * In-memory cache for search results with TTL expiration.
@@ -54,7 +54,7 @@ export class ReleaseCache {
 	 * Generates a cache key from search criteria.
 	 * Uses SHA-256 for better collision resistance and includes cache version.
 	 */
-	private generateKeyInternal(criteria: SearchCriteria): string {
+	private generateKeyInternal(criteria: SearchCriteria, extra?: Record<string, unknown>): string {
 		// Build normalized object based on search type
 		const normalized: Record<string, unknown> = {
 			_v: CACHE_VERSION, // Cache version for invalidation on format changes
@@ -62,7 +62,8 @@ export class ReleaseCache {
 			q: (criteria.query ?? '').toLowerCase().trim(),
 			src: criteria.searchSource ?? '',
 			c: (criteria.categories ?? []).sort().join(','),
-			i: (criteria.indexerIds ?? []).sort().join(',')
+			i: (criteria.indexerIds ?? []).sort().join(','),
+			lang: (criteria.language ?? '').toLowerCase()
 		};
 
 		// Add type-specific fields
@@ -84,13 +85,17 @@ export class ReleaseCache {
 			if (criteria.title) normalized.title = criteria.title;
 		}
 
+		if (extra) {
+			Object.assign(normalized, extra);
+		}
+
 		const str = JSON.stringify(normalized);
 		// Use SHA-256 for better collision resistance, truncated to 32 chars
 		return crypto.createHash('sha256').update(str).digest('hex').substring(0, 32);
 	}
 
-	generateKey(criteria: SearchCriteria): string {
-		return this.generateKeyInternal(criteria);
+	generateKey(criteria: SearchCriteria, extra?: Record<string, unknown>): string {
+		return this.generateKeyInternal(criteria, extra);
 	}
 
 	/**

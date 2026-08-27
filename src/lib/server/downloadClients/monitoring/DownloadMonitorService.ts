@@ -19,7 +19,7 @@ import {
 	episodes,
 	stalledOrphanTracking
 } from '$lib/server/db/schema';
-import { eq, and, inArray, not, notInArray, isNull, isNotNull, lte, desc } from 'drizzle-orm';
+import { eq, and, inArray, not, notInArray, isNull, isNotNull, desc } from 'drizzle-orm';
 import { getDownloadClientManager } from '../DownloadClientManager';
 import { mapClientPathToLocal } from './PathMapping';
 import { extractInfoHash } from '../utils/hashUtils';
@@ -598,9 +598,17 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			// actively tracked — the completed-orphan logic below only removes finished
 			// torrents, so stalled ones would otherwise linger forever.
 			const stalledTimeoutMinutes = await this.getStalledTimeoutMinutes();
-			const stalledHandlingEnabled = stalledTimeoutMinutes > 0;
+			const stalledProgressTimeoutMinutes = await this.getStalledProgressTimeoutMinutes();
+			const stalledHandlingEnabled = stalledTimeoutMinutes > 0 || stalledProgressTimeoutMinutes > 0;
 			const stalledTimeoutMs =
 				Math.max(stalledTimeoutMinutes, DownloadMonitorService.MIN_STALLED_TIMEOUT_MINUTES) *
+				60 *
+				1000;
+			const stalledProgressTimeoutMs =
+				Math.max(
+					stalledProgressTimeoutMinutes,
+					DownloadMonitorService.MIN_STALLED_TIMEOUT_MINUTES
+				) *
 				60 *
 				1000;
 			const stalledProgressThreshold = await this.getStalledProgressThreshold();
@@ -643,6 +651,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 									{
 										progressThreshold: stalledProgressThreshold,
 										timeoutMs: stalledTimeoutMs,
+										progressTimeoutMs: stalledProgressTimeoutMs,
 										blocklistHours: stalledBlocklistHours,
 										now: sweepNow,
 										dryRun
@@ -758,6 +767,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		opts: {
 			progressThreshold: number;
 			timeoutMs: number;
+			progressTimeoutMs: number;
 			blocklistHours: number;
 			now: number;
 			dryRun: boolean;
@@ -768,16 +778,10 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			errors: { name: string; hash: string; error: string }[];
 		}
 	): Promise<void> {
-		// Above the progress threshold — it got far enough that it might still finish,
-		// so leave it alone (and don't track it).
-		if (download.progress * 100 > opts.progressThreshold) {
-			result.skipped.push({
-				name: download.name,
-				hash: download.hash,
-				reason: 'Stalled above progress threshold'
-			});
-			return;
-		}
+		// Two-tier timeout: high-progress orphans get the much longer progress
+		// window (a seeder may return); low-progress orphans use the short one.
+		const isHighProgress = download.progress * 100 > opts.progressThreshold;
+		const tierTimeoutMs = isHighProgress ? opts.progressTimeoutMs : opts.timeoutMs;
 
 		const hashLower = download.hash.toLowerCase();
 		const [tracked] = await db
@@ -793,7 +797,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 		const firstStalledMs = tracked ? Date.parse(tracked.firstStalledAt) : opts.now;
 		const elapsed = opts.now - firstStalledMs;
-		const timedOut = Number.isFinite(firstStalledMs) && elapsed >= opts.timeoutMs;
+		const timedOut = Number.isFinite(firstStalledMs) && elapsed >= tierTimeoutMs;
 
 		if (opts.dryRun) {
 			if (timedOut) {
@@ -1594,6 +1598,12 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		if (queueItem.status === 'failed' && newStatus !== 'failed') {
 			updates.errorMessage = null;
 			updates.lastAttemptAt = null;
+			// A recovery means a NEW download attempt was started (the previous one
+			// was removed by the stalled-timeout). The stalled clock belongs to the
+			// old torrent instance — carrying it over would let handleStalledDownloads
+			// instantly delete the freshly re-added torrent. Reset it and let the
+			// stalled transition below stamp a new one.
+			updates.stalledSince = null;
 		}
 
 		// Only update if something changed
@@ -2585,14 +2595,25 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 	 * Mark a queue item as failed
 	 */
 	/**
-	 * Default stalled download timeout in minutes (1 hour)
+	 * Default stalled download timeout in minutes for downloads at or below the
+	 * progress threshold (they never got off the ground). 3 days: stalling is
+	 * normal — torrents routinely resume when a seeder returns — so do not
+	 * assume a stalled download is dead within an hour.
 	 */
-	private static readonly DEFAULT_STALLED_TIMEOUT_MINUTES = 60;
+	private static readonly DEFAULT_STALLED_TIMEOUT_MINUTES = 3 * 24 * 60;
 
 	/**
 	 * Minimum stalled download timeout in minutes
 	 */
 	private static readonly MIN_STALLED_TIMEOUT_MINUTES = 5;
+
+	/**
+	 * Default stalled download timeout in minutes for downloads with meaningful
+	 * progress (above the progress threshold). These used to be reaped never,
+	 * which let dead torrents linger in the client for months; 14 days of zero
+	 * progress is enough to conclude the release is unreachable.
+	 */
+	private static readonly DEFAULT_STALLED_PROGRESS_TIMEOUT_MINUTES = 14 * 24 * 60;
 
 	/**
 	 * Default progress threshold (%): remove stalled downloads at or below this percentage.
@@ -2697,25 +2718,61 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 	}
 
 	/**
+	 * Stalled timeout (minutes) for downloads with meaningful progress (above
+	 * the progress threshold). Separate from the low-progress timeout: torrents
+	 * that already downloaded data get a much longer window before cleanup.
+	 */
+	private async getStalledProgressTimeoutMinutes(): Promise<number> {
+		try {
+			const [row] = await db
+				.select({ value: monitoringSettings.value })
+				.from(monitoringSettings)
+				.where(eq(monitoringSettings.key, 'stalled_download_progress_timeout_minutes'))
+				.limit(1);
+
+			if (row) {
+				const value = parseFloat(row.value);
+				if (Number.isFinite(value) && value >= 0) {
+					return value;
+				}
+			}
+		} catch (error) {
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to read stalled progress timeout from settings'
+			);
+		}
+
+		return DownloadMonitorService.DEFAULT_STALLED_PROGRESS_TIMEOUT_MINUTES;
+	}
+
+	/**
 	 * Handle stalled downloads that have timed out.
 	 *
-	 * Only acts on stalled downloads below the configured progress threshold — these
-	 * never got off the ground (e.g. magnet metadata never fetched, no seeders ever
-	 * connected). Downloads at or above the threshold are left alone since they may
-	 * still complete when a seeder appears.
+	 * Two tiers (stalling is normal — torrents routinely resume when a seeder
+	 * returns, so patience is the default):
+	 * - At/below the progress threshold (never got off the ground, e.g. magnet
+	 *   metadata never fetched, no seeders ever connected): removed after the
+	 *   short stalled timeout.
+	 * - Above the threshold (real progress, then went quiet): left alone until
+	 *   the much longer progress timeout — a seeder may still appear. Only
+	 *   genuinely long-dead partial downloads get reaped.
 	 *
-	 * For each timed-out stalled item below the threshold:
+	 * For each timed-out stalled item:
 	 * 1. Remove from the download client
 	 * 2. Mark as failed in the queue (creates history record and emits events)
 	 * 3. Reset the search cooldown on the media item so it gets re-searched
 	 *
-	 * A timeout of 0 disables stalled download handling entirely.
+	 * A timeout of 0 disables that tier's handling entirely.
 	 */
 	private async handleStalledDownloads(): Promise<void> {
 		const timeoutMinutes = await this.getStalledTimeoutMinutes();
+		const progressTimeoutMinutes = await this.getStalledProgressTimeoutMinutes();
 
-		// A timeout of 0 means the feature is disabled
-		if (timeoutMinutes === 0) return;
+		// A timeout of 0 in BOTH tiers means the feature is disabled
+		if (timeoutMinutes === 0 && progressTimeoutMinutes === 0) return;
 
 		const progressThreshold = await this.getStalledProgressThreshold();
 		const blocklistHours = await this.getStalledBlocklistHours();
@@ -2725,6 +2782,10 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			DownloadMonitorService.MIN_STALLED_TIMEOUT_MINUTES
 		);
 		const timeoutMs = effectiveTimeout * 60 * 1000;
+		const progressTimeoutMs =
+			Math.max(progressTimeoutMinutes, DownloadMonitorService.MIN_STALLED_TIMEOUT_MINUTES) *
+			60 *
+			1000;
 		const now = Date.now();
 
 		// Defensive backfill: any row that is stalled but has no recorded stall start
@@ -2741,8 +2802,8 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				)
 			);
 
-		// Find stalled items whose persisted stall start has exceeded the timeout.
-		const cutoff = new Date(now - timeoutMs).toISOString();
+		// Select every stalled row once, then tier-filter below. The two tiers have
+		// different timeouts, so a single SQL cutoff cannot express both.
 		const stalledItems = await db
 			.select()
 			.from(downloadQueue)
@@ -2750,18 +2811,25 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				and(
 					eq(downloadQueue.status, 'stalled'),
 					isNotNull(downloadQueue.stalledSince),
-					lte(downloadQueue.stalledSince, cutoff),
 					not(eq(downloadQueue.protocol, 'debrid'))
 				)
 			);
 
 		if (stalledItems.length === 0) return;
 
-		// Only act on items at or below the progress threshold.
+		// Tier assignment:
+		// - low progress (<= threshold): short timeout (still respects 0 = tier disabled)
+		// - meaningful progress (> threshold): long progress timeout (0 = tier disabled)
 		// Uses <= so that threshold=0 correctly catches downloads at exactly 0%.
-		const timedOutItems = stalledItems.filter(
-			(item) => parseFloat(item.progress || '0') * 100 <= progressThreshold
-		);
+		const shortCutoff = new Date(now - timeoutMs).toISOString();
+		const progressCutoff = new Date(now - progressTimeoutMs).toISOString();
+		const timedOutItems = stalledItems.filter((item) => {
+			const progressPct = parseFloat(item.progress || '0') * 100;
+			if (progressPct <= progressThreshold) {
+				return timeoutMinutes !== 0 && item.stalledSince! <= shortCutoff;
+			}
+			return progressTimeoutMinutes !== 0 && item.stalledSince! <= progressCutoff;
+		});
 
 		if (timedOutItems.length === 0) return;
 
@@ -2778,10 +2846,13 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		const manager = getDownloadClientManager();
 
 		for (const item of timedOutItems) {
+			const progressPct = parseFloat(item.progress || '0') * 100;
 			const errorMessage =
 				item.protocol === 'usenet'
 					? 'Download stalled - articles unavailable or expired'
-					: 'Download stalled - no seeds or peers available';
+					: progressPct <= progressThreshold
+						? 'Download stalled - no seeds or peers available'
+						: `Download stalled at ${progressPct.toFixed(1)}% - no progress for an extended period`;
 
 			// Removal must succeed before we forget about the download — otherwise the
 			// dead torrent lingers in the client while Cinephage considers it handled.
@@ -3027,6 +3098,39 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 				const fileList = matchedFiles.map((f) => f.name.split('/').pop() || f.name).join(', ');
 				const errorMessage = `Blocked extension detected: ${fileList}`;
+
+				// Preferred path: the dangerous file never reaches disk if we simply
+				// exclude it via client-side file priority, so strip the junk files and
+				// let the media download continue. Only fall back to removing the whole
+				// torrent (and blocklisting the release) when the client cannot exclude
+				// files or every file in the torrent is dangerous.
+				const dangerousIndices = matchedFiles.map((f) => f.index);
+				const mediaFiles = files.filter((f) => !dangerousIndices.includes(f.index));
+
+				if (typeof instance.excludeFiles === 'function' && mediaFiles.length > 0) {
+					logger.info(
+						{
+							title: item.title,
+							matchedFiles: matchedFiles.map((f) => f.name),
+							mediaFileCount: mediaFiles.length
+						},
+						'Download contains files with blocked extensions, excluding files via priority'
+					);
+
+					try {
+						await instance.excludeFiles(clientDownloadId, dangerousIndices);
+						this.blockedExtensionCheckedHashes.add(cacheKey);
+						continue;
+					} catch (excludeError) {
+						logger.warn(
+							{
+								title: item.title,
+								error: excludeError instanceof Error ? excludeError.message : String(excludeError)
+							},
+							'Failed to exclude blocked extension files, falling back to torrent removal'
+						);
+					}
+				}
 
 				logger.info(
 					{
