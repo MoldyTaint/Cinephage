@@ -21,7 +21,6 @@ import { extractReleaseGroup } from './patterns/releaseGroup.js';
 /**
  * Patterns for extracting year from title
  */
-const YEAR_PATTERN = /\b(19\d{2}|20\d{2})\b/;
 
 /**
  * Patterns for edition detection
@@ -89,6 +88,14 @@ const STREAMING_SERVICE_PATTERNS: Array<{ service: string; pattern: RegExp }> = 
 export interface ParseOptions {
 	/** Source indexer language (ISO 639-1 code) - used for language tagging */
 	sourceLanguage?: string;
+	/**
+	 * Content context of the search that produced this title. In 'movie' mode,
+	 * ambiguous word-based "Season N" markers are not extracted, so movie titles
+	 * like "Open Season 3" keep their full title and are not mistaken for TV
+	 * season packs. Unambiguous TV notation (SxxExx) is still detected.
+	 * Default: 'auto' (all patterns, existing behavior).
+	 */
+	mode?: 'movie' | 'auto';
 }
 
 /**
@@ -118,7 +125,9 @@ export class ReleaseParser {
 		const streamingService = this.extractStreamingService(normalized);
 
 		// Extract episode info (determines if TV release)
-		const episodeMatch = extractEpisode(normalized);
+		const episodeMatch = extractEpisode(normalized, {
+			movieMode: options?.mode === 'movie'
+		});
 
 		// Extract other metadata
 		const languageMatch = extractLanguages(normalized);
@@ -213,13 +222,23 @@ export class ReleaseParser {
 	 * Extract year from title
 	 */
 	private extractYear(title: string): number | undefined {
-		const match = title.match(YEAR_PATTERN);
-		if (match) {
-			const year = parseInt(match[1], 10);
-			// Sanity check: year should be reasonable
-			if (year >= 1900 && year <= new Date().getFullYear() + 2) {
-				return year;
-			}
+		// Prefer an explicitly parenthesized year ("Movie (2010) 1080p") and
+		// otherwise take the LAST plausible 4-digit year: release names append
+		// the release year at the end, while number-titled movies ("1917 2019",
+		// "2001 A Space Odyssey (1968)", "Blade Runner 2049 (2017)") put their
+		// own numbers earlier in the title. First-match extraction regularly
+		// grabbed the title number instead of the release year.
+		const parenMatches = Array.from(title.matchAll(/\((19|20)\d{2}\)/g));
+		const anyMatches = Array.from(title.matchAll(/\b(?:19|20)\d{2}\b/g));
+		const pool = parenMatches.length > 0 ? parenMatches : anyMatches;
+		if (pool.length === 0) {
+			return undefined;
+		}
+		const last = pool[pool.length - 1];
+		const year = parseInt(last[0].replace(/[()]/g, ''), 10);
+		// Sanity check: year should be reasonable (cinema begins ~1888)
+		if (year >= 1888 && year <= new Date().getFullYear() + 2) {
+			return year;
 		}
 		return undefined;
 	}

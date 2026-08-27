@@ -1593,6 +1593,7 @@ export class SearchOrchestrator {
 			const allReleases: ReleaseResult[] = [];
 			const seenGuids = new Set<string>();
 			const limitedTitles = titlesToSearch.slice(0, RUTRACKER_AUTOMATIC_MAX_TITLES);
+			let anyTitleSucceeded = false;
 
 			for (const title of limitedTitles) {
 				const seasonOnlyCriteria = createTextOnlyCriteria({
@@ -1604,6 +1605,7 @@ export class SearchOrchestrator {
 
 				try {
 					const releases = await indexer.search(seasonOnlyCriteria);
+					anyTitleSucceeded = true;
 					for (const release of releases) {
 						if (!seenGuids.has(release.guid)) {
 							seenGuids.add(release.guid);
@@ -1623,10 +1625,16 @@ export class SearchOrchestrator {
 				}
 			}
 
-			this.rutrackerAutomaticSeasonSearchCache.set(cacheKey, {
-				cachedAtMs: Date.now(),
-				releases: allReleases
-			});
+			// Poison-cache guard: when EVERY variant failed (timeout, abort, auth),
+			// the accumulated empty set is not a truthful answer — caching it would
+			// serve "no results" for the whole TTL and never retry. Only cache when
+			// at least one query actually reached the indexer.
+			if (anyTitleSucceeded) {
+				this.rutrackerAutomaticSeasonSearchCache.set(cacheKey, {
+					cachedAtMs: Date.now(),
+					releases: allReleases
+				});
+			}
 
 			return allReleases;
 		});
@@ -1815,20 +1823,52 @@ export class SearchOrchestrator {
 		criteria: SearchCriteria,
 		context?: SeasonEpisodeFilterContext
 	): ReleaseResult[] {
-		// For movie searches, reject releases that are clearly TV episodes
+		// For movie searches, reject releases that are clearly TV episodes.
+		// Parses run in 'movie' mode: ambiguous word-based "Season N" markers are
+		// not extracted (movie titles like "Open Season 3" are not season packs),
+		// while unambiguous TV notation (SxxExx) is still detected and rejected.
 		if (isMovieSearch(criteria)) {
+			const searchTmdbId = criteria.tmdbId;
+			const searchImdbId = criteria.imdbId;
+
 			return releases.filter((release) => {
+				// ID-first classification: when the release carries an ID, it decides —
+				// an ID match means the release IS the searched movie, and title-based
+				// parsing (which can misread titles like "Open Season 3" as TV season
+				// packs) never overrides it. Native-Cyrillic tracker ID mismatches are
+				// definitive; aggregator ID mismatches fall through to title parsing.
+				if (searchTmdbId && release.tmdbId) {
+					if (release.tmdbId === searchTmdbId) return true;
+					if (
+						prefersNativeCyrillicTitles({
+							name: release.indexerName ?? ''
+						} as IIndexer)
+					) {
+						return false;
+					}
+				}
+				if (searchImdbId && release.imdbId) {
+					if (release.imdbId === searchImdbId) return true;
+					if (
+						prefersNativeCyrillicTitles({
+							name: release.indexerName ?? ''
+						} as IIndexer)
+					) {
+						return false;
+					}
+				}
+
 				const releaseWithCache = release as ReleaseResult & {
 					_parsedRelease?: ReturnType<typeof parseRelease>;
 				};
 				if (!releaseWithCache._parsedRelease) {
 					releaseWithCache._parsedRelease = parseRelease(release.title, {
-						sourceLanguage: release.sourceLanguage
+						sourceLanguage: release.sourceLanguage,
+						mode: 'movie'
 					});
 				}
 				const parsed = releaseWithCache._parsedRelease;
 
-				// Reject if release has episode info (S01E03, season pack, etc.)
 				if (parsed.episode) {
 					logger.debug(
 						{
@@ -2277,6 +2317,23 @@ export class SearchOrchestrator {
 		criteria?: SearchCriteria
 	): ReleaseResult[] {
 		return releases.filter((release) => {
+			// ID-first: a release whose content ID matches the search target IS the
+			// right content type. Indexer categories are noisy — aggregators mis-file
+			// TV packs as Movies, anime as Other, soundtracks with their movie — and
+			// must not override an authoritative ID match.
+			const searchTmdbId = criteria && 'tmdbId' in criteria ? criteria.tmdbId : undefined;
+			const searchImdbId = criteria && 'imdbId' in criteria ? criteria.imdbId : undefined;
+			const searchTvdbId = criteria && 'tvdbId' in criteria ? criteria.tvdbId : undefined;
+			if (searchTmdbId && release.tmdbId === searchTmdbId) {
+				return true;
+			}
+			if (searchImdbId && release.imdbId === searchImdbId) {
+				return true;
+			}
+			if (searchType === 'tv' && searchTvdbId && release.tvdbId === searchTvdbId) {
+				return true;
+			}
+
 			// If release has no categories, allow it (benefit of the doubt)
 			if (!release.categories || release.categories.length === 0) {
 				return true;
@@ -2394,15 +2451,29 @@ export class SearchOrchestrator {
 			}
 
 			if (this.matchesTrailerArtifactTitle(title)) {
-				logger.debug(
-					{
-						title: release.title,
-						searchType: criteria.searchType,
-						indexer: release.indexerName
-					},
-					'[SearchOrchestrator] Rejecting trailer/promo style release'
+				// Context check: when the searched movie/series title itself contains
+				// the artifact token ("Trailer Park Boys"), the token is part of the
+				// name — not an appended artifact. Otherwise ("Movie.2020.1080p.BluRay
+				// .Trailer") the release is a promo/teaser artifact.
+				const queryCandidates = [criteria.query, ...(criteria.searchTitles ?? [])]
+					.filter((candidate): candidate is string => !!candidate)
+					.map((candidate) => candidate.toLowerCase());
+
+				const isTitleEmbedded = queryCandidates.some((candidate) =>
+					TRAILER_ARTIFACT_TITLE_PATTERNS.some((pattern) => pattern.test(candidate))
 				);
-				return false;
+
+				if (!isTitleEmbedded) {
+					logger.debug(
+						{
+							title: release.title,
+							searchType: criteria.searchType,
+							indexer: release.indexerName
+						},
+						'[SearchOrchestrator] Rejecting trailer/promo style release'
+					);
+					return false;
+				}
 			}
 
 			const releaseWithCache = release as ReleaseResult & {
@@ -2617,7 +2688,10 @@ export class SearchOrchestrator {
 			const getParsed = () => {
 				if (!parsed) {
 					parsed = parseRelease(release.title, {
-						sourceLanguage: release.sourceLanguage
+						sourceLanguage: release.sourceLanguage,
+						// Movie searches parse in 'movie' mode so titles like
+						// "Open Season 3" keep their full title for matching.
+						mode: isMovieSearch(criteria) ? 'movie' : undefined
 					});
 				}
 				return parsed;

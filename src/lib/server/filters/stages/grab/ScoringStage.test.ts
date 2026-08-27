@@ -105,7 +105,8 @@ describe('ScoringStage', () => {
 				ctx.profile,
 				ctx.release.size,
 				{ mediaType: 'tv', isSeasonPack: true, episodeCount: 3 },
-				'nzbgeek'
+				'nzbgeek',
+				ctx.release.protocol
 			);
 		});
 

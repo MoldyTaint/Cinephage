@@ -446,10 +446,11 @@ export class ReleaseEnricher {
 		// Penalty for hardcoded subs (fixed penalty, not proportional)
 		const hardcodedSubsPenalty = parsed.hasHardcodedSubs ? -50 : 0;
 
-		// Calculate total score - only intrinsic quality factors
-		const totalScore = Math.round(
-			Math.max(0, baseScore + enhancementBonus + packBonus + hardcodedSubsPenalty)
-		);
+		// Calculate total score. No clamping: under the additive scoring model a
+		// negative total is meaningful ("less preferred than neutral") — the grab
+		// decision compares these raw totals, so the UI must display the same
+		// number it uses. Banned releases stay at -Infinity downstream.
+		const totalScore = Math.round(baseScore + enhancementBonus + packBonus + hardcodedSubsPenalty);
 
 		// Build components breakdown
 		const components: ScoreComponents = {
