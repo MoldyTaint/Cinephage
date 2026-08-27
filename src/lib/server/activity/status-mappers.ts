@@ -67,6 +67,7 @@ export function mapMoveStatusesForScopeAndFilter(
 		case 'downloading':
 			return base.includes('running') ? ['running'] : [];
 		case 'success':
+		case 'imported':
 			return base.includes('completed') ? ['completed'] : [];
 		case 'failed':
 			return base.includes('failed') ? ['failed'] : [];
@@ -79,7 +80,6 @@ export function mapMoveStatusesForScopeAndFilter(
 		case 'no_results':
 		case 'streaming':
 		case 'searching':
-		case 'imported':
 			return [];
 		default:
 			return base;

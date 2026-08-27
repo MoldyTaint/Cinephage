@@ -378,7 +378,11 @@
 						<!-- Import Path -->
 						{#if activity.importedPath}
 							<div>
-								<span class="text-sm text-base-content/60">{m.activity_detail_importedTo()}</span>
+								<span class="text-sm text-base-content/60"
+									>{activity.taskType === 'archive'
+										? m.activity_detail_archivedTo()
+										: m.activity_detail_importedTo()}</span
+								>
 								<div class="mt-1 flex items-center gap-2">
 									<Folder class="h-4 w-4 text-base-content/40" />
 									<code class="text-sm">{activity.importedPath}</code>

@@ -75,6 +75,9 @@ export const statusConfig: Record<
  * {@link statusConfig}.
  */
 export function getStatusLabel(activity: UnifiedActivity, fallbackLabel?: string): string {
+	if (activity.taskType === 'archive' && activity.status === 'imported') {
+		return m.status_completed();
+	}
 	if (isDebridMaterializing(activity)) {
 		return m.status_materializing();
 	}
@@ -245,6 +248,9 @@ export function getActivityCategoryTag(
 	}
 	if (activity.taskType === 'media_move') {
 		return { label: m.activity_tag_move(), variant: 'badge-ghost badge-xs' };
+	}
+	if (activity.taskType === 'archive') {
+		return { label: m.activity_tag_archive(), variant: 'badge-ghost badge-xs' };
 	}
 	if (
 		!activity.taskType &&

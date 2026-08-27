@@ -5,6 +5,7 @@ export type ActivityRefreshAction =
 	| 'purge_older_than_retention'
 	| 'delete_selected'
 	| 'media_move'
+	| 'archive'
 	| 'download_recovered';
 
 export interface ActivityRefreshPayload {

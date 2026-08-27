@@ -34,7 +34,7 @@ export interface ActivityProgressEvent {
  * activity:refresh event - Trigger clients to reload activity list after bulk mutations
  */
 export interface ActivityRefreshEvent {
-	action: 'purge_all' | 'purge_older_than_retention' | 'delete_selected' | 'media_move';
+	action: 'purge_all' | 'purge_older_than_retention' | 'delete_selected' | 'media_move' | 'archive';
 	timestamp: string;
 }
 

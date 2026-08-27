@@ -229,7 +229,11 @@
 
 				{#if activity.importedPath}
 					<div class="mt-3">
-						<span class="text-xs text-base-content/60">{m.activity_table_importedTo()}</span>
+						<span class="text-xs text-base-content/60"
+							>{activity.taskType === 'archive'
+								? m.activity_table_archivedTo()
+								: m.activity_table_importedTo()}</span
+						>
 						<span class="font-mono text-xs">{activity.importedPath}</span>
 					</div>
 				{/if}

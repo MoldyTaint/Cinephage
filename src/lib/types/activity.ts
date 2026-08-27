@@ -40,7 +40,8 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
 	new_episode: 'New Episode Search',
 	pendingRelease: 'Pending Release',
 	smartListRefresh: 'Smart List Refresh',
-	media_move: 'File Move'
+	media_move: 'File Move',
+	archive: 'Archive'
 };
 
 /**
