@@ -10,6 +10,7 @@ function generateCleanCollectionTitle(name: string): string {
 export const collectionTokens: TokenDefinition[] = [
 	{
 		name: 'Collection',
+		aliases: ['Movie Collection'],
 		category: 'collection',
 		description: 'TMDB collection name',
 		example: 'Star Wars Collection',

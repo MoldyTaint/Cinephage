@@ -46,6 +46,10 @@ function buildQualityFullString(
 
 export const qualityTokens: TokenDefinition[] = [
 	{
+		// NOTE: no docs-style alias for 'Quality'. In the docs 'Quality' means
+		// resolution-only (e.g. '1080p'), but this token renders 'Source-Resolution'
+		// (e.g. 'Bluray-1080p'). Aliasing it would silently change meaning; use
+		// {Resolution} (alias 'Quality Title') or {QualityFull} (alias 'Quality Source').
 		name: 'Quality',
 		category: 'quality',
 		description: 'Quality string (Source-Resolution)',
@@ -56,6 +60,7 @@ export const qualityTokens: TokenDefinition[] = [
 	},
 	{
 		name: 'QualityFull',
+		aliases: ['Quality Full', 'Quality Source'],
 		category: 'quality',
 		description: 'Quality with Proper/Repack markers',
 		example: 'Proper Bluray-1080p',
@@ -67,6 +72,7 @@ export const qualityTokens: TokenDefinition[] = [
 	},
 	{
 		name: 'Resolution',
+		aliases: ['Quality Title'],
 		category: 'quality',
 		description: 'Resolution only (2160p, 1080p, etc.)',
 		applicability: ['movie', 'episode'],
@@ -75,6 +81,7 @@ export const qualityTokens: TokenDefinition[] = [
 	},
 	{
 		name: 'Source',
+		aliases: ['Quality Type'],
 		category: 'quality',
 		description: 'Source only (Bluray, WEB-DL, etc.)',
 		applicability: ['movie', 'episode'],

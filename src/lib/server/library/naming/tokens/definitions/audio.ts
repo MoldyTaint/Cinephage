@@ -8,6 +8,7 @@ import { normalizeAudioCodec } from '../../normalization';
 export const audioTokens: TokenDefinition[] = [
 	{
 		name: 'AudioCodec',
+		aliases: ['MediaInfo AudioCodec'],
 		category: 'audio',
 		description: 'Audio codec (TrueHD, DTS-HD MA, etc.)',
 		applicability: ['movie', 'episode'],
@@ -16,6 +17,7 @@ export const audioTokens: TokenDefinition[] = [
 	},
 	{
 		name: 'AudioChannels',
+		aliases: ['MediaInfo AudioChannels', 'MediaInfo AudioChannelsFriendly', 'Audio', 'Audio Channels'],
 		category: 'audio',
 		description: 'Audio channels (5.1, 7.1, etc.)',
 		applicability: ['movie', 'episode'],

@@ -10,6 +10,10 @@ export interface TemplateError {
 	length: number;
 	message: string;
 	token?: string;
+	/**
+	 * Suggested token name for typos (Levenshtein-based, alias-aware)
+	 */
+	suggestion?: string;
 }
 
 /**

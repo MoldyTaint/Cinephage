@@ -105,6 +105,7 @@ export const episodeTokens: TokenDefinition[] = [
 	},
 	{
 		name: 'EpisodeTitle',
+		aliases: ['Episode Title'],
 		category: 'episode',
 		description: 'Episode title as-is',
 		applicability: ['episode'],
@@ -119,6 +120,7 @@ export const episodeTokens: TokenDefinition[] = [
 	},
 	{
 		name: 'Absolute',
+		aliases: ['Absolute Episode'],
 		category: 'episode',
 		description: 'Absolute episode number (anime)',
 		example: '{Absolute:000}',
@@ -134,6 +136,7 @@ export const episodeTokens: TokenDefinition[] = [
 	},
 	{
 		name: 'AirDate',
+		aliases: ['Air Date'],
 		category: 'episode',
 		description: 'Air date (YYYY-MM-DD, for daily shows)',
 		applicability: ['episode'],

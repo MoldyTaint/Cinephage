@@ -10,6 +10,48 @@ import type { MediaNamingInfo, NamingConfig } from '../NamingService';
 import type { TemplateParseResult, ParsedToken, TemplateError, TemplateWarning } from './types';
 
 /**
+ * Simple tokens: {Token} or {Token:spec}
+ * Content is captured generally so names may contain spaces (e.g. {Movie Title});
+ * whether the content is a real token attempt is decided by looksLikeToken().
+ */
+const SIMPLE_TOKEN_PATTERN = /\{([^{}]+)\}/g;
+
+/**
+ * Inner token inside a conditional block: name must not contain ':',
+ * the optional format spec may contain anything except braces.
+ */
+const CONDITIONAL_INNER_TOKEN_PATTERN = /\{([^{}:]+(?::[^{}]+)?)\}/g;
+
+/**
+ * Conditional blocks: {prefix{Token}suffix}, e.g. {[{HDR}]}, {edition-{Edition}}
+ * (parse side - records a single representative inner token per block)
+ */
+const CONDITIONAL_PARSE_PATTERN = /\{([^{}]*)\{([^{}:]+(?::[^{}]+)?)\}([^{}]*)\}/g;
+
+/**
+ * Conditional blocks (render side) - supports multiple inner tokens:
+ * {[{AudioCodec} {AudioChannels}]}
+ */
+const CONDITIONAL_RENDER_PATTERN = /\{([^{}]*(?:\{[^{}:]+(?::[^{}]+)?\}[^{}]*)+)\}/g;
+
+/**
+ * Split a captured token into name and format spec on the FIRST colon only.
+ */
+function splitToken(token: string): { name: string; formatSpec?: string } {
+	const colonIndex = token.indexOf(':');
+	if (colonIndex === -1) return { name: token };
+	return { name: token.slice(0, colonIndex), formatSpec: token.slice(colonIndex + 1) };
+}
+
+/**
+ * Whether brace content looks like a token attempt (as opposed to literal
+ * punctuation like '{...}' or '{123}'): the name must contain an ASCII letter.
+ */
+function looksLikeToken(name: string): boolean {
+	return /[A-Za-z]/.test(name);
+}
+
+/**
  * Template Engine for processing naming format strings
  */
 export class TemplateEngine {
@@ -24,13 +66,15 @@ export class TemplateEngine {
 		const warnings: TemplateWarning[] = [];
 
 		// Find conditional blocks: {prefix{Token}suffix}
-		const conditionalPattern = /\{([^{}]*)\{([A-Za-z:0-9]+)\}([^{}]*)\}/g;
-		const conditionalMatches = format.matchAll(conditionalPattern);
+		const conditionalMatches = format.matchAll(CONDITIONAL_PARSE_PATTERN);
 
 		for (const match of conditionalMatches) {
 			const [fullMatch, , token] = match;
-			const [name, formatSpec] = token.split(':');
+			const { name, formatSpec } = splitToken(token);
 			const position = match.index ?? 0;
+
+			// Punctuation-only brace content is not a token attempt
+			if (!looksLikeToken(name)) continue;
 
 			tokens.push({
 				name,
@@ -43,31 +87,28 @@ export class TemplateEngine {
 			// Validate token exists
 			const validation = this.registry.validate(name);
 			if (!validation.valid) {
-				if (validation.suggestion) {
-					warnings.push({
-						position,
-						message: `Unknown token '${name}'. Did you mean '${validation.suggestion}'?`,
-						suggestion: validation.suggestion
-					});
-				} else {
-					errors.push({
-						position,
-						length: fullMatch.length,
-						message: `Unknown token '${name}'`,
-						token: name
-					});
-				}
+				errors.push({
+					position,
+					length: fullMatch.length,
+					message: validation.suggestion
+						? `Unknown token '${name}'. Did you mean '${validation.suggestion}'?`
+						: `Unknown token '${name}'`,
+					token: name,
+					suggestion: validation.suggestion
+				});
 			}
 		}
 
-		// Find simple tokens: {Token} or {Token:00}
-		const tokenPattern = /\{([A-Za-z:0-9]+)\}/g;
-		const tokenMatches = format.matchAll(tokenPattern);
+		// Find simple tokens: {Token} or {Token:spec}
+		const tokenMatches = format.matchAll(SIMPLE_TOKEN_PATTERN);
 
 		for (const match of tokenMatches) {
 			const [fullMatch, token] = match;
-			const [name, formatSpec] = token.split(':');
+			const { name, formatSpec } = splitToken(token);
 			const position = match.index ?? 0;
+
+			// Punctuation-only brace content is not a token attempt
+			if (!looksLikeToken(name)) continue;
 
 			// Skip if this position was already handled as part of a conditional block
 			const isPartOfConditional = tokens.some(
@@ -86,20 +127,15 @@ export class TemplateEngine {
 				// Validate token exists
 				const validation = this.registry.validate(name);
 				if (!validation.valid) {
-					if (validation.suggestion) {
-						warnings.push({
-							position,
-							message: `Unknown token '${name}'. Did you mean '${validation.suggestion}'?`,
-							suggestion: validation.suggestion
-						});
-					} else {
-						errors.push({
-							position,
-							length: fullMatch.length,
-							message: `Unknown token '${name}'`,
-							token: name
-						});
-					}
+					errors.push({
+						position,
+						length: fullMatch.length,
+						message: validation.suggestion
+							? `Unknown token '${name}'. Did you mean '${validation.suggestion}'?`
+							: `Unknown token '${name}'`,
+						token: name,
+						suggestion: validation.suggestion
+					});
 				}
 			}
 		}
@@ -137,19 +173,18 @@ export class TemplateEngine {
 		info: MediaNamingInfo,
 		config: NamingConfig
 	): string {
-		// Pattern: Match outer braces that contain at least one inner {Token} pattern
-		// This handles both single tokens {[{HDR}]} and multiple tokens {[{AudioCodec} {AudioChannels}]}
-		const conditionalPattern = /\{([^{}]*(?:\{[A-Za-z:0-9]+\}[^{}]*)+)\}/g;
-
-		return format.replace(conditionalPattern, (match, innerContent) => {
+		return format.replace(CONDITIONAL_RENDER_PATTERN, (match, innerContent: string) => {
 			// Check if this contains any {Token} patterns
-			const tokenPattern = /\{([A-Za-z:0-9]+)\}/g;
-			const tokens = [...innerContent.matchAll(tokenPattern)];
+			const tokens = [...innerContent.matchAll(CONDITIONAL_INNER_TOKEN_PATTERN)];
 
 			if (tokens.length === 0) {
 				// No tokens found, return as-is (shouldn't happen with our pattern)
 				return match;
 			}
+
+			// If none of the inner tokens look like token attempts, keep the block literal
+			const meaningful = tokens.some((m) => looksLikeToken(splitToken(m[1]).name));
+			if (!meaningful) return match;
 
 			// Replace all tokens in the inner content
 			let result = innerContent;
@@ -157,7 +192,11 @@ export class TemplateEngine {
 
 			for (const tokenMatch of tokens) {
 				const [fullToken, token] = tokenMatch;
-				const [name, formatSpec] = token.split(':');
+				const { name, formatSpec } = splitToken(token);
+
+				// Leave non-token content (e.g. {...}) as literal text
+				if (!looksLikeToken(name)) continue;
+
 				const value = this.registry.render(name, info, config, formatSpec);
 
 				if (value && value.trim()) {
@@ -182,10 +221,12 @@ export class TemplateEngine {
 	 * Replace simple tokens like {Title}, {Year}
 	 */
 	private replaceTokens(format: string, info: MediaNamingInfo, config: NamingConfig): string {
-		const tokenPattern = /\{([A-Za-z:0-9]+)\}/g;
+		return format.replace(SIMPLE_TOKEN_PATTERN, (match, token: string) => {
+			const { name, formatSpec } = splitToken(token);
 
-		return format.replace(tokenPattern, (match, token) => {
-			const [name, formatSpec] = token.split(':');
+			// Leave non-token content (e.g. {123}, {...}) as literal text
+			if (!looksLikeToken(name)) return match;
+
 			return this.registry.render(name, info, config, formatSpec);
 		});
 	}

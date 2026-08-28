@@ -8,7 +8,7 @@ import { normalizeVideoCodec, normalizeHdr } from '../../normalization';
 export const videoTokens: TokenDefinition[] = [
 	{
 		name: 'VideoCodec',
-		aliases: ['Codec'],
+		aliases: ['Codec', 'MediaInfo VideoCodec'],
 		category: 'video',
 		description: 'Video codec (x264, x265, AV1)',
 		applicability: ['movie', 'episode'],
@@ -16,6 +16,9 @@ export const videoTokens: TokenDefinition[] = [
 	},
 	{
 		name: 'HDR',
+		// Docs advertise {MediaInfo VideoDynamicRangeType} for the dynamic-range
+		// TYPE (DV, HDR10, HDR10+), which is what this token renders.
+		aliases: ['MediaInfo VideoDynamicRangeType'],
 		category: 'video',
 		description: 'HDR format (DV, HDR10, HDR10+)',
 		applicability: ['movie', 'episode'],
@@ -23,6 +26,7 @@ export const videoTokens: TokenDefinition[] = [
 	},
 	{
 		name: 'BitDepth',
+		aliases: ['MediaInfo VideoBitDepth'],
 		category: 'video',
 		description: 'Bit depth (8, 10, 12)',
 		applicability: ['movie', 'episode'],
