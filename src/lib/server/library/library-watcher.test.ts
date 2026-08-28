@@ -69,6 +69,9 @@ describe('LibraryWatcherService.processPendingChanges', () => {
 	});
 
 	afterAll(() => {
+		const w = watcherInternals();
+		if (w.processTimeout) clearTimeout(w.processTimeout);
+		w.processTimeout = null;
 		destroyTestDb(testDb);
 	});
 
@@ -91,11 +94,25 @@ describe('LibraryWatcherService.processPendingChanges', () => {
 		expect(diskScanService.scanRootFolder).not.toHaveBeenCalled();
 	});
 
-	it('re-queues changes when the scan fails transiently instead of dropping them', async () => {
-		mockScanning = true; // forces the re-queue branch
+	it('re-queues changes while a scan is already running', async () => {
+		mockScanning = true; // forces the pre-scan guard re-queue branch
 		seedChange('/media/movie.mkv');
 		await watcherInternals().processPendingChanges();
 
 		expect(watcherInternals().pendingChanges.size).toBe(1);
+	});
+
+	it('drops changes when the scan fails permanently (no infinite re-queue loop)', async () => {
+		seedChange('/media/movie.mkv');
+		(diskScanService.scanRootFolder as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+			new Error('Root folder not found: folder-1')
+		);
+		// An EventEmitter 'error' emit with no listeners throws; attach a no-op.
+		LibraryWatcherService.getInstance().on('error', () => {});
+		// mockScanning stays false and no lock is held → catch runs, gating is false → drop.
+		await watcherInternals().processPendingChanges();
+
+		expect(diskScanService.scanRootFolder).toHaveBeenCalledTimes(1);
+		expect(watcherInternals().pendingChanges.size).toBe(0);
 	});
 });
