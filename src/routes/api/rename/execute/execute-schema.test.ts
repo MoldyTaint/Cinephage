@@ -32,7 +32,8 @@ vi.mock('$lib/server/library/disk-scan.js', () => ({
 	diskScanService: scanState
 }));
 
-const { renameExecuteSchema, POST } = await import('./+server');
+const { renameExecuteSchema } = await import('$lib/server/library/naming/rename-execute-schema.js');
+const { POST } = await import('./+server');
 
 describe('renameExecuteSchema', () => {
 	it('rejects batches larger than 500 file ids', () => {
