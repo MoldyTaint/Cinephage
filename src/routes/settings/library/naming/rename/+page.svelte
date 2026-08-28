@@ -77,7 +77,10 @@
 	}
 
 	async function executeRenames() {
-		if (selectedIds.size === 0) return;
+		if (selectedIds.size === 0) {
+			confirmPending = false;
+			return;
+		}
 		if (!confirmPending) {
 			confirmPending = true;
 			return;
@@ -145,7 +148,17 @@
 			await loadPreview();
 			error = executeError;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to execute renames';
+			const executeError = e instanceof Error ? e.message : 'Failed to execute renames';
+			error = executeError;
+			// Chunks before the failure already renamed files on disk — refresh so
+			// the preview reflects reality instead of the pre-batch state.
+			try {
+				await loadPreview();
+			} catch {
+				// preview refresh is best-effort; the original error stands
+			}
+			// loadPreview's catch path assigns its own `error` — restore the mid-batch error
+			error = executeError;
 		} finally {
 			executing = false;
 		}
