@@ -1789,4 +1789,68 @@ describe('reorganizeFolder DB-failure rollback', () => {
 		await db.delete(schema.movies).where(eq(schema.movies.id, movieId));
 		await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
 	});
+
+	it('reports accurately when the DB update fails AND the disk rollback also fails', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const movieId = randomUUID();
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: '/tmp/opencode/reorg-root',
+			mediaType: 'movie',
+			name: 'reorg-root'
+		});
+		await db.insert(schema.movies).values({
+			id: movieId,
+			rootFolderId,
+			path: 'Wrong (1900)',
+			title: 'Test Movie',
+			year: 2020,
+			tmdbId: 43
+		});
+
+		const svc = new RenamePreviewService();
+		const folderNameSpy = vi
+			.spyOn(NamingService.prototype, 'generateMovieFolderName')
+			.mockReturnValue('Generated (2020)');
+		const updateSpy = vi
+			.spyOn(
+				svc as unknown as {
+					updateMediaFolderPath: (
+						mediaType: 'movie' | 'series',
+						mediaId: string,
+						newPath: string
+					) => void;
+				},
+				'updateMediaFolderPath'
+			)
+			.mockImplementation(() => {
+				throw new Error('db exploded');
+			});
+		// First call: forward rename succeeds. Second call: rollback fails.
+		(mockFs.rename as ReturnType<typeof vi.fn>)
+			.mockResolvedValueOnce(undefined)
+			.mockRejectedValueOnce(new Error('rollback boom'));
+
+		const result = await svc.reorganizeFolder(movieId, 'movie');
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/rollback failed/i);
+		expect(result.error).toContain('db exploded');
+		expect(mockFs.rename).toHaveBeenCalledTimes(2);
+
+		const failure = db
+			.select()
+			.from(schema.renamingFailures)
+			.where(eq(schema.renamingFailures.fileId, movieId))
+			.get();
+		expect(failure?.reason).toBe('folder_db_update_failed');
+		expect(failure?.reasonDetail).toBe('db exploded');
+
+		updateSpy.mockRestore();
+		folderNameSpy.mockRestore();
+		await db.delete(schema.renamingFailures).where(eq(schema.renamingFailures.fileId, movieId));
+		await db.delete(schema.movies).where(eq(schema.movies.id, movieId));
+		await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+	});
 });

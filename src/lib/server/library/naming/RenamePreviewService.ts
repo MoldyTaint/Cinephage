@@ -789,8 +789,10 @@ export class RenamePreviewService {
 				this.updateMediaFolderPath(mediaType, mediaId, newFolderName);
 			} catch (dbError) {
 				const dbMessage = dbError instanceof Error ? dbError.message : String(dbError);
+				let rollbackSucceeded = false;
 				try {
 					await rename(actualNewFolder, actualOldFolder);
+					rollbackSucceeded = true;
 				} catch (rollbackError) {
 					logger.error(
 						{
@@ -815,7 +817,9 @@ export class RenamePreviewService {
 				);
 				return {
 					success: false,
-					error: `Folder was renamed on disk but the database update failed; the rename was rolled back. (${dbMessage})`,
+					error: rollbackSucceeded
+						? `Folder was renamed on disk but the database update failed; the rename was rolled back. (${dbMessage})`
+						: `Database update failed after the folder rename AND the rollback failed — the folder remains at its new path on disk while the database still references the old one. Resolve the underlying error and rescan. (${dbMessage})`,
 					oldPath: currentPath,
 					newPath: newFolderName
 				};
