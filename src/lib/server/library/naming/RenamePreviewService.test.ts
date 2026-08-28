@@ -1690,4 +1690,20 @@ describe('RenamePreviewService lock integration', () => {
 
 		expect(withLockSpy).toHaveBeenCalledWith('reorganize', expect.any(Function));
 	});
+
+	it('reorganizeFolders holds the lock once for the whole batch and isolates per-item failures', async () => {
+		const withLockSpy = vi.spyOn(libraryOperationLock, 'withLock');
+		const svc = new RenamePreviewService();
+
+		const result = await svc.reorganizeFolders([
+			{ mediaId: 'missing-1', mediaType: 'movie' as const },
+			{ mediaId: 'missing-2', mediaType: 'series' as const }
+		]);
+
+		expect(withLockSpy).toHaveBeenCalledTimes(1);
+		expect(withLockSpy).toHaveBeenCalledWith('reorganize-batch', expect.any(Function));
+		expect(result.total).toBe(2);
+		expect(result.organized).toBe(0);
+		expect(result.failed).toBe(2);
+	});
 });

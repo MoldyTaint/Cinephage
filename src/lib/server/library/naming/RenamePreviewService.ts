@@ -810,6 +810,77 @@ export class RenamePreviewService {
 	}
 
 	/**
+	 * Reorganize a batch of movie/series folders while holding the operation
+	 * lock once for the entire batch, so no library scan can interleave
+	 * between items. Per-item failures are isolated and counted.
+	 *
+	 * Calls the private reorganizeFolderLocked for each item — the lock is
+	 * already held and is NOT re-entrant, so the public reorganizeFolder
+	 * wrapper must not be used here (it would deadlock).
+	 */
+	async reorganizeFolders(
+		items: Array<{ mediaId: string; mediaType: 'movie' | 'series' }>
+	): Promise<{
+		total: number;
+		organized: number;
+		failed: number;
+		errors: string[];
+		results: Array<{
+			mediaId: string;
+			mediaType: 'movie' | 'series';
+			success: boolean;
+			error?: string;
+		}>;
+	}> {
+		return libraryOperationLock.withLock('reorganize-batch', async () => {
+			let organized = 0;
+			let failed = 0;
+			const errors: string[] = [];
+			const results: Array<{
+				mediaId: string;
+				mediaType: 'movie' | 'series';
+				success: boolean;
+				error?: string;
+			}> = [];
+
+			for (const item of items) {
+				try {
+					const result = await this.reorganizeFolderLocked(item.mediaId, item.mediaType);
+					if (result.success) {
+						organized++;
+						results.push({
+							mediaId: item.mediaId,
+							mediaType: item.mediaType,
+							success: true
+						});
+					} else {
+						failed++;
+						errors.push(result.error ?? 'Unknown reorganize error');
+						results.push({
+							mediaId: item.mediaId,
+							mediaType: item.mediaType,
+							success: false,
+							error: result.error
+						});
+					}
+				} catch (error) {
+					failed++;
+					const message = error instanceof Error ? error.message : String(error);
+					errors.push(message);
+					results.push({
+						mediaId: item.mediaId,
+						mediaType: item.mediaType,
+						success: false,
+						error: message
+					});
+				}
+			}
+
+			return { total: items.length, organized, failed, errors, results };
+		});
+	}
+
+	/**
 	 * Build a fileId → RenamePreviewItem map for a set of file IDs,
 	 * computing target paths for only those files.
 	 * Unknown or already-correct files are recorded as failures in `result`.

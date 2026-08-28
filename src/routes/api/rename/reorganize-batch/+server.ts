@@ -41,56 +41,31 @@ export const POST: RequestHandler = async (event) => {
 	try {
 		const { items } = await parseBody(request, reorganizeBatchSchema);
 
+		// One service call holds the operation lock for the WHOLE batch, so no
+		// library scan can interleave between items. Per-item failures are
+		// isolated and reported individually.
 		const service = new RenamePreviewService();
-		const results: ReorganizeBatchResult['results'] = [];
-		let organized = 0;
-		let failed = 0;
+		const batch = await service.reorganizeFolders(items);
 
-		for (const item of items) {
-			try {
-				const result = await service.reorganizeFolder(item.mediaId, item.mediaType);
-				if (result.success) {
-					organized++;
-					results.push({
-						mediaId: item.mediaId,
-						mediaType: item.mediaType,
-						success: true
-					});
-					libraryMediaEvents.emitLibraryDataChanged({
-						source: item.mediaType === 'series' ? 'series' : 'movie',
-						reason: 'folder-reorganized',
-						entityId: item.mediaId
-					});
-				} else {
-					failed++;
-					results.push({
-						mediaId: item.mediaId,
-						mediaType: item.mediaType,
-						success: false,
-						error: result.error
-					});
-				}
-			} catch (error) {
-				failed++;
-				results.push({
-					mediaId: item.mediaId,
-					mediaType: item.mediaType,
-					success: false,
-					error: error instanceof Error ? error.message : 'Unknown error'
-				});
-			}
+		for (const result of batch.results) {
+			if (!result.success) continue;
+			libraryMediaEvents.emitLibraryDataChanged({
+				source: result.mediaType === 'series' ? 'series' : 'movie',
+				reason: 'folder-reorganized',
+				entityId: result.mediaId
+			});
 		}
 
 		logger.info(
-			{ total: items.length, organized, failed },
+			{ total: batch.total, organized: batch.organized, failed: batch.failed },
 			'[ReorganizeBatch API] Batch reorganization complete'
 		);
 
 		return json({
-			success: failed === 0,
-			organized,
-			failed,
-			results
+			success: batch.failed === 0,
+			organized: batch.organized,
+			failed: batch.failed,
+			results: batch.results
 		} satisfies ReorganizeBatchResult);
 	} catch (error) {
 		logger.error(
