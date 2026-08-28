@@ -782,11 +782,43 @@ export class RenamePreviewService {
 				};
 			}
 
-			// Update the DB record.
-			if (mediaType === 'movie') {
-				db.update(movies).set({ path: newFolderName }).where(eq(movies.id, mediaId)).run();
-			} else {
-				db.update(series).set({ path: newFolderName }).where(eq(series.id, mediaId)).run();
+			// Update the DB record. If this fails the disk is already renamed —
+			// roll the rename back so disk and DB stay consistent, otherwise the
+			// next scan would delete every file row for this title (stale path).
+			try {
+				this.updateMediaFolderPath(mediaType, mediaId, newFolderName);
+			} catch (dbError) {
+				const dbMessage = dbError instanceof Error ? dbError.message : String(dbError);
+				try {
+					await rename(actualNewFolder, actualOldFolder);
+				} catch (rollbackError) {
+					logger.error(
+						{
+							err: rollbackError,
+							from: actualNewFolder,
+							to: actualOldFolder,
+							mediaId,
+							mediaType
+						},
+						'[RenamePreviewService] CRITICAL: DB update failed AND disk rollback failed — disk and DB are now inconsistent. Resolve the underlying error and rescan.'
+					);
+				}
+				await recordRenamingFailure({
+					fileId: mediaId,
+					fileType: mediaType === 'movie' ? 'movie' : 'episode',
+					sourcePath: actualOldFolder,
+					intendedPath: actualNewFolder,
+					reason: 'folder_db_update_failed',
+					reasonDetail: dbMessage
+				}).catch((err) =>
+					logger.warn({ err }, '[RenamePreviewService] Failed to record renaming failure')
+				);
+				return {
+					success: false,
+					error: `Folder was renamed on disk but the database update failed; the rename was rolled back. (${dbMessage})`,
+					oldPath: currentPath,
+					newPath: newFolderName
+				};
 			}
 
 			// Notify media servers of the new folder path so Jellyfin/Emby
@@ -806,6 +838,22 @@ export class RenamePreviewService {
 				'[RenamePreviewService] Folder reorganize failed'
 			);
 			return { success: false, error: message };
+		}
+	}
+
+	/**
+	 * Update movies.path or series.path. Extracted so failure paths can be
+	 * tested and both reorganizeFolder and applyFolderRename share it.
+	 */
+	private updateMediaFolderPath(
+		mediaType: 'movie' | 'series',
+		mediaId: string,
+		newPath: string
+	): void {
+		if (mediaType === 'movie') {
+			db.update(movies).set({ path: newPath }).where(eq(movies.id, mediaId)).run();
+		} else {
+			db.update(series).set({ path: newPath }).where(eq(series.id, mediaId)).run();
 		}
 	}
 

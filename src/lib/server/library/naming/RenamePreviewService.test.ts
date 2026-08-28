@@ -7,7 +7,8 @@
  * - Real-world regression suite (scene releases, multi-episode, anime, etc.)
  */
 
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { createTestDb, destroyTestDb } from '../../../../test/db-helper';
 import { RenamePreviewService, type RenamePreviewResult } from './RenamePreviewService';
 import { NamingService, type MediaNamingInfo, DEFAULT_NAMING_CONFIG } from './NamingService';
@@ -29,7 +30,8 @@ vi.mock('$lib/server/db', () => ({
 }));
 
 vi.mock('$lib/server/notifications/mediabrowser', () => ({
-	getMediaBrowserNotifier: () => ({ queueUpdate: vi.fn() })
+	getMediaBrowserNotifier: () => ({ queueUpdate: vi.fn() }),
+	getMediaBrowserManager: () => ({ deleteMediaItemByTmdb: vi.fn().mockResolvedValue(undefined) })
 }));
 
 const mockedMoveFile = vi.fn();
@@ -1705,5 +1707,86 @@ describe('RenamePreviewService lock integration', () => {
 		expect(result.total).toBe(2);
 		expect(result.organized).toBe(0);
 		expect(result.failed).toBe(2);
+	});
+});
+
+describe('reorganizeFolder DB-failure rollback', () => {
+	beforeEach(() => {
+		resetAllMocks();
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('renames the folder back on disk and records a failure when the DB update throws', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const movieId = randomUUID();
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: '/tmp/opencode/reorg-root',
+			mediaType: 'movie',
+			name: 'reorg-root'
+		});
+		await db.insert(schema.movies).values({
+			id: movieId,
+			rootFolderId,
+			path: 'Wrong (1900)',
+			title: 'Test Movie',
+			year: 2020,
+			tmdbId: 42
+		});
+
+		const svc = new RenamePreviewService();
+		// reorganizeFolderLocked builds a fresh NamingService from the stored
+		// config, so the prototype method must be stubbed (not the instance).
+		const folderNameSpy = vi
+			.spyOn(NamingService.prototype, 'generateMovieFolderName')
+			.mockReturnValue('Generated (2020)');
+		const updateSpy = vi
+			.spyOn(
+				svc as unknown as {
+					updateMediaFolderPath: (
+						mediaType: 'movie' | 'series',
+						mediaId: string,
+						newPath: string
+					) => void;
+				},
+				'updateMediaFolderPath'
+			)
+			.mockImplementation(() => {
+				throw new Error('db exploded');
+			});
+
+		const result = await svc.reorganizeFolder(movieId, 'movie');
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/database update failed/i);
+		expect(mockFs.rename).toHaveBeenNthCalledWith(
+			1,
+			'/tmp/opencode/reorg-root/Wrong (1900)',
+			'/tmp/opencode/reorg-root/Generated (2020)'
+		);
+		expect(mockFs.rename).toHaveBeenNthCalledWith(
+			2,
+			'/tmp/opencode/reorg-root/Generated (2020)',
+			'/tmp/opencode/reorg-root/Wrong (1900)'
+		);
+
+		const failure = db
+			.select()
+			.from(schema.renamingFailures)
+			.where(eq(schema.renamingFailures.fileId, movieId))
+			.get();
+		expect(failure?.reason).toBe('folder_db_update_failed');
+		expect(failure?.reasonDetail).toBe('db exploded');
+		expect(failure?.fileType).toBe('movie');
+
+		updateSpy.mockRestore();
+		folderNameSpy.mockRestore();
+		await db.delete(schema.renamingFailures).where(eq(schema.renamingFailures.fileId, movieId));
+		await db.delete(schema.movies).where(eq(schema.movies.id, movieId));
+		await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
 	});
 });
