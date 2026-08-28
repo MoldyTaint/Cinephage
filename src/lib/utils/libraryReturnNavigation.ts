@@ -52,3 +52,26 @@ export function getLibraryDetailWithReturnTo(
 		return null;
 	}
 }
+
+/**
+ * Validate a return path before using it for navigation.
+ *
+ * Only the matching internal library list route is accepted. This keeps the
+ * returnTo parameter useful for restoring filters/sort state without turning
+ * it into an open redirect.
+ */
+export function getSafeLibraryReturnTo(
+	value: string | null,
+	expectedListPath: string
+): string | null {
+	if (!value || !value.startsWith('/') || value.startsWith('//')) return null;
+
+	try {
+		const url = new URL(value, 'http://cinephage.local');
+		if (url.origin !== 'http://cinephage.local') return null;
+		if (url.pathname !== expectedListPath) return null;
+		return `${url.pathname}${url.search}${url.hash}`;
+	} catch {
+		return null;
+	}
+}
