@@ -8,6 +8,7 @@ import { activityStreamEvents } from '$lib/server/activity/ActivityStreamEvents.
 import { libraryMediaEvents } from './LibraryMediaEvents.js';
 import { moveDirectoryWithinRoots } from '$lib/server/filesystem/move-helpers.js';
 import { getLibraryEntityService } from './LibraryEntityService.js';
+import { libraryOperationLock } from './library-operation-lock.js';
 
 const logger = createChildLogger({ module: 'MediaMoveService' });
 
@@ -79,6 +80,16 @@ class MediaMoveService {
 	}
 
 	private async executeMoveTask(
+		taskId: string,
+		historyId: string,
+		input: EnqueueMediaMoveInput
+	): Promise<void> {
+		return libraryOperationLock.withLock('move', () =>
+			this.executeMoveTaskLocked(taskId, historyId, input)
+		);
+	}
+
+	private async executeMoveTaskLocked(
 		taskId: string,
 		historyId: string,
 		input: EnqueueMediaMoveInput
