@@ -1,4 +1,6 @@
 import { describe, it, expect, afterAll, beforeEach, vi } from 'vitest';
+import { inArray } from 'drizzle-orm';
+import * as schema from '$lib/server/db/schema';
 
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../../test/db-helper.js';
 
@@ -20,6 +22,20 @@ vi.mock('$lib/server/filesystem/move-helpers.js', () => ({
 	get moveDirectoryWithinRoots() {
 		return mockedMoveDirectoryWithinRoots;
 	}
+}));
+
+const notifierMocks = vi.hoisted(() => ({
+	queueUpdate: vi.fn()
+}));
+
+vi.mock('$lib/server/notifications/mediabrowser', () => ({
+	getMediaBrowserNotifier: () => ({ queueUpdate: notifierMocks.queueUpdate })
+}));
+
+vi.mock('./LibraryEntityService.js', () => ({
+	getLibraryEntityService: () => ({
+		resolveOwningLibraryForRootFolder: vi.fn().mockResolvedValue({ id: 'lib-1' })
+	})
 }));
 
 const mockStartTask = vi.fn();
@@ -73,6 +89,62 @@ describe('MediaMoveService lock integration', () => {
 
 		expect(withLockSpy).toHaveBeenCalledWith('move', expect.any(Function));
 		expect(libraryOperationLock.isLocked).toBe(false);
+	});
+});
+
+describe('MediaMoveService move notifications', () => {
+	beforeEach(() => {
+		notifierMocks.queueUpdate.mockClear();
+	});
+
+	it('queues Deleted(source) and Modified(destination) after a successful root-folder move', async () => {
+		const db = testDb.db;
+		const sourceRootId = crypto.randomUUID();
+		const destinationRootId = crypto.randomUUID();
+		await db.insert(schema.rootFolders).values({
+			id: sourceRootId,
+			path: '/movies-root',
+			mediaType: 'movie',
+			name: 'movies-root'
+		});
+		await db.insert(schema.rootFolders).values({
+			id: destinationRootId,
+			path: '/other-root',
+			mediaType: 'movie',
+			name: 'other-root'
+		});
+		mockedMoveDirectoryWithinRoots.mockResolvedValue({
+			mode: 'rename',
+			sourcePath: '/movies-root/Movie (2020)',
+			destPath: '/other-root/Movie (2020)'
+		});
+
+		const svc = mediaMoveService;
+		// @ts-expect-error accessing private method for testing
+		await svc.executeMoveTaskLocked('move-task', 'move-history', {
+			mediaType: 'movie',
+			mediaId: 'movie-1',
+			mediaTitle: 'Movie',
+			relativePath: 'Movie (2020)',
+			sourceRootFolderId: sourceRootId,
+			destinationRootFolderId: destinationRootId
+		});
+
+		expect(mockCompleteTask).toHaveBeenCalled();
+		expect(notifierMocks.queueUpdate).toHaveBeenCalledWith(
+			'/movies-root/Movie (2020)',
+			'Deleted',
+			'rename'
+		);
+		expect(notifierMocks.queueUpdate).toHaveBeenCalledWith(
+			'/other-root/Movie (2020)',
+			'Modified',
+			'rename'
+		);
+
+		await db
+			.delete(schema.rootFolders)
+			.where(inArray(schema.rootFolders.id, [sourceRootId, destinationRootId]));
 	});
 });
 

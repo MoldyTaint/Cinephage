@@ -14,7 +14,13 @@ const logger = createChildLogger({ logDomain: 'system' as const });
 import type { ServiceStatus, BackgroundService } from '$lib/server/services/background-service';
 import { getMediaBrowserManager } from './MediaBrowserManager';
 import { MediaBrowserClient } from './MediaBrowserClient';
-import type { LibraryUpdateType, PendingUpdate, LibraryUpdatePayload } from './types';
+import type {
+	LibraryUpdateType,
+	PendingUpdate,
+	LibraryUpdatePayload,
+	MediaEventKind
+} from './types';
+import { MEDIA_EVENT_KIND_TOGGLE } from './types';
 
 // Batching configuration
 const BATCH_DELAY_MS = 5000; // Wait 5 seconds before sending
@@ -103,8 +109,11 @@ class MediaBrowserNotifier extends EventEmitter implements BackgroundService {
 	 *
 	 * @param path - The file/folder path that changed
 	 * @param updateType - The type of change (Created, Modified, Deleted)
+	 * @param eventKind - The originating operation ('import' | 'upgrade' | 'rename'
+	 *   | 'delete'). Used to enforce each server's event toggles. Omitted for
+	 *   legacy callers: the update is delivered to every enabled server.
 	 */
-	queueUpdate(path: string, updateType: LibraryUpdateType): void {
+	queueUpdate(path: string, updateType: LibraryUpdateType, eventKind?: MediaEventKind): void {
 		if (this._status !== 'ready') {
 			logger.debug(
 				{
@@ -131,6 +140,7 @@ class MediaBrowserNotifier extends EventEmitter implements BackgroundService {
 			// If new is 'Deleted', upgrade
 			if (updateType === 'Deleted') {
 				existing.updateType = 'Deleted';
+				existing.eventKind = eventKind ?? existing.eventKind;
 				existing.addedAt = Date.now();
 				return;
 			}
@@ -140,13 +150,15 @@ class MediaBrowserNotifier extends EventEmitter implements BackgroundService {
 			}
 			// Otherwise, upgrade to the new type
 			existing.updateType = updateType;
+			existing.eventKind = eventKind ?? existing.eventKind;
 			existing.addedAt = Date.now();
 		} else {
 			// New entry
 			this.pendingUpdates.set(normalizedPath, {
 				path: normalizedPath,
 				updateType,
-				addedAt: Date.now()
+				addedAt: Date.now(),
+				eventKind
 			});
 		}
 
@@ -261,12 +273,29 @@ class MediaBrowserNotifier extends EventEmitter implements BackgroundService {
 			'[MediaBrowserNotifier] Sending updates to servers'
 		);
 
-		// Send to each enabled server
+		// Send to each enabled server, enforcing that server's event toggles.
+		// Updates without an eventKind (legacy callers) always pass the filter.
 		await Promise.all(
 			enabledServers.map(async (server) => {
 				try {
+					const eligibleUpdates = updates.filter(
+						(update) =>
+							!update.eventKind || server[MEDIA_EVENT_KIND_TOGGLE[update.eventKind]] !== false
+					);
+
+					if (eligibleUpdates.length === 0) {
+						logger.debug(
+							{
+								serverId: server.id,
+								serverName: server.name
+							},
+							'[MediaBrowserNotifier] No eligible updates for server after toggle filter, skipping'
+						);
+						return;
+					}
+
 					// Apply path mappings
-					const mappedUpdates = updates.map((update) => ({
+					const mappedUpdates = eligibleUpdates.map((update) => ({
 						Path: MediaBrowserClient.mapPath(update.path, server.pathMappings),
 						UpdateType: update.updateType
 					}));

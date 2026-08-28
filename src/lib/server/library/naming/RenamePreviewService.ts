@@ -776,9 +776,13 @@ export class RenamePreviewService {
 			// Jellyfin's scanner finds orphaned Season/Episode rows at the old path
 			// after the folder move (jellyfin#16883). Plex is unaffected.
 			// Best-effort: failures don't block the rename.
+			// eventKind 'rename': this pre-delete is part of a rename flow, so it
+			// must respect each server's onRename toggle (not onDelete).
 			if (mediaTmdbId) {
 				const manager = getMediaBrowserManager();
-				await manager.deleteMediaItemByTmdb(mediaTmdbId, mediaType as 'movie' | 'series');
+				await manager.deleteMediaItemByTmdb(mediaTmdbId, mediaType as 'movie' | 'series', {
+					eventKind: 'rename'
+				});
 			}
 
 			// Write per-file transition rows BEFORE the disk rename so a hard
@@ -851,9 +855,12 @@ export class RenamePreviewService {
 				};
 			}
 
-			// Notify media servers of the new folder path so Jellyfin/Emby
-			// discovers the renamed folder as a fresh item.
-			getMediaBrowserNotifier().queueUpdate(actualNewFolder, 'Modified');
+			// Notify media servers of both folder paths: the old one as Deleted so
+			// Jellyfin/Emby drops the stale entry, the new one as Modified so the
+			// renamed folder is discovered as a fresh item. Different paths, so
+			// both survive the notifier's per-path dedup.
+			getMediaBrowserNotifier().queueUpdate(actualOldFolder, 'Deleted', 'rename');
+			getMediaBrowserNotifier().queueUpdate(actualNewFolder, 'Modified', 'rename');
 
 			logger.info(
 				{ mediaId, mediaType, from: actualOldFolder, to: actualNewFolder },
@@ -1353,7 +1360,11 @@ export class RenamePreviewService {
 				'[RenamePreviewService] File renamed successfully'
 			);
 
-			getMediaBrowserNotifier().queueUpdate(item.newFullPath, 'Modified');
+			// Notify media servers of both file paths: old as Deleted (drop the
+			// stale entry), new as Modified (discover the renamed file). Different
+			// paths, so both survive the notifier's per-path dedup.
+			getMediaBrowserNotifier().queueUpdate(item.currentFullPath, 'Deleted', 'rename');
+			getMediaBrowserNotifier().queueUpdate(item.newFullPath, 'Modified', 'rename');
 
 			// Carry stem-matched sibling subtitles along on in-place renames so
 			// external subs stay associated with the renamed video.
@@ -1523,6 +1534,16 @@ export class RenamePreviewService {
 				}).catch((err) =>
 					logger.warn({ err }, '[RenamePreviewService] Failed to record renaming failure')
 				);
+			}
+
+			// Notify media servers of the folder change so Jellyfin/Emby drops the
+			// old path (Deleted) and scans the new one (Modified). Skipped when the
+			// old folder is the library root — a Deleted for the root folder would
+			// wipe the whole library entry on the media server. Different paths, so
+			// both survive the notifier's per-path dedup.
+			if (!isRootFolder && oldFolder !== newFolder) {
+				getMediaBrowserNotifier().queueUpdate(oldFolder, 'Deleted', 'rename');
+				getMediaBrowserNotifier().queueUpdate(newFolder, 'Modified', 'rename');
 			}
 
 			// 2. Move companion files from the old folder to the new folder.

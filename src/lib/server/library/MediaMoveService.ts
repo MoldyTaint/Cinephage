@@ -7,6 +7,7 @@ import { getTaskHistoryService } from '$lib/server/tasks/TaskHistoryService.js';
 import { activityStreamEvents } from '$lib/server/activity/ActivityStreamEvents.js';
 import { libraryMediaEvents } from './LibraryMediaEvents.js';
 import { moveDirectoryWithinRoots } from '$lib/server/filesystem/move-helpers.js';
+import { getMediaBrowserNotifier } from '$lib/server/notifications/mediabrowser';
 import { getLibraryEntityService } from './LibraryEntityService.js';
 import { libraryOperationLock } from './library-operation-lock.js';
 import { diskScanService } from './disk-scan.js';
@@ -147,6 +148,15 @@ class MediaMoveService {
 					.where(eq(series.id, input.mediaId));
 				libraryMediaEvents.emitSeriesUpdated(input.mediaId);
 			}
+
+			// The media physically moved roots, which no scan of either root will
+			// fully explain (source scan sees a deletion, destination an addition).
+			// Notify both paths as a rename so Jellyfin/Emby/Plex reconcile —
+			// Deleted for the old path, Modified for the new one. Different paths,
+			// so both survive the notifier's per-path dedup.
+			const notifier = getMediaBrowserNotifier();
+			notifier.queueUpdate(moved.sourcePath, 'Deleted', 'rename');
+			notifier.queueUpdate(moved.destPath, 'Modified', 'rename');
 
 			await taskHistoryService.completeTask(historyId, {
 				kind: 'media_move',

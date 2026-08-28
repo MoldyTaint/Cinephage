@@ -30,9 +30,13 @@ vi.mock('$lib/server/db', () => ({
 	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
 
+const notifierMocks = vi.hoisted(() => ({
+	queueUpdate: vi.fn()
+}));
+
 vi.mock('$lib/server/notifications/mediabrowser', () => ({
-	getMediaBrowserNotifier: () => ({ queueUpdate: vi.fn() }),
-	getMediaBrowserManager: () => ({ deleteMediaItemByTmdb: vi.fn().mockResolvedValue(undefined) })
+	getMediaBrowserNotifier: () => ({ queueUpdate: notifierMocks.queueUpdate }),
+	getMediaBrowserManager: () => ({ deleteMediaItemByTmdb: vi.fn().mockResolvedValue(1) })
 }));
 
 const mockedMoveFile = vi.fn();
@@ -2004,6 +2008,95 @@ describe('applyFolderRename DB-failure surfacing', () => {
 
 		updateSpy.mockRestore();
 		await db.delete(schema.renamingFailures).where(eq(schema.renamingFailures.fileId, seriesId));
+		await db.delete(schema.series).where(eq(schema.series.id, seriesId));
+		await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+	});
+});
+
+describe('rename media-server notifications', () => {
+	beforeEach(() => {
+		resetAllMocks();
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('queues Deleted(old folder) and Modified(new folder) after a successful reorganize', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const movieId = randomUUID();
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: '/tmp/opencode/notif-root',
+			mediaType: 'movie',
+			name: 'notif-root'
+		});
+		await db.insert(schema.movies).values({
+			id: movieId,
+			rootFolderId,
+			path: 'Wrong (1900)',
+			title: 'Test Movie',
+			year: 2020,
+			tmdbId: 77
+		});
+
+		const svc = new RenamePreviewService();
+		const folderNameSpy = vi
+			.spyOn(NamingService.prototype, 'generateMovieFolderName')
+			.mockReturnValue('Generated (2020)');
+
+		const result = await svc.reorganizeFolder(movieId, 'movie');
+
+		expect(result.success).toBe(true);
+		expect(notifierMocks.queueUpdate).toHaveBeenCalledWith(
+			'/tmp/opencode/notif-root/Wrong (1900)',
+			'Deleted',
+			'rename'
+		);
+		expect(notifierMocks.queueUpdate).toHaveBeenCalledWith(
+			'/tmp/opencode/notif-root/Generated (2020)',
+			'Modified',
+			'rename'
+		);
+
+		folderNameSpy.mockRestore();
+		await db.delete(schema.movies).where(eq(schema.movies.id, movieId));
+		await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+	});
+
+	it('queues Deleted(old folder) and Modified(new folder) when applyFolderRename moves the parent folder', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const seriesId = randomUUID();
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: '/tmp/opencode/afr-notif-root',
+			mediaType: 'tv',
+			name: 'afr-notif-root'
+		});
+		await db.insert(schema.series).values({
+			id: seriesId,
+			rootFolderId,
+			path: 'Old (1999)',
+			title: 'Show',
+			tmdbId: 8
+		});
+
+		const svc = new RenamePreviewService();
+		await svc['applyFolderRename'](seriesId, 'episode', 'Old (1999)', 'New (1999)', 'stem');
+
+		expect(notifierMocks.queueUpdate).toHaveBeenCalledWith(
+			'/tmp/opencode/afr-notif-root/Old (1999)',
+			'Deleted',
+			'rename'
+		);
+		expect(notifierMocks.queueUpdate).toHaveBeenCalledWith(
+			'/tmp/opencode/afr-notif-root/New (1999)',
+			'Modified',
+			'rename'
+		);
+
 		await db.delete(schema.series).where(eq(schema.series.id, seriesId));
 		await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
 	});
