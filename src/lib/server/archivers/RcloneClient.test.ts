@@ -158,12 +158,12 @@ describe('RcloneClient', () => {
 		});
 	});
 
-	it('lists archived files recursively below the configured base path', async () => {
+	it('normalizes RC list paths relative to the requested directory', async () => {
 		const fetchMock = vi.fn().mockResolvedValue(
 			Response.json({
 				list: [
-					{ Path: 'Season 01/Episode.mkv', Size: 123, IsDir: false },
-					{ Path: 'Season 01', Size: -1, IsDir: true }
+					{ Path: 'Media/Example Series/Season 01/Episode.mkv', Size: 123, IsDir: false },
+					{ Path: 'Media/Example Series/Season 01', Size: -1, IsDir: true }
 				]
 			})
 		);
@@ -178,6 +178,21 @@ describe('RcloneClient', () => {
 			remote: 'Media/Example Series',
 			opt: { recurse: false, filesOnly: true, noModTime: true, noMimeType: true }
 		});
+	});
+
+	it('preserves list paths that rclone already returned relative to the requested directory', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue(
+				Response.json({
+					list: [{ Path: 'Season 01/Episode.mkv', Size: 123, IsDir: false }]
+				})
+			)
+		);
+
+		await expect(createClient().listFiles('Example Series')).resolves.toEqual([
+			{ Path: 'Season 01/Episode.mkv', Size: 123, IsDir: false }
+		]);
 	});
 });
 

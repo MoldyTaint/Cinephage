@@ -139,11 +139,12 @@ export class RcloneClient {
 	}
 
 	async listFiles(directory: string, recurse = true): Promise<RcloneListItem[]> {
+		const listingRoot = this.joinRemotePath(this.basePath, directory);
 		const response = await this.jsonRequest<RcloneListResponse>(
 			'operations/list',
 			{
 				fs: `${this.remote}:`,
-				remote: this.joinRemotePath(this.basePath, directory),
+				remote: listingRoot,
 				opt: {
 					recurse,
 					filesOnly: true,
@@ -153,7 +154,12 @@ export class RcloneClient {
 			},
 			10_000
 		);
-		return (response.list ?? []).filter((item) => !item.IsDir);
+		return (response.list ?? [])
+			.filter((item) => !item.IsDir)
+			.map((item) => ({
+				...item,
+				Path: item.Path ? this.relativeListingPath(item.Path, listingRoot, directory) : item.Path
+			}));
 	}
 
 	async statFile(remotePath: string): Promise<RcloneListItem | null> {
@@ -301,6 +307,20 @@ export class RcloneClient {
 			.map((part) => this.normalizeRemotePath(part))
 			.filter(Boolean)
 			.join('/');
+	}
+
+	private relativeListingPath(path: string, listingRoot: string, directory: string): string {
+		const normalizedPath = this.normalizeRemotePath(path);
+		const prefixes = [listingRoot, directory]
+			.map((prefix) => this.normalizeRemotePath(prefix))
+			.filter(Boolean)
+			.sort((left, right) => right.length - left.length);
+		for (const prefix of prefixes) {
+			if (normalizedPath.startsWith(`${prefix}/`)) {
+				return normalizedPath.slice(prefix.length + 1);
+			}
+		}
+		return normalizedPath;
 	}
 
 	private async responseError(response: Response): Promise<Error> {
