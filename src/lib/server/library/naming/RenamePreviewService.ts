@@ -1346,10 +1346,34 @@ export class RenamePreviewService {
 			const isRootFolder = resolve(oldFolder) === resolve(rootFolderPath);
 
 			// 1. Update DB path record so the library entry shows the correct folder.
-			if (mediaType === 'movie') {
-				db.update(movies).set({ path: newParentPath }).where(eq(movies.id, mediaId)).run();
-			} else {
-				db.update(series).set({ path: newParentPath }).where(eq(series.id, mediaId)).run();
+			// A failure here leaves series.path/movies.path stale while files have
+			// already moved — surface it loudly and record it for the failures
+			// report instead of silently reporting batch success.
+			try {
+				this.updateMediaFolderPath(
+					mediaType === 'movie' ? 'movie' : 'series',
+					mediaId,
+					newParentPath
+				);
+			} catch (dbError) {
+				const dbMessage = dbError instanceof Error ? dbError.message : String(dbError);
+				logger.error(
+					{ mediaId, mediaType, from: oldParentPath, to: newParentPath, err: dbError },
+					'[RenamePreviewService] Failed to update parent path after file renames'
+				);
+				warnings.push(
+					`The folder path could not be updated in the database (${oldParentPath} → ${newParentPath}): ${dbMessage}. A library rescan may be required.`
+				);
+				await recordRenamingFailure({
+					fileId: mediaId,
+					fileType: mediaType === 'movie' ? 'movie' : 'episode',
+					sourcePath: oldFolder,
+					intendedPath: newFolder,
+					reason: 'folder_db_update_failed',
+					reasonDetail: dbMessage
+				}).catch((err) =>
+					logger.warn({ err }, '[RenamePreviewService] Failed to record renaming failure')
+				);
 			}
 
 			logger.info(

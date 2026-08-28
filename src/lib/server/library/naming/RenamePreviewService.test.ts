@@ -1854,3 +1854,72 @@ describe('reorganizeFolder DB-failure rollback', () => {
 		await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
 	});
 });
+
+describe('applyFolderRename DB-failure surfacing', () => {
+	beforeEach(() => {
+		resetAllMocks();
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('returns a warning and records a renaming failure instead of silently succeeding', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const seriesId = randomUUID();
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: '/tmp/opencode/afr-root',
+			mediaType: 'tv',
+			name: 'afr-root'
+		});
+		await db.insert(schema.series).values({
+			id: seriesId,
+			rootFolderId,
+			path: 'Old (1999)',
+			title: 'Show',
+			tmdbId: 7
+		});
+
+		const svc = new RenamePreviewService();
+		const updateSpy = vi
+			.spyOn(
+				svc as unknown as {
+					updateMediaFolderPath: (
+						mediaType: 'movie' | 'series',
+						mediaId: string,
+						newPath: string
+					) => void;
+				},
+				'updateMediaFolderPath'
+			)
+			.mockImplementation(() => {
+				throw new Error('db exploded');
+			});
+
+		const warnings = await svc['applyFolderRename'](
+			seriesId,
+			'episode',
+			'Old (1999)',
+			'New (1999)',
+			'stem'
+		);
+
+		expect(warnings.some((w) => /database/i.test(w))).toBe(true);
+
+		const failure = db
+			.select()
+			.from(schema.renamingFailures)
+			.where(eq(schema.renamingFailures.fileId, seriesId))
+			.get();
+		expect(failure?.reason).toBe('folder_db_update_failed');
+		expect(failure?.reasonDetail).toBe('db exploded');
+		expect(failure?.fileType).toBe('episode');
+
+		updateSpy.mockRestore();
+		await db.delete(schema.renamingFailures).where(eq(schema.renamingFailures.fileId, seriesId));
+		await db.delete(schema.series).where(eq(schema.series.id, seriesId));
+		await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+	});
+});
