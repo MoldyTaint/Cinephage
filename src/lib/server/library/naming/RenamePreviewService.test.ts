@@ -12,6 +12,7 @@ import { createTestDb, destroyTestDb } from '../../../../test/db-helper';
 import { RenamePreviewService, type RenamePreviewResult } from './RenamePreviewService';
 import { NamingService, type MediaNamingInfo, DEFAULT_NAMING_CONFIG } from './NamingService';
 import { chooseBestParsedRelease, resolveAudioLanguages } from './preview-metadata';
+import { libraryOperationLock } from '../library-operation-lock';
 import * as schema from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -1651,5 +1652,38 @@ describe('RenamePreviewService', () => {
 				.get();
 			expect(movieAfter?.path).toBe('Folder Test (2024) {tmdb-999999}');
 		});
+	});
+});
+
+describe('RenamePreviewService lock integration', () => {
+	beforeEach(() => {
+		resetAllMocks();
+	});
+
+	it('executeRenames holds the operation lock for the duration of execution', async () => {
+		let observedDuringCall: boolean | undefined;
+		const withLockSpy = vi.spyOn(libraryOperationLock, 'withLock');
+
+		const svc = new RenamePreviewService();
+		// @ts-expect-error accessing private method for testing
+		const buildSpy = vi.spyOn(svc, 'buildTargetMap');
+		buildSpy.mockImplementation(async () => {
+			observedDuringCall = libraryOperationLock.isLocked;
+			return new Map();
+		});
+
+		await svc.executeRenames(['nonexistent-id']);
+
+		expect(withLockSpy).toHaveBeenCalledWith('rename', expect.any(Function));
+		expect(observedDuringCall).toBe(true);
+	});
+
+	it('reorganizeFolder holds the operation lock', async () => {
+		const withLockSpy = vi.spyOn(libraryOperationLock, 'withLock');
+		const svc = new RenamePreviewService();
+
+		await svc.reorganizeFolder('does-not-exist', 'movie');
+
+		expect(withLockSpy).toHaveBeenCalledWith('reorganize', expect.any(Function));
 	});
 });

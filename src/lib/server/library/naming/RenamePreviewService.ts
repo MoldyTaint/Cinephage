@@ -26,6 +26,7 @@ import { randomUUID } from 'node:crypto';
 const logger = createChildLogger({ logDomain: 'scans' as const });
 import { NamingService, type MediaNamingInfo } from './NamingService';
 import { namingSettingsService } from './NamingSettingsService';
+import { libraryOperationLock } from '../library-operation-lock.js';
 import { moveFile, fileExists } from '$lib/server/downloadClients/import/FileTransfer';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
 import { rename, stat, readdir, rmdir } from 'node:fs/promises';
@@ -416,6 +417,15 @@ export class RenamePreviewService {
 	 */
 	async executeRenames(
 		fileIds: string[],
+		mediaType: 'movie' | 'episode' | 'mixed' = 'mixed'
+	): Promise<RenameExecuteResult> {
+		return libraryOperationLock.withLock('rename', () =>
+			this.executeRenamesLocked(fileIds, mediaType)
+		);
+	}
+
+	private async executeRenamesLocked(
+		fileIds: string[],
 		_mediaType: 'movie' | 'episode' | 'mixed' = 'mixed'
 	): Promise<RenameExecuteResult> {
 		const result: RenameExecuteResult = {
@@ -660,6 +670,15 @@ export class RenamePreviewService {
 	 * Returns true if the folder was reorganized (or already correct).
 	 */
 	async reorganizeFolder(
+		mediaId: string,
+		mediaType: 'movie' | 'series'
+	): Promise<{ success: boolean; oldPath?: string; newPath?: string; error?: string }> {
+		return libraryOperationLock.withLock('reorganize', () =>
+			this.reorganizeFolderLocked(mediaId, mediaType)
+		);
+	}
+
+	private async reorganizeFolderLocked(
 		mediaId: string,
 		mediaType: 'movie' | 'series'
 	): Promise<{ success: boolean; oldPath?: string; newPath?: string; error?: string }> {
