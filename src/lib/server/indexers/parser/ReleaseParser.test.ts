@@ -655,6 +655,49 @@ describe('ReleaseParser', () => {
 			expect(result?.group).not.toBe('wwwmkvhomecom');
 		});
 
+		it('should not treat the episode-title tail as a release group', () => {
+			// Stream sources expose titles like "Show - S01E01 - Episode Title";
+			// the trailing word belongs to the episode title, not a scene group.
+			const result = parseRelease('Supernatural (2005) - S02E01 - In My Time of Dying');
+			expect(result.releaseGroup).toBeUndefined();
+		});
+
+		it('should not treat capitalized episode-title tail words as release groups', () => {
+			const result = parseRelease('The Boys - S00E35 - An Important Update on Homelander');
+			expect(result.releaseGroup).toBeUndefined();
+		});
+
+		it('should keep the release group for movie titles with dash groups', () => {
+			const result = parseRelease('Movie.2024.1080p.WEB-DL.DDP5.1.H.264-GROUP');
+			expect(result.releaseGroup).toBe('GROUP');
+		});
+
+		it('should keep the release group for bracketed movie titles', () => {
+			const result = parseRelease('Movie (2020) [1080p][x265]-GRP');
+			expect(result.releaseGroup).toBe('GRP');
+		});
+
+		it('should keep a group that follows quality tokens after the episode title', () => {
+			// Quality tokens intervene between the title tail and the candidate,
+			// so the group is unambiguous and must be kept.
+			const result = parseRelease('Show - S01E01 - Title 1080p x265 BONE');
+			expect(result.releaseGroup).toBe('BONE');
+		});
+
+		it('should keep YTS normalization for TV titles', () => {
+			// YTS_PATTERNS only fire when the indexer-suffix strip hasn't already
+			// consumed the token, e.g. the tight "-YTS" form.
+			const result = parseRelease('Show - S01E01 - Title 1080p x264 -YTS');
+			expect(result.releaseGroup).toBe('YTS');
+		});
+
+		it('should not extract a junk group when a spaced YTS suffix is stripped', () => {
+			// " - YTS" is consumed by the indexer-suffix strip; the catch-all
+			// must not fall back to the episode-title tail.
+			const result = parseRelease('Show - S01E01 - Title - YTS');
+			expect(result.releaseGroup).toBeUndefined();
+		});
+
 		it('should extract dot-separated, dash-less group via parseRelease', () => {
 			// Regression: dotted scene names with no dash before the group must resolve
 			// the same as their spaced equivalent. parseRelease normalizes separators

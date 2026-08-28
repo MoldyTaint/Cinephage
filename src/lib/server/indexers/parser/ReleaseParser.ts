@@ -132,6 +132,14 @@ export class ReleaseParser {
 		// Extract other metadata
 		const languageMatch = extractLanguages(normalized);
 		const groupMatch = extractReleaseGroup(normalized);
+		const releaseGroup = this.resolveReleaseGroup(normalized, groupMatch, episodeMatch, [
+			resolutionMatch?.index,
+			sourceMatch?.index,
+			codecMatch?.index,
+			bitDepthMatch?.index,
+			enhancedAudio.index,
+			hdrMatch?.index
+		]);
 		const year = this.extractYear(normalized);
 		const edition = this.extractEdition(normalized);
 
@@ -159,7 +167,7 @@ export class ReleaseParser {
 			hasSource: sourceMatch !== null,
 			hasCodec: codecMatch !== null,
 			hasYear: year !== undefined,
-			hasGroup: groupMatch !== null,
+			hasGroup: releaseGroup !== undefined,
 			titleLength: cleanTitle.length
 		});
 
@@ -179,7 +187,7 @@ export class ReleaseParser {
 			languages,
 			sourceLanguage: options?.sourceLanguage,
 			streamingService,
-			releaseGroup: groupMatch?.group,
+			releaseGroup,
 			edition,
 			isProper,
 			isRepack,
@@ -188,6 +196,58 @@ export class ReleaseParser {
 			hasHardcodedSubs,
 			confidence
 		};
+	}
+
+	/**
+	 * Discard a release group that is actually the tail of the episode title.
+	 *
+	 * Stream sources expose release titles like "Show - S01E01 - In My Time of
+	 * Dying" (no scene naming), where the trailing capitalized word belongs to
+	 * the episode title, not a release group. To stay conservative, a group is
+	 * only rejected when an episode was matched AND the candidate is the last
+	 * word of the episode-title span with no quality/codec tokens between the
+	 * title tail and the end of the string: real groups almost always follow
+	 * quality tokens or sit in brackets, which keeps them.
+	 */
+	private resolveReleaseGroup(
+		normalized: string,
+		groupMatch: ReturnType<typeof extractReleaseGroup>,
+		episodeMatch: ReturnType<typeof extractEpisode>,
+		qualityIndices: Array<number | undefined>
+	): string | undefined {
+		if (!groupMatch) {
+			return undefined;
+		}
+
+		const group = groupMatch.group;
+
+		// YTS/YIFY are indexer suffixes handled by dedicated normalization
+		// patterns, never episode-title tail words.
+		if (!episodeMatch || group === 'YTS') {
+			return group;
+		}
+
+		// Drop a trailing file extension so the string end aligns with where
+		// extractReleaseGroup matched (it strips extensions itself).
+		const stripped = normalized.replace(/\s*\.(mkv|mp4|avi|m4v|webm|strm)$/i, '');
+
+		// Episode-title span: text after the episode marker, cut at the
+		// earliest quality token that follows it.
+		const spanStart = episodeMatch.index + episodeMatch.matchedText.length;
+		let spanEnd = stripped.length;
+		for (const index of qualityIndices) {
+			if (index !== undefined && index > spanStart && index < spanEnd) {
+				spanEnd = index;
+			}
+		}
+
+		const span = stripped.slice(spanStart, spanEnd).trim();
+		const lastWord = span.split(/\s+/).pop();
+
+		if (lastWord && lastWord.toLowerCase() === group.toLowerCase()) {
+			return undefined;
+		}
+		return group;
 	}
 
 	private extractStreamingService(title: string): string | undefined {
