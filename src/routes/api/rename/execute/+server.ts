@@ -4,17 +4,28 @@ import { RenamePreviewService } from '$lib/server/library/naming/RenamePreviewSe
 import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { parseBody } from '$lib/server/api/validate.js';
+import { diskScanService } from '$lib/server/library/disk-scan.js';
 import { z } from 'zod';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 
-const renameExecuteSchema = z.object({
-	fileIds: z.array(z.string()).min(1, 'fileIds array is required and must not be empty'),
+export const renameExecuteSchema = z.object({
+	fileIds: z
+		.array(z.string())
+		.min(1, 'fileIds array is required and must not be empty')
+		.max(500, 'A maximum of 500 files can be renamed per batch'),
 	mediaType: z.enum(['movie', 'episode', 'mixed']).optional().default('mixed')
 });
 
 export const POST: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);
 	if (authError) return authError;
+
+	if (diskScanService.scanning) {
+		return json(
+			{ error: 'A library scan is in progress. Wait for it to finish, then retry the rename.' },
+			{ status: 409 }
+		);
+	}
 
 	const { request } = event;
 	try {
