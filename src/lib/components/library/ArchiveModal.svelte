@@ -253,15 +253,16 @@
 								checked={selectedIds.includes(item.id)}
 								onchange={(event) => toggle(item.id, event.currentTarget.checked)}
 							/><span class="min-w-0 flex-1"
-								><span class="flex items-center gap-2 text-sm font-medium"
-									><span>{item.label}</span>{#if archivedIds.includes(item.id)}<span
-											class="badge badge-sm badge-success"
+								><span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium"
+									><span class="min-w-0 flex-1 break-words">{item.label}</span
+									>{#if archivedIds.includes(item.id)}<span
+											class="badge shrink-0 badge-sm whitespace-nowrap badge-success"
 											>{selectedArchiverArchivedIds.includes(item.id)
 												? 'On this target'
 												: 'On another target'}</span
 										>{/if}</span
 								><span class="block truncate text-xs text-base-content/50">{item.path}</span></span
-							>{#if item.size != null}<span class="text-xs text-base-content/60"
+							>{#if item.size != null}<span class="shrink-0 text-xs text-base-content/60"
 									>{formatBytes(item.size)}</span
 								>{/if}</label
 						>
