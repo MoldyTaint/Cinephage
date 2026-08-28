@@ -19,7 +19,7 @@ vi.mock('$lib/server/db', () => ({
 	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
 
-const { diskScanService } = await import('./disk-scan.js');
+const { diskScanService, findExternalRenameMatches } = await import('./disk-scan.js');
 const { libraryOperationLock } = await import('./library-operation-lock.js');
 const { movies, movieFiles, rootFolders, series, episodeFiles, unmatchedFiles, renameHistory } =
 	await import('$lib/server/db/schema.js');
@@ -113,6 +113,309 @@ describe('DiskScanService lock integration', () => {
 			expect(diskScanService.scanning).toBe(false);
 		});
 		expect(libraryOperationLock.isLocked).toBe(false);
+	});
+});
+
+describe('external rename correlation (findExternalRenameMatches)', () => {
+	function missing(
+		path: string,
+		size: number | null
+	): {
+		id: string;
+		path: string;
+		size: number | null;
+		allowStrmProbe: boolean;
+		source: 'tracked' | 'unmatched';
+	} {
+		return { id: randomUUID(), path, size, allowStrmProbe: true, source: 'tracked' };
+	}
+
+	it('matches a missing file to the unique new disk file with the same basename and size', () => {
+		const matches = findExternalRenameMatches(
+			[missing('/root/Old Show (2020)/Season 01/e.mkv', 11 * 1024 * 1024)],
+			[
+				{ path: '/root/Unrelated (2019)/movie.mkv', size: 11 * 1024 * 1024 },
+				{ path: '/root/New Show (2020)/Season 01/e.mkv', size: 11 * 1024 * 1024 }
+			]
+		);
+
+		expect(matches.size).toBe(1);
+		expect(matches.get('/root/Old Show (2020)/Season 01/e.mkv')).toBe(
+			'/root/New Show (2020)/Season 01/e.mkv'
+		);
+	});
+
+	it('returns no match when two same-basename same-size candidates exist', () => {
+		const matches = findExternalRenameMatches(
+			[missing('/root/Old Show (2020)/Season 01/e.mkv', 100)],
+			[
+				{ path: '/root/A (2020)/Season 01/e.mkv', size: 100 },
+				{ path: '/root/B (2020)/Season 01/e.mkv', size: 100 }
+			]
+		);
+
+		expect(matches.size).toBe(0);
+	});
+
+	it('claims each new path at most once (one-to-one)', () => {
+		const matches = findExternalRenameMatches(
+			[
+				missing('/root/A (2020)/Season 01/e.mkv', null),
+				missing('/root/B (2020)/Season 01/e.mkv', null)
+			],
+			[{ path: '/root/C (2020)/Season 01/e.mkv', size: 50 }]
+		);
+
+		expect(matches.size).toBe(1);
+		expect(matches.get('/root/A (2020)/Season 01/e.mkv')).toBe('/root/C (2020)/Season 01/e.mkv');
+		expect(matches.has('/root/B (2020)/Season 01/e.mkv')).toBe(false);
+	});
+
+	it('returns no match when sizes differ', () => {
+		const matches = findExternalRenameMatches(
+			[missing('/root/Old Show (2020)/Season 01/e.mkv', 100)],
+			[{ path: '/root/New Show (2020)/Season 01/e.mkv', size: 200 }]
+		);
+
+		expect(matches.size).toBe(0);
+	});
+
+	it('matches on basename uniqueness alone when the missing row has no size', () => {
+		const matches = findExternalRenameMatches(
+			[missing('/root/Old Show (2020)/Season 01/e.mkv', null)],
+			[{ path: '/root/New Show (2020)/Season 01/e.mkv', size: 12345 }]
+		);
+
+		expect(matches.size).toBe(1);
+		expect(matches.get('/root/Old Show (2020)/Season 01/e.mkv')).toBe(
+			'/root/New Show (2020)/Season 01/e.mkv'
+		);
+	});
+});
+
+describe('external rename healing (no rename_history)', () => {
+	const FILE_SIZE = 11 * 1024 * 1024;
+
+	async function writeEpisodeFile(
+		scanRoot: string,
+		seriesDir: string,
+		fileName: string
+	): Promise<string> {
+		const dir = join(scanRoot, seriesDir, 'Season 01');
+		await mkdir(dir, { recursive: true });
+		const filePath = join(dir, fileName);
+		await writeFile(filePath, Buffer.alloc(FILE_SIZE, 1));
+		return filePath;
+	}
+
+	it('scanRootFolder heals a series folder renamed outside Cinephage', async () => {
+		const db = testDb.db;
+		const scanRoot = await mkdtemp(join(tmpdir(), 'cinephage-ext-heal-scan-'));
+		healScanRoots.push(scanRoot);
+
+		await writeEpisodeFile(scanRoot, 'New (2020)', 'e.mkv');
+
+		const rootFolderId = randomUUID();
+		const seriesId = randomUUID();
+		const fileId = randomUUID();
+
+		await db.insert(rootFolders).values({
+			id: rootFolderId,
+			path: scanRoot,
+			mediaType: 'tv',
+			name: 'ext-heal-scan-root',
+			blockedVideoExtensions: '[]'
+		});
+		await db.insert(series).values({
+			id: seriesId,
+			rootFolderId,
+			path: 'Old (2020)',
+			title: 'Old',
+			tmdbId: 34560
+		});
+		await db.insert(episodeFiles).values({
+			id: fileId,
+			seriesId,
+			seasonNumber: 1,
+			relativePath: 'Season 01/e.mkv',
+			size: FILE_SIZE
+		});
+
+		const result = await diskScanService.scanRootFolder(rootFolderId);
+
+		expect(result.success).toBe(true);
+		expect(result.filesRemoved).toBe(0);
+		expect(result.filesUpdated).toBe(1);
+		expect(result.unmatchedFiles).toBe(0);
+
+		const [seriesRow] = await db.select().from(series).where(eq(series.id, seriesId));
+		expect(seriesRow.path).toBe('New (2020)');
+		const [fileRow] = await db.select().from(episodeFiles).where(eq(episodeFiles.id, fileId));
+		expect(fileRow).toBeDefined();
+		expect(fileRow.relativePath).toBe('Season 01/e.mkv');
+
+		const unmatchedRows = await db
+			.select()
+			.from(unmatchedFiles)
+			.where(eq(unmatchedFiles.rootFolderId, rootFolderId));
+		expect(unmatchedRows).toHaveLength(0);
+
+		await db.delete(episodeFiles).where(eq(episodeFiles.id, fileId));
+		await db.delete(series).where(eq(series.id, seriesId));
+		await db.delete(rootFolders).where(eq(rootFolders.id, rootFolderId));
+	});
+
+	it('scanRootFolder heals every episode of an externally-renamed series folder', async () => {
+		const db = testDb.db;
+		const scanRoot = await mkdtemp(join(tmpdir(), 'cinephage-ext-heal-multi-'));
+		healScanRoots.push(scanRoot);
+
+		await writeEpisodeFile(scanRoot, 'Renamed (2020)', 'e1.mkv');
+		await writeEpisodeFile(scanRoot, 'Renamed (2020)', 'e2.mkv');
+
+		const rootFolderId = randomUUID();
+		const seriesId = randomUUID();
+		const file1Id = randomUUID();
+		const file2Id = randomUUID();
+
+		await db.insert(rootFolders).values({
+			id: rootFolderId,
+			path: scanRoot,
+			mediaType: 'tv',
+			name: 'ext-heal-multi-root',
+			blockedVideoExtensions: '[]'
+		});
+		await db.insert(series).values({
+			id: seriesId,
+			rootFolderId,
+			path: 'Original (2020)',
+			title: 'Original',
+			tmdbId: 34561
+		});
+		await db.insert(episodeFiles).values([
+			{
+				id: file1Id,
+				seriesId,
+				seasonNumber: 1,
+				relativePath: 'Season 01/e1.mkv',
+				size: FILE_SIZE
+			},
+			{
+				id: file2Id,
+				seriesId,
+				seasonNumber: 1,
+				relativePath: 'Season 01/e2.mkv',
+				size: FILE_SIZE
+			}
+		]);
+
+		const result = await diskScanService.scanRootFolder(rootFolderId);
+
+		expect(result.success).toBe(true);
+		expect(result.filesRemoved).toBe(0);
+		expect(result.filesUpdated).toBe(2);
+		expect(result.unmatchedFiles).toBe(0);
+
+		const [seriesRow] = await db.select().from(series).where(eq(series.id, seriesId));
+		expect(seriesRow.path).toBe('Renamed (2020)');
+		const fileRows = await db
+			.select()
+			.from(episodeFiles)
+			.where(eq(episodeFiles.seriesId, seriesId));
+		expect(fileRows).toHaveLength(2);
+		expect(new Set(fileRows.map((row) => row.relativePath))).toEqual(
+			new Set(['Season 01/e1.mkv', 'Season 01/e2.mkv'])
+		);
+
+		const unmatchedRows = await db
+			.select()
+			.from(unmatchedFiles)
+			.where(eq(unmatchedFiles.rootFolderId, rootFolderId));
+		expect(unmatchedRows).toHaveLength(0);
+
+		await db.delete(episodeFiles).where(eq(episodeFiles.seriesId, seriesId));
+		await db.delete(series).where(eq(series.id, seriesId));
+		await db.delete(rootFolders).where(eq(rootFolders.id, rootFolderId));
+	});
+
+	it('scanRootFolder removes rows when correlation is ambiguous (old safe behavior)', async () => {
+		const db = testDb.db;
+		const scanRoot = await mkdtemp(join(tmpdir(), 'cinephage-ext-heal-ambig-'));
+		healScanRoots.push(scanRoot);
+
+		await writeEpisodeFile(scanRoot, 'New A (2020)', 'ep.mkv');
+		await writeEpisodeFile(scanRoot, 'New B (2020)', 'ep.mkv');
+
+		const rootFolderId = randomUUID();
+		const seriesAId = randomUUID();
+		const seriesBId = randomUUID();
+		const fileAId = randomUUID();
+		const fileBId = randomUUID();
+
+		await db.insert(rootFolders).values({
+			id: rootFolderId,
+			path: scanRoot,
+			mediaType: 'tv',
+			name: 'ext-heal-ambig-root',
+			blockedVideoExtensions: '[]'
+		});
+		await db.insert(series).values([
+			{
+				id: seriesAId,
+				rootFolderId,
+				path: 'Old A (2020)',
+				title: 'Old A',
+				tmdbId: 34562
+			},
+			{
+				id: seriesBId,
+				rootFolderId,
+				path: 'Old B (2020)',
+				title: 'Old B',
+				tmdbId: 34563
+			}
+		]);
+		await db.insert(episodeFiles).values([
+			{
+				id: fileAId,
+				seriesId: seriesAId,
+				seasonNumber: 1,
+				relativePath: 'Season 01/ep.mkv',
+				size: FILE_SIZE
+			},
+			{
+				id: fileBId,
+				seriesId: seriesBId,
+				seasonNumber: 1,
+				relativePath: 'Season 01/ep.mkv',
+				size: FILE_SIZE
+			}
+		]);
+
+		const result = await diskScanService.scanRootFolder(rootFolderId);
+
+		expect(result.success).toBe(true);
+		expect(result.filesRemoved).toBe(2);
+
+		const [fileARow] = await db.select().from(episodeFiles).where(eq(episodeFiles.id, fileAId));
+		const [fileBRow] = await db.select().from(episodeFiles).where(eq(episodeFiles.id, fileBId));
+		expect(fileARow).toBeUndefined();
+		expect(fileBRow).toBeUndefined();
+
+		const [seriesARow] = await db.select().from(series).where(eq(series.id, seriesAId));
+		const [seriesBRow] = await db.select().from(series).where(eq(series.id, seriesBId));
+		expect(seriesARow.path).toBe('Old A (2020)');
+		expect(seriesBRow.path).toBe('Old B (2020)');
+
+		const unmatchedRows = await db
+			.select({ path: unmatchedFiles.path })
+			.from(unmatchedFiles)
+			.where(eq(unmatchedFiles.rootFolderId, rootFolderId));
+		expect(unmatchedRows).toHaveLength(2);
+
+		await db.delete(unmatchedFiles).where(eq(unmatchedFiles.rootFolderId, rootFolderId));
+		await db.delete(series).where(eq(series.rootFolderId, rootFolderId));
+		await db.delete(rootFolders).where(eq(rootFolders.id, rootFolderId));
 	});
 });
 

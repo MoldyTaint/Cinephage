@@ -6,7 +6,7 @@
  */
 
 import { readdir, stat } from 'fs/promises';
-import { join, dirname, relative } from 'path';
+import { join, dirname, relative, basename } from 'path';
 import { db } from '$lib/server/db/index.js';
 import { todayDateString } from '$lib/utils/format.js';
 import {
@@ -85,6 +85,58 @@ export function findRenameHealTarget(
 ): string | null {
 	const target = transitions.get(missingPath);
 	return target && seenPaths.has(target) ? target : null;
+}
+
+/**
+ * Correlate missing tracked paths with newly-seen on-disk paths that share
+ * the same file basename and size — the signature of a folder rename made
+ * outside Cinephage (user, Sonarr, file manager). Returns a map
+ * oldFullPath → newFullPath for confident matches only: same basename, same
+ * size (when the DB row has a size), unambiguous (exactly one candidate),
+ * and one-to-one (each new path is claimed by at most one missing row).
+ *
+ * Heuristic limits: a false positive requires an identical filename AND an
+ * identical byte size within a single root scan — e.g. two copies of the
+ * same release kept under different folders (one tracked at the old path,
+ * one newly discovered) would heal the tracked row onto the copy. Duplicate
+ * basenames with equal sizes are treated as ambiguous and never matched,
+ * and a new path can only ever claim a single missing row.
+ */
+export function findExternalRenameMatches(
+	missingFiles: Array<{
+		id: string;
+		path: string;
+		size: number | null;
+		allowStrmProbe: boolean;
+		source: 'tracked' | 'unmatched';
+	}>,
+	newDiskFiles: Array<{ path: string; size: number }>
+): Map<string, string> {
+	const byBasename = new Map<string, Array<{ path: string; size: number }>>();
+	for (const file of newDiskFiles) {
+		const list = byBasename.get(basename(file.path));
+		if (list) {
+			list.push(file);
+		} else {
+			byBasename.set(basename(file.path), [file]);
+		}
+	}
+
+	const matches = new Map<string, string>();
+	const claimed = new Set<string>();
+	for (const missing of missingFiles) {
+		const candidates = (byBasename.get(basename(missing.path)) ?? []).filter(
+			(candidate) => missing.size == null || candidate.size === missing.size
+		);
+		if (candidates.length !== 1) continue;
+
+		const candidate = candidates[0];
+		if (claimed.has(candidate.path)) continue;
+
+		claimed.add(candidate.path);
+		matches.set(missing.path, candidate.path);
+	}
+	return matches;
 }
 
 /**
@@ -395,6 +447,17 @@ export class DiskScanService extends EventEmitter {
 			let filesFound = 0;
 			const existingFiles = await this.getExistingFiles(rootFolderId, rootFolder.mediaType);
 			const seenPaths = new Set<string>();
+			// New on-disk files (not tracked in existingFiles by construction) that
+			// may be the relocated copy of a missing tracked file whose folder was
+			// renamed outside Cinephage. Auto-linked files are subtracted before
+			// external-rename correlation because they already own a tracked row.
+			const newDiskFiles: Array<{ path: string; size: number }> = [];
+			const autoLinkedPaths = new Set<string>();
+			// Unmatched insertions are deferred until after the removal loop: a
+			// pending file may turn out to be the heal target of an
+			// externally-renamed tracked row, in which case inserting an
+			// unmatchedFiles row would duplicate it.
+			const pendingUnmatched: DiscoveredFile[] = [];
 
 			for await (const batch of scanner.scan(rootFolder.path)) {
 				let fileIndex = 0;
@@ -405,15 +468,18 @@ export class DiskScanService extends EventEmitter {
 					const existingFile = existingFiles.get(file.path);
 
 					if (!existingFile) {
+						newDiskFiles.push({ path: file.path, size: file.size });
+
 						let wasLinked = false;
 
 						if (rootFolder.mediaType === 'tv') {
 							wasLinked = await this.tryAutoLinkTvFile(file, rootFolderId, rootFolder.path);
 						}
 
-						if (!wasLinked) {
-							await this.addUnmatchedFile(file, rootFolderId, rootFolder.mediaType);
-							progress.unmatchedCount++;
+						if (wasLinked) {
+							autoLinkedPaths.add(file.path);
+						} else {
+							pendingUnmatched.push(file);
 						}
 
 						progress.filesAdded++;
@@ -465,6 +531,16 @@ export class DiskScanService extends EventEmitter {
 
 			const transitions = await this.getRecentRenameTransitions();
 
+			// External-rename correlation: match missing tracked rows against
+			// newly-seen files that share basename+size and did not auto-link.
+			// Candidates never include already-tracked paths because newDiskFiles
+			// only collects files that were absent from existingFiles.
+			const missingFiles = [...existingFiles.values()].filter((file) => !seenPaths.has(file.path));
+			const externalCandidates = newDiskFiles.filter((file) => !autoLinkedPaths.has(file.path));
+			const externalMatches = findExternalRenameMatches(missingFiles, externalCandidates);
+			// New paths claimed by any heal must not also get an unmatchedFiles row.
+			const claimedHealTargets = new Set<string>(externalMatches.values());
+
 			for (const [path, existingFile] of existingFiles) {
 				if (seenPaths.has(path)) continue;
 
@@ -479,6 +555,7 @@ export class DiskScanService extends EventEmitter {
 						);
 						if (healResult === 'healed') {
 							progress.filesUpdated++;
+							claimedHealTargets.add(healTarget);
 							logger.info(
 								{ from: path, to: healTarget, fileId: existingFile.id },
 								'[DiskScan] Healed renamed file row instead of delete+recreate'
@@ -493,8 +570,41 @@ export class DiskScanService extends EventEmitter {
 					}
 				}
 
+				const externalTarget = externalMatches.get(path);
+				if (externalTarget) {
+					try {
+						const healResult = await this.healRenamedFile(
+							existingFile,
+							externalTarget,
+							rootFolder.path,
+							rootFolder.mediaType
+						);
+						if (healResult === 'healed') {
+							progress.filesUpdated++;
+							logger.info(
+								{ from: path, to: externalTarget, fileId: existingFile.id },
+								'[DiskScan] Healed externally-renamed file row (no rename_history entry)'
+							);
+							continue;
+						}
+					} catch (healError) {
+						logger.warn(
+							{ err: healError, from: path, to: externalTarget, fileId: existingFile.id },
+							'[DiskScan] External rename heal failed; falling back to row removal'
+						);
+					}
+				}
+
 				await this.removeFile(existingFile.id, rootFolder.mediaType);
 				progress.filesRemoved++;
+			}
+
+			// Insert unmatched rows for new files that neither auto-linked nor
+			// served as a heal target.
+			for (const file of pendingUnmatched) {
+				if (claimedHealTargets.has(file.path)) continue;
+				await this.addUnmatchedFile(file, rootFolderId, rootFolder.mediaType);
+				progress.unmatchedCount++;
 			}
 
 			if (this.shouldCancel && (await this.shouldCancel())) {
@@ -1363,8 +1473,16 @@ export class DiskScanService extends EventEmitter {
 				.where(eq(movies.id, row.movieId));
 			if (!movie) return 'skipped-stale';
 
-			// Only heal when the DB is actually stale for this row.
-			if (join(rootFolderPath, movie.path, row.relativePath) !== existingFile.path) {
+			// Staleness guard: the scan diff built existingFile.path once at scan
+			// start. When several files of the same externally-renamed folder
+			// heal, the first heal already updated the parent path (movies.path),
+			// so exact reconstruction against the CURRENT parent would fail for
+			// every later file and those rows would fall through to deletion.
+			// A suffix check on the row's relativePath (posix separators, the
+			// same format getExistingFiles uses to join paths) still confirms
+			// this map entry belongs to this row while tolerating a parent that
+			// moved since the map was built.
+			if (!existingFile.path.endsWith(row.relativePath)) {
 				return 'skipped-stale';
 			}
 
@@ -1394,7 +1512,14 @@ export class DiskScanService extends EventEmitter {
 				.where(eq(series.id, row.seriesId));
 			if (!seriesItem) return 'skipped-stale';
 
-			if (join(rootFolderPath, seriesItem.path, row.relativePath) !== existingFile.path) {
+			// Staleness guard, relaxed to a suffix check for the same reason as
+			// the movie branch above: after the first file of an
+			// externally-renamed series folder heals and updates series.path,
+			// later files of the same folder must still pass this guard so they
+			// heal in the same scan instead of being deleted. splitRenamedPath
+			// still keys off this row's old relativePath depth, which the
+			// relaxation leaves untouched.
+			if (!existingFile.path.endsWith(row.relativePath)) {
 				return 'skipped-stale';
 			}
 
