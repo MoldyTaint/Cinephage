@@ -662,6 +662,19 @@ describe('ReleaseParser', () => {
 			expect(result.releaseGroup).toBeUndefined();
 		});
 
+		it('should not treat the episode-title tail as a release group with an extension', () => {
+			// File paths hit the space-separated extension form: normalizeTitle
+			// turns dots into spaces, so ".mkv" arrives as " mkv" here and must
+			// be stripped the same way extractReleaseGroup strips it.
+			const result = parseRelease('Show.S01E01.In.My.Time.of.Dying.mkv');
+			expect(result.releaseGroup).toBeUndefined();
+		});
+
+		it('should not treat a capitalized episode-title tail word as a group with an extension', () => {
+			const result = parseRelease('Show.S01E01.Pale.Fire.mkv');
+			expect(result.releaseGroup).toBeUndefined();
+		});
+
 		it('should not treat capitalized episode-title tail words as release groups', () => {
 			const result = parseRelease('The Boys - S00E35 - An Important Update on Homelander');
 			expect(result.releaseGroup).toBeUndefined();
@@ -675,6 +688,13 @@ describe('ReleaseParser', () => {
 		it('should keep the release group for bracketed movie titles', () => {
 			const result = parseRelease('Movie (2020) [1080p][x265]-GRP');
 			expect(result.releaseGroup).toBe('GRP');
+		});
+
+		it('should keep the release group for extension-suffixed TV titles', () => {
+			// Quality tokens after the SxxEyy marker still bound the title span
+			// even when a file extension trails the group.
+			const result = parseRelease('Show.S01E01.Title.1080p.AMZN.WEB-DL.DDP5.1.H.264-GROUP.mkv');
+			expect(result.releaseGroup).toBe('GROUP');
 		});
 
 		it('should keep a group that follows quality tokens after the episode title', () => {
@@ -692,8 +712,9 @@ describe('ReleaseParser', () => {
 		});
 
 		it('should not extract a junk group when a spaced YTS suffix is stripped', () => {
-			// " - YTS" is consumed by the indexer-suffix strip; the catch-all
-			// must not fall back to the episode-title tail.
+			// INDEXER_SUFFIXES consumes " YTS", leaving a trailing space that
+			// defeats the trailing-separator cleanup, so extractReleaseGroup
+			// returns null for this form; the guard never even runs.
 			const result = parseRelease('Show - S01E01 - Title - YTS');
 			expect(result.releaseGroup).toBeUndefined();
 		});

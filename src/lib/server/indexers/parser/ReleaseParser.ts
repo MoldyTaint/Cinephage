@@ -205,9 +205,10 @@ export class ReleaseParser {
 	 * Dying" (no scene naming), where the trailing capitalized word belongs to
 	 * the episode title, not a release group. To stay conservative, a group is
 	 * only rejected when an episode was matched AND the candidate is the last
-	 * word of the episode-title span with no quality/codec tokens between the
-	 * title tail and the end of the string: real groups almost always follow
-	 * quality tokens or sit in brackets, which keeps them.
+	 * word of the text after the SxxEyy marker, cut at the earliest quality
+	 * token that follows it (only tokens after the marker matter — earlier
+	 * ones don't bound the span): real groups almost always follow quality
+	 * tokens or sit in brackets, which keeps them.
 	 */
 	private resolveReleaseGroup(
 		normalized: string,
@@ -228,11 +229,15 @@ export class ReleaseParser {
 		}
 
 		// Drop a trailing file extension so the string end aligns with where
-		// extractReleaseGroup matched (it strips extensions itself).
-		const stripped = normalized.replace(/\s*\.(mkv|mp4|avi|m4v|webm|strm)$/i, '');
+		// extractReleaseGroup matched (it strips extensions itself). Note:
+		// normalizeTitle already turned dots into spaces, so extensions arrive
+		// in their space-separated form (" ... mkv"), matching the space form
+		// that extractReleaseGroup strips.
+		const stripped = normalized.replace(/\s*(?:mkv|mp4|avi|m4v|webm|strm)$/i, '');
 
 		// Episode-title span: text after the episode marker, cut at the
-		// earliest quality token that follows it.
+		// earliest quality token that follows it. Only quality tokens after
+		// the SxxEyy marker bound the span; earlier ones are irrelevant.
 		const spanStart = episodeMatch.index + episodeMatch.matchedText.length;
 		let spanEnd = stripped.length;
 		for (const index of qualityIndices) {
