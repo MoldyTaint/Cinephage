@@ -49,7 +49,9 @@ vi.mock('$lib/server/downloadClients/import/FileTransfer', () => ({
 
 vi.mock('node:fs/promises', () => ({
 	rename: vi.fn(),
-	stat: vi.fn()
+	stat: vi.fn(),
+	readdir: vi.fn(),
+	rmdir: vi.fn()
 }));
 
 // Import the mocked module to get references to the mock functions.
@@ -70,6 +72,8 @@ function resetAllMocks() {
 		isFile: () => true,
 		isDirectory: () => false
 	});
+	(mockFs.readdir as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+	(mockFs.rmdir as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
 }
 
 afterAll(() => {
@@ -2009,9 +2013,7 @@ describe('RenamePreviewService scan-in-progress refusal', () => {
 	let scanSpy: ReturnType<typeof vi.spyOn>;
 
 	beforeEach(() => {
-		scanSpy = vi
-			.spyOn(diskScanService, 'scanning', 'get')
-			.mockReturnValue(true);
+		scanSpy = vi.spyOn(diskScanService, 'scanning', 'get').mockReturnValue(true);
 	});
 
 	afterEach(() => {
@@ -2021,9 +2023,7 @@ describe('RenamePreviewService scan-in-progress refusal', () => {
 	it('refuses executeRenames while a library scan is in progress', async () => {
 		const svc = new RenamePreviewService();
 
-		await expect(svc.executeRenames(['nonexistent-file'])).rejects.toThrow(
-			/scan is in progress/i
-		);
+		await expect(svc.executeRenames(['nonexistent-file'])).rejects.toThrow(/scan is in progress/i);
 	});
 
 	it('refuses reorganizeFolder while a library scan is in progress', async () => {
@@ -2041,5 +2041,201 @@ describe('RenamePreviewService scan-in-progress refusal', () => {
 		await expect(
 			svc.reorganizeFolders([{ mediaId: randomUUID(), mediaType: 'movie' }])
 		).rejects.toThrow(/scan is in progress/i);
+	});
+});
+
+describe('in-place subtitle companion renames', () => {
+	const dir = '/media/Season 01';
+
+	beforeEach(() => {
+		resetAllMocks();
+	});
+
+	function buildItem(currentName: string, newName: string) {
+		return {
+			fileId: 'file-1',
+			mediaType: 'movie' as const,
+			mediaId: 'movie-1',
+			mediaTitle: 'Test',
+			currentParentPath: 'Season 01',
+			currentRelativePath: currentName,
+			currentFullPath: `${dir}/${currentName}`,
+			newParentPath: 'Season 01',
+			newRelativePath: newName,
+			newFullPath: `${dir}/${newName}`,
+			status: 'will_change' as const
+		};
+	}
+
+	it('renames a stem-matched .en.srt sibling when the video is renamed in place', async () => {
+		const service = new RenamePreviewService();
+		(mockFs.readdir as ReturnType<typeof vi.fn>).mockResolvedValue([
+			'In My Time of Dying.en.srt',
+			'In My Time of Dying-poster.jpg'
+		]);
+		mockedFileExists.mockImplementation(
+			async (p: string) => p === `${dir}/In My Time of Dying.strm`
+		);
+
+		// @ts-expect-error accessing private method for testing
+		const result = await service.executeFileRename(
+			buildItem('In My Time of Dying.strm', 'In My Time of Dying [AAC 2.0]-Dying.strm'),
+			[]
+		);
+
+		expect(result.success).toBe(true);
+		expect(mockFs.rename).toHaveBeenCalledTimes(1);
+		expect(mockFs.rename).toHaveBeenCalledWith(
+			`${dir}/In My Time of Dying.en.srt`,
+			`${dir}/In My Time of Dying [AAC 2.0]-Dying.en.srt`
+		);
+	});
+
+	it('preserves multi-language suffix chains when renaming companions', async () => {
+		const service = new RenamePreviewService();
+		(mockFs.readdir as ReturnType<typeof vi.fn>).mockResolvedValue(['Old.en.hi.srt']);
+		mockedFileExists.mockImplementation(async (p: string) => p === `${dir}/Old.mkv`);
+
+		// @ts-expect-error accessing private method for testing
+		const result = await service.executeFileRename(buildItem('Old.mkv', 'New.mkv'), []);
+
+		expect(result.success).toBe(true);
+		expect(mockFs.rename).toHaveBeenCalledWith(`${dir}/Old.en.hi.srt`, `${dir}/New.en.hi.srt`);
+	});
+
+	it('leaves siblings with different stems untouched', async () => {
+		const service = new RenamePreviewService();
+		(mockFs.readdir as ReturnType<typeof vi.fn>).mockResolvedValue([
+			'Other Episode.en.srt',
+			'Unrelated.srt'
+		]);
+		mockedFileExists.mockImplementation(async (p: string) => p === `${dir}/Pilot.mkv`);
+
+		// @ts-expect-error accessing private method for testing
+		const result = await service.executeFileRename(buildItem('Pilot.mkv', 'Pilot (2024).mkv'), []);
+
+		expect(result.success).toBe(true);
+		expect(mockFs.rename).not.toHaveBeenCalled();
+	});
+
+	it('does not treat a prefix match with a different episode as a companion', async () => {
+		const service = new RenamePreviewService();
+		(mockFs.readdir as ReturnType<typeof vi.fn>).mockResolvedValue([
+			'Pilot 2.en.srt',
+			'Pilot.Repack.en.srt'
+		]);
+		mockedFileExists.mockImplementation(async (p: string) => p === `${dir}/Pilot.mkv`);
+
+		// @ts-expect-error accessing private method for testing
+		const result = await service.executeFileRename(buildItem('Pilot.mkv', 'Pilot (2024).mkv'), []);
+
+		expect(result.success).toBe(true);
+		expect(mockFs.rename).not.toHaveBeenCalled();
+	});
+
+	it('skips the companion rename when the target already exists', async () => {
+		const service = new RenamePreviewService();
+		(mockFs.readdir as ReturnType<typeof vi.fn>).mockResolvedValue(['Old.en.srt']);
+		mockedFileExists.mockImplementation(
+			async (p: string) => p === `${dir}/Old.mkv` || p === `${dir}/New.en.srt`
+		);
+		const warnings: string[] = [];
+
+		// @ts-expect-error accessing private method for testing
+		const result = await service.executeFileRename(buildItem('Old.mkv', 'New.mkv'), warnings);
+
+		expect(result.success).toBe(true);
+		expect(mockFs.rename).not.toHaveBeenCalled();
+		expect(warnings).toHaveLength(0);
+	});
+
+	it('adds a warning to the batch result when a companion rename fails', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const movieId = randomUUID();
+		const fileId = randomUUID();
+		const root = '/tmp/opencode/subcompanion-root';
+		const folder = 'Companion Test (2020)';
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: root,
+			mediaType: 'movie',
+			name: 'subcompanion-root'
+		});
+		await db.insert(schema.movies).values({
+			id: movieId,
+			rootFolderId,
+			path: folder,
+			title: 'Companion Test',
+			year: 2020,
+			tmdbId: 46,
+			hasFile: true
+		});
+		await db.insert(schema.movieFiles).values({
+			id: fileId,
+			movieId,
+			relativePath: 'bad-name.avi',
+			quality: { resolution: '1080p', source: 'WEBRip', codec: 'x265' },
+			releaseGroup: 'RARBG'
+		});
+
+		const fileSpy = vi
+			.spyOn(NamingService.prototype, 'generateMovieFileName')
+			.mockReturnValue('New Name (2020).mkv');
+		// Keep the parent folder stable so this is an in-place rename.
+		const folderSpy = vi
+			.spyOn(NamingService.prototype, 'generateMovieFolderName')
+			.mockReturnValue(folder);
+		mockedFileExists.mockImplementation(
+			async (p: string) => p === `${root}/${folder}/bad-name.avi`
+		);
+		(mockFs.readdir as ReturnType<typeof vi.fn>).mockResolvedValue(['bad-name.en.srt']);
+		(mockFs.rename as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error('EACCES: permission denied')
+		);
+
+		try {
+			const service = new RenamePreviewService();
+			const result = await service.executeRenames([fileId]);
+
+			expect(result.succeeded).toBe(1);
+			expect(result.failed).toBe(0);
+			expect(result.warnings?.some((w) => w.includes('bad-name.en.srt'))).toBe(true);
+			expect(mockFs.rename).toHaveBeenCalledWith(
+				`${root}/${folder}/bad-name.en.srt`,
+				`${root}/${folder}/New Name (2020).en.srt`
+			);
+		} finally {
+			fileSpy.mockRestore();
+			folderSpy.mockRestore();
+			await db.delete(schema.movieFiles).where(eq(schema.movieFiles.id, fileId));
+			await db.delete(schema.movies).where(eq(schema.movies.id, movieId));
+			await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+		}
+	});
+
+	it('does not scan for subtitle companions when the parent folder changes', async () => {
+		const service = new RenamePreviewService();
+		const item = {
+			fileId: 'file-1',
+			mediaType: 'movie' as const,
+			mediaId: 'movie-1',
+			mediaTitle: 'Test',
+			currentParentPath: 'Season 01',
+			currentRelativePath: 'Old.mkv',
+			currentFullPath: `${dir}/Old.mkv`,
+			newParentPath: 'Specials',
+			newRelativePath: 'New.mkv',
+			newFullPath: '/media/Specials/New.mkv',
+			status: 'will_change' as const
+		};
+		mockedFileExists.mockImplementation(async (p: string) => p === `${dir}/Old.mkv`);
+
+		// @ts-expect-error accessing private method for testing
+		const result = await service.executeFileRename(item, []);
+
+		expect(result.success).toBe(true);
+		expect(mockFs.readdir).not.toHaveBeenCalled();
+		expect(mockFs.rename).not.toHaveBeenCalled();
 	});
 });

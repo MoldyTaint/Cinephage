@@ -544,7 +544,7 @@ export class RenamePreviewService {
 						continue;
 					}
 
-					const renameResult = await this.executeFileRename(item);
+					const renameResult = await this.executeFileRename(item, result.warnings);
 					groupResult.push(renameResult);
 					await this.writeRenameHistory(item, renameResult.success, renameResult.error);
 					if (!renameResult.success) {
@@ -1149,7 +1149,8 @@ export class RenamePreviewService {
 	 * - Does NOT delete DB records on failure — that is the reconcile pass's job.
 	 */
 	private async executeFileRename(
-		item: RenamePreviewItem
+		item: RenamePreviewItem,
+		warnings: string[] = []
 	): Promise<RenameExecuteResult['results'][0]> {
 		try {
 			// Check if the file is in a read-only folder
@@ -1354,6 +1355,10 @@ export class RenamePreviewService {
 
 			getMediaBrowserNotifier().queueUpdate(item.newFullPath, 'Modified');
 
+			// Carry stem-matched sibling subtitles along on in-place renames so
+			// external subs stay associated with the renamed video.
+			await this.renameSubtitleCompanions(item.currentFullPath, item.newFullPath, warnings);
+
 			return {
 				fileId: item.fileId,
 				mediaType: item.mediaType,
@@ -1378,6 +1383,55 @@ export class RenamePreviewService {
 				newPath: item.newFullPath,
 				error: error instanceof Error ? error.message : 'Unknown error'
 			};
+		}
+	}
+
+	/**
+	 * Rename sibling subtitle files whose stem matches the old video stem to
+	 * the new video stem, preserving language/flag suffix chains (.en.hi,
+	 * .forced, .sdh, ...). Only applies to same-directory renames — folder
+	 * changes carry all companions via applyFolderRename. Best-effort:
+	 * failures produce warnings, never fail the rename.
+	 */
+	private async renameSubtitleCompanions(
+		oldPath: string,
+		newPath: string,
+		warnings: string[]
+	): Promise<void> {
+		const dir = dirname(oldPath);
+		if (dir !== dirname(newPath)) return;
+		const oldStem = basename(oldPath, extname(oldPath));
+		const newStem = basename(newPath, extname(newPath));
+		if (oldStem === newStem) return;
+
+		// Subtitle files: video-stem + optional dot-separated language/flag
+		// chain + subtitle extension. e.g. "Movie.en.srt", "Show.en.hi.ass",
+		// "Ep.forced.srt", "Ep.sdh.cc.sub"
+		const suffixRe =
+			/^(\.[a-z]{2,3}(-[a-zA-Z]{2,4})?|\.(forced|cc|sdh|default))*(\.(srt|ass|ssa|sub|vtt))$/i;
+		try {
+			const entries = await readdir(dir);
+			for (const entry of entries) {
+				const ext = extname(entry);
+				if (!/\.(srt|ass|ssa|sub|vtt)$/i.test(ext)) continue;
+				if (!entry.startsWith(oldStem)) continue;
+				const suffix = entry.slice(oldStem.length);
+				if (!suffixRe.test(suffix)) continue;
+				const from = join(dir, entry);
+				const to = join(dir, newStem + suffix);
+				if (await fileExists(to)) continue;
+				try {
+					await rename(from, to);
+					logger.info({ from, to }, '[RenamePreviewService] Renamed subtitle companion');
+				} catch (err) {
+					const message = err instanceof Error ? err.message : String(err);
+					warnings.push(`Subtitle "${entry}" could not be renamed: ${message}`);
+					logger.warn({ err, from, to }, '[RenamePreviewService] Subtitle companion rename failed');
+				}
+			}
+		} catch (err) {
+			// Directory unreadable — non-fatal.
+			logger.warn({ err, dir }, '[RenamePreviewService] Could not scan for subtitle companions');
 		}
 	}
 
