@@ -104,6 +104,7 @@ describe('DiskScanService lock integration', () => {
 			await expect(diskScanService.scanRootFolder('root-empty')).rejects.toThrow(
 				/rename|reorganiz/i
 			);
+			expect(diskScanService.scanning).toBe(false);
 		});
 		expect(libraryOperationLock.isLocked).toBe(false);
 	});
