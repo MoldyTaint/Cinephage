@@ -257,8 +257,8 @@
 									><span>{item.label}</span>{#if archivedIds.includes(item.id)}<span
 											class="badge badge-sm badge-success"
 											>{selectedArchiverArchivedIds.includes(item.id)
-												? 'Archived here'
-												: 'Archived'}</span
+												? 'On this target'
+												: 'On another target'}</span
 										>{/if}</span
 								><span class="block truncate text-xs text-base-content/50">{item.path}</span></span
 							>{#if item.size != null}<span class="text-xs text-base-content/60"
