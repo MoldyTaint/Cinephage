@@ -1297,7 +1297,7 @@
 	"library_renamePreview_failedCount": "{count} failed",
 	"library_renamePreview_failedToExecute": "Failed to execute rename",
 	"library_renamePreview_failedToLoad": "Failed to load rename preview",
-	"library_renamePreview_failedWithErrors": "Rename completed with errors",
+	"library_renamePreview_failedWithErrors": "Rename completed with {count} error(s): {errors}",
 	"library_renamePreview_noFilesFound": "No files found to rename",
 	"library_renamePreview_renamedCount": "{count} renamed",
 	"library_renamePreview_renaming": "Renaming...",

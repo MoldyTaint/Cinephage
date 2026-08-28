@@ -1297,7 +1297,7 @@
 	"library_renamePreview_failedCount": "С ошибкой: {count}",
 	"library_renamePreview_failedToExecute": "Не удалось выполнить переименование",
 	"library_renamePreview_failedToLoad": "Не удалось загрузить предпросмотр переименования",
-	"library_renamePreview_failedWithErrors": "Переименование завершено с ошибками",
+	"library_renamePreview_failedWithErrors": "Переименование завершено с ошибками ({count}): {errors}",
 	"library_renamePreview_noFilesFound": "Файлы для переименования не найдены",
 	"library_renamePreview_renamedCount": "Переименовано: {count}",
 	"library_renamePreview_renaming": "Переименование...",

@@ -1297,7 +1297,7 @@
 	"library_renamePreview_failedCount": "{count} fehlgeschlagen",
 	"library_renamePreview_failedToExecute": "Umbenennung konnte nicht ausgeführt werden",
 	"library_renamePreview_failedToLoad": "Umbenennungsvorschau konnte nicht geladen werden",
-	"library_renamePreview_failedWithErrors": "Umbenennung mit Fehlern abgeschlossen",
+	"library_renamePreview_failedWithErrors": "Umbenennung mit {count} Fehler(n) abgeschlossen: {errors}",
 	"library_renamePreview_noFilesFound": "Keine Dateien zum Umbenennen gefunden",
 	"library_renamePreview_renamedCount": "{count} umbenannt",
 	"library_renamePreview_renaming": "Umbenennen...",

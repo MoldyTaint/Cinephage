@@ -1297,7 +1297,7 @@
 	"library_renamePreview_failedCount": "{count} fallidos",
 	"library_renamePreview_failedToExecute": "Error al ejecutar cambio de nombre",
 	"library_renamePreview_failedToLoad": "Error al cargar vista previa de cambio de nombre",
-	"library_renamePreview_failedWithErrors": "Cambio de nombre completado con errores",
+	"library_renamePreview_failedWithErrors": "Cambio de nombre completado con {count} error(es): {errors}",
 	"library_renamePreview_noFilesFound": "No se encontraron archivos para renombrar",
 	"library_renamePreview_renamedCount": "{count} renombrados",
 	"library_renamePreview_renaming": "Renombrando...",
