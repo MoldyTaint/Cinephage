@@ -58,7 +58,8 @@
 	let initializedForOpen = $state(false);
 	const allSelected = $derived(items.length > 0 && selectedIds.length === items.length);
 	const partiallySelected = $derived(selectedIds.length > 0 && !allSelected);
-	const archivedIds = $derived(
+	const archivedIds = $derived(archiveStatus?.archivedFileIds ?? []);
+	const selectedArchiverArchivedIds = $derived(
 		archiveStatus?.archivers.find((archiver) => archiver.archiverId === archiverId)
 			?.archivedFileIds ?? []
 	);
@@ -254,7 +255,10 @@
 							/><span class="min-w-0 flex-1"
 								><span class="flex items-center gap-2 text-sm font-medium"
 									><span>{item.label}</span>{#if archivedIds.includes(item.id)}<span
-											class="badge badge-sm badge-success">Archived</span
+											class="badge badge-sm badge-success"
+											>{selectedArchiverArchivedIds.includes(item.id)
+												? 'Archived here'
+												: 'Archived'}</span
 										>{/if}</span
 								><span class="block truncate text-xs text-base-content/50">{item.path}</span></span
 							>{#if item.size != null}<span class="text-xs text-base-content/60"
