@@ -829,4 +829,93 @@ describe('rename transition healing', () => {
 		await db.delete(rootFolders).where(eq(rootFolders.id, rootFolderId));
 		await db.delete(series).where(eq(series.id, seriesId));
 	});
+
+	it('scanRootFolder heals via rename_history even when external correlation also matches', async () => {
+		const db = testDb.db;
+		const scanRoot = await mkdtemp(join(tmpdir(), 'cinephage-hist-precedence-'));
+		healScanRoots.push(scanRoot);
+
+		// History target: Cinephage renamed both folder and file, recorded in
+		// rename_history. Different basename from the missing row.
+		const histDir = join(scanRoot, 'Renamed by Cinephage (2020)', 'Season 01');
+		await mkdir(histDir, { recursive: true });
+		const histPath = join(histDir, 'cinephage name S01E01.mkv');
+		await writeFile(histPath, Buffer.alloc(11 * 1024 * 1024, 1));
+
+		// External-correlation candidate: same basename and byte size as the
+		// missing tracked file under a different folder, and unique by
+		// basename — so the external branch COULD also heal the row, but to a
+		// different path. Only rename_history winning keeps the correct target.
+		const extDir = join(scanRoot, 'Moved Externally (2020)');
+		await mkdir(extDir, { recursive: true });
+		const extPath = join(extDir, 'e.mkv');
+		await writeFile(extPath, Buffer.alloc(11 * 1024 * 1024, 1));
+
+		const rootFolderId = randomUUID();
+		const seriesId = randomUUID();
+		const fileId = randomUUID();
+		const oldPath = join(scanRoot, 'Old (2020)', 'Season 01', 'e.mkv');
+
+		await db.insert(rootFolders).values({
+			id: rootFolderId,
+			path: scanRoot,
+			mediaType: 'tv',
+			name: 'hist-precedence-root',
+			blockedVideoExtensions: '[]'
+		});
+		await db.insert(series).values({
+			id: seriesId,
+			rootFolderId,
+			path: 'Old (2020)',
+			title: 'Old',
+			tmdbId: 34564
+		});
+		await db.insert(episodeFiles).values({
+			id: fileId,
+			seriesId,
+			seasonNumber: 1,
+			relativePath: 'Season 01/e.mkv',
+			size: 11 * 1024 * 1024
+		});
+		await db.insert(renameHistory).values({
+			id: randomUUID(),
+			fileId,
+			mediaType: 'tv',
+			oldPath,
+			newPath: histPath,
+			success: 1,
+			operation: 'rename',
+			createdAt: new Date().toISOString()
+		});
+
+		const healSpy = vi.spyOn(diskScanService, 'healRenamedFile');
+
+		const result = await diskScanService.scanRootFolder(rootFolderId);
+		const healTargets = healSpy.mock.calls.map((call) => call[1]);
+		healSpy.mockRestore();
+
+		expect(result.success).toBe(true);
+		expect(result.filesRemoved).toBe(0);
+		expect(result.filesUpdated).toBe(1);
+
+		// Exactly one heal ran and it used the rename_history target, not the
+		// external-correlation candidate.
+		expect(healTargets).toHaveLength(1);
+		expect(healTargets[0]).toBe(histPath);
+
+		const [seriesRow] = await db.select().from(series).where(eq(series.id, seriesId));
+		expect(seriesRow.path).toBe('Renamed by Cinephage (2020)');
+		const [fileRow] = await db.select().from(episodeFiles).where(eq(episodeFiles.id, fileId));
+		expect(fileRow.relativePath).toBe('Season 01/cinephage name S01E01.mkv');
+
+		// The external candidate is NOT inserted as unmatched this scan: the
+		// correlation reserved it as a would-be heal target. It is picked up
+		// as a regular unmatched file on the next scan.
+
+		await db.delete(unmatchedFiles).where(eq(unmatchedFiles.rootFolderId, rootFolderId));
+		await db.delete(renameHistory).where(eq(renameHistory.fileId, fileId));
+		await db.delete(episodeFiles).where(eq(episodeFiles.id, fileId));
+		await db.delete(series).where(eq(series.id, seriesId));
+		await db.delete(rootFolders).where(eq(rootFolders.id, rootFolderId));
+	});
 });
