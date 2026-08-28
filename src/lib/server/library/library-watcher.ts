@@ -10,6 +10,7 @@ import { db } from '$lib/server/db/index.js';
 import { rootFolders, librarySettings } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { diskScanService } from './disk-scan.js';
+import { libraryOperationLock } from './library-operation-lock.js';
 import { mediaMatcherService } from './media-matcher.js';
 import { isVideoFile } from './media-info.js';
 import { EventEmitter } from 'events';
@@ -172,6 +173,20 @@ export class LibraryWatcherService extends EventEmitter {
 		}, DEBOUNCE_TIME);
 	}
 
+	private requeue(changes: FileChange[]): void {
+		for (const change of changes) {
+			this.pendingChanges.set(change.path, change);
+		}
+
+		if (this.processTimeout) {
+			clearTimeout(this.processTimeout);
+		}
+
+		this.processTimeout = setTimeout(() => {
+			this.processPendingChanges();
+		}, DEBOUNCE_TIME);
+	}
+
 	private async processPendingChanges(): Promise<void> {
 		if (this.pendingChanges.size === 0) {
 			return;
@@ -191,25 +206,12 @@ export class LibraryWatcherService extends EventEmitter {
 			logger.info({ folderId, changeCount: changes.length }, '[LibraryWatcher] Processing changes');
 
 			try {
-				if (diskScanService.scanning) {
+				if (diskScanService.scanning || libraryOperationLock.isLocked) {
 					logger.debug(
-						{
-							changeCount: changes.length
-						},
-						'[LibraryWatcher] Scan already running, re-queueing changes'
+						{ changeCount: changes.length },
+						'[LibraryWatcher] Scan or rename in progress, re-queueing changes'
 					);
-
-					for (const change of changes) {
-						this.pendingChanges.set(change.path, change);
-					}
-
-					if (this.processTimeout) {
-						clearTimeout(this.processTimeout);
-					}
-
-					this.processTimeout = setTimeout(() => {
-						this.processPendingChanges();
-					}, DEBOUNCE_TIME);
+					this.requeue(changes);
 					continue;
 				}
 
@@ -221,6 +223,12 @@ export class LibraryWatcherService extends EventEmitter {
 			} catch (error) {
 				logger.error({ err: error, ...{ folderId } }, '[LibraryWatcher] Error processing changes');
 				this.emit('error', { folderId, error });
+
+				// Re-queue only when the failure is transient (scan/lock contention).
+				// Permanent errors (e.g. root folder deleted) would otherwise loop forever.
+				if (diskScanService.scanning || libraryOperationLock.isLocked) {
+					this.requeue(changes);
+				}
 			}
 		}
 	}

@@ -1,0 +1,101 @@
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+import { createTestDb, destroyTestDb, type TestDatabase } from '../../../test/db-helper.js';
+
+const testDb: TestDatabase = createTestDb();
+
+vi.mock('$lib/server/db', () => ({
+	get db() {
+		return testDb.db;
+	},
+	get sqlite() {
+		return testDb.sqlite;
+	},
+	initializeDatabase: vi.fn().mockResolvedValue(undefined)
+}));
+
+vi.mock('chokidar', () => ({
+	default: {
+		watch: vi.fn(() => ({
+			on: vi.fn().mockReturnThis(),
+			close: vi.fn().mockResolvedValue(undefined)
+		}))
+	}
+}));
+
+vi.mock('./disk-scan.js', () => ({
+	diskScanService: {
+		get scanning() {
+			return mockScanning;
+		},
+		scanRootFolder: vi.fn().mockResolvedValue({})
+	}
+}));
+
+vi.mock('./media-matcher.js', () => ({
+	mediaMatcherService: { processAllUnmatched: vi.fn().mockResolvedValue(undefined) }
+}));
+
+vi.mock('./media-info.js', () => ({
+	isVideoFile: vi.fn(() => true)
+}));
+
+let mockScanning = false;
+
+const { LibraryWatcherService } = await import('./library-watcher.js');
+const { diskScanService } = await import('./disk-scan.js');
+const { libraryOperationLock } = await import('./library-operation-lock.js');
+
+describe('LibraryWatcherService.processPendingChanges', () => {
+	// Access the singleton's internals for seeding/inspection (private fields).
+	function watcherInternals() {
+		const w = LibraryWatcherService.getInstance() as unknown as {
+			pendingChanges: Map<
+				string,
+				{ type: string; path: string; rootFolderId: string; timestamp: number }
+			>;
+			processPendingChanges(): Promise<void>;
+			processTimeout: NodeJS.Timeout | null;
+		};
+		return w;
+	}
+
+	beforeEach(() => {
+		mockScanning = false;
+		vi.clearAllMocks();
+		watcherInternals().pendingChanges.clear();
+		const w = watcherInternals();
+		if (w.processTimeout) clearTimeout(w.processTimeout);
+		w.processTimeout = null;
+	});
+
+	afterAll(() => {
+		destroyTestDb(testDb);
+	});
+
+	function seedChange(path: string) {
+		watcherInternals().pendingChanges.set(path, {
+			type: 'unlink',
+			path,
+			rootFolderId: 'folder-1',
+			timestamp: Date.now()
+		});
+	}
+
+	it('re-queues changes and does not scan while the operation lock is held', async () => {
+		seedChange('/media/movie.mkv');
+		await libraryOperationLock.withLock('rename', async () => {
+			await watcherInternals().processPendingChanges();
+		});
+
+		expect(watcherInternals().pendingChanges.size).toBe(1);
+		expect(diskScanService.scanRootFolder).not.toHaveBeenCalled();
+	});
+
+	it('re-queues changes when the scan fails transiently instead of dropping them', async () => {
+		mockScanning = true; // forces the re-queue branch
+		seedChange('/media/movie.mkv');
+		await watcherInternals().processPendingChanges();
+
+		expect(watcherInternals().pendingChanges.size).toBe(1);
+	});
+});
