@@ -1355,6 +1355,10 @@ export class RenamePreviewService {
 					mediaId,
 					newParentPath
 				);
+				logger.info(
+					{ mediaId, mediaType, from: oldFolder, to: newFolder, isRootFolder },
+					'[RenamePreviewService] Folder path updated in DB after file renames'
+				);
 			} catch (dbError) {
 				const dbMessage = dbError instanceof Error ? dbError.message : String(dbError);
 				logger.error(
@@ -1375,11 +1379,6 @@ export class RenamePreviewService {
 					logger.warn({ err }, '[RenamePreviewService] Failed to record renaming failure')
 				);
 			}
-
-			logger.info(
-				{ mediaId, mediaType, from: oldFolder, to: newFolder, isRootFolder },
-				'[RenamePreviewService] Folder path updated in DB after file renames'
-			);
 
 			// 2. Move companion files from the old folder to the new folder.
 			// When the media file is in a dedicated subfolder, carry everything (the

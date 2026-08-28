@@ -1707,6 +1707,14 @@ describe('RenamePreviewService lock integration', () => {
 		expect(result.total).toBe(2);
 		expect(result.organized).toBe(0);
 		expect(result.failed).toBe(2);
+		expect(result.errors).toHaveLength(2);
+		expect(result.errors.every((e) => typeof e === 'string' && e.length > 0)).toBe(true);
+		expect(result.results).toHaveLength(2);
+		expect(result.results.map((r) => r.mediaId)).toEqual(['missing-1', 'missing-2']);
+		expect(result.results.every((r) => r.success === false)).toBe(true);
+		expect(result.results.every((r) => typeof r.error === 'string' && r.error.length > 0)).toBe(
+			true
+		);
 	});
 });
 

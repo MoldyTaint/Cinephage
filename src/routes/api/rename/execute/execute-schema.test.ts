@@ -61,6 +61,16 @@ describe('POST /api/rename/execute', () => {
 		expect(mockExecuteRenames).not.toHaveBeenCalled();
 	});
 
+	it('returns 409 before body validation when a library scan is in progress', async () => {
+		scanState.scanning = true;
+		// Invalid body ({ fileIds: [] } fails min(1)) — a 400 would mean the scan
+		// guard fires after parseBody, so the response must still be 409.
+		const { status, data } = await callHandler(POST, 'POST', { fileIds: [] });
+		expect(status).toBe(409);
+		expect((data as { error: string }).error).toMatch(/scan/i);
+		expect(mockExecuteRenames).not.toHaveBeenCalled();
+	});
+
 	it('proceeds when no scan is running', async () => {
 		const { status } = await callHandler(POST, 'POST', { fileIds: ['file-1'] });
 		expect(status).toBe(200);
