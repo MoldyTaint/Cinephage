@@ -368,6 +368,13 @@ class MediaBrowserManager {
 
 		for (const server of servers) {
 			try {
+				// Plex has no per-item delete API (deleteItem always returns false),
+				// so attempting one just burns the retry delay and logs a misleading
+				// warning. Plex reconciles renames via path-based section refreshes.
+				if (server.serverType === 'plex') {
+					continue;
+				}
+
 				if (options?.eventKind) {
 					const toggle = server[MEDIA_EVENT_KIND_TOGGLE[options.eventKind]];
 					if (toggle === false) {

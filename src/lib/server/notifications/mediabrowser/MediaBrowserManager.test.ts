@@ -128,6 +128,17 @@ describe('deleteMediaItemByTmdb', () => {
 		expect(mocks.deleteItem).not.toHaveBeenCalled();
 	});
 
+	it('skips Plex servers entirely — no per-item delete API', async () => {
+		dbState.enabledServers = [makeServer({ id: 'plex-1', serverType: 'plex' })];
+		mocks.deleteItem.mockResolvedValue(true);
+		const manager = new MediaBrowserManager();
+
+		const result = await manager.deleteMediaItemByTmdb(42, 'movie', { retryDelayMs: 1 });
+
+		expect(result).toBe(0);
+		expect(mocks.deleteItem).not.toHaveBeenCalled();
+	});
+
 	it('delivers to all enabled servers when no eventKind is supplied (legacy behavior)', async () => {
 		mocks.deleteItem.mockResolvedValue(true);
 		dbState.enabledServers = [

@@ -761,6 +761,20 @@ export class RenamePreviewService {
 			const actualOldFolder = join(rootFolderPath, currentPath);
 			const actualNewFolder = join(rootFolderPath, newFolderName);
 
+			// Never reorganize a movie/series whose tracked path IS the root folder
+			// (path '.' or '' — root-level files from media-matcher, or healed rows).
+			// Renaming the root itself would uproot every other title in the library
+			// and queue a Deleted for the root, wiping the media server's library.
+			if (
+				resolve(actualOldFolder) === resolve(rootFolderPath) ||
+				resolve(actualNewFolder) === resolve(rootFolderPath)
+			) {
+				return {
+					success: false,
+					error: 'Cannot reorganize: this item is tracked at the root folder level'
+				};
+			}
+
 			if (actualOldFolder === actualNewFolder) {
 				return { success: true, oldPath: currentPath, newPath: newFolderName };
 			}

@@ -2100,6 +2100,74 @@ describe('rename media-server notifications', () => {
 		await db.delete(schema.series).where(eq(schema.series.id, seriesId));
 		await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
 	});
+
+	it('refuses to reorganize, never renames and never notifies when the tracked path is the root folder', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const movieId = randomUUID();
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: '/tmp/opencode/rootguard-root',
+			mediaType: 'movie',
+			name: 'rootguard-root'
+		});
+		// Root-level file: media-matcher tracks these with path '.' and the
+		// scan-heal path can write '' — either resolves to the root folder itself.
+		await db.insert(schema.movies).values({
+			id: movieId,
+			rootFolderId,
+			path: '.',
+			title: 'Root Movie',
+			year: 2020,
+			tmdbId: 99
+		});
+
+		const svc = new RenamePreviewService();
+		const folderNameSpy = vi
+			.spyOn(NamingService.prototype, 'generateMovieFolderName')
+			.mockReturnValue('Root Movie (2020)');
+
+		const result = await svc.reorganizeFolder(movieId, 'movie');
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/root folder/);
+		expect(mockFs.rename).not.toHaveBeenCalled();
+		expect(notifierMocks.queueUpdate).not.toHaveBeenCalled();
+
+		folderNameSpy.mockRestore();
+		await db.delete(schema.movies).where(eq(schema.movies.id, movieId));
+		await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+	});
+
+	it('queues no notifications when applyFolderRename is invoked for the root folder itself', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const movieId = randomUUID();
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: '/tmp/opencode/rootguard-afr',
+			mediaType: 'movie',
+			name: 'rootguard-afr'
+		});
+		await db.insert(schema.movies).values({
+			id: movieId,
+			rootFolderId,
+			path: '.',
+			title: 'Root Movie',
+			year: 2020,
+			tmdbId: 100
+		});
+
+		const svc = new RenamePreviewService();
+		// oldParentPath '.' makes join(root, oldParentPath) resolve to the root
+		// itself — the guard must suppress Deleted(root)/Modified(root).
+		await svc['applyFolderRename'](movieId, 'movie', '.', 'Root Movie (2020)', 'stem');
+
+		expect(notifierMocks.queueUpdate).not.toHaveBeenCalled();
+
+		await db.delete(schema.movies).where(eq(schema.movies.id, movieId));
+		await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+	});
 });
 
 describe('RenamePreviewService scan-in-progress refusal', () => {
