@@ -46,10 +46,9 @@
 		Info
 	} from 'lucide-svelte';
 	import { page } from '$app/state';
-	import { goto, invalidateAll, afterNavigate } from '$app/navigation';
-	import { browser } from '$app/environment';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
-	import { MOVIES_RETURN_URL_KEY } from '$lib/utils/library-return-urls';
+	import { getSafeLibraryReturnTo } from '$lib/utils/libraryReturnNavigation';
 	import { createDynamicSSE } from '$lib/sse';
 	import { getFileName } from '$lib/utils/format.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
@@ -68,13 +67,14 @@
 	const movie = $derived(movieState ?? data.movie);
 	const queueItem = $derived(queueItemState === undefined ? data.queueItem : queueItemState);
 
-	let moviesBackHref = $state<string | null>(null);
-
-	afterNavigate(() => {
-		if (!browser) return;
-		const stored = localStorage.getItem(MOVIES_RETURN_URL_KEY);
-		moviesBackHref =
-			stored && stored.split('?')[0] === resolvePath('/library/movies') ? stored : null;
+	// Back link target: the validated returnTo URL carries the exact filtered
+	// list state from the page the user navigated from (issue #515).
+	const moviesBackHref = $derived.by(() => {
+		const validated = getSafeLibraryReturnTo(
+			page.url.searchParams.get('returnTo'),
+			'/library/movies'
+		);
+		return validated ? resolvePath(validated) : null;
 	});
 
 	function describeError(error: unknown, fallback: string): string {
@@ -265,19 +265,8 @@
 		}
 	}
 
-	function handleArchived(fileIds: string[], sourcesDeleted: boolean, libraryPathUpdated: boolean) {
-		if (sourcesDeleted) {
-			movie.files = movie.files.filter((file) => !fileIds.includes(file.id));
-			movie.hasFile = movie.files.length > 0;
-		}
-		toasts.success(
-			libraryPathUpdated
-				? 'Files archived and library path updated'
-				: sourcesDeleted
-					? 'Files archived and local sources removed'
-					: 'Files archived successfully'
-		);
-		if (libraryPathUpdated) void invalidateAll();
+	function handleArchived() {
+		toasts.success('Files archived successfully');
 		void loadArchiveStatus(movie.id);
 	}
 	const missingParts = $derived(collectionParts.filter((p) => !p.inLibrary));

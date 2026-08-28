@@ -252,7 +252,7 @@ export class SearchOrchestrator {
 	private enhancedCache: Map<
 		string,
 		{
-			releases: EnhancedReleaseResult[];
+			releases: ReleaseResult[];
 			indexerResults: IndexerSearchResult[];
 			rejectedIndexers: RejectedIndexer[];
 			cachedAt: number;
@@ -299,51 +299,58 @@ export class SearchOrchestrator {
 
 		const { eligible: eligibleIndexers, rejected: rejectedIndexers } = indexerFilterResult;
 
+		// Cache raw indexer results only. Downstream processing (blocklist,
+		// season/episode, category, language boost, ranking, limit) re-runs on
+		// every request, including cache hits, since it depends on state that
+		// can change between requests.
+		let allReleases: ReleaseResult[] = [];
+		let fromCache = false;
 		if (opts.useCache) {
 			const cached = this.cache.get(enrichedCriteria);
 			if (cached) {
 				logger.debug({ resultCount: cached.length }, 'Cache hit');
-				return {
-					releases: cached,
-					totalResults: cached.length,
-					searchTimeMs: Date.now() - startTime,
-					fromCache: true,
-					indexerResults: []
-				};
+				allReleases = [...cached];
+				fromCache = true;
 			}
 		}
 
-		if (eligibleIndexers.length === 0) {
-			logger.warn(
-				{
-					criteria: criteriaToString(criteria)
-				},
-				'No eligible indexers for search'
+		if (!fromCache) {
+			if (eligibleIndexers.length === 0) {
+				logger.warn(
+					{
+						criteria: criteriaToString(criteria)
+					},
+					'No eligible indexers for search'
+				);
+				return {
+					releases: [],
+					totalResults: 0,
+					searchTimeMs: Date.now() - startTime,
+					fromCache: false,
+					indexerResults: [],
+					rejectedIndexers
+				};
+			}
+
+			// Sort by priority
+			eligibleIndexers.sort((a, b) => {
+				const statusA = this.statusTracker.getStatusSync(a.id);
+				const statusB = this.statusTracker.getStatusSync(b.id);
+				return statusA.priority - statusB.priority;
+			});
+
+			// Execute searches with enriched criteria (includes IMDB ID if looked up)
+			allReleases = await this.executeSearches(
+				eligibleIndexers,
+				enrichedCriteria,
+				indexerResults,
+				opts
 			);
-			return {
-				releases: [],
-				totalResults: 0,
-				searchTimeMs: Date.now() - startTime,
-				fromCache: false,
-				indexerResults: [],
-				rejectedIndexers
-			};
+
+			if (opts.useCache && allReleases.length > 0) {
+				this.cache.set(enrichedCriteria, [...allReleases]);
+			}
 		}
-
-		// Sort by priority
-		eligibleIndexers.sort((a, b) => {
-			const statusA = this.statusTracker.getStatusSync(a.id);
-			const statusB = this.statusTracker.getStatusSync(b.id);
-			return statusA.priority - statusB.priority;
-		});
-
-		// Execute searches with enriched criteria (includes IMDB ID if looked up)
-		const allReleases = await this.executeSearches(
-			eligibleIndexers,
-			enrichedCriteria,
-			indexerResults,
-			opts
-		);
 
 		// Deduplicate
 		const { releases: deduped } = this.deduplicator.deduplicate(allReleases);
@@ -378,16 +385,11 @@ export class SearchOrchestrator {
 		// Apply limit (only if explicitly specified)
 		const limited = criteria.limit ? ranked.slice(0, criteria.limit) : ranked;
 
-		// Cache results (use enriched criteria for cache key consistency)
-		if (opts.useCache && limited.length > 0) {
-			this.cache.set(enrichedCriteria, limited);
-		}
-
 		const result: SearchResult = {
 			releases: limited,
 			totalResults: allReleases.length,
 			searchTimeMs: Date.now() - startTime,
-			fromCache: false,
+			fromCache,
 			indexerResults,
 			rejectedIndexers
 		};
@@ -436,63 +438,76 @@ export class SearchOrchestrator {
 
 		const { eligible: eligibleIndexers, rejected: rejectedIndexers } = indexerFilterResult;
 
-		if (opts.useCache && opts.searchSource === 'interactive') {
-			const cacheKey = this.cache.generateKey(enrichedCriteria);
-			const cached = this.enhancedCache.get(cacheKey);
+		// Cache raw indexer results only (keyed by criteria + protocol filter).
+		// Everything downstream (blocklist, filters, language boost, scoring,
+		// enhanced dedup, limit) depends on state that can change between
+		// requests (scoring profile, blocklist, language, limit), so it must
+		// re-run on every request, including cache hits.
+		const interactiveCacheKey =
+			opts.useCache && opts.searchSource === 'interactive'
+				? this.cache.generateKey(enrichedCriteria, {
+						pf: [...(opts.protocolFilter ?? [])].sort().join(',')
+					})
+				: null;
+
+		let allReleases: ReleaseResult[] = [];
+		let fromCache = false;
+		if (interactiveCacheKey) {
+			const cached = this.enhancedCache.get(interactiveCacheKey);
 			if (cached && Date.now() - cached.cachedAt < SearchOrchestrator.ENHANCED_CACHE_TTL_MS) {
 				logger.debug({ resultCount: cached.releases.length }, 'Enhanced search cache hit');
+				allReleases = [...cached.releases];
+				indexerResults.push(...cached.indexerResults);
+				fromCache = true;
+			} else if (cached) {
+				this.enhancedCache.delete(interactiveCacheKey);
+			}
+		}
+
+		if (!fromCache) {
+			if (eligibleIndexers.length === 0) {
+				logger.warn(
+					{
+						criteria: criteriaToString(enrichedCriteria)
+					},
+					'No eligible indexers for search'
+				);
 				return {
-					releases: cached.releases,
-					totalResults: cached.releases.length,
-					afterDedup: cached.releases.length,
-					afterFiltering: cached.releases.length,
-					afterEnrichment: cached.releases.length,
+					releases: [],
+					totalResults: 0,
 					rejectedCount: 0,
 					searchTimeMs: Date.now() - startTime,
 					enrichTimeMs: 0,
-					fromCache: true,
-					indexerResults: cached.indexerResults,
-					rejectedIndexers: cached.rejectedIndexers
+					fromCache: false,
+					indexerResults: [],
+					rejectedIndexers
 				};
 			}
-			if (cached) {
-				this.enhancedCache.delete(cacheKey);
+
+			// Sort by priority
+			eligibleIndexers.sort((a, b) => {
+				const statusA = this.statusTracker.getStatusSync(a.id);
+				const statusB = this.statusTracker.getStatusSync(b.id);
+				return statusA.priority - statusB.priority;
+			});
+
+			// Execute searches
+			allReleases = await this.executeSearches(
+				eligibleIndexers,
+				enrichedCriteria,
+				indexerResults,
+				opts
+			);
+
+			if (interactiveCacheKey && allReleases.length > 0) {
+				this.enhancedCache.set(interactiveCacheKey, {
+					releases: [...allReleases],
+					indexerResults: [...indexerResults],
+					rejectedIndexers,
+					cachedAt: Date.now()
+				});
 			}
 		}
-
-		if (eligibleIndexers.length === 0) {
-			logger.warn(
-				{
-					criteria: criteriaToString(enrichedCriteria)
-				},
-				'No eligible indexers for search'
-			);
-			return {
-				releases: [],
-				totalResults: 0,
-				rejectedCount: 0,
-				searchTimeMs: Date.now() - startTime,
-				enrichTimeMs: 0,
-				fromCache: false,
-				indexerResults: [],
-				rejectedIndexers
-			};
-		}
-
-		// Sort by priority
-		eligibleIndexers.sort((a, b) => {
-			const statusA = this.statusTracker.getStatusSync(a.id);
-			const statusB = this.statusTracker.getStatusSync(b.id);
-			return statusA.priority - statusB.priority;
-		});
-
-		// Execute searches
-		const allReleases = await this.executeSearches(
-			eligibleIndexers,
-			enrichedCriteria,
-			indexerResults,
-			opts
-		);
 
 		const searchTimeMs = Date.now() - startTime;
 
@@ -583,8 +598,10 @@ export class SearchOrchestrator {
 			'[SearchOrchestrator] DEBUG: after ID/title filter'
 		);
 
-		// Boost releases matching preferred language before enrichment
-		filtered = this.boostByLanguage(filtered, enrichedCriteria);
+		// No language boost here: enrichment recomputes totalScore from scratch and
+		// runs protocol seeder checks, so inflating seeders pre-enrichment would
+		// bypass minimumSeeders/dead-torrent rejection with a synthetic number.
+		// See boostByLanguage (rank path only).
 
 		const afterFilteringCount = filtered.length;
 
@@ -664,21 +681,11 @@ export class SearchOrchestrator {
 			rejectedCount: enrichResult.rejectedCount,
 			searchTimeMs,
 			enrichTimeMs: enrichResult.enrichTimeMs,
-			fromCache: false,
+			fromCache,
 			indexerResults,
 			rejectedIndexers,
 			scoringProfileId: enrichResult.scoringProfile?.id
 		};
-
-		if (opts.useCache && opts.searchSource === 'interactive' && withWeights.length > 0) {
-			const cacheKey = this.cache.generateKey(enrichedCriteria);
-			this.enhancedCache.set(cacheKey, {
-				releases: withWeights,
-				indexerResults,
-				rejectedIndexers,
-				cachedAt: Date.now()
-			});
-		}
 
 		logger.info(
 			{
@@ -1588,6 +1595,7 @@ export class SearchOrchestrator {
 			const allReleases: ReleaseResult[] = [];
 			const seenGuids = new Set<string>();
 			const limitedTitles = titlesToSearch.slice(0, RUTRACKER_AUTOMATIC_MAX_TITLES);
+			let anyTitleSucceeded = false;
 
 			for (const title of limitedTitles) {
 				const seasonOnlyCriteria = createTextOnlyCriteria({
@@ -1599,6 +1607,7 @@ export class SearchOrchestrator {
 
 				try {
 					const releases = await indexer.search(seasonOnlyCriteria);
+					anyTitleSucceeded = true;
 					for (const release of releases) {
 						if (!seenGuids.has(release.guid)) {
 							seenGuids.add(release.guid);
@@ -1618,10 +1627,16 @@ export class SearchOrchestrator {
 				}
 			}
 
-			this.rutrackerAutomaticSeasonSearchCache.set(cacheKey, {
-				cachedAtMs: Date.now(),
-				releases: allReleases
-			});
+			// Poison-cache guard: when EVERY variant failed (timeout, abort, auth),
+			// the accumulated empty set is not a truthful answer — caching it would
+			// serve "no results" for the whole TTL and never retry. Only cache when
+			// at least one query actually reached the indexer.
+			if (anyTitleSucceeded) {
+				this.rutrackerAutomaticSeasonSearchCache.set(cacheKey, {
+					cachedAtMs: Date.now(),
+					releases: allReleases
+				});
+			}
 
 			return allReleases;
 		});
@@ -1810,20 +1825,52 @@ export class SearchOrchestrator {
 		criteria: SearchCriteria,
 		context?: SeasonEpisodeFilterContext
 	): ReleaseResult[] {
-		// For movie searches, reject releases that are clearly TV episodes
+		// For movie searches, reject releases that are clearly TV episodes.
+		// Parses run in 'movie' mode: ambiguous word-based "Season N" markers are
+		// not extracted (movie titles like "Open Season 3" are not season packs),
+		// while unambiguous TV notation (SxxExx) is still detected and rejected.
 		if (isMovieSearch(criteria)) {
+			const searchTmdbId = criteria.tmdbId;
+			const searchImdbId = criteria.imdbId;
+
 			return releases.filter((release) => {
+				// ID-first classification: when the release carries an ID, it decides —
+				// an ID match means the release IS the searched movie, and title-based
+				// parsing (which can misread titles like "Open Season 3" as TV season
+				// packs) never overrides it. Native-Cyrillic tracker ID mismatches are
+				// definitive; aggregator ID mismatches fall through to title parsing.
+				if (searchTmdbId && release.tmdbId) {
+					if (release.tmdbId === searchTmdbId) return true;
+					if (
+						prefersNativeCyrillicTitles({
+							name: release.indexerName ?? ''
+						} as IIndexer)
+					) {
+						return false;
+					}
+				}
+				if (searchImdbId && release.imdbId) {
+					if (release.imdbId === searchImdbId) return true;
+					if (
+						prefersNativeCyrillicTitles({
+							name: release.indexerName ?? ''
+						} as IIndexer)
+					) {
+						return false;
+					}
+				}
+
 				const releaseWithCache = release as ReleaseResult & {
 					_parsedRelease?: ReturnType<typeof parseRelease>;
 				};
 				if (!releaseWithCache._parsedRelease) {
 					releaseWithCache._parsedRelease = parseRelease(release.title, {
-						sourceLanguage: release.sourceLanguage
+						sourceLanguage: release.sourceLanguage,
+						mode: 'movie'
 					});
 				}
 				const parsed = releaseWithCache._parsedRelease;
 
-				// Reject if release has episode info (S01E03, season pack, etc.)
 				if (parsed.episode) {
 					logger.debug(
 						{
@@ -2272,6 +2319,23 @@ export class SearchOrchestrator {
 		criteria?: SearchCriteria
 	): ReleaseResult[] {
 		return releases.filter((release) => {
+			// ID-first: a release whose content ID matches the search target IS the
+			// right content type. Indexer categories are noisy — aggregators mis-file
+			// TV packs as Movies, anime as Other, soundtracks with their movie — and
+			// must not override an authoritative ID match.
+			const searchTmdbId = criteria && 'tmdbId' in criteria ? criteria.tmdbId : undefined;
+			const searchImdbId = criteria && 'imdbId' in criteria ? criteria.imdbId : undefined;
+			const searchTvdbId = criteria && 'tvdbId' in criteria ? criteria.tvdbId : undefined;
+			if (searchTmdbId && release.tmdbId === searchTmdbId) {
+				return true;
+			}
+			if (searchImdbId && release.imdbId === searchImdbId) {
+				return true;
+			}
+			if (searchType === 'tv' && searchTvdbId && release.tvdbId === searchTvdbId) {
+				return true;
+			}
+
 			// If release has no categories, allow it (benefit of the doubt)
 			if (!release.categories || release.categories.length === 0) {
 				return true;
@@ -2389,15 +2453,29 @@ export class SearchOrchestrator {
 			}
 
 			if (this.matchesTrailerArtifactTitle(title)) {
-				logger.debug(
-					{
-						title: release.title,
-						searchType: criteria.searchType,
-						indexer: release.indexerName
-					},
-					'[SearchOrchestrator] Rejecting trailer/promo style release'
+				// Context check: when the searched movie/series title itself contains
+				// the artifact token ("Trailer Park Boys"), the token is part of the
+				// name — not an appended artifact. Otherwise ("Movie.2020.1080p.BluRay
+				// .Trailer") the release is a promo/teaser artifact.
+				const queryCandidates = [criteria.query, ...(criteria.searchTitles ?? [])]
+					.filter((candidate): candidate is string => !!candidate)
+					.map((candidate) => candidate.toLowerCase());
+
+				const isTitleEmbedded = queryCandidates.some((candidate) =>
+					TRAILER_ARTIFACT_TITLE_PATTERNS.some((pattern) => pattern.test(candidate))
 				);
-				return false;
+
+				if (!isTitleEmbedded) {
+					logger.debug(
+						{
+							title: release.title,
+							searchType: criteria.searchType,
+							indexer: release.indexerName
+						},
+						'[SearchOrchestrator] Rejecting trailer/promo style release'
+					);
+					return false;
+				}
 			}
 
 			const releaseWithCache = release as ReleaseResult & {
@@ -2456,67 +2534,53 @@ export class SearchOrchestrator {
 	/**
 	 * Boost releases that match the preferred audio language.
 	 * Uses extractLanguages() to detect language from release titles.
-	 * Matching releases are boosted in place (inflated seeders for rank path,
-	 * boosted totalScore for enhanced path). Non-matching releases pass through.
+	 * Matching releases are returned as new copies with inflated seeders so the
+	 * ReleaseRanker (which weights seeders at 0.4) ranks them above non-matching
+	 * ones. Input objects are never mutated and non-matching releases pass through.
 	 *
 	 * The boost is a soft preference: non-matching releases still appear but
 	 * are ranked below matching ones. This mirrors how Sonarr/Radarr handle
 	 * language preferences via custom format scoring.
+	 *
+	 * Intentionally only used by the plain search() rank path. The enhanced path
+	 * must not inflate seeders: enrichment runs protocol checks (minimumSeeders,
+	 * dead-torrent rejection) against release.seeders, and its totalScore is
+	 * recomputed from scratch, so a pre-enrichment boost is either a lie or dead.
 	 */
 	private boostByLanguage<T extends ReleaseResult>(releases: T[], criteria: SearchCriteria): T[] {
 		const preferredLanguage = criteria.language;
-		if (!preferredLanguage || releases.length === 0) {
+		if (!preferredLanguage || preferredLanguage === 'en' || releases.length === 0) {
 			return releases;
 		}
 
-		// Skip English default — when the preferred language is English,
-		// most releases already default to English, so boosting adds noise.
-		if (preferredLanguage === 'en') {
-			return releases;
-		}
+		let boostedCount = 0;
+		const boosted = releases.map((release) => {
+			const { languages } = extractLanguages(release.title);
+			if (!languages.includes(preferredLanguage)) {
+				return release;
+			}
 
-		const beforeMatches = releases.filter((r) => {
-			const { languages } = extractLanguages(r.title);
-			return languages.includes(preferredLanguage);
+			boostedCount += 1;
+			return {
+				...release,
+				// The ReleaseRanker weights seeders at 0.4 — a 30x multiplier pushes
+				// matching releases well above non-matching ones.
+				seeders: typeof release.seeders === 'number' ? Math.max(1, release.seeders * 30) : 1
+			};
 		});
 
-		// Only boost if there are actual matching releases in the results
-		if (beforeMatches.length === 0) {
-			return releases;
+		if (boostedCount > 0) {
+			logger.debug(
+				{
+					preferredLanguage,
+					totalReleases: releases.length,
+					boostedCount
+				},
+				'[SearchOrchestrator] Language boost applied'
+			);
 		}
 
-		for (const release of releases) {
-			const { languages } = extractLanguages(release.title);
-			const matchesLanguage = languages.includes(preferredLanguage);
-
-			if (matchesLanguage) {
-				// Boost seeders for the non-enhanced rank path.
-				// The ReleaseRanker weights seeders at 0.4 — a 30x multiplier
-				// pushes matching releases well above non-matching ones.
-				if (typeof release.seeders === 'number') {
-					(release as { seeders?: number }).seeders = Math.max(1, release.seeders * 30);
-				}
-
-				// Boost totalScore for the enhanced search path.
-				// EnhancedReleaseResult has totalScore; we add a large score bonus
-				// that places language-matched releases above non-matched ones.
-				const enhanced = release as { totalScore?: number };
-				if (typeof enhanced.totalScore === 'number') {
-					enhanced.totalScore += 5000;
-				}
-			}
-		}
-
-		logger.debug(
-			{
-				preferredLanguage,
-				totalReleases: releases.length,
-				boostedCount: beforeMatches.length
-			},
-			'[SearchOrchestrator] Language boost applied'
-		);
-
-		return releases;
+		return boosted;
 	}
 
 	/**
@@ -2612,7 +2676,10 @@ export class SearchOrchestrator {
 			const getParsed = () => {
 				if (!parsed) {
 					parsed = parseRelease(release.title, {
-						sourceLanguage: release.sourceLanguage
+						sourceLanguage: release.sourceLanguage,
+						// Movie searches parse in 'movie' mode so titles like
+						// "Open Season 3" keep their full title for matching.
+						mode: isMovieSearch(criteria) ? 'movie' : undefined
 					});
 				}
 				return parsed;

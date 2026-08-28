@@ -50,6 +50,10 @@ interface RcloneListResponse {
 	list?: RcloneListItem[];
 }
 
+interface RcloneStatResponse {
+	item?: RcloneListItem | null;
+}
+
 export class RcloneClient {
 	private readonly endpoint: string;
 	private readonly username: string | null;
@@ -59,7 +63,14 @@ export class RcloneClient {
 	private readonly timeoutMs: number;
 
 	constructor(config: RcloneClientConfig) {
-		this.endpoint = config.endpoint.replace(/\/+$/, '');
+		const endpoint = new URL(config.endpoint);
+		if (!['http:', 'https:'].includes(endpoint.protocol)) {
+			throw new Error('Only HTTP and HTTPS rclone RC endpoints are supported');
+		}
+		if (endpoint.username || endpoint.password) {
+			throw new Error('Rclone credentials must not be embedded in the endpoint URL');
+		}
+		this.endpoint = endpoint.toString().replace(/\/+$/, '');
 		this.username = config.username || null;
 		this.password = config.password || null;
 		this.remote = config.remote.replace(/:$/, '');
@@ -91,6 +102,15 @@ export class RcloneClient {
 	): Promise<string> {
 		const filename = basename(sourcePath);
 		const remoteDirectory = this.joinRemotePath(this.basePath, destinationDirectory);
+		const remotePath = this.joinRemotePath(remoteDirectory, filename);
+		const sourceStat = await stat(sourcePath);
+		if (!sourceStat.isFile())
+			throw new Error(`Archive source is not a regular file: ${sourcePath}`);
+		const sourceSize = sourceStat.size;
+		const existing = await this.statFile(remotePath);
+		if (existing) {
+			throw new Error(`Archive destination already exists: ${this.remote}:${remotePath}`);
+		}
 		const url = this.buildUrl('operations/uploadfile');
 		url.searchParams.set('fs', `${this.remote}:`);
 		url.searchParams.set('remote', remoteDirectory);
@@ -103,7 +123,6 @@ export class RcloneClient {
 		);
 		const suffix = Buffer.from(`\r\n--${boundary}--\r\n`);
 		const body = this.multipartStream(prefix, sourcePath, suffix, options.onProgress);
-		const sourceSize = (await stat(sourcePath)).size;
 		const headers = this.headers();
 		headers.set('Content-Type', `multipart/form-data; boundary=${boundary}`);
 		headers.set('Content-Length', String(prefix.length + sourceSize + suffix.length));
@@ -111,7 +130,8 @@ export class RcloneClient {
 		const response = await this.uploadRequest(url, headers, body, options.onRemoteStart);
 
 		if (!response.ok) throw await this.responseError(response);
-		return `${this.remote}:${this.joinRemotePath(remoteDirectory, filename)}`;
+		await this.verifyUploadedFile(remotePath, sourceSize);
+		return `${this.remote}:${remotePath}`;
 	}
 
 	async getStats(group: string): Promise<RcloneStats> {
@@ -134,6 +154,19 @@ export class RcloneClient {
 			10_000
 		);
 		return (response.list ?? []).filter((item) => !item.IsDir);
+	}
+
+	async statFile(remotePath: string): Promise<RcloneListItem | null> {
+		const response = await this.jsonRequest<RcloneStatResponse>('operations/stat', {
+			fs: `${this.remote}:`,
+			remote: this.normalizeRemotePath(remotePath),
+			opt: {
+				filesOnly: true,
+				noModTime: true,
+				noMimeType: true
+			}
+		});
+		return response.item ?? null;
 	}
 
 	private async *multipartStream(
@@ -220,7 +253,7 @@ export class RcloneClient {
 
 	private async fetchRc(command: string, url: URL, init: RequestInit): Promise<Response> {
 		try {
-			return await fetch(url, init);
+			return await fetch(url, { ...init, redirect: 'error' });
 		} catch (error) {
 			throw this.transportError(command, url, error);
 		}
@@ -279,5 +312,18 @@ export class RcloneClient {
 			// Keep HTTP status text when rclone did not return JSON.
 		}
 		return new Error(`rclone RC returned ${response.status}: ${detail}`);
+	}
+
+	private async verifyUploadedFile(remotePath: string, expectedSize: number): Promise<void> {
+		let lastSize: number | null = null;
+		for (let attempt = 0; attempt < 6; attempt += 1) {
+			const item = await this.statFile(remotePath);
+			if (item && !item.IsDir && item.Size === expectedSize) return;
+			lastSize = item?.Size ?? null;
+			if (attempt < 5) await new Promise((resolve) => setTimeout(resolve, 500));
+		}
+		throw new Error(
+			`Archive verification failed for ${this.remote}:${remotePath}: expected ${expectedSize} bytes, found ${lastSize ?? 'no file'}`
+		);
 	}
 }

@@ -3013,11 +3013,7 @@ export type NewMediaBrowserServerRecord = typeof mediaBrowserServers.$inferInser
 // ARCHIVER INTEGRATIONS
 // ============================================================================
 
-/**
- * Archive targets. The initial implementation supports rclone's RC API and is
- * intentionally modelled as a generic integration so more archivers can be
- * added without changing the library archive workflow.
- */
+/** Copy-only rclone archive targets. */
 export const archivers = sqliteTable('archivers', {
 	id: text('id')
 		.primaryKey()
@@ -3031,9 +3027,6 @@ export const archivers = sqliteTable('archivers', {
 	password: text('password'),
 	remote: text('remote').notNull(),
 	basePath: text('base_path').notNull().default(''),
-	mountedRootFolderId: text('mounted_root_folder_id').references(() => rootFolders.id, {
-		onDelete: 'set null'
-	}),
 	timeoutSeconds: integer('timeout_seconds').notNull().default(3600),
 	enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
 	lastTestedAt: text('last_tested_at'),

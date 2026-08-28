@@ -2686,12 +2686,19 @@ export class MonitoringSearchService {
 			cutoffDate.setHours(cutoffDate.getHours() - intervalHours);
 
 			// Query recently aired episodes without files
+			// airDate is stored date-only ("YYYY-MM-DD") while the cutoff is a full
+			// ISO datetime — a lexicographic gte() against the datetime excludes
+			// episodes aired ON the cutoff date (e.g. everything today after 01:00
+			// UTC for an hourly interval). Compare against the cutoff's DATE so the
+			// full lookback window is covered; slight over-inclusion is safe (the
+			// per-episode flow filters already-grabbed/failed episodes downstream).
+			const cutoffDateOnly = cutoffDate.toISOString().slice(0, 10);
 			const recentEpisodes = await db.query.episodes.findMany({
 				where: and(
 					eq(episodes.monitored, true),
 					eq(episodes.hasFile, false),
-					lte(episodes.airDate, new Date().toISOString()),
-					gte(episodes.airDate, cutoffDate.toISOString())
+					lte(episodes.airDate, new Date().toISOString().slice(0, 10)),
+					gte(episodes.airDate, cutoffDateOnly)
 				),
 				with: {
 					series: {

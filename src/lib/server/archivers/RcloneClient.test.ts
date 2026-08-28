@@ -41,12 +41,25 @@ describe('RcloneClient', () => {
 		let requestHeaders = new Headers();
 		const progress: number[] = [];
 		let remoteStarted = false;
+		let uploaded = false;
 		const server = createServer(async (request, response) => {
+			if (request.url?.startsWith('/operations/stat')) {
+				const chunks: Buffer[] = [];
+				for await (const chunk of request) chunks.push(Buffer.from(chunk));
+				response.setHeader('Content-Type', 'application/json');
+				response.end(
+					JSON.stringify({
+						item: uploaded ? { Path: 'Media/Movie/Movie.mkv', Size: 5, IsDir: false } : null
+					})
+				);
+				return;
+			}
 			requestUrl = `http://${request.headers.host}${request.url}`;
 			requestHeaders = new Headers(request.headers as Record<string, string>);
 			const chunks: Buffer[] = [];
 			for await (const chunk of request) chunks.push(Buffer.from(chunk));
 			requestBody = Buffer.concat(chunks);
+			uploaded = true;
 			response.setHeader('Content-Type', 'application/json');
 			response.end('{}');
 		});
@@ -81,6 +94,37 @@ describe('RcloneClient', () => {
 			await new Promise<void>((resolve, reject) =>
 				server.close((error) => (error ? reject(error) : resolve()))
 			);
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+
+	it('rejects non-HTTP endpoints and embedded endpoint credentials', () => {
+		expect(() => createClient('ftp://rclone:5572')).toThrow(
+			'Only HTTP and HTTPS rclone RC endpoints are supported'
+		);
+		expect(() => createClient('http://user:secret@rclone:5572')).toThrow(
+			'Rclone credentials must not be embedded in the endpoint URL'
+		);
+	});
+
+	it('fails closed when the destination already exists', async () => {
+		const directory = await mkdtemp(join(tmpdir(), 'cinephage-rclone-'));
+		const sourcePath = join(directory, 'Movie.mkv');
+		await writeFile(sourcePath, 'video');
+		vi.stubGlobal(
+			'fetch',
+			vi
+				.fn()
+				.mockResolvedValue(
+					Response.json({ item: { Path: 'Media/Movie/Movie.mkv', Size: 5, IsDir: false } })
+				)
+		);
+
+		try {
+			await expect(createClient().uploadFile(sourcePath, 'Movie')).rejects.toThrow(
+				'Archive destination already exists: archive:Media/Movie/Movie.mkv'
+			);
+		} finally {
 			await rm(directory, { recursive: true, force: true });
 		}
 	});

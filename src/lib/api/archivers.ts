@@ -30,7 +30,5 @@ export const getSeriesArchiveStatus = (seriesId: string) =>
 export interface ArchiveRequest {
 	archiverId: string;
 	fileIds: string[];
-	deleteSource: boolean;
 	createFolder: boolean;
-	updateLibraryPath: boolean;
 }

@@ -1,4 +1,5 @@
-import type { AnySQLiteColumn, AnySQLiteTable } from 'drizzle-orm/sqlite-core';
+import type { AnySQLiteColumn, AnySQLiteTable, SQLiteColumn } from 'drizzle-orm/sqlite-core';
+import { getTableColumns } from 'drizzle-orm';
 
 import { ValidationError } from '$lib/errors';
 import { logger } from '$lib/logging';
@@ -450,6 +451,12 @@ function extractSecrets(
 		};
 	}
 
+	// Dates must be treated as leaves: walking them with Object.entries (which
+	// yields nothing) silently reduces them to `{}` in the exported backup.
+	if (value instanceof Date) {
+		return { sanitized: value };
+	}
+
 	if (value && typeof value === 'object') {
 		const sanitizedObject: Record<string, unknown> = {};
 		const secretObject: Record<string, unknown> = {};
@@ -491,6 +498,41 @@ function deepMergeRecord<T>(base: T, secret: unknown): T {
 	}
 
 	return secret as T;
+}
+
+/**
+ * A backup file round-trips through JSON, which serializes Date values to
+ * ISO strings. Drizzle's timestamp-mode columns expect Date instances on
+ * write (`mapToDriverValue` calls `value.getTime()`), so restoring raw JSON
+ * rows fails with "value.getTime is not a function". Convert each value
+ * according to its drizzle column type before insert.
+ */
+function deserializeRestoredRow(
+	table: AnySQLiteTable,
+	row: Record<string, unknown>
+): Record<string, unknown> {
+	const columns = getTableColumns(table) as Record<string, SQLiteColumn>;
+	const converted: Record<string, unknown> = { ...row };
+
+	for (const [key, column] of Object.entries(columns)) {
+		const value = converted[key];
+		if (value === null || value === undefined) continue;
+		if (column.dataType === 'date') {
+			if (typeof value === 'string' || typeof value === 'number') {
+				const parsed = new Date(value);
+				if (!Number.isNaN(parsed.getTime())) {
+					converted[key] = parsed;
+					continue;
+				}
+			}
+			// Backups created before Date columns were preserved carry `{}` in
+			// their place. The original value is unrecoverable, so drop the key
+			// and let the schema default supply a fresh timestamp.
+			delete converted[key];
+		}
+	}
+
+	return converted;
 }
 
 function restoreExistingSensitiveValues<T>(incoming: T, existing: unknown, fieldName?: string): T {
@@ -746,9 +788,9 @@ export class ConfigurationBackupService {
 				const row = rawRow as Record<string, unknown>;
 				const recordKey = config.getRecordKey(row);
 				const restoredWithSecrets = deepMergeRecord(row, tableSecrets[recordKey]);
-				const restored = restoreExistingSensitiveValues(
-					restoredWithSecrets,
-					existingRowMap.get(recordKey)
+				const restored = deserializeRestoredRow(
+					config.table,
+					restoreExistingSensitiveValues(restoredWithSecrets, existingRowMap.get(recordKey))
 				);
 
 				// Debrid token portable transform: re-encrypt the plaintext token

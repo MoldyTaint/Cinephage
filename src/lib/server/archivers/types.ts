@@ -11,10 +11,6 @@ export interface ArchiverPublic {
 	hasPassword: boolean;
 	remote: string;
 	basePath: string;
-	mountedRootFolderId: string | null;
-	mountedRootFolderName: string | null;
-	mountedRootFolderPath: string | null;
-	mountedRootFolderMediaType: string | null;
 	timeoutSeconds: number;
 	enabled: boolean;
 	lastTestedAt: string | null;
@@ -37,16 +33,7 @@ export interface ArchiveFileResult {
 	size: number | null;
 }
 
-export interface ArchiverRootFolderDetails {
-	name: string | null;
-	path: string | null;
-	mediaType: string | null;
-}
-
-export function toArchiverPublic(
-	record: ArchiverRecord,
-	rootFolder?: ArchiverRootFolderDetails
-): ArchiverPublic {
+export function toArchiverPublic(record: ArchiverRecord): ArchiverPublic {
 	return {
 		id: record.id,
 		name: record.name,
@@ -56,10 +43,6 @@ export function toArchiverPublic(
 		hasPassword: Boolean(record.password),
 		remote: record.remote,
 		basePath: record.basePath,
-		mountedRootFolderId: record.mountedRootFolderId,
-		mountedRootFolderName: rootFolder?.name ?? null,
-		mountedRootFolderPath: rootFolder?.path ?? null,
-		mountedRootFolderMediaType: rootFolder?.mediaType ?? null,
 		timeoutSeconds: record.timeoutSeconds,
 		enabled: record.enabled,
 		lastTestedAt: record.lastTestedAt,

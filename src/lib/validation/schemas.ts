@@ -1157,10 +1157,21 @@ export type CinephageModuleUpdate = z.infer<typeof cinephageModuleUpdateSchema>;
 // Archiver schemas
 // ============================================================
 
+const rcloneEndpointSchema = z
+	.string()
+	.trim()
+	.url('Must be a valid URL')
+	.refine((value) => ['http:', 'https:'].includes(new URL(value).protocol), {
+		message: 'Only HTTP and HTTPS rclone RC endpoints are supported'
+	})
+	.refine((value) => !new URL(value).username && !new URL(value).password, {
+		message: 'Put rclone credentials in the username and password fields, not in the endpoint URL'
+	});
+
 export const archiverCreateSchema = z.object({
 	name: z.string().trim().min(1).max(100),
 	type: z.literal('rclone').default('rclone'),
-	endpoint: z.string().trim().url('Must be a valid URL'),
+	endpoint: rcloneEndpointSchema,
 	username: z.string().trim().max(200).optional().nullable(),
 	password: z.string().max(500).optional().nullable(),
 	remote: z
@@ -1169,7 +1180,6 @@ export const archiverCreateSchema = z.object({
 		.min(1, 'Remote is required')
 		.regex(/^[^/\\:]+:?$/, 'Use an rclone remote name such as archive:'),
 	basePath: z.string().trim().max(1000).default(''),
-	mountedRootFolderId: z.string().uuid().optional().nullable(),
 	timeoutSeconds: z.number().int().min(30).max(86400).default(3600),
 	enabled: z.boolean().default(true)
 });
@@ -1186,9 +1196,7 @@ export const archiverTestSchema = archiverCreateSchema.pick({
 export const archiveMediaSchema = z.object({
 	archiverId: z.string().uuid(),
 	fileIds: z.array(z.string().uuid()).min(1, 'Select at least one file'),
-	deleteSource: z.boolean().default(false),
-	createFolder: z.boolean().default(false),
-	updateLibraryPath: z.boolean().default(false)
+	createFolder: z.boolean().default(false)
 });
 
 export type ArchiverCreate = z.infer<typeof archiverCreateSchema>;

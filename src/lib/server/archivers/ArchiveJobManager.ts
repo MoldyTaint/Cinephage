@@ -36,6 +36,7 @@ export interface ArchiveJobStatus {
 
 interface InternalJob extends Omit<ArchiveJobStatus, 'progress' | 'rcloneStats'> {
 	archiverId: string;
+	targetKey: string;
 }
 
 interface ArchiveActivityContext {
@@ -49,9 +50,14 @@ interface ArchiveActivityContext {
 
 export class ArchiveJobManager {
 	private readonly jobs = new Map<string, InternalJob>();
+	private readonly activeTargets = new Set<string>();
 
 	start(mediaType: 'movie' | 'series', mediaId: string, input: ArchiveMediaInput): string {
 		this.prune();
+		const targetKey = `${mediaType}:${mediaId}:${input.archiverId}`;
+		if (this.activeTargets.has(targetKey)) {
+			throw new Error('This media is already being archived to the selected target');
+		}
 		const id = randomUUID();
 		const job: InternalJob = {
 			id,
@@ -60,6 +66,7 @@ export class ArchiveJobManager {
 			mediaType,
 			mediaId,
 			archiverId: input.archiverId,
+			targetKey,
 			group: `cinephage/archive/${id}`,
 			totalBytes: 0,
 			transferredBytes: 0,
@@ -79,12 +86,11 @@ export class ArchiveJobManager {
 				mediaType,
 				mediaId,
 				fileCount: input.fileIds.length,
-				deleteSource: input.deleteSource,
-				createFolder: input.createFolder,
-				updateLibraryPath: input.updateLibraryPath
+				createFolder: input.createFolder
 			},
 			'Archive job queued'
 		);
+		this.activeTargets.add(targetKey);
 		void this.run(job, input);
 		return id;
 	}
@@ -106,7 +112,7 @@ export class ArchiveJobManager {
 		const totalBytes = Math.max(job.totalBytes, rcloneStats?.totalBytes ?? 0);
 		const totalWorkBytes = totalBytes * 2;
 		const completedWorkBytes = job.transferredBytes + remoteBytes;
-		const { archiverId: _archiverId, ...publicJob } = job;
+		const { archiverId: _archiverId, targetKey: _targetKey, ...publicJob } = job;
 		return {
 			...publicJob,
 			transferredBytes,
@@ -124,15 +130,6 @@ export class ArchiveJobManager {
 	private async run(job: InternalJob, input: ArchiveMediaInput): Promise<void> {
 		job.state = 'running';
 		job.phase = 'sending';
-		try {
-			const archiver = await getArchiverManager().getRecord(job.archiverId);
-			if (input.deleteSource && archiver?.mountedRootFolderId) {
-				input.updateLibraryPath = true;
-				input.createFolder = true;
-			}
-		} catch {
-			// ArchiveService performs the authoritative archiver validation below.
-		}
 		const activity = await this.startActivity(job, input);
 		try {
 			const context = {
@@ -182,9 +179,7 @@ export class ArchiveJobManager {
 						totalBytes: job.totalBytes,
 						fileNames: job.results.map((result) => basename(result.destination)),
 						destinations: job.results.map((result) => result.destination),
-						deleteSource: input.deleteSource,
-						createFolder: input.createFolder,
-						updateLibraryPath: input.updateLibraryPath
+						createFolder: input.createFolder
 					});
 				} catch (historyError) {
 					logger.warn({ err: historyError, jobId: job.id }, 'Failed to complete archive history');
@@ -229,6 +224,7 @@ export class ArchiveJobManager {
 			);
 		} finally {
 			job.completedAt = new Date().toISOString();
+			this.activeTargets.delete(job.targetKey);
 			this.emitActivityRefresh();
 		}
 	}
@@ -279,9 +275,7 @@ export class ArchiveJobManager {
 							remote: context.remote,
 							basePath: context.basePath,
 							fileCount: input.fileIds.length,
-							deleteSource: input.deleteSource,
-							createFolder: input.createFolder,
-							updateLibraryPath: input.updateLibraryPath
+							createFolder: input.createFolder
 						}
 					})
 					.where(eq(taskHistory.id, historyId));

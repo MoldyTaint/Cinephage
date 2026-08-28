@@ -34,10 +34,9 @@
 	import { CheckSquare, FileEdit, RefreshCw, X } from 'lucide-svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
-	import { goto, afterNavigate, invalidateAll } from '$app/navigation';
-	import { browser } from '$app/environment';
+	import { goto } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
-	import { TV_RETURN_URL_KEY } from '$lib/utils/library-return-urls';
+	import { getSafeLibraryReturnTo } from '$lib/utils/libraryReturnNavigation';
 	import { createDynamicSSE } from '$lib/sse';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { createSubtitleProgress } from '$lib/stores/subtitleProgress.svelte';
@@ -60,12 +59,11 @@
 	const seasons = $derived(seasonsState ?? data.seasons);
 	const queueItems = $derived(queueItemsState ?? data.queueItems);
 
-	let tvBackHref = $state<string | null>(null);
-
-	afterNavigate(() => {
-		if (!browser) return;
-		const stored = localStorage.getItem(TV_RETURN_URL_KEY);
-		tvBackHref = stored && stored.split('?')[0] === resolvePath('/library/tv') ? stored : null;
+	// Back link target: the validated returnTo URL carries the exact filtered
+	// list state from the page the user navigated from (issue #515).
+	const tvBackHref = $derived.by(() => {
+		const validated = getSafeLibraryReturnTo(page.url.searchParams.get('returnTo'), '/library/tv');
+		return validated ? resolvePath(validated) : null;
 	});
 
 	function computeSeriesEpisodeStats(seasonList: PageData['seasons']) {
@@ -586,39 +584,8 @@
 		void goto(resolvePath(`/library/import?${query}`));
 	}
 
-	function handleArchived(fileIds: string[], sourcesDeleted: boolean, libraryPathUpdated: boolean) {
-		if (sourcesDeleted) {
-			const removed = new Set(fileIds);
-			const updatedSeasons = seasons.map((season) => {
-				const updatedEpisodes = season.episodes.map((episode) =>
-					episode.file && removed.has(episode.file.id)
-						? { ...episode, file: null, hasFile: false }
-						: episode
-				);
-				return {
-					...season,
-					episodes: updatedEpisodes,
-					episodeFileCount: updatedEpisodes.filter((episode) => episode.file !== null).length
-				};
-			});
-			seasonsState = updatedSeasons;
-			if (seriesState) {
-				const { totalEpisodes, totalFiles } = computeSeriesEpisodeStats(updatedSeasons);
-				seriesState = {
-					...seriesState,
-					episodeFileCount: totalFiles,
-					percentComplete: totalEpisodes > 0 ? Math.round((totalFiles / totalEpisodes) * 100) : 0
-				};
-			}
-		}
-		toasts.success(
-			libraryPathUpdated
-				? 'Files archived and library path updated'
-				: sourcesDeleted
-					? 'Files archived and local sources removed'
-					: 'Files archived successfully'
-		);
-		if (libraryPathUpdated) void invalidateAll();
+	function handleArchived() {
+		toasts.success('Files archived successfully');
 		void loadArchiveStatus(series.id);
 	}
 

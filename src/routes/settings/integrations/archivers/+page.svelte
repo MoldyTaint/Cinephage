@@ -27,7 +27,6 @@
 	let password = $state('');
 	let remote = $state('');
 	let basePath = $state('');
-	let mountedRootFolderId = $state('');
 	let timeoutSeconds = $state(3600);
 	let enabled = $state(true);
 
@@ -39,7 +38,6 @@
 		password = '';
 		remote = archiver?.remote ?? '';
 		basePath = archiver?.basePath ?? '';
-		mountedRootFolderId = archiver?.mountedRootFolderId ?? '';
 		timeoutSeconds = archiver?.timeoutSeconds ?? 3600;
 		enabled = archiver?.enabled ?? true;
 		error = null;
@@ -55,7 +53,6 @@
 			password: password || undefined,
 			remote,
 			basePath,
-			mountedRootFolderId: mountedRootFolderId || null,
 			timeoutSeconds,
 			enabled
 		};
@@ -139,11 +136,7 @@
 	{:else}
 		<div class="overflow-x-auto rounded-xl border border-base-content/10 bg-base-100">
 			<table class="table">
-				<thead
-					><tr
-						><th>Status</th><th>Name</th><th>Target</th><th>Mounted root</th><th>Endpoint</th><th
-						></th></tr
-					></thead
+				<thead><tr><th>Status</th><th>Name</th><th>Target</th><th>Endpoint</th><th></th></tr></thead
 				>
 				<tbody>
 					{#each data.archivers as archiver (archiver.id)}
@@ -161,12 +154,6 @@
 								<div class="text-xs font-normal text-base-content/50">Rclone</div></td
 							>
 							<td><code>{archiver.remote}:{archiver.basePath}</code></td>
-							<td>
-								{#if archiver.mountedRootFolderPath}
-									<div class="font-medium">{archiver.mountedRootFolderName}</div>
-									<code class="text-xs">{archiver.mountedRootFolderPath}</code>
-								{:else}<span class="text-base-content/40">Not configured</span>{/if}
-							</td>
 							<td class="max-w-xs truncate">{archiver.endpoint}</td>
 							<td
 								><div class="flex justify-end gap-1">
@@ -252,19 +239,6 @@
 					bind:value={basePath}
 					placeholder="Media/Archive"
 				/></label
-			>
-			<label class="form-control sm:col-span-2"
-				><span class="label-text mb-1">Mounted Cinephage root folder (optional)</span><select
-					class="select-bordered select"
-					bind:value={mountedRootFolderId}
-					><option value="">Do not update library paths</option
-					>{#each data.rootFolders as folder (folder.id)}<option value={folder.id}
-							>{folder.name} ({folder.mediaType === 'movie' ? 'Movies' : 'TV'}) — {folder.path}</option
-						>{/each}</select
-				><span class="mt-1 text-xs text-base-content/50"
-					>Select the root folder whose path mounts this exact rclone target and base directory.
-					Cinephage can then point archived media at the mounted copy.</span
-				></label
 			>
 			<label class="form-control"
 				><span class="label-text mb-1">Upload timeout (seconds)</span><input

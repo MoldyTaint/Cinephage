@@ -33,6 +33,7 @@ import { getMediaParseStem } from './media-utils.js';
 import { resolveTvEpisodeIdentifier, extractSeasonFromPath } from './tv-episode-resolver.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+import { canonicalizeArticleTitle, calculateMatchConfidence } from './title-matching.js';
 
 /**
  * Default match confidence threshold (0.0 - 1.0)
@@ -128,83 +129,24 @@ export class MediaMatcherService {
 	}
 
 	/**
-	 * Calculate string similarity using Levenshtein distance
-	 */
-	private calculateSimilarity(str1: string, str2: string): number {
-		const s1 = str1.toLowerCase().trim();
-		const s2 = str2.toLowerCase().trim();
-
-		if (s1 === s2) return 1;
-		if (s1.length === 0 || s2.length === 0) return 0;
-
-		// Create matrix
-		const matrix: number[][] = [];
-		for (let i = 0; i <= s1.length; i++) {
-			matrix[i] = [i];
-		}
-		for (let j = 0; j <= s2.length; j++) {
-			matrix[0][j] = j;
-		}
-
-		// Fill matrix
-		for (let i = 1; i <= s1.length; i++) {
-			for (let j = 1; j <= s2.length; j++) {
-				const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
-				matrix[i][j] = Math.min(
-					matrix[i - 1][j] + 1, // deletion
-					matrix[i][j - 1] + 1, // insertion
-					matrix[i - 1][j - 1] + cost // substitution
-				);
-			}
-		}
-
-		const distance = matrix[s1.length][s2.length];
-		const maxLength = Math.max(s1.length, s2.length);
-		return 1 - distance / maxLength;
-	}
-
-	/**
-	 * Calculate match confidence between parsed info and TMDB result
+	 * Calculate match confidence between parsed info and TMDB result.
+	 * Delegates to the shared title-matching primitives (kept in sync with
+	 * ManualImportService).
 	 */
 	private calculateMatchConfidence(
 		parsedTitle: string,
 		parsedYear: number | undefined,
 		tmdbTitle: string,
-		tmdbYear: number | undefined
+		tmdbYear: number | undefined,
+		tmdbOriginalTitle?: string
 	): number {
-		// Base score from title similarity
-		let titleScore = this.calculateSimilarity(parsedTitle, tmdbTitle);
-
-		// Boost if year matches exactly
-		if (parsedYear && tmdbYear && parsedYear === tmdbYear) {
-			titleScore = Math.min(1, titleScore + 0.2);
-		}
-		// Penalize if years are different (but both present)
-		else if (parsedYear && tmdbYear && parsedYear !== tmdbYear) {
-			// Allow 1 year difference (common for late releases)
-			if (Math.abs(parsedYear - tmdbYear) > 1) {
-				titleScore = titleScore * 0.7;
-			}
-		}
-
-		// Check for common title variations
-		const normalizedParsed = this.normalizeTitle(parsedTitle);
-		const normalizedTmdb = this.normalizeTitle(tmdbTitle);
-		if (normalizedParsed === normalizedTmdb) {
-			titleScore = Math.max(titleScore, 0.95);
-		}
-
-		return Math.round(titleScore * 100) / 100;
-	}
-
-	/**
-	 * Normalize title for comparison
-	 */
-	private normalizeTitle(title: string): string {
-		return title
-			.toLowerCase()
-			.replace(/^(the|an?)\s+/i, '') // Remove leading articles before stripping spaces
-			.replace(/[^a-z0-9]/g, '');
+		return calculateMatchConfidence(
+			parsedTitle,
+			parsedYear,
+			tmdbTitle,
+			tmdbYear,
+			tmdbOriginalTitle
+		);
 	}
 
 	private isUniqueTmdbConstraintError(error: unknown, tableName: 'movies' | 'series'): boolean {
@@ -335,7 +277,10 @@ export class MediaMatcherService {
 			// dominated by episode identifiers TMDB cannot match (#513).
 			if (mediaType === 'tv' && seriesCandidates.length > 0) {
 				for (const candidate of seriesCandidates) {
-					results = await tmdb.searchTv(candidate, undefined, true);
+					// Canonicalize inverted-article folder names ("Lion King, The")
+					// before both the TMDB query and confidence scoring.
+					const canonicalCandidate = canonicalizeArticleTitle(candidate);
+					results = await tmdb.searchTv(canonicalCandidate, undefined, true);
 					if (!results.results || results.results.length === 0) continue;
 
 					const matches: SuggestedMatch[] = results.results.slice(0, 5).map((result) => {
@@ -347,13 +292,19 @@ export class MediaMatcherService {
 							tmdbId: result.id,
 							title: resultTitle,
 							year: resultYear,
-							confidence: this.calculateMatchConfidence(candidate, year, resultTitle, resultYear)
+							confidence: this.calculateMatchConfidence(
+								canonicalCandidate,
+								year,
+								resultTitle,
+								resultYear,
+								result.original_title ?? result.original_name
+							)
 						};
 					});
 					matches.sort((a, b) => b.confidence - a.confidence);
 
 					logger.info(
-						{ filePath, seriesCandidate: candidate, candidates: matches.length },
+						{ filePath, seriesCandidate: canonicalCandidate, candidates: matches.length },
 						'[MediaMatcher] Matched via series directory name'
 					);
 					return matches;
@@ -363,10 +314,13 @@ export class MediaMatcherService {
 			// Priority 5: Fall back to filename-title search
 			// Use skipFilters=true to bypass global filters (min rating, vote count)
 			// so that all TMDB results are visible for matching
+			// Canonicalize inverted-article titles ("Lion King, The" → "The Lion
+			// King") before both the TMDB query and confidence scoring.
+			const canonicalTitle = canonicalizeArticleTitle(title);
 			if (mediaType === 'movie') {
-				results = await tmdb.searchMovies(title, year, true);
+				results = await tmdb.searchMovies(canonicalTitle, year, true);
 			} else {
-				results = await tmdb.searchTv(title, year, true);
+				results = await tmdb.searchTv(canonicalTitle, year, true);
 			}
 
 			if (!results.results || results.results.length === 0) {
@@ -383,7 +337,13 @@ export class MediaMatcherService {
 					tmdbId: result.id,
 					title: resultTitle,
 					year: resultYear,
-					confidence: this.calculateMatchConfidence(title, year, resultTitle, resultYear)
+					confidence: this.calculateMatchConfidence(
+						canonicalTitle,
+						year,
+						resultTitle,
+						resultYear,
+						result.original_title ?? result.original_name
+					)
 				};
 			});
 

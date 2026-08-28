@@ -1,28 +1,15 @@
-import { join } from 'node:path';
-import { unlink } from 'node:fs/promises';
+import { realpath } from 'node:fs/promises';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.js';
-import {
-	episodeFiles,
-	episodes,
-	movieFiles,
-	movies,
-	libraryRootFolders,
-	rootFolders,
-	seasons,
-	series
-} from '$lib/server/db/schema.js';
+import { episodeFiles, movieFiles, movies, rootFolders, series } from '$lib/server/db/schema.js';
 import type { ArchiveMediaInput } from '$lib/validation/schemas.js';
-import { resolvePathWithinRoot } from '$lib/server/filesystem/delete-helpers.js';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 import { getArchiverManager } from './ArchiverManager.js';
 import { RcloneClient } from './RcloneClient.js';
 import {
 	movieArchiveDirectory,
-	movieArchiveFilePath,
 	seasonArchiveDirectory,
-	seriesArchiveDirectory,
-	seriesArchiveFilePath
+	seriesArchiveDirectory
 } from './archivePaths.js';
 import type { ArchiveFileResult } from './types.js';
 
@@ -36,12 +23,6 @@ interface SourceFile {
 	mediaOriginalTitle: string | null;
 	mediaPreferOriginalTitle: boolean | null;
 	seasonNumber?: number;
-}
-
-interface MountedRootFolder {
-	id: string;
-	mediaType: string;
-	libraryId: string | null;
 }
 
 export interface ArchiveProgressContext {
@@ -83,28 +64,7 @@ export class ArchiveService {
 						preferOriginalTitle: files[0].mediaPreferOriginalTitle
 					})
 				: '';
-		const mountedRoot = await this.validatePathRewrite('movie', movieId, input, movieDirectory);
-		const results = await this.upload(files, input, progress, () => movieDirectory);
-		if (input.deleteSource) {
-			await this.removeSources(files);
-		}
-		if (input.updateLibraryPath && mountedRoot) {
-			this.updateMovieLocation(movieId, files, mountedRoot, movieDirectory);
-			libraryMediaEvents.emitMovieUpdated(movieId);
-		} else if (input.deleteSource) {
-			await db.delete(movieFiles).where(inArray(movieFiles.id, input.fileIds));
-			const [remaining] = await db
-				.select({ id: movieFiles.id })
-				.from(movieFiles)
-				.where(eq(movieFiles.movieId, movieId))
-				.limit(1);
-			await db
-				.update(movies)
-				.set({ hasFile: Boolean(remaining) })
-				.where(eq(movies.id, movieId));
-			libraryMediaEvents.emitMovieUpdated(movieId);
-		}
-		return results;
+		return this.upload(files, input, progress, () => movieDirectory);
 	}
 
 	async archiveSeries(
@@ -138,128 +98,11 @@ export class ArchiveService {
 						preferOriginalTitle: files[0].mediaPreferOriginalTitle
 					})
 				: '';
-		const mountedRoot = await this.validatePathRewrite('series', seriesId, input, seriesDirectory);
-		const results = await this.upload(files, input, progress, (file) =>
+		return this.upload(files, input, progress, (file) =>
 			seriesDirectory && file.seasonNumber !== undefined
 				? join(seriesDirectory, seasonArchiveDirectory(file.seasonNumber))
 				: ''
 		);
-		if (input.deleteSource) {
-			await this.removeSources(files);
-		}
-		if (input.updateLibraryPath && mountedRoot) {
-			this.updateSeriesLocation(seriesId, files, mountedRoot, seriesDirectory);
-			libraryMediaEvents.emitSeriesUpdated(seriesId);
-		} else if (input.deleteSource) {
-			await db.delete(episodeFiles).where(inArray(episodeFiles.id, input.fileIds));
-			await this.refreshSeriesFileFlags(seriesId);
-			libraryMediaEvents.emitLibraryDataChanged({
-				source: 'episode',
-				reason: 'episode-file-deleted',
-				entityId: seriesId
-			});
-		}
-		return results;
-	}
-
-	private async validatePathRewrite(
-		mediaType: 'movie' | 'series',
-		mediaId: string,
-		input: ArchiveMediaInput,
-		mediaDirectory: string
-	): Promise<MountedRootFolder | null> {
-		if (!input.updateLibraryPath) return null;
-		if (!input.createFolder || !mediaDirectory) {
-			throw new Error('Create metadata directories to update the library path');
-		}
-
-		const archiver = await getArchiverManager().getRecord(input.archiverId);
-		if (!archiver?.mountedRootFolderId) {
-			throw new Error('The selected archiver has no mounted Cinephage root folder');
-		}
-		const [mountedRoot] = await db
-			.select({
-				id: rootFolders.id,
-				mediaType: rootFolders.mediaType,
-				libraryId: libraryRootFolders.libraryId
-			})
-			.from(rootFolders)
-			.leftJoin(libraryRootFolders, eq(libraryRootFolders.rootFolderId, rootFolders.id))
-			.where(eq(rootFolders.id, archiver.mountedRootFolderId))
-			.limit(1);
-		if (!mountedRoot) throw new Error('The archiver mounted root folder no longer exists');
-		const expectedType = mediaType === 'movie' ? 'movie' : 'tv';
-		if (mountedRoot.mediaType !== expectedType) {
-			throw new Error(
-				`The mounted root folder is for ${mountedRoot.mediaType === 'movie' ? 'movies' : 'TV shows'}`
-			);
-		}
-
-		const trackedFiles =
-			mediaType === 'movie'
-				? await db
-						.select({ id: movieFiles.id })
-						.from(movieFiles)
-						.where(eq(movieFiles.movieId, mediaId))
-				: await db
-						.select({ id: episodeFiles.id })
-						.from(episodeFiles)
-						.where(eq(episodeFiles.seriesId, mediaId));
-		const selected = new Set(input.fileIds);
-		if (trackedFiles.some((file) => !selected.has(file.id))) {
-			throw new Error('Select every file for this library item before updating its path');
-		}
-		return mountedRoot;
-	}
-
-	private updateMovieLocation(
-		movieId: string,
-		files: SourceFile[],
-		mountedRoot: MountedRootFolder,
-		movieDirectory: string
-	): void {
-		db.transaction((tx) => {
-			tx.update(movies)
-				.set({
-					rootFolderId: mountedRoot.id,
-					path: movieDirectory,
-					...(mountedRoot.libraryId ? { libraryId: mountedRoot.libraryId } : {})
-				})
-				.where(eq(movies.id, movieId))
-				.run();
-			for (const file of files) {
-				tx.update(movieFiles)
-					.set({ relativePath: movieArchiveFilePath(file.relativePath) })
-					.where(eq(movieFiles.id, file.id))
-					.run();
-			}
-		});
-	}
-
-	private updateSeriesLocation(
-		seriesId: string,
-		files: SourceFile[],
-		mountedRoot: MountedRootFolder,
-		seriesDirectory: string
-	): void {
-		db.transaction((tx) => {
-			tx.update(series)
-				.set({
-					rootFolderId: mountedRoot.id,
-					path: seriesDirectory,
-					...(mountedRoot.libraryId ? { libraryId: mountedRoot.libraryId } : {})
-				})
-				.where(eq(series.id, seriesId))
-				.run();
-			for (const file of files) {
-				tx.update(episodeFiles)
-					.set({
-						relativePath: seriesArchiveFilePath(file.relativePath, file.seasonNumber ?? 0)
-					})
-					.where(eq(episodeFiles.id, file.id))
-					.run();
-			}
-		});
 	}
 
 	private async upload(
@@ -278,7 +121,7 @@ export class ArchiveService {
 		let completedBytes = 0;
 		for (const file of files) {
 			if (!file.rootPath) throw new Error(`No root folder is configured for ${file.relativePath}`);
-			const sourcePath = resolvePathWithinRoot(
+			const sourcePath = await this.resolveSourcePath(
 				file.rootPath,
 				join(file.parentPath, file.relativePath)
 			);
@@ -301,64 +144,30 @@ export class ArchiveService {
 		return results;
 	}
 
+	private async resolveSourcePath(rootPath: string, relativePath: string): Promise<string> {
+		const lexicalRoot = resolve(rootPath);
+		const lexicalSource = resolve(lexicalRoot, relativePath);
+		this.assertPathWithinRoot(lexicalRoot, lexicalSource, relativePath);
+		const [realRoot, realSource] = await Promise.all([
+			realpath(lexicalRoot),
+			realpath(lexicalSource)
+		]);
+		this.assertPathWithinRoot(realRoot, realSource, relativePath);
+		return realSource;
+	}
+
+	private assertPathWithinRoot(rootPath: string, sourcePath: string, displayPath: string): void {
+		const pathFromRoot = relative(rootPath, sourcePath);
+		if (pathFromRoot === '..' || pathFromRoot.startsWith(`..${sep}`) || isAbsolute(pathFromRoot)) {
+			throw new Error(`Archive source resolves outside its configured root folder: ${displayPath}`);
+		}
+	}
+
 	private assertAllFilesFound(files: SourceFile[], requestedIds: string[]): void {
 		const found = new Set(files.map((file) => file.id));
 		if (requestedIds.some((id) => !found.has(id))) {
 			throw new Error('One or more selected files were not found in this library item');
 		}
-	}
-
-	private async removeSources(files: SourceFile[]): Promise<void> {
-		// Upload every selected file before deleting any source, so a failed batch
-		// leaves the complete local set available for a safe retry.
-		for (const file of files) {
-			if (!file.rootPath) continue;
-			const sourcePath = resolvePathWithinRoot(
-				file.rootPath,
-				join(file.parentPath, file.relativePath)
-			);
-			await unlink(sourcePath);
-		}
-	}
-
-	private async refreshSeriesFileFlags(seriesId: string): Promise<void> {
-		const [allEpisodes, remainingFiles] = await Promise.all([
-			db
-				.select({ id: episodes.id, seasonId: episodes.seasonId })
-				.from(episodes)
-				.where(eq(episodes.seriesId, seriesId)),
-			db
-				.select({ episodeIds: episodeFiles.episodeIds })
-				.from(episodeFiles)
-				.where(eq(episodeFiles.seriesId, seriesId))
-		]);
-		const availableIds = new Set(remainingFiles.flatMap((file) => file.episodeIds ?? []));
-		for (const episode of allEpisodes) {
-			await db
-				.update(episodes)
-				.set({ hasFile: availableIds.has(episode.id) })
-				.where(eq(episodes.id, episode.id));
-		}
-
-		const seasonCounts = new Map<string, number>();
-		for (const episode of allEpisodes) {
-			if (episode.seasonId && availableIds.has(episode.id)) {
-				seasonCounts.set(episode.seasonId, (seasonCounts.get(episode.seasonId) ?? 0) + 1);
-			}
-		}
-		for (const [seasonId, count] of seasonCounts) {
-			await db.update(seasons).set({ episodeFileCount: count }).where(eq(seasons.id, seasonId));
-		}
-		const seasonIds = new Set(allEpisodes.map((episode) => episode.seasonId).filter(Boolean));
-		for (const seasonId of seasonIds) {
-			if (seasonId && !seasonCounts.has(seasonId)) {
-				await db.update(seasons).set({ episodeFileCount: 0 }).where(eq(seasons.id, seasonId));
-			}
-		}
-		await db
-			.update(series)
-			.set({ episodeFileCount: availableIds.size })
-			.where(eq(series.id, seriesId));
 	}
 }
 

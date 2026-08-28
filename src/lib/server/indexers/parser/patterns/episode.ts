@@ -11,6 +11,18 @@
 
 import type { EpisodeInfo } from '../types.js';
 
+interface EpisodePattern {
+	pattern: RegExp;
+	extract: (match: RegExpMatchArray) => Partial<EpisodeInfo>;
+	/**
+	 * Word-based "Season N" markers are ambiguous: movie titles like
+	 * "Open Season 3" contain the same text as a TV season pack. When the
+	 * caller knows the search targets a movie, these patterns are skipped so
+	 * sequel numbers are not mistaken for season markers.
+	 */
+	skipInMovieMode?: boolean;
+}
+
 interface EpisodeMatch {
 	info: EpisodeInfo;
 	matchedText: string;
@@ -29,7 +41,12 @@ function inferCompleteFromEpisodeRange(
 	totalEpisodes?: number
 ): Partial<EpisodeInfo> {
 	const COMPLETE_EPISODE_THRESHOLD = 70;
-	const includesFullRange = totalEpisodes ? endEpisode === totalEpisodes : true;
+	// "S01E01-E80" with no stated total is genuinely ambiguous: real single seasons
+	// of long-form shows (anime, anthologies) legitimately have 70+ episodes, and
+	// flagging them as a complete series causes the season filter to reject their
+	// own season packs. Completeness is only inferable when the release itself
+	// states the total ("S01E01-E12 of 12").
+	const includesFullRange = totalEpisodes !== undefined && endEpisode === totalEpisodes;
 	const largeEpisodeSpan =
 		startEpisode === 1 && endEpisode >= COMPLETE_EPISODE_THRESHOLD && includesFullRange;
 
@@ -86,10 +103,7 @@ function extractExplicitEpisodeRange(match: RegExpMatchArray): Partial<EpisodeIn
 /**
  * Episode patterns ordered by specificity (most specific first)
  */
-const EPISODE_PATTERNS: Array<{
-	pattern: RegExp;
-	extract: (match: RegExpMatchArray) => Partial<EpisodeInfo>;
-}> = [
+const EPISODE_PATTERNS: EpisodePattern[] = [
 	// Multi-season range with explicit episode notation:
 	// "S01E01-S08E99"
 	// When both sides share the same season ("s01e25 - s01e26"), this is an
@@ -190,6 +204,7 @@ const EPISODE_PATTERNS: Array<{
 	{
 		pattern:
 			/\bSeasons?[\s:._-]*(\d{1,2})\s*(?:[-–—]|to|through|thru)\s*(\d{1,2})(?:\s*(?:of|\/)\s*\d{1,2})?\b/i,
+		skipInMovieMode: true,
 		extract: (match) => {
 			const startSeason = parseInt(match[1], 10);
 			const endSeason = parseInt(match[2], 10);
@@ -205,6 +220,7 @@ const EPISODE_PATTERNS: Array<{
 	},
 	{
 		pattern: /Сезоны?[\s:._-]*(\d{1,2})\s*(?:[-–—]|до)\s*(\d{1,2})(?:\s*(?:из|of|\/)\s*\d{1,2})?/i,
+		skipInMovieMode: true,
 		extract: (match) => {
 			const startSeason = parseInt(match[1], 10);
 			const endSeason = parseInt(match[2], 10);
@@ -266,6 +282,7 @@ const EPISODE_PATTERNS: Array<{
 	// "Season: 1 of 1" style marker (single-season complete series)
 	{
 		pattern: /\bSeason[\s:._-]*(\d{1,2})\s*(?:of|\/)\s*(\d{1,2})\b/i,
+		skipInMovieMode: true,
 		extract: (match) => {
 			const season = parseInt(match[1], 10);
 			const totalSeasons = parseInt(match[2], 10);
@@ -282,6 +299,7 @@ const EPISODE_PATTERNS: Array<{
 	{
 		pattern:
 			/\bSeason[\s:._-]*(\d{1,2})\b[\s/|,-]*Episodes?[\s:._-]*(\d{1,3})(?:\s*[-–]\s*(\d{1,3}))?(?:\s*(?:of|\/)\s*\d{1,3})?/i,
+		skipInMovieMode: true,
 		extract: (match) => {
 			const season = parseInt(match[1], 10);
 			const startEpisode = parseInt(match[2], 10);
@@ -400,6 +418,26 @@ const EPISODE_PATTERNS: Array<{
 	// Season pack patterns
 	{
 		pattern: /\bSeason[\s._-]?(\d{1,2})\b(?![\s._-]?E)/i,
+		skipInMovieMode: true,
+		extract: (match) => ({
+			season: parseInt(match[1], 10),
+			isSeasonPack: true
+		})
+	},
+	{
+		// Russian season+episode: "Сезон 1 Серия 5" (must precede the bare pack form)
+		pattern: /Сезон[\s:._-]*(\d{1,2})\b[\s,.:|_-]*Серия[\s:._-]*(\d{1,3})\b/i,
+		skipInMovieMode: true,
+		extract: (match) => ({
+			season: parseInt(match[1], 10),
+			episodes: [parseInt(match[2], 10)],
+			isSeasonPack: false
+		})
+	},
+	{
+		// Russian single-season pack: "Сезон 2" (common on RuTracker/Kinozal)
+		pattern: /Сезон[\s:._-]*(\d{1,2})\b/i,
+		skipInMovieMode: true,
 		extract: (match) => ({
 			season: parseInt(match[1], 10),
 			isSeasonPack: true
@@ -417,6 +455,7 @@ const EPISODE_PATTERNS: Array<{
 	// Must have valid month (01-12) and day (01-31) to avoid matching year+resolution
 	{
 		pattern: /\b(20\d{2})[\s._-](0[1-9]|1[0-2])[\s._-](0[1-9]|[12]\d|3[01])\b/,
+		skipInMovieMode: true,
 		extract: (match) => ({
 			isDaily: true,
 			airDate: `${match[1]}-${match[2]}-${match[3]}`
@@ -427,6 +466,7 @@ const EPISODE_PATTERNS: Array<{
 	// [045] - number in square brackets (NOT resolution like [1080p])
 	{
 		pattern: /\[(\d{2,4})\](?!\s*p)/i,
+		skipInMovieMode: true,
 		extract: (match) => ({
 			absoluteEpisode: parseInt(match[1], 10)
 		})
@@ -434,6 +474,7 @@ const EPISODE_PATTERNS: Array<{
 	// - 045 or - 01v2 - anime style with dashes around number, optional version suffix
 	{
 		pattern: /\s-\s(\d{2,4})(?:v\d+)?(?=\s|$)/,
+		skipInMovieMode: true,
 		extract: (match) => ({
 			absoluteEpisode: parseInt(match[1], 10)
 		})
@@ -447,6 +488,7 @@ const EPISODE_PATTERNS: Array<{
 	},
 	{
 		pattern: /\bEpisode[\s._-]?(\d{1,4})\b/i,
+		skipInMovieMode: true,
 		extract: (match) => ({
 			absoluteEpisode: parseInt(match[1], 10)
 		})
@@ -459,8 +501,14 @@ const EPISODE_PATTERNS: Array<{
  * @param title - The release title to parse
  * @returns Episode match info or null if not a TV release
  */
-export function extractEpisode(title: string): EpisodeMatch | null {
-	for (const { pattern, extract } of EPISODE_PATTERNS) {
+export function extractEpisode(
+	title: string,
+	opts: { movieMode?: boolean } = {}
+): EpisodeMatch | null {
+	const patterns = opts.movieMode
+		? EPISODE_PATTERNS.filter((p) => !p.skipInMovieMode)
+		: EPISODE_PATTERNS;
+	for (const { pattern, extract } of patterns) {
 		const match = title.match(pattern);
 		if (match) {
 			const extracted = extract(match);

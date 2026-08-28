@@ -1043,3 +1043,76 @@ describe('ReleaseParser', () => {
 		});
 	});
 });
+
+describe('parseRelease movie mode (context-aware parsing)', () => {
+	it('does not strip Season N from movie titles in movie mode', () => {
+		const p = parseRelease('Open Season 3 (2010) 1080p bluray x264', { mode: 'movie' });
+		expect(p.cleanTitle).toBe('Open Season 3');
+		expect(p.year).toBe(2010);
+		expect(p.episode).toBeUndefined();
+	});
+
+	it('still detects SxxExx as TV evidence in movie mode', () => {
+		const p = parseRelease('Some Movie S01E03 1080p WEBRip', { mode: 'movie' });
+		expect(p.episode?.season).toBe(1);
+		expect(p.episode?.episodes).toContain(3);
+	});
+
+	it('default (auto) mode keeps existing season-pack behavior', () => {
+		const p = parseRelease('Open Season 3 (2010) 1080p bluray x264');
+		expect(p.cleanTitle).toBe('Open');
+		expect(p.episode?.season).toBe(3);
+		expect(p.episode?.isSeasonPack).toBe(true);
+	});
+});
+
+describe('parseRelease year extraction (number-titled movies)', () => {
+	it('takes the release year, not the title number: "1917 2019"', () => {
+		expect(parseRelease('1917 2019 1080p BluRay x264').year).toBe(2019);
+	});
+	it('prefers the parenthesized year: "2001 A Space Odyssey (1968)"', () => {
+		const p = parseRelease('2001 A Space Odyssey (1968) 1080p BluRay');
+		expect(p.year).toBe(1968);
+		expect(p.cleanTitle).toContain('Space Odyssey');
+	});
+	it('extracts year for "Blade Runner 2049 (2017)"', () => {
+		expect(parseRelease('Blade Runner 2049 (2017) 1080p BluRay').year).toBe(2017);
+	});
+	it('plain releases still work: "Open Season 3 (2010)"', () => {
+		expect(parseRelease('Open Season 3 (2010) 1080p bluray x264').year).toBe(2010);
+	});
+});
+
+describe('parseRelease movie mode skips ambiguous absolute-episode patterns', () => {
+	it('does not treat "Movie - 2010" as anime episode 2010', () => {
+		const p = parseRelease('Blade Runner - 2049 2017 1080p BluRay x264', { mode: 'movie' });
+		expect(p.episode).toBeUndefined();
+		expect(p.year).toBe(2017);
+	});
+	it('does not treat "[2019]" as an absolute episode', () => {
+		const p = parseRelease('Movie Name [2019] BDRip 1080p', { mode: 'movie' });
+		expect(p.episode).toBeUndefined();
+	});
+	it('does not treat "Episode 4" as TV in movie mode (Star Wars)', () => {
+		const p = parseRelease('Star Wars Episode 4 A New Hope 1977 1080p BluRay', { mode: 'movie' });
+		expect(p.episode).toBeUndefined();
+		expect(p.year).toBe(1977);
+	});
+	it('does not treat "2024.01.15" as a daily show in movie mode', () => {
+		const p = parseRelease('Some.Concert.2024.01.15.1080p.BluRay.x264', { mode: 'movie' });
+		expect(p.episode?.isDaily).toBeFalsy();
+	});
+});
+
+describe('parseRelease Cyrillic season patterns', () => {
+	it('parses a Russian single-season pack: "Сезон 2"', () => {
+		const p = parseRelease('Ирония судьбы Сезон 2 1080p WEB-DL');
+		expect(p.episode?.season).toBe(2);
+		expect(p.episode?.isSeasonPack).toBe(true);
+	});
+	it('parses Russian season+episode: "Сезон 1 Серия 5"', () => {
+		const p = parseRelease('Кухня Сезон 1 Серия 5 1080p WEB-DL');
+		expect(p.episode?.season).toBe(1);
+		expect(p.episode?.episodes).toContain(5);
+	});
+});

@@ -1,29 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { asc, eq } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.js';
-import { archivers, rootFolders, type ArchiverRecord } from '$lib/server/db/schema.js';
+import { archivers, type ArchiverRecord } from '$lib/server/db/schema.js';
 import type { ArchiverCreate, ArchiverTest, ArchiverUpdate } from '$lib/validation/schemas.js';
 import { RcloneClient } from './RcloneClient.js';
 import { toArchiverPublic, type ArchiverPublic, type ArchiverTestResult } from './types.js';
 
 export class ArchiverManager {
 	async list(enabledOnly = false): Promise<ArchiverPublic[]> {
-		const query = db
-			.select({
-				archiver: archivers,
-				rootFolder: {
-					name: rootFolders.name,
-					path: rootFolders.path,
-					mediaType: rootFolders.mediaType
-				}
-			})
-			.from(archivers)
-			.leftJoin(rootFolders, eq(archivers.mountedRootFolderId, rootFolders.id))
-			.orderBy(asc(archivers.name));
+		const query = db.select().from(archivers).orderBy(asc(archivers.name));
 		const rows = enabledOnly ? await query.where(eq(archivers.enabled, true)) : await query;
-		return rows.map(({ archiver, rootFolder }) =>
-			toArchiverPublic(archiver, rootFolder ?? undefined)
-		);
+		return rows.map(toArchiverPublic);
 	}
 
 	async getRecord(id: string): Promise<ArchiverRecord | null> {
@@ -32,7 +19,6 @@ export class ArchiverManager {
 	}
 
 	async create(input: ArchiverCreate): Promise<ArchiverPublic> {
-		await this.assertMountedRootFolderExists(input.mountedRootFolderId);
 		const now = new Date().toISOString();
 		const [record] = await db
 			.insert(archivers)
@@ -48,7 +34,6 @@ export class ArchiverManager {
 	}
 
 	async update(id: string, input: ArchiverUpdate): Promise<ArchiverPublic | null> {
-		await this.assertMountedRootFolderExists(input.mountedRootFolderId);
 		const updates = Object.fromEntries(
 			Object.entries(input).filter(([, value]) => value !== undefined)
 		);
@@ -91,30 +76,8 @@ export class ArchiverManager {
 	}
 
 	private async getPublic(id: string): Promise<ArchiverPublic | null> {
-		const [row] = await db
-			.select({
-				archiver: archivers,
-				rootFolder: {
-					name: rootFolders.name,
-					path: rootFolders.path,
-					mediaType: rootFolders.mediaType
-				}
-			})
-			.from(archivers)
-			.leftJoin(rootFolders, eq(archivers.mountedRootFolderId, rootFolders.id))
-			.where(eq(archivers.id, id))
-			.limit(1);
-		return row ? toArchiverPublic(row.archiver, row.rootFolder ?? undefined) : null;
-	}
-
-	private async assertMountedRootFolderExists(id: string | null | undefined): Promise<void> {
-		if (!id) return;
-		const [folder] = await db
-			.select({ id: rootFolders.id })
-			.from(rootFolders)
-			.where(eq(rootFolders.id, id))
-			.limit(1);
-		if (!folder) throw new Error('Mounted root folder not found');
+		const [record] = await db.select().from(archivers).where(eq(archivers.id, id)).limit(1);
+		return record ? toArchiverPublic(record) : null;
 	}
 }
 

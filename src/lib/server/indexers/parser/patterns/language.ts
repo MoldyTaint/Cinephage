@@ -18,6 +18,16 @@ const LANGUAGE_PATTERNS: Array<{ pattern: RegExp; code: string }> = [
 	{ pattern: /\bmulti(?:[\s._-]?(?:lang|language|audio|sub)?)?\b/i, code: 'multi' },
 	{ pattern: /\bdual[\s._-]?audio\b/i, code: 'multi' },
 
+	// RuTracker-style "original audio" marker: releases named like
+	// "3 XX + Original + RUS" carry the original (untranslated) audio track.
+	// Sonarr added the same token in 2025 (Sonarr#7372). It is recorded as its
+	// own pseudo-code rather than a specific language: the original audio of a
+	// release can be any language, and forcing 'en' here would mislabel
+	// e.g. French originals on Russian-tracker releases. Requires the +/-/|
+	// separator context so movie titles like "Original Sin" are not matched.
+	{ pattern: /(?:[+|]\s*original\b|\boriginal\s*[+|])/i, code: 'orig' },
+	{ pattern: /(?:[+|]\s*оригинал\b|оригинал\b\s*[+|])/i, code: 'orig' },
+
 	// English variants
 	{ pattern: /\benglish\b/i, code: 'en' },
 	{ pattern: /\beng\b/i, code: 'en' },

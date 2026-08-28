@@ -34,6 +34,11 @@ import { getLibraryEntityService } from '$lib/server/library/LibraryEntityServic
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { getMediaParseStem } from '$lib/server/library/media-utils.js';
 import {
+	canonicalizeArticleTitle,
+	calculateMatchConfidence,
+	normalizeTitleForMatch
+} from './title-matching.js';
+import {
 	extractSeasonFromPath,
 	resolveTvEpisodeIdentifier
 } from '$lib/server/library/tv-episode-resolver.js';
@@ -406,10 +411,10 @@ export class ManualImportService {
 			return;
 		}
 
-		const normalizedCandidate = this.normalizeTitle(trimmed);
+		const normalizedCandidate = normalizeTitleForMatch(trimmed);
 		if (!normalizedCandidate) return;
 		const alreadyIncluded = target.some(
-			(existing) => this.normalizeTitle(existing) === normalizedCandidate
+			(existing) => normalizeTitleForMatch(existing) === normalizedCandidate
 		);
 		if (alreadyIncluded) return;
 		target.push(trimmed);
@@ -1934,14 +1939,17 @@ export class ManualImportService {
 			const aggregatedMatches = new Map<number, SuggestedMatch>();
 
 			for (const candidate of candidates) {
-				const cacheKey = `${mediaType}:${year ?? 'na'}:${candidate.toLowerCase()}`;
+				// Canonicalize inverted-article candidates ("Lion King, The") so
+				// the TMDB query and confidence scoring use the canonical form.
+				const canonicalCandidate = canonicalizeArticleTitle(candidate);
+				const cacheKey = `${mediaType}:${year ?? 'na'}:${canonicalCandidate.toLowerCase()}`;
 				let cachedMatches = matchCache?.get(cacheKey);
 
 				if (!cachedMatches) {
 					const results =
 						mediaType === 'movie'
-							? await tmdb.searchMovies(candidate, year, true)
-							: await tmdb.searchTv(candidate, year, true);
+							? await tmdb.searchMovies(canonicalCandidate, year, true)
+							: await tmdb.searchTv(canonicalCandidate, year, true);
 
 					cachedMatches =
 						results.results?.slice(0, 10).map((result) => {
@@ -1953,7 +1961,13 @@ export class ManualImportService {
 								tmdbId: result.id,
 								title: resultTitle,
 								year: resultYear,
-								confidence: this.calculateMatchConfidence(candidate, year, resultTitle, resultYear),
+								confidence: this.calculateMatchConfidence(
+									canonicalCandidate,
+									year,
+									resultTitle,
+									resultYear,
+									result.original_title ?? result.original_name
+								),
 								mediaType,
 								isAnime: this.classifyTmdbResultAnime(result, mediaType)
 							} satisfies SuggestedMatch;
@@ -2150,61 +2164,18 @@ export class ManualImportService {
 		parsedTitle: string,
 		parsedYear: number | undefined,
 		tmdbTitle: string,
-		tmdbYear: number | undefined
+		tmdbYear: number | undefined,
+		tmdbOriginalTitle?: string
 	): number {
-		let score = this.calculateSimilarity(parsedTitle, tmdbTitle);
-
-		if (parsedYear && tmdbYear && parsedYear === tmdbYear) {
-			score = Math.min(1, score + 0.2);
-		} else if (parsedYear && tmdbYear && Math.abs(parsedYear - tmdbYear) > 1) {
-			score = score * 0.7;
-		}
-
-		const normalizedParsed = this.normalizeTitle(parsedTitle);
-		const normalizedTmdb = this.normalizeTitle(tmdbTitle);
-		if (normalizedParsed === normalizedTmdb) {
-			score = Math.max(score, 0.95);
-		}
-
-		return Math.round(score * 100) / 100;
-	}
-
-	private calculateSimilarity(a: string, b: string): number {
-		const s1 = a.toLowerCase().trim();
-		const s2 = b.toLowerCase().trim();
-
-		if (s1 === s2) return 1;
-		if (!s1 || !s2) return 0;
-
-		const matrix: number[][] = [];
-		for (let i = 0; i <= s1.length; i++) {
-			matrix[i] = [i];
-		}
-		for (let j = 0; j <= s2.length; j++) {
-			matrix[0][j] = j;
-		}
-
-		for (let i = 1; i <= s1.length; i++) {
-			for (let j = 1; j <= s2.length; j++) {
-				const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
-				matrix[i][j] = Math.min(
-					matrix[i - 1][j] + 1,
-					matrix[i][j - 1] + 1,
-					matrix[i - 1][j - 1] + cost
-				);
-			}
-		}
-
-		const distance = matrix[s1.length][s2.length];
-		const maxLength = Math.max(s1.length, s2.length);
-		return 1 - distance / maxLength;
-	}
-
-	private normalizeTitle(title: string): string {
-		return title
-			.toLowerCase()
-			.replace(/^(the|an?)\s+/i, '') // Remove leading articles before stripping spaces
-			.replace(/[^a-z0-9]/g, '');
+		// Delegates to the shared title-matching primitives (kept in sync with
+		// MediaMatcherService).
+		return calculateMatchConfidence(
+			parsedTitle,
+			parsedYear,
+			tmdbTitle,
+			tmdbYear,
+			tmdbOriginalTitle
+		);
 	}
 }
 

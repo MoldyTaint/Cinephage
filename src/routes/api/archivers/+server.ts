@@ -5,11 +5,13 @@ import { parseBody } from '$lib/server/api/validate.js';
 import { getArchiverManager } from '$lib/server/archivers/index.js';
 import { archiverCreateSchema } from '$lib/validation/schemas.js';
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
 	const manager = getArchiverManager();
 	return json({
 		success: true,
-		archivers: await manager.list(url.searchParams.get('enabled') === 'true')
+		archivers: await manager.list(event.url.searchParams.get('enabled') === 'true')
 	});
 };
 

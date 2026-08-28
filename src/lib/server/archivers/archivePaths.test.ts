@@ -1,12 +1,9 @@
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
 	archiveMediaTitle,
 	movieArchiveDirectory,
-	movieArchiveFilePath,
 	safeArchiveSegment,
-	seasonArchiveDirectory,
-	seriesArchiveFilePath
+	seasonArchiveDirectory
 } from './archivePaths.js';
 
 describe('archive paths', () => {
@@ -38,10 +35,5 @@ describe('archive paths', () => {
 
 	it('provides a safe fallback for invalid titles', () => {
 		expect(safeArchiveSegment('...')).toBe('archive');
-	});
-
-	it('maps archived files relative to their metadata directories', () => {
-		expect(movieArchiveFilePath('old/movie.mkv')).toBe('movie.mkv');
-		expect(seriesArchiveFilePath('old/episode.mkv', 7)).toBe(join('Season 07', 'episode.mkv'));
 	});
 });

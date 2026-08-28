@@ -2,10 +2,11 @@ import { basename, extname } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.js';
 import { archivers, episodeFiles, movieFiles, movies, series } from '$lib/server/db/schema.js';
-import { RcloneClient } from './RcloneClient.js';
+import { RcloneClient, type RcloneListItem } from './RcloneClient.js';
 import {
 	movieArchiveDirectory,
 	safeArchiveSegment,
+	seasonArchiveDirectory,
 	seriesArchiveDirectory
 } from './archivePaths.js';
 
@@ -31,6 +32,8 @@ export interface MediaArchiveStatus {
 interface MediaFileReference {
 	id: string;
 	relativePath: string;
+	size: number | null;
+	archivePath: string;
 }
 
 interface CandidateDirectory {
@@ -51,7 +54,7 @@ export class ArchiveStatusService {
 			.limit(1);
 		if (!movie) return null;
 		const files = await db
-			.select({ id: movieFiles.id, relativePath: movieFiles.relativePath })
+			.select({ id: movieFiles.id, relativePath: movieFiles.relativePath, size: movieFiles.size })
 			.from(movieFiles)
 			.where(eq(movieFiles.movieId, movieId));
 		return this.inspect(
@@ -60,7 +63,7 @@ export class ArchiveStatusService {
 				path: this.legacyFileDirectory(file.relativePath),
 				fileId: file.id
 			})),
-			files
+			files.map((file) => ({ ...file, archivePath: basename(file.relativePath) }))
 		);
 	}
 
@@ -76,10 +79,24 @@ export class ArchiveStatusService {
 			.limit(1);
 		if (!show) return null;
 		const files = await db
-			.select({ id: episodeFiles.id, relativePath: episodeFiles.relativePath })
+			.select({
+				id: episodeFiles.id,
+				relativePath: episodeFiles.relativePath,
+				size: episodeFiles.size,
+				seasonNumber: episodeFiles.seasonNumber
+			})
 			.from(episodeFiles)
 			.where(eq(episodeFiles.seriesId, seriesId));
-		return this.inspect(seriesArchiveDirectory(show), [], files);
+		return this.inspect(
+			seriesArchiveDirectory(show),
+			[],
+			files.map((file) => ({
+				id: file.id,
+				relativePath: file.relativePath,
+				size: file.size,
+				archivePath: `${seasonArchiveDirectory(file.seasonNumber)}/${basename(file.relativePath)}`
+			}))
+		);
 	}
 
 	private async inspect(
@@ -93,15 +110,16 @@ export class ArchiveStatusService {
 			...legacyDirectories.filter((candidate) => candidate.path !== mediaDirectory)
 		];
 		const idsByFileName = new Map<string, string[]>();
+		const filesByArchivePath = new Map<string, MediaFileReference[]>();
 		for (const file of mediaFiles) {
 			const fileName = basename(file.relativePath);
 			idsByFileName.set(fileName, [...(idsByFileName.get(fileName) ?? []), file.id]);
+			const archivePath = this.normalizeRemotePath(file.archivePath);
+			filesByArchivePath.set(archivePath, [...(filesByArchivePath.get(archivePath) ?? []), file]);
 		}
 		const results = await Promise.all(
 			records.map(async (record): Promise<ArchivePresence> => {
 				const client = new RcloneClient(record);
-				let fileCount = 0;
-				let totalBytes = 0;
 				let firstError: string | null = null;
 				const matchedPaths: string[] = [];
 				const archivedFileIds = new Set<string>();
@@ -109,12 +127,15 @@ export class ArchiveStatusService {
 					try {
 						const files = await client.listFiles(directory.path);
 						if (files.length > 0) matchedPaths.push(directory.path);
-						fileCount += files.length;
-						totalBytes += files.reduce((total, file) => total + (file.Size ?? 0), 0);
-						if (directory.fileId && files.length > 0) archivedFileIds.add(directory.fileId);
 						for (const file of files) {
-							for (const id of idsByFileName.get(file.Name ?? basename(file.Path ?? '')) ?? []) {
-								archivedFileIds.add(id);
+							if (directory.fileId) {
+								const expected = mediaFiles.find((candidate) => candidate.id === directory.fileId);
+								if (expected && this.sizeMatches(expected, file)) archivedFileIds.add(expected.id);
+								continue;
+							}
+							const path = this.normalizeRemotePath(file.Path ?? file.Name ?? '');
+							for (const expected of filesByArchivePath.get(path) ?? []) {
+								if (this.sizeMatches(expected, file)) archivedFileIds.add(expected.id);
 							}
 						}
 					} catch (error) {
@@ -132,11 +153,10 @@ export class ArchiveStatusService {
 							wantedNames.has(file.Name ?? basename(file.Path ?? ''))
 						);
 						if (rootMatches.length > 0) matchedPaths.push('');
-						fileCount += rootMatches.length;
-						totalBytes += rootMatches.reduce((total, file) => total + (file.Size ?? 0), 0);
 						for (const file of rootMatches) {
 							for (const id of idsByFileName.get(file.Name ?? basename(file.Path ?? '')) ?? []) {
-								archivedFileIds.add(id);
+								const expected = mediaFiles.find((candidate) => candidate.id === id);
+								if (expected && this.sizeMatches(expected, file)) archivedFileIds.add(id);
 							}
 						}
 					} catch (error) {
@@ -144,14 +164,15 @@ export class ArchiveStatusService {
 						if (firstError === null) firstError = message;
 					}
 				}
+				const matchedFiles = mediaFiles.filter((file) => archivedFileIds.has(file.id));
 				return {
 					archiverId: record.id,
 					archiverName: record.name,
 					path: mediaDirectory,
 					matchedPaths,
 					archivedFileIds: [...archivedFileIds],
-					fileCount,
-					totalBytes,
+					fileCount: matchedFiles.length,
+					totalBytes: matchedFiles.reduce((total, file) => total + (file.size ?? 0), 0),
 					error: firstError
 				};
 			})
@@ -168,6 +189,14 @@ export class ArchiveStatusService {
 
 	private legacyFileDirectory(relativePath: string): string {
 		return safeArchiveSegment(basename(relativePath, extname(relativePath)));
+	}
+
+	private normalizeRemotePath(value: string): string {
+		return value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+	}
+
+	private sizeMatches(expected: MediaFileReference, actual: RcloneListItem): boolean {
+		return expected.size === null || actual.Size === undefined || actual.Size === expected.size;
 	}
 }
 

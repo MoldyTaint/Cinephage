@@ -1725,3 +1725,173 @@ describe('SearchOrchestrator.filterIndexers protocol filter', () => {
 		expect(result.rejected).toHaveLength(0);
 	});
 });
+
+describe('SearchOrchestrator.filterBySeasonEpisode movie titles with season markers', () => {
+	const orchestrator = new SearchOrchestrator();
+
+	it('keeps releases whose season marker comes from the searched movie title', () => {
+		const criteria = createMovieCriteria({
+			query: 'Open Season 3',
+			year: 2010,
+			tmdbId: 51170
+		});
+		const releases = [
+			createRelease({ title: 'Open Season 3 (2010) 1080p bluray x264' }),
+			createRelease({ title: 'Open.Season.3.2010.1080p.AMZN.WEB-DL.H264-GPRS' })
+		];
+
+		const filtered = privateApi(orchestrator).filterBySeasonEpisode(releases, criteria);
+
+		expect(filtered).toHaveLength(2);
+	});
+
+	it('still rejects SxxExx releases for movie searches', () => {
+		const criteria = createMovieCriteria({ query: 'Open Season 3', year: 2010 });
+		const releases = [createRelease({ title: 'Open Season 3 S01E03.1080p.WEBRip' })];
+
+		const filtered = privateApi(orchestrator).filterBySeasonEpisode(releases, criteria);
+
+		expect(filtered).toHaveLength(0);
+	});
+
+	it('leaves season-marker releases to the ID/title filter when the movie title has no marker', () => {
+		const criteria = createMovieCriteria({ query: 'Jaws', year: 1975 });
+		const releases = [createRelease({ title: 'Jaws Season 1 Complete 1080p BluRay' })];
+
+		// Movie-mode parsing keeps "Season 1" unflagged (ambiguous with the title),
+		// so the season filter passes it through...
+		const filtered = privateApi(orchestrator).filterBySeasonEpisode(releases, criteria);
+		expect(filtered).toHaveLength(1);
+
+		// ...and the metadata-aware ID/title filter rejects it instead.
+		const survivors = privateApi(orchestrator).filterByIdOrTitleMatch(filtered, criteria);
+		expect(survivors).toHaveLength(0);
+	});
+});
+
+describe('ordering flaw verification: ID/title match vs season filter', () => {
+	const orchestrator = new SearchOrchestrator();
+
+	it('the metadata-aware filter ACCEPTS the releases the season-pack filter killed', () => {
+		const criteria = createMovieCriteria({
+			query: 'Open Season 3',
+			year: 2010,
+			tmdbId: 51170,
+			imdbId: 'tt1646926'
+		});
+		const releases = [
+			createRelease({ title: 'Open Season 3 (2010) 1080p bluray x264' }),
+			createRelease({ title: 'Open.Season.3.2010.1080p.AMZN.WEB-DL.H264-GPRS' })
+		];
+
+		const survivors = privateApi(orchestrator).filterByIdOrTitleMatch(releases, criteria);
+
+		console.log('ORDERING-TEST: survivors =', survivors.length, 'of', releases.length);
+		expect(survivors).toHaveLength(2);
+	});
+});
+
+describe('filterBySeasonEpisode ID-first classification (movie search)', () => {
+	const orchestrator = new SearchOrchestrator();
+
+	it('accepts a release whose TMDB ID matches even if the title parses as TV', () => {
+		const criteria = createMovieCriteria({ query: 'Open Season 3', year: 2010, tmdbId: 51170 });
+		const releases = [
+			createRelease({
+				title: 'Open Season 3 (2010) [Streaming]',
+				tmdbId: 51170,
+				protocol: 'streaming'
+			}),
+			createRelease({ title: 'Open Season 3 S01E03 1080p WEBRip', tmdbId: 51170 })
+		];
+
+		const filtered = privateApi(orchestrator).filterBySeasonEpisode(releases, criteria);
+
+		expect(filtered).toHaveLength(2);
+	});
+
+	it('rejects a definitive ID mismatch from native-Cyrillic trackers', () => {
+		const criteria = createMovieCriteria({ query: 'Open Season 3', year: 2010, tmdbId: 51170 });
+		const releases = [
+			createRelease({
+				title: 'Открытый Сезон 3 S01E03 1080p',
+				tmdbId: 999999,
+				indexerName: 'RuTracker.org'
+			})
+		];
+
+		const filtered = privateApi(orchestrator).filterBySeasonEpisode(releases, criteria);
+
+		expect(filtered).toHaveLength(0);
+	});
+
+	it('falls back to title parsing when an aggregator ID mismatches', () => {
+		const criteria = createMovieCriteria({ query: 'Open Season 3', year: 2010, tmdbId: 51170 });
+		const releases = [
+			createRelease({
+				title: 'Open Season 3 (2010) 1080p bluray x264',
+				tmdbId: 999999,
+				indexerName: 'LimeTorrents'
+			})
+		];
+
+		const filtered = privateApi(orchestrator).filterBySeasonEpisode(releases, criteria);
+
+		// aggregator mismatch is not definitive: parse says "the movie" → kept
+		expect(filtered).toHaveLength(1);
+	});
+});
+
+describe('filterByCategoryMatch ID-first (audit follow-up)', () => {
+	const orchestrator = new SearchOrchestrator();
+
+	it('keeps a release with matching TMDB ID despite a noisy category', () => {
+		const criteria = createMovieCriteria({ query: 'Open Season 3', tmdbId: 51170 });
+		const releases = [
+			createRelease({
+				title: 'Open.Season.3.2010.1080p.BluRay.x265',
+				tmdbId: 51170,
+				categories: [3000]
+			})
+		];
+
+		const filtered = privateApi(orchestrator).filterByCategoryMatch(releases, 'movie', criteria);
+
+		expect(filtered).toHaveLength(1);
+	});
+
+	it('keeps a TV release with matching TMDB ID filed under a movie category', () => {
+		const criteria = createTvCriteria({ query: 'One Piece', tmdbId: 37854 });
+		const releases = [
+			createRelease({ title: 'One.Piece.S01E01.1080p.WEB-DL', tmdbId: 37854, categories: [2000] })
+		];
+
+		const filtered = privateApi(orchestrator).filterByCategoryMatch(releases, 'tv', criteria);
+
+		expect(filtered).toHaveLength(1);
+	});
+});
+
+describe('filterOutNonVideoArtifacts — title-embedded artifact tokens (audit)', () => {
+	const orchestrator = new SearchOrchestrator();
+
+	it('keeps "Trailer Park Boys" — the token is part of the title, before quality', () => {
+		const criteria = createTvCriteria({ query: 'Trailer Park Boys', season: 1, episode: 1 });
+		const releases = [
+			createRelease({ title: 'Trailer.Park.Boys.S01E01.1080p.WEB-DL.DD5.1.H.264' })
+		];
+
+		const filtered = privateApi(orchestrator).filterOutNonVideoArtifacts(releases, criteria);
+
+		expect(filtered).toHaveLength(1);
+	});
+
+	it('rejects an appended trailer after the quality block', () => {
+		const criteria = createMovieCriteria({ query: 'Some Movie', year: 2020 });
+		const releases = [createRelease({ title: 'Some.Movie.2020.1080p.BluRay.Trailer' })];
+
+		const filtered = privateApi(orchestrator).filterOutNonVideoArtifacts(releases, criteria);
+
+		expect(filtered).toHaveLength(0);
+	});
+});

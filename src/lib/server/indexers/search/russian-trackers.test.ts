@@ -172,3 +172,25 @@ describe('russian-trackers', () => {
 		});
 	});
 });
+
+import { ReleaseDeduplicator } from './ReleaseDeduplicator.js';
+
+describe('ReleaseDeduplicator title-key year handling (audit)', () => {
+	it('does not merge different-year releases that lack infoHashes', () => {
+		const dedup = new ReleaseDeduplicator();
+		const mk = (year: string) =>
+			({
+				guid: `no-${year}`,
+				title: `The Lion King (${year}) 1080p BluRay x264`,
+				downloadUrl: 'https://example.test/dl',
+				publishDate: new Date(),
+				size: 1_000_000,
+				indexerId: 'idx',
+				indexerName: 'Idx',
+				protocol: 'torrent',
+				categories: []
+			}) as never;
+		const { releases } = dedup.deduplicate([mk('1994'), mk('2019')]);
+		expect(releases).toHaveLength(2);
+	});
+});
