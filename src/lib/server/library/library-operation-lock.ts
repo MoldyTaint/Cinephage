@@ -9,10 +9,22 @@
  *
  * Rename/move operations acquire the lock; DiskScanService refuses to start
  * while it is held; the library watcher re-queues events instead of scanning.
+ *
+ * Invariant: `waiters.length > 0` implies `currentHolder !== null`. Ownership
+ * transfers directly in `release()` (the holder assigns `currentHolder` to the
+ * next waiter's operation before resolving it), so `isLocked` never observably
+ * drops while waiters are queued.
+ *
+ * Prefer `withLock` over a raw `acquire()`: a caller that forgets to release
+ * the acquired lock deadlocks every subsequent library operation.
+ *
+ * Note: `holder` may briefly report the next queued operation before its
+ * wrapped function starts running — this is intentional and part of the
+ * direct ownership handoff.
  */
 export class LibraryOperationLock {
 	private currentHolder: string | null = null;
-	private waiters: Array<() => void> = [];
+	private waiters: Array<{ operation: string; resolve: () => void }> = [];
 
 	get isLocked(): boolean {
 		return this.currentHolder !== null;
@@ -27,17 +39,23 @@ export class LibraryOperationLock {
 	}
 
 	async acquire(operation: string): Promise<() => void> {
-		while (this.currentHolder !== null) {
-			await new Promise<void>((resolve) => this.waiters.push(resolve));
+		if (this.currentHolder !== null) {
+			await new Promise<void>((resolve) => this.waiters.push({ operation, resolve }));
+			// release() assigned currentHolder = operation before resolving us.
+		} else {
+			this.currentHolder = operation;
 		}
-		this.currentHolder = operation;
 		let released = false;
 		return () => {
 			if (released) return;
 			released = true;
-			this.currentHolder = null;
 			const next = this.waiters.shift();
-			if (next) next();
+			if (next) {
+				this.currentHolder = next.operation;
+				next.resolve();
+			} else {
+				this.currentHolder = null;
+			}
 		};
 	}
 

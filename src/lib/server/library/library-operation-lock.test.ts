@@ -54,4 +54,36 @@ describe('LibraryOperationLock', () => {
 		await second;
 		expect(lock.pendingCount).toBe(0);
 	});
+
+	it('keeps the lock held across the release→handoff gap while waiters are queued', async () => {
+		const lock = new LibraryOperationLock();
+		const releaseA = await lock.acquire('op-a');
+		const second = lock.withLock('op-b', async () => {});
+		await Promise.resolve(); // let op-b enqueue
+		releaseA();
+		// No awaits between release and the checks: we are inside the same
+		// synchronous continuation, before op-b's acquire continuation runs.
+		expect(lock.isLocked).toBe(true);
+		expect(lock.holder).toBe('op-b');
+		await second;
+		expect(lock.isLocked).toBe(false);
+		expect(lock.pendingCount).toBe(0);
+	});
+
+	it('preserves FIFO order across multiple queued acquirers', async () => {
+		const lock = new LibraryOperationLock();
+		const order: string[] = [];
+		const release = await lock.acquire('op-a');
+		const runs = ['op-b', 'op-c', 'op-d'].map((op) =>
+			lock.withLock(op, async () => {
+				order.push(op);
+			})
+		);
+		await Promise.resolve();
+		release();
+		await Promise.all(runs);
+		expect(order).toEqual(['op-b', 'op-c', 'op-d']);
+		expect(lock.isLocked).toBe(false);
+		expect(lock.pendingCount).toBe(0);
+	});
 });
