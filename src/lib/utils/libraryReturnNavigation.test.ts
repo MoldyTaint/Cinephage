@@ -94,12 +94,17 @@ describe('getSafeLibraryReturnTo', () => {
 
 	it('restores the exact filtered TV list URL', () => {
 		expect(
-			getSafeLibraryReturnTo('/library/tv?status=ended&resolution=1080p&sort=size-desc&q=voyager', '/library/tv')
+			getSafeLibraryReturnTo(
+				'/library/tv?status=ended&resolution=1080p&sort=size-desc&q=voyager',
+				'/library/tv'
+			)
 		).toBe('/library/tv?status=ended&resolution=1080p&sort=size-desc&q=voyager');
 	});
 
 	it('does not use a movie return path for the TV list', () => {
-		expect(getSafeLibraryReturnTo('/library/movies?fileStatus=missingFile', '/library/tv')).toBeNull();
+		expect(
+			getSafeLibraryReturnTo('/library/movies?fileStatus=missingFile', '/library/tv')
+		).toBeNull();
 	});
 
 	it('rejects external and protocol-relative return paths', () => {

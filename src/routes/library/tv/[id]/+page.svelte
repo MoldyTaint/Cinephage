@@ -31,10 +31,9 @@
 	import { CheckSquare, FileEdit, RefreshCw, X } from 'lucide-svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
-	import { goto, afterNavigate } from '$app/navigation';
-	import { browser } from '$app/environment';
+	import { goto } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
-	import { TV_RETURN_URL_KEY } from '$lib/utils/library-return-urls';
+	import { getSafeLibraryReturnTo } from '$lib/utils/libraryReturnNavigation';
 	import { createDynamicSSE } from '$lib/sse';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { createSubtitleProgress } from '$lib/stores/subtitleProgress.svelte';
@@ -57,12 +56,11 @@
 	const seasons = $derived(seasonsState ?? data.seasons);
 	const queueItems = $derived(queueItemsState ?? data.queueItems);
 
-	let tvBackHref = $state<string | null>(null);
-
-	afterNavigate(() => {
-		if (!browser) return;
-		const stored = localStorage.getItem(TV_RETURN_URL_KEY);
-		tvBackHref = stored && stored.split('?')[0] === resolvePath('/library/tv') ? stored : null;
+	// Back link target: the validated returnTo URL carries the exact filtered
+	// list state from the page the user navigated from (issue #515).
+	const tvBackHref = $derived.by(() => {
+		const validated = getSafeLibraryReturnTo(page.url.searchParams.get('returnTo'), '/library/tv');
+		return validated ? resolvePath(validated) : null;
 	});
 
 	function computeSeriesEpisodeStats(seasonList: PageData['seasons']) {
