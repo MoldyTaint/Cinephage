@@ -478,3 +478,72 @@ describe('series-directory context matching (issue #513)', () => {
 		expect(created.title).toBe('Breaking Bad');
 	});
 });
+
+describe('title matching hardening (issue #513 leftovers)', () => {
+	it('auto-matches a movie whose local title is the TMDB original (foreign) title', async () => {
+		await insertRootFolder('rf-lab', '/media/movies', 'movie');
+		await insertUnmatchedFile({
+			id: 'uf-lab',
+			path: '/media/movies/Im Labyrinth des Schweigens (2010).mkv',
+			rootFolderId: 'rf-lab',
+			mediaType: 'movie'
+		});
+		mocks.searchMovies.mockResolvedValue({
+			results: [
+				{
+					id: 45642,
+					title: 'Labyrinth of Lies',
+					original_title: 'Im Labyrinth des Schweigens',
+					release_date: '2010-11-11'
+				}
+			]
+		});
+		mocks.getMovie.mockResolvedValue({
+			id: 45642,
+			title: 'Labyrinth of Lies',
+			original_title: 'Im Labyrinth des Schweigens',
+			release_date: '2010-11-11'
+		});
+
+		const result = await mediaMatcherService.processUnmatchedFile('uf-lab');
+
+		expect(result.matched).toBe(true);
+		expect(result.tmdbId).toBe(45642);
+	});
+
+	it('auto-matches a movie whose parsed title carries a trailing article and queries TMDB with the canonical form', async () => {
+		await insertRootFolder('rf-lion', '/media/movies', 'movie');
+		await insertUnmatchedFile({
+			id: 'uf-lion',
+			path: '/media/movies/Lion King, The (1994).mkv',
+			rootFolderId: 'rf-lion',
+			mediaType: 'movie'
+		});
+		mocks.searchMovies.mockResolvedValue({
+			results: [
+				{
+					id: 8587,
+					title: 'The Lion King',
+					original_title: 'The Lion King',
+					release_date: '1994-06-15'
+				}
+			]
+		});
+		mocks.getMovie.mockResolvedValue({
+			id: 8587,
+			title: 'The Lion King',
+			original_title: 'The Lion King',
+			release_date: '1994-06-15'
+		});
+
+		const result = await mediaMatcherService.processUnmatchedFile('uf-lion');
+
+		expect(mocks.searchMovies).toHaveBeenCalledWith(
+			expect.stringMatching(/^the lion king$/i),
+			1994,
+			true
+		);
+		expect(result.matched).toBe(true);
+		expect(result.tmdbId).toBe(8587);
+	});
+});
