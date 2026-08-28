@@ -4,6 +4,7 @@ import { RenamePreviewService } from '$lib/server/library/naming/RenamePreviewSe
 import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { parseBody } from '$lib/server/api/validate.js';
+import { ValidationError } from '$lib/errors';
 import { diskScanService } from '$lib/server/library/disk-scan.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 import { renameExecuteSchema } from '$lib/server/library/naming/rename-execute-schema.js';
@@ -55,6 +56,9 @@ export const POST: RequestHandler = async (event) => {
 		const message = error instanceof Error ? error.message : String(error);
 		if (/scan is in progress/i.test(message)) {
 			return json({ error: message }, { status: 409 });
+		}
+		if (error instanceof ValidationError) {
+			return json({ error: message }, { status: 400 });
 		}
 
 		logger.error(
