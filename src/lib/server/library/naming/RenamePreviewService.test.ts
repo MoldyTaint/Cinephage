@@ -1665,8 +1665,12 @@ describe('RenamePreviewService lock integration', () => {
 		const withLockSpy = vi.spyOn(libraryOperationLock, 'withLock');
 
 		const svc = new RenamePreviewService();
-		// @ts-expect-error accessing private method for testing
-		const buildSpy = vi.spyOn(svc, 'buildTargetMap');
+		const buildSpy = vi.spyOn(
+			svc as unknown as {
+				buildTargetMap: (fileIds: string[], result: unknown) => Promise<Map<string, unknown>>;
+			},
+			'buildTargetMap'
+		);
 		buildSpy.mockImplementation(async () => {
 			observedDuringCall = libraryOperationLock.isLocked;
 			return new Map();
