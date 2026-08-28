@@ -598,8 +598,10 @@ export class SearchOrchestrator {
 			'[SearchOrchestrator] DEBUG: after ID/title filter'
 		);
 
-		// Boost releases matching preferred language before enrichment
-		filtered = this.boostByLanguage(filtered, enrichedCriteria);
+		// No language boost here: enrichment recomputes totalScore from scratch and
+		// runs protocol seeder checks, so inflating seeders pre-enrichment would
+		// bypass minimumSeeders/dead-torrent rejection with a synthetic number.
+		// See boostByLanguage (rank path only).
 
 		const afterFilteringCount = filtered.length;
 
@@ -2532,67 +2534,53 @@ export class SearchOrchestrator {
 	/**
 	 * Boost releases that match the preferred audio language.
 	 * Uses extractLanguages() to detect language from release titles.
-	 * Matching releases are boosted in place (inflated seeders for rank path,
-	 * boosted totalScore for enhanced path). Non-matching releases pass through.
+	 * Matching releases are returned as new copies with inflated seeders so the
+	 * ReleaseRanker (which weights seeders at 0.4) ranks them above non-matching
+	 * ones. Input objects are never mutated and non-matching releases pass through.
 	 *
 	 * The boost is a soft preference: non-matching releases still appear but
 	 * are ranked below matching ones. This mirrors how Sonarr/Radarr handle
 	 * language preferences via custom format scoring.
+	 *
+	 * Intentionally only used by the plain search() rank path. The enhanced path
+	 * must not inflate seeders: enrichment runs protocol checks (minimumSeeders,
+	 * dead-torrent rejection) against release.seeders, and its totalScore is
+	 * recomputed from scratch, so a pre-enrichment boost is either a lie or dead.
 	 */
 	private boostByLanguage<T extends ReleaseResult>(releases: T[], criteria: SearchCriteria): T[] {
 		const preferredLanguage = criteria.language;
-		if (!preferredLanguage || releases.length === 0) {
+		if (!preferredLanguage || preferredLanguage === 'en' || releases.length === 0) {
 			return releases;
 		}
 
-		// Skip English default — when the preferred language is English,
-		// most releases already default to English, so boosting adds noise.
-		if (preferredLanguage === 'en') {
-			return releases;
-		}
+		let boostedCount = 0;
+		const boosted = releases.map((release) => {
+			const { languages } = extractLanguages(release.title);
+			if (!languages.includes(preferredLanguage)) {
+				return release;
+			}
 
-		const beforeMatches = releases.filter((r) => {
-			const { languages } = extractLanguages(r.title);
-			return languages.includes(preferredLanguage);
+			boostedCount += 1;
+			return {
+				...release,
+				// The ReleaseRanker weights seeders at 0.4 — a 30x multiplier pushes
+				// matching releases well above non-matching ones.
+				seeders: typeof release.seeders === 'number' ? Math.max(1, release.seeders * 30) : 1
+			};
 		});
 
-		// Only boost if there are actual matching releases in the results
-		if (beforeMatches.length === 0) {
-			return releases;
+		if (boostedCount > 0) {
+			logger.debug(
+				{
+					preferredLanguage,
+					totalReleases: releases.length,
+					boostedCount
+				},
+				'[SearchOrchestrator] Language boost applied'
+			);
 		}
 
-		for (const release of releases) {
-			const { languages } = extractLanguages(release.title);
-			const matchesLanguage = languages.includes(preferredLanguage);
-
-			if (matchesLanguage) {
-				// Boost seeders for the non-enhanced rank path.
-				// The ReleaseRanker weights seeders at 0.4 — a 30x multiplier
-				// pushes matching releases well above non-matching ones.
-				if (typeof release.seeders === 'number') {
-					(release as { seeders?: number }).seeders = Math.max(1, release.seeders * 30);
-				}
-
-				// Boost totalScore for the enhanced search path.
-				// EnhancedReleaseResult has totalScore; we add a large score bonus
-				// that places language-matched releases above non-matched ones.
-				const enhanced = release as { totalScore?: number };
-				if (typeof enhanced.totalScore === 'number') {
-					enhanced.totalScore += 5000;
-				}
-			}
-		}
-
-		logger.debug(
-			{
-				preferredLanguage,
-				totalReleases: releases.length,
-				boostedCount: beforeMatches.length
-			},
-			'[SearchOrchestrator] Language boost applied'
-		);
-
-		return releases;
+		return boosted;
 	}
 
 	/**
