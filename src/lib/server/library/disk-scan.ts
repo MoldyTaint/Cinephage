@@ -18,9 +18,10 @@ import {
 	episodes,
 	episodeFiles,
 	unmatchedFiles,
-	libraryScanHistory
+	libraryScanHistory,
+	renameHistory
 } from '$lib/server/db/schema.js';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, gte } from 'drizzle-orm';
 import { isVideoFile, mediaInfoService } from './media-info.js';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
 import { EventEmitter } from 'events';
@@ -68,6 +69,23 @@ const EXCLUDED_PATTERNS = {
  * SQLite has a practical limit on bound parameters; keep IN queries chunked.
  */
 const DB_CHUNK_SIZE = 400;
+
+/** How long after a rename its old→new transition remains eligible for scan-diff healing. */
+const RENAME_TRANSITION_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * If a DB-tracked path is missing on disk but a recent successful rename
+ * moved it to a path that IS present, return the new path so the row can be
+ * healed instead of deleted. Returns null when the file should be removed.
+ */
+export function findRenameHealTarget(
+	missingPath: string,
+	transitions: Map<string, string>,
+	seenPaths: Set<string>
+): string | null {
+	const target = transitions.get(missingPath);
+	return target && seenPaths.has(target) ? target : null;
+}
 
 /**
  * Discovered file information
@@ -445,11 +463,29 @@ export class DiskScanService extends EventEmitter {
 				);
 			}
 
+			const transitions = await this.getRecentRenameTransitions();
+
 			for (const [path, existingFile] of existingFiles) {
-				if (!seenPaths.has(path)) {
-					await this.removeFile(existingFile.id, rootFolder.mediaType);
-					progress.filesRemoved++;
+				if (seenPaths.has(path)) continue;
+
+				const healTarget = findRenameHealTarget(path, transitions, seenPaths);
+				if (healTarget) {
+					await this.healRenamedFile(
+						existingFile,
+						healTarget,
+						rootFolder.path,
+						rootFolder.mediaType
+					);
+					progress.filesUpdated++;
+					logger.info(
+						{ from: path, to: healTarget, fileId: existingFile.id },
+						'[DiskScan] Healed renamed file row instead of delete+recreate'
+					);
+					continue;
 				}
+
+				await this.removeFile(existingFile.id, rootFolder.mediaType);
+				progress.filesRemoved++;
 			}
 
 			if (this.shouldCancel && (await this.shouldCancel())) {
@@ -910,11 +946,26 @@ export class DiskScanService extends EventEmitter {
 		rootFolderId: string,
 		mediaType: string
 	): Promise<
-		Map<string, { id: string; path: string; size: number | null; allowStrmProbe: boolean }>
+		Map<
+			string,
+			{
+				id: string;
+				path: string;
+				size: number | null;
+				allowStrmProbe: boolean;
+				source: 'tracked' | 'unmatched';
+			}
+		>
 	> {
 		const existingMap = new Map<
 			string,
-			{ id: string; path: string; size: number | null; allowStrmProbe: boolean }
+			{
+				id: string;
+				path: string;
+				size: number | null;
+				allowStrmProbe: boolean;
+				source: 'tracked' | 'unmatched';
+			}
 		>();
 
 		if (mediaType === 'movie') {
@@ -949,7 +1000,8 @@ export class DiskScanService extends EventEmitter {
 								id: file.id,
 								path: fullPath,
 								size: file.size,
-								allowStrmProbe: movie.scoringProfileId !== 'streamer'
+								allowStrmProbe: movie.scoringProfileId !== 'streamer',
+								source: 'tracked'
 							});
 						}
 					}
@@ -987,7 +1039,8 @@ export class DiskScanService extends EventEmitter {
 								id: file.id,
 								path: fullPath,
 								size: file.size,
-								allowStrmProbe: seriesItem.scoringProfileId !== 'streamer'
+								allowStrmProbe: seriesItem.scoringProfileId !== 'streamer',
+								source: 'tracked'
 							});
 						}
 					}
@@ -1005,7 +1058,8 @@ export class DiskScanService extends EventEmitter {
 				id: file.id,
 				path: file.path,
 				size: file.size,
-				allowStrmProbe: true
+				allowStrmProbe: true,
+				source: 'unmatched'
 			});
 		}
 
@@ -1222,6 +1276,144 @@ export class DiskScanService extends EventEmitter {
 				})
 				.where(eq(episodeFiles.id, fileId));
 		}
+	}
+
+	/**
+	 * Recent successful file renames (old full path → new full path), most
+	 * recent winning on duplicates. Consumes the rename_history audit table,
+	 * which until now was write-only.
+	 */
+	private async getRecentRenameTransitions(): Promise<Map<string, string>> {
+		const cutoff = new Date(Date.now() - RENAME_TRANSITION_WINDOW_MS).toISOString();
+		const rows = await db
+			.select({
+				oldPath: renameHistory.oldPath,
+				newPath: renameHistory.newPath
+			})
+			.from(renameHistory)
+			.where(
+				and(
+					eq(renameHistory.success, 1),
+					eq(renameHistory.operation, 'rename'),
+					gte(renameHistory.createdAt, cutoff)
+				)
+			);
+
+		const map = new Map<string, string>();
+		for (const row of rows) {
+			map.set(row.oldPath, row.newPath);
+		}
+		return map;
+	}
+
+	/**
+	 * A tracked file row's path disappeared but a recent rename moved it to a
+	 * path that now exists on disk: update the DB rows to the new location
+	 * instead of delete+recreate, preserving mediaInfo, linkage, and stats.
+	 *
+	 * Public (not private) so tests can exercise the healing logic directly
+	 * without running a full scan.
+	 */
+	async healRenamedFile(
+		existingFile: {
+			id: string;
+			path: string;
+			size: number | null;
+			allowStrmProbe: boolean;
+			source: 'tracked' | 'unmatched';
+		},
+		newFullPath: string,
+		rootFolderPath: string,
+		mediaType: string
+	): Promise<void> {
+		if (existingFile.source === 'unmatched') {
+			await db
+				.update(unmatchedFiles)
+				.set({ path: newFullPath })
+				.where(eq(unmatchedFiles.id, existingFile.id));
+			return;
+		}
+
+		if (mediaType === 'movie') {
+			const [row] = await db
+				.select({ movieId: movieFiles.movieId, relativePath: movieFiles.relativePath })
+				.from(movieFiles)
+				.where(eq(movieFiles.id, existingFile.id));
+			if (!row) return;
+			const [movie] = await db
+				.select({ path: movies.path })
+				.from(movies)
+				.where(eq(movies.id, row.movieId));
+			if (!movie) return;
+
+			// Only heal when the DB is actually stale for this row.
+			if (join(rootFolderPath, movie.path, row.relativePath) !== existingFile.path) return;
+
+			const { newParentRel, newRelative } = this.splitRenamedPath(
+				newFullPath,
+				rootFolderPath,
+				row.relativePath
+			);
+
+			if (movie.path !== newParentRel) {
+				await db.update(movies).set({ path: newParentRel }).where(eq(movies.id, row.movieId));
+			}
+			await db
+				.update(movieFiles)
+				.set({ relativePath: newRelative })
+				.where(eq(movieFiles.id, existingFile.id));
+		} else {
+			const [row] = await db
+				.select({ seriesId: episodeFiles.seriesId, relativePath: episodeFiles.relativePath })
+				.from(episodeFiles)
+				.where(eq(episodeFiles.id, existingFile.id));
+			if (!row) return;
+			const [seriesItem] = await db
+				.select({ path: series.path })
+				.from(series)
+				.where(eq(series.id, row.seriesId));
+			if (!seriesItem) return;
+
+			if (join(rootFolderPath, seriesItem.path, row.relativePath) !== existingFile.path) return;
+
+			const { newParentRel, newRelative } = this.splitRenamedPath(
+				newFullPath,
+				rootFolderPath,
+				row.relativePath
+			);
+
+			if (seriesItem.path !== newParentRel) {
+				await db.update(series).set({ path: newParentRel }).where(eq(series.id, row.seriesId));
+			}
+			await db
+				.update(episodeFiles)
+				.set({ relativePath: newRelative })
+				.where(eq(episodeFiles.id, existingFile.id));
+		}
+	}
+
+	/**
+	 * Split a renamed file's new full path into (parent path relative to the
+	 * root folder, path relative to that parent), preserving the old relative
+	 * path's segment depth so structure like season folders stays inside
+	 * relativePath instead of leaking into the media folder path.
+	 */
+	private splitRenamedPath(
+		newFullPath: string,
+		rootFolderPath: string,
+		oldRelativePath: string
+	): { newParentRel: string; newRelative: string } {
+		const segments = newFullPath.split(/[\\/]+/).filter(Boolean);
+		const rootDepth = rootFolderPath.split(/[\\/]+/).filter(Boolean).length;
+		const oldDepth = oldRelativePath.split(/[\\/]+/).filter(Boolean).length;
+
+		const available = Math.max(segments.length - rootDepth, 1);
+		const depth = Math.min(Math.max(oldDepth, 1), available);
+
+		const newRelative = segments.slice(-depth).join('/');
+		const newParentRel = segments.slice(rootDepth, segments.length - depth).join('/');
+
+		return { newParentRel, newRelative };
 	}
 
 	private async removeFile(fileId: string, mediaType: string): Promise<void> {
