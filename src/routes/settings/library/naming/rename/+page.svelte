@@ -21,16 +21,17 @@
 		FolderSync
 	} from 'lucide-svelte';
 	import type { RenamePreviewResult, RenameExecuteResult } from '$lib/library/naming/types.js';
+	import { chunkFileIds } from '$lib/library/naming/batch-rename';
 
 	// State
 	let loading = $state(true);
 	let executing = $state(false);
+	let confirmPending = $state(false);
 	let reorganizing = $state(false);
 	let error = $state<string | null>(null);
 	let success = $state<string | null>(null);
 	let renameWarnings = $state<string[]>([]);
 	let preview = $state<RenamePreviewResult | null>(null);
-	let executeResult = $state<RenameExecuteResult | null>(null);
 
 	// Selected items
 	const selectedIds = new SvelteSet<string>();
@@ -52,7 +53,6 @@
 
 	async function loadPreview() {
 		loading = true;
-		executeResult = null;
 
 		try {
 			const result = await getRenamePreview(mediaTypeFilter);
@@ -68,6 +68,7 @@
 			for (const item of preview?.willChange || []) {
 				selectedIds.add(item.fileId);
 			}
+			confirmPending = false;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load preview';
 		} finally {
@@ -76,7 +77,15 @@
 	}
 
 	async function executeRenames() {
-		if (selectedIds.size === 0) return;
+		if (selectedIds.size === 0) {
+			confirmPending = false;
+			return;
+		}
+		if (!confirmPending) {
+			confirmPending = true;
+			return;
+		}
+		confirmPending = false;
 
 		executing = true;
 		error = null;
@@ -84,38 +93,52 @@
 		renameWarnings = [];
 
 		try {
-			const response = await executeRename(
-				Array.from(selectedIds),
-				mediaTypeFilter === 'all' ? 'mixed' : mediaTypeFilter === 'movie' ? 'movie' : 'episode'
-			);
+			const chunks = chunkFileIds(Array.from(selectedIds));
+			let totalSucceeded = 0;
+			let totalFailed = 0;
+			const collectedWarnings: string[] = [];
+			const failedErrorMessages: string[] = [];
 
-			if (!response.success) {
-				throw new Error(response.error || 'Failed to execute renames');
-			}
+			for (const chunk of chunks) {
+				const response = await executeRename(
+					chunk,
+					mediaTypeFilter === 'all' ? 'mixed' : mediaTypeFilter === 'movie' ? 'movie' : 'episode'
+				);
 
-			executeResult = response as unknown as RenameExecuteResult;
+				if (!response.success) {
+					throw new Error(response.error || 'Failed to execute renames');
+				}
 
-			if (executeResult?.warnings?.length) {
-				renameWarnings = executeResult.warnings;
-			}
+				const result = response as unknown as RenameExecuteResult;
+				totalSucceeded += result.succeeded ?? 0;
+				totalFailed += result.failed ?? 0;
 
-			if (executeResult && executeResult.succeeded > 0) {
-				success = m.settings_naming_rename_successCount({ count: executeResult.succeeded });
-			}
+				if (result.warnings?.length) {
+					collectedWarnings.push(...result.warnings);
+				}
 
-			if (executeResult && executeResult.failed > 0) {
 				// Get specific error messages from failed results
-				const failedResults =
-					executeResult.results?.filter((r: { success: boolean }) => !r.success) || [];
-				const errorMessages = failedResults.map((r: { error?: string }) => r.error).filter(Boolean);
+				const failedResults = result.results?.filter((r: { success: boolean }) => !r.success) || [];
+				const errorMessages = failedResults
+					.map((r: { error?: string }) => r.error)
+					.filter((e): e is string => Boolean(e));
+				failedErrorMessages.push(...errorMessages);
+			}
 
-				if (errorMessages.length > 0) {
+			renameWarnings = collectedWarnings;
+
+			if (totalSucceeded > 0) {
+				success = m.settings_naming_rename_successCount({ count: totalSucceeded });
+			}
+
+			if (totalFailed > 0) {
+				if (failedErrorMessages.length > 0) {
 					error = m.settings_naming_rename_failCountWithErrors({
-						count: executeResult.failed,
-						errors: errorMessages.join(', ')
+						count: totalFailed,
+						errors: failedErrorMessages.join(', ')
 					});
 				} else {
-					error = m.settings_naming_rename_failCount({ count: executeResult.failed });
+					error = m.settings_naming_rename_failCount({ count: totalFailed });
 				}
 			}
 
@@ -125,7 +148,17 @@
 			await loadPreview();
 			error = executeError;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to execute renames';
+			const executeError = e instanceof Error ? e.message : 'Failed to execute renames';
+			error = executeError;
+			// Chunks before the failure already renamed files on disk — refresh so
+			// the preview reflects reality instead of the pre-batch state.
+			try {
+				await loadPreview();
+			} catch {
+				// preview refresh is best-effort; the original error stands
+			}
+			// loadPreview's catch path assigns its own `error` — restore the mid-batch error
+			error = executeError;
 		} finally {
 			executing = false;
 		}
@@ -258,19 +291,48 @@
 					<RefreshCw class="h-4 w-4 {loading ? 'animate-spin' : ''}" />
 					{m.action_refresh()}
 				</button>
-				<button
-					class="btn gap-2 btn-primary btn-sm"
-					onclick={executeRenames}
-					disabled={executing || selectedIds.size === 0}
-				>
-					{#if executing}
-						<RefreshCw class="h-4 w-4 animate-spin" />
-						{m.settings_naming_rename_renaming()}
-					{:else}
-						<CheckCircle class="h-4 w-4" />
-						{m.settings_naming_rename_renameSelected({ count: selectedIds.size })}
-					{/if}
-				</button>
+				{#if confirmPending}
+					<div
+						class="flex flex-col gap-2 rounded-xl border border-warning bg-warning/10 p-3 sm:w-96"
+					>
+						<p class="text-sm font-medium">
+							{m.settings_naming_rename_confirmTitle({ count: selectedIds.size })}
+						</p>
+						<p class="text-xs opacity-80">
+							{m.settings_naming_rename_confirmWarning()}
+						</p>
+						<div class="flex gap-2">
+							<button
+								class="btn flex-1 btn-error btn-sm"
+								onclick={executeRenames}
+								disabled={executing}
+							>
+								{m.settings_naming_rename_confirmAction()}
+							</button>
+							<button
+								class="btn btn-ghost btn-sm"
+								onclick={() => (confirmPending = false)}
+								disabled={executing}
+							>
+								{m.settings_naming_rename_cancelAction()}
+							</button>
+						</div>
+					</div>
+				{:else}
+					<button
+						class="btn gap-2 btn-primary btn-sm"
+						onclick={executeRenames}
+						disabled={executing || selectedIds.size === 0}
+					>
+						{#if executing}
+							<RefreshCw class="h-4 w-4 animate-spin" />
+							{m.settings_naming_rename_renaming()}
+						{:else}
+							<CheckCircle class="h-4 w-4" />
+							{m.settings_naming_rename_renameSelected({ count: selectedIds.size })}
+						{/if}
+					</button>
+				{/if}
 			</div>
 		</div>
 	</div>

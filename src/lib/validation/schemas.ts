@@ -1992,14 +1992,6 @@ export const namingValidateSchema = z.object({
 	formats: z.record(z.string(), z.string())
 });
 
-/**
- * Schema for rename execute
- */
-export const renameExecuteSchema = z.object({
-	fileIds: z.array(z.string()).min(1, 'fileIds array cannot be empty'),
-	mediaType: z.enum(['movie', 'episode', 'mixed']).default('mixed')
-});
-
 // ============================================================================
 // User Schemas
 // ============================================================================
@@ -2459,7 +2451,6 @@ export type NamingPresetCreate = z.infer<typeof namingPresetCreateSchema>;
 export type NamingPresetUpdate = z.infer<typeof namingPresetUpdateSchema>;
 export type NamingPreview = z.infer<typeof namingPreviewSchema>;
 export type NamingValidate = z.infer<typeof namingValidateSchema>;
-export type RenameExecute = z.infer<typeof renameExecuteSchema>;
 
 // User Type Exports
 export type UserLanguage = z.infer<typeof userLanguageSchema>;

@@ -26,6 +26,8 @@ import { randomUUID } from 'node:crypto';
 const logger = createChildLogger({ logDomain: 'scans' as const });
 import { NamingService, type MediaNamingInfo } from './NamingService';
 import { namingSettingsService } from './NamingSettingsService';
+import { libraryOperationLock } from '../library-operation-lock.js';
+import { diskScanService } from '../disk-scan.js';
 import { moveFile, fileExists } from '$lib/server/downloadClients/import/FileTransfer';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
 import { rename, stat, readdir, rmdir } from 'node:fs/promises';
@@ -416,8 +418,23 @@ export class RenamePreviewService {
 	 */
 	async executeRenames(
 		fileIds: string[],
+		mediaType: 'movie' | 'episode' | 'mixed' = 'mixed'
+	): Promise<RenameExecuteResult> {
+		return libraryOperationLock.withLock('rename', () =>
+			this.executeRenamesLocked(fileIds, mediaType)
+		);
+	}
+
+	private async executeRenamesLocked(
+		fileIds: string[],
 		_mediaType: 'movie' | 'episode' | 'mixed' = 'mixed'
 	): Promise<RenameExecuteResult> {
+		if (diskScanService.scanning) {
+			throw new Error(
+				'A library scan is in progress; the rename was not started. Retry after the scan completes.'
+			);
+		}
+
 		const result: RenameExecuteResult = {
 			success: true,
 			processed: 0,
@@ -527,7 +544,7 @@ export class RenamePreviewService {
 						continue;
 					}
 
-					const renameResult = await this.executeFileRename(item);
+					const renameResult = await this.executeFileRename(item, result.warnings);
 					groupResult.push(renameResult);
 					await this.writeRenameHistory(item, renameResult.success, renameResult.error);
 					if (!renameResult.success) {
@@ -663,7 +680,22 @@ export class RenamePreviewService {
 		mediaId: string,
 		mediaType: 'movie' | 'series'
 	): Promise<{ success: boolean; oldPath?: string; newPath?: string; error?: string }> {
+		return libraryOperationLock.withLock('reorganize', () =>
+			this.reorganizeFolderLocked(mediaId, mediaType)
+		);
+	}
+
+	private async reorganizeFolderLocked(
+		mediaId: string,
+		mediaType: 'movie' | 'series'
+	): Promise<{ success: boolean; oldPath?: string; newPath?: string; error?: string }> {
 		try {
+			if (diskScanService.scanning) {
+				throw new Error(
+					'A library scan is in progress; the rename was not started. Retry after the scan completes.'
+				);
+			}
+
 			let rootFolderPath = '';
 			let currentPath = '';
 			let rootFolderId: string | undefined;
@@ -749,6 +781,19 @@ export class RenamePreviewService {
 				await manager.deleteMediaItemByTmdb(mediaTmdbId, mediaType as 'movie' | 'series');
 			}
 
+			// Write per-file transition rows BEFORE the disk rename so a hard
+			// process-kill between the rename and the DB update below can be
+			// healed by the scan-diff path (rename_history is consumed by
+			// getRecentRenameTransitions). Best-effort: failures don't block
+			// the reorganize.
+			await this.writeReorganizeHistory(
+				mediaType,
+				mediaId,
+				rootFolderPath,
+				currentPath,
+				newFolderName
+			);
+
 			// Atomically rename the folder on disk.
 			await rename(actualOldFolder, actualNewFolder);
 
@@ -763,11 +808,47 @@ export class RenamePreviewService {
 				};
 			}
 
-			// Update the DB record.
-			if (mediaType === 'movie') {
-				db.update(movies).set({ path: newFolderName }).where(eq(movies.id, mediaId)).run();
-			} else {
-				db.update(series).set({ path: newFolderName }).where(eq(series.id, mediaId)).run();
+			// Update the DB record. If this fails the disk is already renamed —
+			// roll the rename back so disk and DB stay consistent, otherwise the
+			// next scan would delete every file row for this title (stale path).
+			try {
+				this.updateMediaFolderPath(mediaType, mediaId, newFolderName);
+			} catch (dbError) {
+				const dbMessage = dbError instanceof Error ? dbError.message : String(dbError);
+				let rollbackSucceeded = false;
+				try {
+					await rename(actualNewFolder, actualOldFolder);
+					rollbackSucceeded = true;
+				} catch (rollbackError) {
+					logger.error(
+						{
+							err: rollbackError,
+							from: actualNewFolder,
+							to: actualOldFolder,
+							mediaId,
+							mediaType
+						},
+						'[RenamePreviewService] CRITICAL: DB update failed AND disk rollback failed — disk and DB are now inconsistent. Resolve the underlying error and rescan.'
+					);
+				}
+				await recordRenamingFailure({
+					fileId: mediaId,
+					fileType: mediaType === 'movie' ? 'movie' : 'episode',
+					sourcePath: actualOldFolder,
+					intendedPath: actualNewFolder,
+					reason: 'folder_db_update_failed',
+					reasonDetail: dbMessage
+				}).catch((err) =>
+					logger.warn({ err }, '[RenamePreviewService] Failed to record renaming failure')
+				);
+				return {
+					success: false,
+					error: rollbackSucceeded
+						? `Folder was renamed on disk but the database update failed; the rename was rolled back. (${dbMessage})`
+						: `Database update failed after the folder rename AND the rollback failed — the folder remains at its new path on disk while the database still references the old one. Resolve the underlying error and rescan. (${dbMessage})`,
+					oldPath: currentPath,
+					newPath: newFolderName
+				};
 			}
 
 			// Notify media servers of the new folder path so Jellyfin/Emby
@@ -788,6 +869,158 @@ export class RenamePreviewService {
 			);
 			return { success: false, error: message };
 		}
+	}
+
+	/**
+	 * Write one rename_history transition row per tracked file of the media
+	 * being reorganized, mapping each file's full old path to its full new
+	 * path. Called BEFORE the folder rename on disk so that a hard process
+	 * kill between the rename and the DB update can be healed by the next
+	 * scan via getRecentRenameTransitions (the folder's files moved with it,
+	 * so their relativePath values are unchanged).
+	 *
+	 * Best-effort audit: history writing must NEVER block or fail the
+	 * reorganize — same philosophy as writeRenameHistory.
+	 */
+	private async writeReorganizeHistory(
+		mediaType: 'movie' | 'series',
+		mediaId: string,
+		rootFolderPath: string,
+		oldFolderRel: string,
+		newFolderRel: string
+	): Promise<void> {
+		try {
+			const fileRows =
+				mediaType === 'movie'
+					? db
+							.select({ id: movieFiles.id, relativePath: movieFiles.relativePath })
+							.from(movieFiles)
+							.where(eq(movieFiles.movieId, mediaId))
+							.all()
+					: db
+							.select({ id: episodeFiles.id, relativePath: episodeFiles.relativePath })
+							.from(episodeFiles)
+							.where(eq(episodeFiles.seriesId, mediaId))
+							.all();
+
+			for (const row of fileRows) {
+				db.insert(renameHistory)
+					.values({
+						id: randomUUID(),
+						fileId: row.id,
+						mediaType: mediaType === 'movie' ? 'movie' : 'episode',
+						oldPath: join(rootFolderPath, oldFolderRel, row.relativePath),
+						newPath: join(rootFolderPath, newFolderRel, row.relativePath),
+						success: 1,
+						error: null,
+						operation: 'reorganize',
+						createdAt: new Date().toISOString()
+					})
+					.run();
+			}
+		} catch (writeError) {
+			logger.warn(
+				{
+					error: writeError instanceof Error ? writeError.message : String(writeError),
+					mediaId,
+					mediaType
+				},
+				'[RenamePreviewService] Failed to write reorganize history'
+			);
+		}
+	}
+
+	/**
+	 * Update movies.path or series.path. Extracted so failure paths can be
+	 * tested and both reorganizeFolder and applyFolderRename share it.
+	 */
+	private updateMediaFolderPath(
+		mediaType: 'movie' | 'series',
+		mediaId: string,
+		newPath: string
+	): void {
+		if (mediaType === 'movie') {
+			db.update(movies).set({ path: newPath }).where(eq(movies.id, mediaId)).run();
+		} else {
+			db.update(series).set({ path: newPath }).where(eq(series.id, mediaId)).run();
+		}
+	}
+
+	/**
+	 * Reorganize a batch of movie/series folders while holding the operation
+	 * lock once for the entire batch, so no library scan can interleave
+	 * between items. Per-item failures are isolated and counted.
+	 *
+	 * Calls the private reorganizeFolderLocked for each item — the lock is
+	 * already held and is NOT re-entrant, so the public reorganizeFolder
+	 * wrapper must not be used here (it would deadlock).
+	 */
+	async reorganizeFolders(
+		items: Array<{ mediaId: string; mediaType: 'movie' | 'series' }>
+	): Promise<{
+		total: number;
+		organized: number;
+		failed: number;
+		errors: string[];
+		results: Array<{
+			mediaId: string;
+			mediaType: 'movie' | 'series';
+			success: boolean;
+			error?: string;
+		}>;
+	}> {
+		return libraryOperationLock.withLock('reorganize-batch', async () => {
+			if (diskScanService.scanning) {
+				throw new Error(
+					'A library scan is in progress; the rename was not started. Retry after the scan completes.'
+				);
+			}
+
+			let organized = 0;
+			let failed = 0;
+			const errors: string[] = [];
+			const results: Array<{
+				mediaId: string;
+				mediaType: 'movie' | 'series';
+				success: boolean;
+				error?: string;
+			}> = [];
+
+			for (const item of items) {
+				try {
+					const result = await this.reorganizeFolderLocked(item.mediaId, item.mediaType);
+					if (result.success) {
+						organized++;
+						results.push({
+							mediaId: item.mediaId,
+							mediaType: item.mediaType,
+							success: true
+						});
+					} else {
+						failed++;
+						errors.push(result.error ?? 'Unknown reorganize error');
+						results.push({
+							mediaId: item.mediaId,
+							mediaType: item.mediaType,
+							success: false,
+							error: result.error
+						});
+					}
+				} catch (error) {
+					failed++;
+					const message = error instanceof Error ? error.message : String(error);
+					errors.push(message);
+					results.push({
+						mediaId: item.mediaId,
+						mediaType: item.mediaType,
+						success: false,
+						error: message
+					});
+				}
+			}
+
+			return { total: items.length, organized, failed, errors, results };
+		});
 	}
 
 	/**
@@ -916,7 +1149,8 @@ export class RenamePreviewService {
 	 * - Does NOT delete DB records on failure — that is the reconcile pass's job.
 	 */
 	private async executeFileRename(
-		item: RenamePreviewItem
+		item: RenamePreviewItem,
+		warnings: string[] = []
 	): Promise<RenameExecuteResult['results'][0]> {
 		try {
 			// Check if the file is in a read-only folder
@@ -1121,6 +1355,10 @@ export class RenamePreviewService {
 
 			getMediaBrowserNotifier().queueUpdate(item.newFullPath, 'Modified');
 
+			// Carry stem-matched sibling subtitles along on in-place renames so
+			// external subs stay associated with the renamed video.
+			await this.renameSubtitleCompanions(item.currentFullPath, item.newFullPath, warnings);
+
 			return {
 				fileId: item.fileId,
 				mediaType: item.mediaType,
@@ -1145,6 +1383,55 @@ export class RenamePreviewService {
 				newPath: item.newFullPath,
 				error: error instanceof Error ? error.message : 'Unknown error'
 			};
+		}
+	}
+
+	/**
+	 * Rename sibling subtitle files whose stem matches the old video stem to
+	 * the new video stem, preserving language/flag suffix chains (.en.hi,
+	 * .forced, .sdh, ...). Only applies to same-directory renames — folder
+	 * changes carry all companions via applyFolderRename. Best-effort:
+	 * failures produce warnings, never fail the rename.
+	 */
+	private async renameSubtitleCompanions(
+		oldPath: string,
+		newPath: string,
+		warnings: string[]
+	): Promise<void> {
+		const dir = dirname(oldPath);
+		if (dir !== dirname(newPath)) return;
+		const oldStem = basename(oldPath, extname(oldPath));
+		const newStem = basename(newPath, extname(newPath));
+		if (oldStem === newStem) return;
+
+		// Subtitle files: video-stem + optional dot-separated language/flag
+		// chain + subtitle extension. e.g. "Movie.en.srt", "Show.en.hi.ass",
+		// "Ep.forced.srt", "Ep.sdh.cc.sub"
+		const suffixRe =
+			/^(\.[a-z]{2,3}(-[a-zA-Z]{2,4})?|\.(forced|cc|sdh|default))*(\.(srt|ass|ssa|sub|vtt))$/i;
+		try {
+			const entries = await readdir(dir);
+			for (const entry of entries) {
+				const ext = extname(entry);
+				if (!/\.(srt|ass|ssa|sub|vtt)$/i.test(ext)) continue;
+				if (!entry.startsWith(oldStem)) continue;
+				const suffix = entry.slice(oldStem.length);
+				if (!suffixRe.test(suffix)) continue;
+				const from = join(dir, entry);
+				const to = join(dir, newStem + suffix);
+				if (await fileExists(to)) continue;
+				try {
+					await rename(from, to);
+					logger.info({ from, to }, '[RenamePreviewService] Renamed subtitle companion');
+				} catch (err) {
+					const message = err instanceof Error ? err.message : String(err);
+					warnings.push(`Subtitle "${entry}" could not be renamed: ${message}`);
+					logger.warn({ err, from, to }, '[RenamePreviewService] Subtitle companion rename failed');
+				}
+			}
+		} catch (err) {
+			// Directory unreadable — non-fatal.
+			logger.warn({ err, dir }, '[RenamePreviewService] Could not scan for subtitle companions');
 		}
 	}
 
@@ -1204,16 +1491,39 @@ export class RenamePreviewService {
 			const isRootFolder = resolve(oldFolder) === resolve(rootFolderPath);
 
 			// 1. Update DB path record so the library entry shows the correct folder.
-			if (mediaType === 'movie') {
-				db.update(movies).set({ path: newParentPath }).where(eq(movies.id, mediaId)).run();
-			} else {
-				db.update(series).set({ path: newParentPath }).where(eq(series.id, mediaId)).run();
+			// A failure here leaves series.path/movies.path stale while files have
+			// already moved — surface it loudly and record it for the failures
+			// report instead of silently reporting batch success.
+			try {
+				this.updateMediaFolderPath(
+					mediaType === 'movie' ? 'movie' : 'series',
+					mediaId,
+					newParentPath
+				);
+				logger.info(
+					{ mediaId, mediaType, from: oldFolder, to: newFolder, isRootFolder },
+					'[RenamePreviewService] Folder path updated in DB after file renames'
+				);
+			} catch (dbError) {
+				const dbMessage = dbError instanceof Error ? dbError.message : String(dbError);
+				logger.error(
+					{ mediaId, mediaType, from: oldParentPath, to: newParentPath, err: dbError },
+					'[RenamePreviewService] Failed to update parent path after file renames'
+				);
+				warnings.push(
+					`The folder path could not be updated in the database (${oldParentPath} → ${newParentPath}): ${dbMessage}. A library rescan may be required.`
+				);
+				await recordRenamingFailure({
+					fileId: mediaId,
+					fileType: mediaType === 'movie' ? 'movie' : 'episode',
+					sourcePath: oldFolder,
+					intendedPath: newFolder,
+					reason: 'folder_db_update_failed',
+					reasonDetail: dbMessage
+				}).catch((err) =>
+					logger.warn({ err }, '[RenamePreviewService] Failed to record renaming failure')
+				);
 			}
-
-			logger.info(
-				{ mediaId, mediaType, from: oldFolder, to: newFolder, isRootFolder },
-				'[RenamePreviewService] Folder path updated in DB after file renames'
-			);
 
 			// 2. Move companion files from the old folder to the new folder.
 			// When the media file is in a dedicated subfolder, carry everything (the

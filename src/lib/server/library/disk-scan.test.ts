@@ -1,7 +1,8 @@
 import { describe, it, expect, afterAll, vi } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../../test/db-helper.js';
@@ -19,10 +20,13 @@ vi.mock('$lib/server/db', () => ({
 }));
 
 const { diskScanService } = await import('./disk-scan.js');
-const { movies, movieFiles, rootFolders } = await import('$lib/server/db/schema.js');
+const { libraryOperationLock } = await import('./library-operation-lock.js');
+const { movies, movieFiles, rootFolders, series, episodeFiles, unmatchedFiles, renameHistory } =
+	await import('$lib/server/db/schema.js');
 
 const emptyRoot = await mkdtemp(join(tmpdir(), 'cinephage-empty-root-'));
 const missingRoot = join(tmpdir(), 'cinephage-missing-root-does-not-exist');
+const healScanRoots: string[] = [];
 
 testDb.db
 	.insert(rootFolders)
@@ -67,6 +71,9 @@ for (const rootId of ['root-empty', 'root-missing']) {
 
 afterAll(() => {
 	void rm(emptyRoot, { recursive: true, force: true });
+	for (const root of healScanRoots) {
+		void rm(root, { recursive: true, force: true });
+	}
 	destroyTestDb(testDb);
 });
 
@@ -94,5 +101,429 @@ describe('DiskScanService.scanRootFolder data-safety', () => {
 		expect(result.error).toBeTruthy();
 		expect(result.error).not.toMatch(/no files/i);
 		expect(await trackedFileCount('root-missing')).toBe(1);
+	});
+});
+
+describe('DiskScanService lock integration', () => {
+	it('refuses to scan while a rename operation holds the lock', async () => {
+		await libraryOperationLock.withLock('rename', async () => {
+			await expect(diskScanService.scanRootFolder('root-empty')).rejects.toThrow(
+				/rename|reorganiz/i
+			);
+			expect(diskScanService.scanning).toBe(false);
+		});
+		expect(libraryOperationLock.isLocked).toBe(false);
+	});
+});
+
+describe('rename transition healing', () => {
+	it('findRenameHealTarget returns the new path only when it exists on disk', async () => {
+		const { findRenameHealTarget } = await import('./disk-scan.js');
+
+		const transitions = new Map([
+			['/media/old/Movie.mkv', '/media/new/Movie.mkv'],
+			['/media/gone/Movie.mkv', '/media/never-materialized/Movie.mkv']
+		]);
+		const seenPaths = new Set(['/media/new/Movie.mkv']);
+
+		expect(findRenameHealTarget('/media/old/Movie.mkv', transitions, seenPaths)).toBe(
+			'/media/new/Movie.mkv'
+		);
+		expect(findRenameHealTarget('/media/gone/Movie.mkv', transitions, seenPaths)).toBeNull();
+		expect(findRenameHealTarget('/media/other/Movie.mkv', transitions, seenPaths)).toBeNull();
+	});
+
+	it('healRenamedFile updates series path and episodeFiles.relativePath instead of deleting', async () => {
+		const db = testDb.db;
+
+		const rootFolderId = randomUUID();
+		const seriesId = randomUUID();
+		const fileId = randomUUID();
+
+		await db.insert(rootFolders).values({
+			id: rootFolderId,
+			path: '/tmp/opencode/heal-root',
+			mediaType: 'tv',
+			name: 'heal-root'
+		});
+		await db.insert(series).values({
+			id: seriesId,
+			rootFolderId,
+			path: 'Old Series (2020)',
+			title: 'Old Series',
+			tmdbId: 12345
+		});
+		await db.insert(episodeFiles).values({
+			id: fileId,
+			seriesId,
+			seasonNumber: 1,
+			relativePath: 'Season 01/old name S01E01.mkv',
+			size: 100
+		});
+
+		const newPath = '/tmp/opencode/heal-root/New Series (2020)/Season 01/new name S01E01.mkv';
+		const healResult = await diskScanService.healRenamedFile(
+			{
+				id: fileId,
+				path: '/tmp/opencode/heal-root/Old Series (2020)/Season 01/old name S01E01.mkv',
+				size: 100,
+				allowStrmProbe: true,
+				source: 'tracked' as const
+			},
+			newPath,
+			'/tmp/opencode/heal-root',
+			'tv'
+		);
+		expect(healResult).toBe('healed');
+
+		const [seriesRow] = await db.select().from(series).where(eq(series.id, seriesId));
+		const [fileRow] = await db.select().from(episodeFiles).where(eq(episodeFiles.id, fileId));
+		expect(seriesRow.path).toBe('New Series (2020)');
+		expect(fileRow.relativePath).toBe('Season 01/new name S01E01.mkv');
+
+		await db.delete(episodeFiles).where(eq(episodeFiles.id, fileId));
+		await db.delete(series).where(eq(series.id, seriesId));
+		await db.delete(rootFolders).where(eq(rootFolders.id, rootFolderId));
+	});
+
+	it('healRenamedFile updates movies.path and movieFiles.relativePath for movie rows', async () => {
+		const db = testDb.db;
+
+		const rootFolderId = randomUUID();
+		const movieId = randomUUID();
+		const fileId = randomUUID();
+
+		await db.insert(rootFolders).values({
+			id: rootFolderId,
+			path: '/tmp/opencode/heal-movie-root',
+			mediaType: 'movie',
+			name: 'heal-movie-root'
+		});
+		await db.insert(movies).values({
+			id: movieId,
+			rootFolderId,
+			path: 'Old Movie (2020)',
+			title: 'Old Movie',
+			tmdbId: 12346
+		});
+		await db.insert(movieFiles).values({
+			id: fileId,
+			movieId,
+			relativePath: 'old.movie.2020.mkv',
+			size: 100
+		});
+
+		const healResult = await diskScanService.healRenamedFile(
+			{
+				id: fileId,
+				path: '/tmp/opencode/heal-movie-root/Old Movie (2020)/old.movie.2020.mkv',
+				size: 100,
+				allowStrmProbe: true,
+				source: 'tracked' as const
+			},
+			'/tmp/opencode/heal-movie-root/New Movie (2020)/new.movie.2020.mkv',
+			'/tmp/opencode/heal-movie-root',
+			'movie'
+		);
+
+		expect(healResult).toBe('healed');
+
+		const [movieRow] = await db.select().from(movies).where(eq(movies.id, movieId));
+		const [fileRow] = await db.select().from(movieFiles).where(eq(movieFiles.id, fileId));
+		expect(movieRow.path).toBe('New Movie (2020)');
+		expect(fileRow.relativePath).toBe('new.movie.2020.mkv');
+
+		await db.delete(movieFiles).where(eq(movieFiles.id, fileId));
+		await db.delete(movies).where(eq(movies.id, movieId));
+		await db.delete(rootFolders).where(eq(rootFolders.id, rootFolderId));
+	});
+
+	it('healRenamedFile updates unmatchedFiles.path for unmatched rows', async () => {
+		const db = testDb.db;
+
+		const rootFolderId = randomUUID();
+		const fileId = randomUUID();
+
+		await db.insert(rootFolders).values({
+			id: rootFolderId,
+			path: '/tmp/opencode/heal-unmatched-root',
+			mediaType: 'movie',
+			name: 'heal-unmatched-root'
+		});
+		await db.insert(unmatchedFiles).values({
+			id: fileId,
+			rootFolderId,
+			path: '/tmp/opencode/heal-unmatched-root/Old/name.mkv',
+			mediaType: 'movie',
+			size: 100
+		});
+
+		const healResult = await diskScanService.healRenamedFile(
+			{
+				id: fileId,
+				path: '/tmp/opencode/heal-unmatched-root/Old/name.mkv',
+				size: 100,
+				allowStrmProbe: true,
+				source: 'unmatched' as const
+			},
+			'/tmp/opencode/heal-unmatched-root/New/name.mkv',
+			'/tmp/opencode/heal-unmatched-root',
+			'movie'
+		);
+
+		expect(healResult).toBe('healed');
+
+		const [row] = await db.select().from(unmatchedFiles).where(eq(unmatchedFiles.id, fileId));
+		expect(row.path).toBe('/tmp/opencode/heal-unmatched-root/New/name.mkv');
+
+		await db.delete(unmatchedFiles).where(eq(unmatchedFiles.id, fileId));
+		await db.delete(rootFolders).where(eq(rootFolders.id, rootFolderId));
+	});
+
+	it('healRenamedFile returns skipped-stale without updating when the DB row is not stale', async () => {
+		const db = testDb.db;
+
+		const rootFolderId = randomUUID();
+		const seriesId = randomUUID();
+		const fileId = randomUUID();
+
+		await db.insert(rootFolders).values({
+			id: rootFolderId,
+			path: '/tmp/opencode/heal-stale-root',
+			mediaType: 'tv',
+			name: 'heal-stale-root'
+		});
+		await db.insert(series).values({
+			id: seriesId,
+			rootFolderId,
+			path: 'Stale Series (2020)',
+			title: 'Stale Series',
+			tmdbId: 12347
+		});
+		await db.insert(episodeFiles).values({
+			id: fileId,
+			seriesId,
+			seasonNumber: 1,
+			relativePath: 'Season 01/actual name S01E01.mkv',
+			size: 100
+		});
+
+		const healResult = await diskScanService.healRenamedFile(
+			{
+				id: fileId,
+				path: '/tmp/opencode/heal-stale-root/Stale Series (2020)/Season 01/other name S01E01.mkv',
+				size: 100,
+				allowStrmProbe: true,
+				source: 'tracked' as const
+			},
+			'/tmp/opencode/heal-stale-root/Stale Series (2020)/Season 01/renamed S01E01.mkv',
+			'/tmp/opencode/heal-stale-root',
+			'tv'
+		);
+
+		expect(healResult).toBe('skipped-stale');
+
+		const [seriesRow] = await db.select().from(series).where(eq(series.id, seriesId));
+		const [fileRow] = await db.select().from(episodeFiles).where(eq(episodeFiles.id, fileId));
+		expect(seriesRow.path).toBe('Stale Series (2020)');
+		expect(fileRow.relativePath).toBe('Season 01/actual name S01E01.mkv');
+
+		await db.delete(episodeFiles).where(eq(episodeFiles.id, fileId));
+		await db.delete(series).where(eq(series.id, seriesId));
+		await db.delete(rootFolders).where(eq(rootFolders.id, rootFolderId));
+	});
+
+	it('scanRootFolder heals renamed rows through rename_history instead of removing them', async () => {
+		const db = testDb.db;
+		const scanRoot = await mkdtemp(join(tmpdir(), 'cinephage-heal-scan-'));
+		healScanRoots.push(scanRoot);
+
+		const newDir = join(scanRoot, 'New Series (2020)', 'Season 01');
+		await mkdir(newDir, { recursive: true });
+		const newFilePath = join(newDir, 'new name S01E01.mkv');
+		await writeFile(newFilePath, Buffer.alloc(11 * 1024 * 1024, 1));
+
+		const rootFolderId = randomUUID();
+		const seriesId = randomUUID();
+		const fileId = randomUUID();
+
+		await db.insert(rootFolders).values({
+			id: rootFolderId,
+			path: scanRoot,
+			mediaType: 'tv',
+			name: 'heal-scan-root',
+			blockedVideoExtensions: '[]'
+		});
+		await db.insert(series).values({
+			id: seriesId,
+			rootFolderId,
+			path: 'Old Series (2020)',
+			title: 'Old Series',
+			tmdbId: 23456
+		});
+		await db.insert(episodeFiles).values({
+			id: fileId,
+			seriesId,
+			seasonNumber: 1,
+			relativePath: 'Season 01/old name S01E01.mkv',
+			size: 1
+		});
+		await db.insert(renameHistory).values({
+			id: randomUUID(),
+			fileId,
+			mediaType: 'tv',
+			oldPath: join(scanRoot, 'Old Series (2020)', 'Season 01', 'old name S01E01.mkv'),
+			newPath: newFilePath,
+			success: 1,
+			operation: 'rename',
+			createdAt: new Date().toISOString()
+		});
+
+		const result = await diskScanService.scanRootFolder(rootFolderId);
+
+		expect(result.success).toBe(true);
+		expect(result.filesRemoved).toBe(0);
+
+		const [fileRow] = await db.select().from(episodeFiles).where(eq(episodeFiles.id, fileId));
+		expect(fileRow).toBeDefined();
+		expect(fileRow.relativePath).toBe('Season 01/new name S01E01.mkv');
+		const [seriesRow] = await db.select().from(series).where(eq(series.id, seriesId));
+		expect(seriesRow.path).toBe('New Series (2020)');
+
+		await db.delete(renameHistory).where(eq(renameHistory.fileId, fileId));
+		await db.delete(rootFolders).where(eq(rootFolders.id, rootFolderId));
+		await db.delete(series).where(eq(series.id, seriesId));
+	});
+
+	it('scanRootFolder heals a reorganize crash-window: folder moved, relativePath unchanged', async () => {
+		const db = testDb.db;
+		const scanRoot = await mkdtemp(join(tmpdir(), 'cinephage-reorg-heal-scan-'));
+		healScanRoots.push(scanRoot);
+
+		// Simulate a crash between reorganizeFolderLocked's disk rename and its
+		// DB update: the folder (with its files) is at the NEW path on disk,
+		// while series.path still points at the OLD folder. The reorganize
+		// wrote a rename_history row per file with operation 'reorganize'.
+		const newDir = join(scanRoot, 'New Series (2020)', 'Season 01');
+		await mkdir(newDir, { recursive: true });
+		const newFilePath = join(newDir, 'old name S01E01.mkv');
+		await writeFile(newFilePath, Buffer.alloc(11 * 1024 * 1024, 1));
+
+		const rootFolderId = randomUUID();
+		const seriesId = randomUUID();
+		const fileId = randomUUID();
+
+		await db.insert(rootFolders).values({
+			id: rootFolderId,
+			path: scanRoot,
+			mediaType: 'tv',
+			name: 'reorg-heal-scan-root',
+			blockedVideoExtensions: '[]'
+		});
+		await db.insert(series).values({
+			id: seriesId,
+			rootFolderId,
+			path: 'Old Series (2020)',
+			title: 'Old Series',
+			tmdbId: 23458
+		});
+		await db.insert(episodeFiles).values({
+			id: fileId,
+			seriesId,
+			seasonNumber: 1,
+			relativePath: 'Season 01/old name S01E01.mkv',
+			size: 1
+		});
+		await db.insert(renameHistory).values({
+			id: randomUUID(),
+			fileId,
+			mediaType: 'episode',
+			oldPath: join(scanRoot, 'Old Series (2020)', 'Season 01', 'old name S01E01.mkv'),
+			newPath: newFilePath,
+			success: 1,
+			operation: 'reorganize',
+			createdAt: new Date().toISOString()
+		});
+
+		const result = await diskScanService.scanRootFolder(rootFolderId);
+
+		expect(result.success).toBe(true);
+		expect(result.filesRemoved).toBe(0);
+
+		const [fileRow] = await db.select().from(episodeFiles).where(eq(episodeFiles.id, fileId));
+		expect(fileRow).toBeDefined();
+		expect(fileRow.relativePath).toBe('Season 01/old name S01E01.mkv');
+		const [seriesRow] = await db.select().from(series).where(eq(series.id, seriesId));
+		expect(seriesRow.path).toBe('New Series (2020)');
+
+		await db.delete(renameHistory).where(eq(renameHistory.fileId, fileId));
+		await db.delete(rootFolders).where(eq(rootFolders.id, rootFolderId));
+		await db.delete(series).where(eq(series.id, seriesId));
+	});
+
+	it('scanRootFolder falls back to removal when healing fails', async () => {
+		const db = testDb.db;
+		const scanRoot = await mkdtemp(join(tmpdir(), 'cinephage-heal-fail-scan-'));
+		healScanRoots.push(scanRoot);
+
+		const newDir = join(scanRoot, 'New Series (2020)', 'Season 01');
+		await mkdir(newDir, { recursive: true });
+		const newFilePath = join(newDir, 'new name S01E01.mkv');
+		await writeFile(newFilePath, Buffer.alloc(11 * 1024 * 1024, 1));
+
+		const rootFolderId = randomUUID();
+		const seriesId = randomUUID();
+		const fileId = randomUUID();
+
+		await db.insert(rootFolders).values({
+			id: rootFolderId,
+			path: scanRoot,
+			mediaType: 'tv',
+			name: 'heal-fail-scan-root',
+			blockedVideoExtensions: '[]'
+		});
+		await db.insert(series).values({
+			id: seriesId,
+			rootFolderId,
+			path: 'Old Series (2020)',
+			title: 'Old Series',
+			tmdbId: 23457
+		});
+		await db.insert(episodeFiles).values({
+			id: fileId,
+			seriesId,
+			seasonNumber: 1,
+			relativePath: 'Season 01/old name S01E01.mkv',
+			size: 1
+		});
+		await db.insert(renameHistory).values({
+			id: randomUUID(),
+			fileId,
+			mediaType: 'tv',
+			oldPath: join(scanRoot, 'Old Series (2020)', 'Season 01', 'old name S01E01.mkv'),
+			newPath: newFilePath,
+			success: 1,
+			operation: 'rename',
+			createdAt: new Date().toISOString()
+		});
+
+		const healSpy = vi
+			.spyOn(diskScanService, 'healRenamedFile')
+			.mockRejectedValueOnce(new Error('heal exploded'));
+
+		const result = await diskScanService.scanRootFolder(rootFolderId);
+		const healCallCount = healSpy.mock.calls.length;
+		healSpy.mockRestore();
+
+		expect(healCallCount).toBe(1);
+		expect(result.success).toBe(true);
+		expect(result.filesRemoved).toBe(1);
+
+		const [fileRow] = await db.select().from(episodeFiles).where(eq(episodeFiles.id, fileId));
+		expect(fileRow).toBeUndefined();
+
+		await db.delete(renameHistory).where(eq(renameHistory.fileId, fileId));
+		await db.delete(rootFolders).where(eq(rootFolders.id, rootFolderId));
+		await db.delete(series).where(eq(series.id, seriesId));
 	});
 });
