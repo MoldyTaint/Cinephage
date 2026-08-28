@@ -42,7 +42,6 @@
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { createSubtitleProgress } from '$lib/stores/subtitleProgress.svelte';
 	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
-	import { MOVIES_RETURN_URL_KEY as RETURN_URL_KEY } from '$lib/utils/library-return-urls';
 	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
 	import * as m from '$lib/paraglide/messages.js';
 
@@ -53,10 +52,8 @@
 	beforeNavigate(({ to }) => {
 		if (to?.url.pathname.startsWith('/library/movie/')) {
 			localStorage.setItem(SCROLL_KEY, String(window.scrollY));
-			localStorage.setItem(RETURN_URL_KEY, window.location.pathname + window.location.search);
 		} else {
 			localStorage.removeItem(SCROLL_KEY);
-			localStorage.removeItem(RETURN_URL_KEY);
 		}
 	});
 
@@ -76,7 +73,7 @@
 	let searchQuery = $state(page.url.searchParams.get('q') ?? '');
 
 	// Keep the title search in the URL so refresh/back-navigation restores it and
-	// the returnUrl snapshot captures it. replaceState avoids a navigation per keystroke.
+	// the returnTo parameter carries it into the detail page. replaceState avoids a navigation per keystroke.
 	$effect(() => {
 		const query = searchQuery.trim();
 		const url = new URL(window.location.href);
