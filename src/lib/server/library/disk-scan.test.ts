@@ -19,6 +19,7 @@ vi.mock('$lib/server/db', () => ({
 }));
 
 const { diskScanService } = await import('./disk-scan.js');
+const { libraryOperationLock } = await import('./library-operation-lock.js');
 const { movies, movieFiles, rootFolders } = await import('$lib/server/db/schema.js');
 
 const emptyRoot = await mkdtemp(join(tmpdir(), 'cinephage-empty-root-'));
@@ -94,5 +95,16 @@ describe('DiskScanService.scanRootFolder data-safety', () => {
 		expect(result.error).toBeTruthy();
 		expect(result.error).not.toMatch(/no files/i);
 		expect(await trackedFileCount('root-missing')).toBe(1);
+	});
+});
+
+describe('DiskScanService lock integration', () => {
+	it('refuses to scan while a rename operation holds the lock', async () => {
+		await libraryOperationLock.withLock('rename', async () => {
+			await expect(diskScanService.scanRootFolder('root-empty')).rejects.toThrow(
+				/rename|reorganiz/i
+			);
+		});
+		expect(libraryOperationLock.isLocked).toBe(false);
 	});
 });

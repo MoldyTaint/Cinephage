@@ -34,6 +34,7 @@ import { libraryMediaEvents } from './LibraryMediaEvents.js';
 import { getMediaParseStem } from './media-utils.js';
 import { matchEpisodesByIdentifier, resolveTvEpisodeIdentifier } from './tv-episode-resolver.js';
 import { StreamingDiskScanner } from './jobs/StreamingDiskScanner.js';
+import { libraryOperationLock } from './library-operation-lock.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 
@@ -305,6 +306,12 @@ export class DiskScanService extends EventEmitter {
 	async scanRootFolder(rootFolderId: string): Promise<ScanResult> {
 		if (this.isScanning) {
 			throw new Error('A scan is already in progress');
+		}
+
+		if (libraryOperationLock.isLocked) {
+			throw new Error(
+				`Scan deferred: a rename/reorganize operation (${libraryOperationLock.holder}) is in progress`
+			);
 		}
 
 		const startTime = Date.now();
