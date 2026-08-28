@@ -10,6 +10,8 @@
 		getSeriesRenamePreview,
 		executeRename
 	} from '$lib/api/settings.js';
+	import { chunkFileIds } from '$lib/library/naming/batch-rename';
+	import type { RenameExecuteResult } from '$lib/library/naming/types.js';
 
 	interface Props {
 		open: boolean;
@@ -92,43 +94,72 @@
 		error = null;
 		success = null;
 
-		try {
-			const result = (await executeRename(
-				Array.from(selectedIds),
-				mediaType === 'movie' ? 'movie' : 'episode'
-			)) as unknown as {
-				succeeded: number;
-				failed: number;
-				results?: Array<{ success: boolean; error?: string }>;
-			};
+		let totalSucceeded = 0;
+		let totalFailed = 0;
+		const failedErrorMessages: string[] = [];
+		const collectedWarnings: string[] = [];
 
-			if (result.succeeded > 0) {
-				success = m.library_renamePreview_renamedCount({ count: result.succeeded });
+		try {
+			// The server caps fileIds at 500 per request, so execute chunks
+			// sequentially and aggregate the per-chunk results.
+			const chunks = chunkFileIds(Array.from(selectedIds));
+
+			for (const chunk of chunks) {
+				const response = await executeRename(chunk, mediaType === 'movie' ? 'movie' : 'episode');
+
+				if (!response.success) {
+					throw new Error(response.error || m.library_renamePreview_failedToExecute());
+				}
+
+				const result = response as unknown as RenameExecuteResult;
+				totalSucceeded += result.succeeded ?? 0;
+				totalFailed += result.failed ?? 0;
+
+				if (result.warnings?.length) {
+					collectedWarnings.push(...result.warnings);
+				}
+
+				// Get specific error messages from failed results
+				const failedResults = result.results?.filter((r) => !r.success) || [];
+				const errorMessages = failedResults
+					.map((r) => r.error)
+					.filter((e): e is string => Boolean(e));
+				failedErrorMessages.push(...errorMessages);
+			}
+
+			if (totalSucceeded > 0) {
+				success =
+					collectedWarnings.length > 0
+						? `${m.library_renamePreview_renamedCount({ count: totalSucceeded })} (${collectedWarnings.join(', ')})`
+						: m.library_renamePreview_renamedCount({ count: totalSucceeded });
 				onRenamed();
 
-				if (result.failed === 0) {
+				if (totalFailed === 0) {
 					setTimeout(() => {
 						onClose();
 					}, 1500);
 				}
 			}
 
-			if (result.failed > 0) {
-				// Get specific error messages from failed results
-				const failedResults = result.results?.filter((r: { success: boolean }) => !r.success) || [];
-				const errorMessages = failedResults.map((r: { error?: string }) => r.error).filter(Boolean);
-
-				if (errorMessages.length > 0) {
+			if (totalFailed > 0) {
+				if (failedErrorMessages.length > 0) {
 					error = m.library_renamePreview_failedWithErrors({
-						count: result.failed,
-						errors: errorMessages.join(', ')
+						count: totalFailed,
+						errors: failedErrorMessages.join(', ')
 					});
 				} else {
-					error = m.library_renamePreview_failedCount({ count: result.failed });
+					error = m.library_renamePreview_failedCount({ count: totalFailed });
 				}
 			}
 		} catch (e) {
-			error = e instanceof Error ? e.message : m.library_renamePreview_failedToExecute();
+			const chunkError = e instanceof Error ? e.message : m.library_renamePreview_failedToExecute();
+			if (totalSucceeded > 0) {
+				// Chunks before the failure already renamed files on disk — surface
+				// the partial success alongside the chunk error.
+				onRenamed();
+				success = m.library_renamePreview_renamedCount({ count: totalSucceeded });
+			}
+			error = chunkError;
 		} finally {
 			executing = false;
 		}
@@ -269,16 +300,19 @@
 					<div class="flex items-center justify-center py-10">
 						<RefreshCw class="h-6 w-6 animate-spin text-primary" />
 					</div>
-				{:else if error}
-					<div class="mb-4 alert alert-error">
-						<AlertTriangle class="h-5 w-5" />
-						<span>{error}</span>
-					</div>
-				{:else if success}
-					<div class="alert alert-success">
-						<CheckCircle class="h-5 w-5" />
-						<span>{success}</span>
-					</div>
+				{:else if error || success}
+					{#if error}
+						<div class="mb-4 alert alert-error">
+							<AlertTriangle class="h-5 w-5" />
+							<span>{error}</span>
+						</div>
+					{/if}
+					{#if success}
+						<div class="alert alert-success">
+							<CheckCircle class="h-5 w-5" />
+							<span>{success}</span>
+						</div>
+					{/if}
 				{:else if preview}
 					<!-- Summary -->
 					<div class="mb-4 flex gap-4 text-sm">
