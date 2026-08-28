@@ -1864,6 +1864,78 @@ describe('reorganizeFolder DB-failure rollback', () => {
 	});
 });
 
+describe('reorganizeFolder rename history', () => {
+	beforeEach(() => {
+		resetAllMocks();
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('writes a reorganize rename_history row per tracked file before the disk rename', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const movieId = randomUUID();
+		const fileId = randomUUID();
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: '/tmp/opencode/reorg-history-root',
+			mediaType: 'movie',
+			name: 'reorg-history-root'
+		});
+		await db.insert(schema.movies).values({
+			id: movieId,
+			rootFolderId,
+			path: 'Wrong (1900)',
+			title: 'Test Movie',
+			year: 2020,
+			tmdbId: 44
+		});
+		await db.insert(schema.movieFiles).values({
+			id: fileId,
+			movieId,
+			relativePath: 'test.movie.2020.mkv',
+			size: 100
+		});
+
+		const svc = new RenamePreviewService();
+		const folderNameSpy = vi
+			.spyOn(NamingService.prototype, 'generateMovieFolderName')
+			.mockReturnValue('Generated (2020)');
+
+		const result = await svc.reorganizeFolder(movieId, 'movie');
+
+		expect(result.success).toBe(true);
+		expect(mockFs.rename).toHaveBeenCalledWith(
+			'/tmp/opencode/reorg-history-root/Wrong (1900)',
+			'/tmp/opencode/reorg-history-root/Generated (2020)'
+		);
+
+		const [history] = await db
+			.select()
+			.from(schema.renameHistory)
+			.where(eq(schema.renameHistory.fileId, fileId));
+		expect(history).toBeDefined();
+		expect(history.operation).toBe('reorganize');
+		expect(history.success).toBe(1);
+		expect(history.error).toBeNull();
+		expect(history.mediaType).toBe('movie');
+		expect(history.oldPath).toBe(
+			'/tmp/opencode/reorg-history-root/Wrong (1900)/test.movie.2020.mkv'
+		);
+		expect(history.newPath).toBe(
+			'/tmp/opencode/reorg-history-root/Generated (2020)/test.movie.2020.mkv'
+		);
+
+		folderNameSpy.mockRestore();
+		await db.delete(schema.renameHistory).where(eq(schema.renameHistory.fileId, fileId));
+		await db.delete(schema.movieFiles).where(eq(schema.movieFiles.id, fileId));
+		await db.delete(schema.movies).where(eq(schema.movies.id, movieId));
+		await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+	});
+});
+
 describe('applyFolderRename DB-failure surfacing', () => {
 	beforeEach(() => {
 		resetAllMocks();

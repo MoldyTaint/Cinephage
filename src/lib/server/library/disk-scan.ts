@@ -1288,9 +1288,10 @@ export class DiskScanService extends EventEmitter {
 	}
 
 	/**
-	 * Recent successful file renames (old full path → new full path), most
-	 * recent winning on duplicates. Consumes the rename_history audit table,
-	 * which until now was write-only.
+	 * Recent successful file/folder renames and reorganize moves (old full
+	 * path → new full path), most recent winning on duplicates. Consumes the
+	 * rename_history audit table written by executeRenames (operation
+	 * 'rename') and reorganizeFolderLocked (operation 'reorganize').
 	 */
 	private async getRecentRenameTransitions(): Promise<Map<string, string>> {
 		const cutoff = new Date(Date.now() - RENAME_TRANSITION_WINDOW_MS).toISOString();
@@ -1303,7 +1304,7 @@ export class DiskScanService extends EventEmitter {
 			.where(
 				and(
 					eq(renameHistory.success, 1),
-					eq(renameHistory.operation, 'rename'),
+					inArray(renameHistory.operation, ['rename', 'reorganize']),
 					gte(renameHistory.createdAt, cutoff)
 				)
 			)

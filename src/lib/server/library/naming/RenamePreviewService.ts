@@ -781,6 +781,19 @@ export class RenamePreviewService {
 				await manager.deleteMediaItemByTmdb(mediaTmdbId, mediaType as 'movie' | 'series');
 			}
 
+			// Write per-file transition rows BEFORE the disk rename so a hard
+			// process-kill between the rename and the DB update below can be
+			// healed by the scan-diff path (rename_history is consumed by
+			// getRecentRenameTransitions). Best-effort: failures don't block
+			// the reorganize.
+			await this.writeReorganizeHistory(
+				mediaType,
+				mediaId,
+				rootFolderPath,
+				currentPath,
+				newFolderName
+			);
+
 			// Atomically rename the folder on disk.
 			await rename(actualOldFolder, actualNewFolder);
 
@@ -855,6 +868,65 @@ export class RenamePreviewService {
 				'[RenamePreviewService] Folder reorganize failed'
 			);
 			return { success: false, error: message };
+		}
+	}
+
+	/**
+	 * Write one rename_history transition row per tracked file of the media
+	 * being reorganized, mapping each file's full old path to its full new
+	 * path. Called BEFORE the folder rename on disk so that a hard process
+	 * kill between the rename and the DB update can be healed by the next
+	 * scan via getRecentRenameTransitions (the folder's files moved with it,
+	 * so their relativePath values are unchanged).
+	 *
+	 * Best-effort audit: history writing must NEVER block or fail the
+	 * reorganize — same philosophy as writeRenameHistory.
+	 */
+	private async writeReorganizeHistory(
+		mediaType: 'movie' | 'series',
+		mediaId: string,
+		rootFolderPath: string,
+		oldFolderRel: string,
+		newFolderRel: string
+	): Promise<void> {
+		try {
+			const fileRows =
+				mediaType === 'movie'
+					? db
+							.select({ id: movieFiles.id, relativePath: movieFiles.relativePath })
+							.from(movieFiles)
+							.where(eq(movieFiles.movieId, mediaId))
+							.all()
+					: db
+							.select({ id: episodeFiles.id, relativePath: episodeFiles.relativePath })
+							.from(episodeFiles)
+							.where(eq(episodeFiles.seriesId, mediaId))
+							.all();
+
+			for (const row of fileRows) {
+				db.insert(renameHistory)
+					.values({
+						id: randomUUID(),
+						fileId: row.id,
+						mediaType: mediaType === 'movie' ? 'movie' : 'episode',
+						oldPath: join(rootFolderPath, oldFolderRel, row.relativePath),
+						newPath: join(rootFolderPath, newFolderRel, row.relativePath),
+						success: 1,
+						error: null,
+						operation: 'reorganize',
+						createdAt: new Date().toISOString()
+					})
+					.run();
+			}
+		} catch (writeError) {
+			logger.warn(
+				{
+					error: writeError instanceof Error ? writeError.message : String(writeError),
+					mediaId,
+					mediaType
+				},
+				'[RenamePreviewService] Failed to write reorganize history'
+			);
 		}
 	}
 

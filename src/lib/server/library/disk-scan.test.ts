@@ -395,6 +395,72 @@ describe('rename transition healing', () => {
 		await db.delete(series).where(eq(series.id, seriesId));
 	});
 
+	it('scanRootFolder heals a reorganize crash-window: folder moved, relativePath unchanged', async () => {
+		const db = testDb.db;
+		const scanRoot = await mkdtemp(join(tmpdir(), 'cinephage-reorg-heal-scan-'));
+		healScanRoots.push(scanRoot);
+
+		// Simulate a crash between reorganizeFolderLocked's disk rename and its
+		// DB update: the folder (with its files) is at the NEW path on disk,
+		// while series.path still points at the OLD folder. The reorganize
+		// wrote a rename_history row per file with operation 'reorganize'.
+		const newDir = join(scanRoot, 'New Series (2020)', 'Season 01');
+		await mkdir(newDir, { recursive: true });
+		const newFilePath = join(newDir, 'old name S01E01.mkv');
+		await writeFile(newFilePath, Buffer.alloc(11 * 1024 * 1024, 1));
+
+		const rootFolderId = randomUUID();
+		const seriesId = randomUUID();
+		const fileId = randomUUID();
+
+		await db.insert(rootFolders).values({
+			id: rootFolderId,
+			path: scanRoot,
+			mediaType: 'tv',
+			name: 'reorg-heal-scan-root',
+			blockedVideoExtensions: '[]'
+		});
+		await db.insert(series).values({
+			id: seriesId,
+			rootFolderId,
+			path: 'Old Series (2020)',
+			title: 'Old Series',
+			tmdbId: 23458
+		});
+		await db.insert(episodeFiles).values({
+			id: fileId,
+			seriesId,
+			seasonNumber: 1,
+			relativePath: 'Season 01/old name S01E01.mkv',
+			size: 1
+		});
+		await db.insert(renameHistory).values({
+			id: randomUUID(),
+			fileId,
+			mediaType: 'episode',
+			oldPath: join(scanRoot, 'Old Series (2020)', 'Season 01', 'old name S01E01.mkv'),
+			newPath: newFilePath,
+			success: 1,
+			operation: 'reorganize',
+			createdAt: new Date().toISOString()
+		});
+
+		const result = await diskScanService.scanRootFolder(rootFolderId);
+
+		expect(result.success).toBe(true);
+		expect(result.filesRemoved).toBe(0);
+
+		const [fileRow] = await db.select().from(episodeFiles).where(eq(episodeFiles.id, fileId));
+		expect(fileRow).toBeDefined();
+		expect(fileRow.relativePath).toBe('Season 01/old name S01E01.mkv');
+		const [seriesRow] = await db.select().from(series).where(eq(series.id, seriesId));
+		expect(seriesRow.path).toBe('New Series (2020)');
+
+		await db.delete(renameHistory).where(eq(renameHistory.fileId, fileId));
+		await db.delete(rootFolders).where(eq(rootFolders.id, rootFolderId));
+		await db.delete(series).where(eq(series.id, seriesId));
+	});
+
 	it('scanRootFolder falls back to removal when healing fails', async () => {
 		const db = testDb.db;
 		const scanRoot = await mkdtemp(join(tmpdir(), 'cinephage-heal-fail-scan-'));
