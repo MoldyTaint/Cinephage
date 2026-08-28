@@ -27,6 +27,7 @@ const logger = createChildLogger({ logDomain: 'scans' as const });
 import { NamingService, type MediaNamingInfo } from './NamingService';
 import { namingSettingsService } from './NamingSettingsService';
 import { libraryOperationLock } from '../library-operation-lock.js';
+import { diskScanService } from '../disk-scan.js';
 import { moveFile, fileExists } from '$lib/server/downloadClients/import/FileTransfer';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
 import { rename, stat, readdir, rmdir } from 'node:fs/promises';
@@ -428,6 +429,12 @@ export class RenamePreviewService {
 		fileIds: string[],
 		_mediaType: 'movie' | 'episode' | 'mixed' = 'mixed'
 	): Promise<RenameExecuteResult> {
+		if (diskScanService.scanning) {
+			throw new Error(
+				'A library scan is in progress; the rename was not started. Retry after the scan completes.'
+			);
+		}
+
 		const result: RenameExecuteResult = {
 			success: true,
 			processed: 0,
@@ -683,6 +690,12 @@ export class RenamePreviewService {
 		mediaType: 'movie' | 'series'
 	): Promise<{ success: boolean; oldPath?: string; newPath?: string; error?: string }> {
 		try {
+			if (diskScanService.scanning) {
+				throw new Error(
+					'A library scan is in progress; the rename was not started. Retry after the scan completes.'
+				);
+			}
+
 			let rootFolderPath = '';
 			let currentPath = '';
 			let rootFolderId: string | undefined;
@@ -885,6 +898,12 @@ export class RenamePreviewService {
 		}>;
 	}> {
 		return libraryOperationLock.withLock('reorganize-batch', async () => {
+			if (diskScanService.scanning) {
+				throw new Error(
+					'A library scan is in progress; the rename was not started. Retry after the scan completes.'
+				);
+			}
+
 			let organized = 0;
 			let failed = 0;
 			const errors: string[] = [];

@@ -76,9 +76,14 @@ export const POST: RequestHandler = async (event) => {
 			results: batch.results
 		} satisfies ReorganizeBatchResult);
 	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (/scan is in progress/i.test(message)) {
+			return json({ error: message }, { status: 409 });
+		}
+
 		logger.error(
 			{
-				error: error instanceof Error ? error.message : String(error)
+				error
 			},
 			'[ReorganizeBatch API] Failed to reorganize folders'
 		);

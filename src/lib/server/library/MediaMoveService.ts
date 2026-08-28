@@ -9,6 +9,7 @@ import { libraryMediaEvents } from './LibraryMediaEvents.js';
 import { moveDirectoryWithinRoots } from '$lib/server/filesystem/move-helpers.js';
 import { getLibraryEntityService } from './LibraryEntityService.js';
 import { libraryOperationLock } from './library-operation-lock.js';
+import { diskScanService } from './disk-scan.js';
 
 const logger = createChildLogger({ module: 'MediaMoveService' });
 
@@ -96,6 +97,12 @@ class MediaMoveService {
 	): Promise<void> {
 		const taskHistoryService = getTaskHistoryService();
 		try {
+			if (diskScanService.scanning) {
+				throw new Error(
+					'A library scan is in progress; the move was not started. Retry after the scan completes.'
+				);
+			}
+
 			const folders = await db
 				.select({
 					id: rootFolders.id,

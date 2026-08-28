@@ -60,9 +60,14 @@ export const POST: RequestHandler = async (event) => {
 
 		return json(result);
 	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (/scan is in progress/i.test(message)) {
+			return json({ error: message }, { status: 409 });
+		}
+
 		logger.error(
 			{
-				error: error instanceof Error ? error.message : String(error)
+				error
 			},
 			'[RenameExecute API] Failed to execute renames'
 		);

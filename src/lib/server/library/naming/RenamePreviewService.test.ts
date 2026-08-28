@@ -14,6 +14,7 @@ import { RenamePreviewService, type RenamePreviewResult } from './RenamePreviewS
 import { NamingService, type MediaNamingInfo, DEFAULT_NAMING_CONFIG } from './NamingService';
 import { chooseBestParsedRelease, resolveAudioLanguages } from './preview-metadata';
 import { libraryOperationLock } from '../library-operation-lock';
+import { diskScanService } from '../disk-scan.js';
 import * as schema from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -1929,5 +1930,44 @@ describe('applyFolderRename DB-failure surfacing', () => {
 		await db.delete(schema.renamingFailures).where(eq(schema.renamingFailures.fileId, seriesId));
 		await db.delete(schema.series).where(eq(schema.series.id, seriesId));
 		await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+	});
+});
+
+describe('RenamePreviewService scan-in-progress refusal', () => {
+	let scanSpy: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		scanSpy = vi
+			.spyOn(diskScanService, 'scanning', 'get')
+			.mockReturnValue(true);
+	});
+
+	afterEach(() => {
+		scanSpy.mockRestore();
+	});
+
+	it('refuses executeRenames while a library scan is in progress', async () => {
+		const svc = new RenamePreviewService();
+
+		await expect(svc.executeRenames(['nonexistent-file'])).rejects.toThrow(
+			/scan is in progress/i
+		);
+	});
+
+	it('refuses reorganizeFolder while a library scan is in progress', async () => {
+		const svc = new RenamePreviewService();
+
+		const result = await svc.reorganizeFolder(randomUUID(), 'movie');
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/scan is in progress/i);
+	});
+
+	it('refuses the whole reorganizeFolders batch while a library scan is in progress', async () => {
+		const svc = new RenamePreviewService();
+
+		await expect(
+			svc.reorganizeFolders([{ mediaId: randomUUID(), mediaType: 'movie' }])
+		).rejects.toThrow(/scan is in progress/i);
 	});
 });
