@@ -470,18 +470,27 @@ export class DiskScanService extends EventEmitter {
 
 				const healTarget = findRenameHealTarget(path, transitions, seenPaths);
 				if (healTarget) {
-					await this.healRenamedFile(
-						existingFile,
-						healTarget,
-						rootFolder.path,
-						rootFolder.mediaType
-					);
-					progress.filesUpdated++;
-					logger.info(
-						{ from: path, to: healTarget, fileId: existingFile.id },
-						'[DiskScan] Healed renamed file row instead of delete+recreate'
-					);
-					continue;
+					try {
+						const healResult = await this.healRenamedFile(
+							existingFile,
+							healTarget,
+							rootFolder.path,
+							rootFolder.mediaType
+						);
+						if (healResult === 'healed') {
+							progress.filesUpdated++;
+							logger.info(
+								{ from: path, to: healTarget, fileId: existingFile.id },
+								'[DiskScan] Healed renamed file row instead of delete+recreate'
+							);
+						}
+						continue;
+					} catch (healError) {
+						logger.warn(
+							{ err: healError, from: path, to: healTarget, fileId: existingFile.id },
+							'[DiskScan] Rename heal failed; falling back to row removal'
+						);
+					}
 				}
 
 				await this.removeFile(existingFile.id, rootFolder.mediaType);
@@ -1297,7 +1306,9 @@ export class DiskScanService extends EventEmitter {
 					eq(renameHistory.operation, 'rename'),
 					gte(renameHistory.createdAt, cutoff)
 				)
-			);
+			)
+			// Oldest first so the most recent rename wins when old paths collide.
+			.orderBy(renameHistory.createdAt);
 
 		const map = new Map<string, string>();
 		for (const row of rows) {
@@ -1310,6 +1321,11 @@ export class DiskScanService extends EventEmitter {
 	 * A tracked file row's path disappeared but a recent rename moved it to a
 	 * path that now exists on disk: update the DB rows to the new location
 	 * instead of delete+recreate, preserving mediaInfo, linkage, and stats.
+	 *
+	 * Returns 'healed' when the DB rows were updated, or 'skipped-stale' when
+	 * nothing was healed (the row was already consistent or could not be
+	 * resolved) — the caller leaves such rows alone so they self-heal on the
+	 * next scan.
 	 *
 	 * Public (not private) so tests can exercise the healing logic directly
 	 * without running a full scan.
@@ -1325,13 +1341,13 @@ export class DiskScanService extends EventEmitter {
 		newFullPath: string,
 		rootFolderPath: string,
 		mediaType: string
-	): Promise<void> {
+	): Promise<'healed' | 'skipped-stale'> {
 		if (existingFile.source === 'unmatched') {
 			await db
 				.update(unmatchedFiles)
 				.set({ path: newFullPath })
 				.where(eq(unmatchedFiles.id, existingFile.id));
-			return;
+			return 'healed';
 		}
 
 		if (mediaType === 'movie') {
@@ -1339,15 +1355,17 @@ export class DiskScanService extends EventEmitter {
 				.select({ movieId: movieFiles.movieId, relativePath: movieFiles.relativePath })
 				.from(movieFiles)
 				.where(eq(movieFiles.id, existingFile.id));
-			if (!row) return;
+			if (!row) return 'skipped-stale';
 			const [movie] = await db
 				.select({ path: movies.path })
 				.from(movies)
 				.where(eq(movies.id, row.movieId));
-			if (!movie) return;
+			if (!movie) return 'skipped-stale';
 
 			// Only heal when the DB is actually stale for this row.
-			if (join(rootFolderPath, movie.path, row.relativePath) !== existingFile.path) return;
+			if (join(rootFolderPath, movie.path, row.relativePath) !== existingFile.path) {
+				return 'skipped-stale';
+			}
 
 			const { newParentRel, newRelative } = this.splitRenamedPath(
 				newFullPath,
@@ -1362,19 +1380,22 @@ export class DiskScanService extends EventEmitter {
 				.update(movieFiles)
 				.set({ relativePath: newRelative })
 				.where(eq(movieFiles.id, existingFile.id));
+			return 'healed';
 		} else {
 			const [row] = await db
 				.select({ seriesId: episodeFiles.seriesId, relativePath: episodeFiles.relativePath })
 				.from(episodeFiles)
 				.where(eq(episodeFiles.id, existingFile.id));
-			if (!row) return;
+			if (!row) return 'skipped-stale';
 			const [seriesItem] = await db
 				.select({ path: series.path })
 				.from(series)
 				.where(eq(series.id, row.seriesId));
-			if (!seriesItem) return;
+			if (!seriesItem) return 'skipped-stale';
 
-			if (join(rootFolderPath, seriesItem.path, row.relativePath) !== existingFile.path) return;
+			if (join(rootFolderPath, seriesItem.path, row.relativePath) !== existingFile.path) {
+				return 'skipped-stale';
+			}
 
 			const { newParentRel, newRelative } = this.splitRenamedPath(
 				newFullPath,
@@ -1389,6 +1410,7 @@ export class DiskScanService extends EventEmitter {
 				.update(episodeFiles)
 				.set({ relativePath: newRelative })
 				.where(eq(episodeFiles.id, existingFile.id));
+			return 'healed';
 		}
 	}
 
