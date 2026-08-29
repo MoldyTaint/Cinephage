@@ -35,6 +35,7 @@ export interface DownloadClientFormState {
 	recentPriority: DownloadPriority;
 	olderPriority: DownloadPriority;
 	initialState: DownloadInitialState;
+	sequentialDownload: boolean;
 	downloadPathLocal: string;
 	downloadPathRemote: string;
 	tempPathLocal: string;
@@ -106,6 +107,9 @@ export function serializeDownloadClientForm(
 		initialState: formState.initialState,
 		seedRatioLimit: null,
 		seedTimeLimit: null,
+		...(formState.implementation === 'qbittorrent'
+			? { sequentialDownload: formState.sequentialDownload }
+			: {}),
 		downloadPathLocal: formState.downloadPathLocal || null,
 		downloadPathRemote: formState.downloadPathRemote || null,
 		tempPathLocal: formState.tempPathLocal || null,

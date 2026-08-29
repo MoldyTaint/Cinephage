@@ -72,6 +72,8 @@ export interface DownloadClient {
 	// Seeding limits
 	seedRatioLimit?: string | null;
 	seedTimeLimit?: number | null;
+	/** qBittorrent only: request sequential piece downloading for newly added torrents. */
+	sequentialDownload?: boolean;
 
 	// Path mapping (completed downloads)
 	downloadPathLocal?: string | null;
@@ -121,6 +123,7 @@ export interface DownloadClientInput {
 	initialState?: DownloadInitialState;
 	seedRatioLimit?: string | null;
 	seedTimeLimit?: number | null;
+	sequentialDownload?: boolean;
 	downloadPathLocal?: string | null;
 	downloadPathRemote?: string | null;
 	tempPathLocal?: string | null;
@@ -148,6 +151,7 @@ export interface DownloadClientFormData {
 	initialState?: DownloadInitialState;
 	seedRatioLimit?: string | null;
 	seedTimeLimit?: number | null;
+	sequentialDownload?: boolean;
 	downloadPathLocal?: string | null;
 	downloadPathRemote?: string | null;
 	tempPathLocal?: string | null;

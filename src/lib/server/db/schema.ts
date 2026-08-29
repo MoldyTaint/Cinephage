@@ -507,6 +507,7 @@ export const downloadClients = sqliteTable('download_clients', {
 	// Seeding limits
 	seedRatioLimit: text('seed_ratio_limit'), // Decimal as string
 	seedTimeLimit: integer('seed_time_limit'), // Minutes
+	sequentialDownload: integer('sequential_download', { mode: 'boolean' }).notNull().default(false),
 
 	// Path mapping - local path as seen by Cinephage server
 	downloadPathLocal: text('download_path_local'),

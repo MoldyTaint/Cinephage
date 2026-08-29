@@ -108,6 +108,7 @@ const LEGACY_DOWNLOAD_CLIENT_SELECT = {
 	initialState: downloadClientsTable.initialState,
 	seedRatioLimit: downloadClientsTable.seedRatioLimit,
 	seedTimeLimit: downloadClientsTable.seedTimeLimit,
+	sequentialDownload: downloadClientsTable.sequentialDownload,
 	downloadPathLocal: downloadClientsTable.downloadPathLocal,
 	downloadPathRemote: downloadClientsTable.downloadPathRemote,
 	tempPathLocal: downloadClientsTable.tempPathLocal,
@@ -296,6 +297,8 @@ export class DownloadClientManager {
 			initialState: isDebrid ? 'start' : (input.initialState ?? 'start'),
 			seedRatioLimit: isDebrid ? null : input.seedRatioLimit,
 			seedTimeLimit: isDebrid ? null : input.seedTimeLimit,
+			sequentialDownload:
+				implementation === 'qbittorrent' ? (input.sequentialDownload ?? false) : false,
 			downloadPathLocal: isDebrid ? null : input.downloadPathLocal,
 			downloadPathRemote: isDebrid ? null : input.downloadPathRemote,
 			tempPathLocal: isDebrid ? null : input.tempPathLocal,
@@ -362,6 +365,9 @@ export class DownloadClientManager {
 		if (updates.initialState !== undefined) updateData.initialState = updates.initialState;
 		if (updates.seedRatioLimit !== undefined) updateData.seedRatioLimit = updates.seedRatioLimit;
 		if (updates.seedTimeLimit !== undefined) updateData.seedTimeLimit = updates.seedTimeLimit;
+		if (updates.sequentialDownload !== undefined && existing.implementation === 'qbittorrent') {
+			updateData.sequentialDownload = updates.sequentialDownload;
+		}
 		if (updates.downloadPathLocal !== undefined)
 			updateData.downloadPathLocal = updates.downloadPathLocal;
 		if (updates.downloadPathRemote !== undefined)
@@ -596,6 +602,8 @@ export class DownloadClientManager {
 			username: config.username,
 			password: config.password,
 			implementation: config.implementation,
+			sequentialDownload:
+				config.implementation === 'qbittorrent' ? (config.sequentialDownload ?? false) : false,
 			// For SABnzbd, the API key is stored in the password field
 			apiKey:
 				this.normalizeImplementation(config.implementation) === 'sabnzbd'
@@ -935,6 +943,7 @@ export class DownloadClientManager {
 			initialState: (row.initialState as 'start' | 'pause' | 'force') ?? 'start',
 			seedRatioLimit: row.seedRatioLimit,
 			seedTimeLimit: row.seedTimeLimit,
+			sequentialDownload: implementation === 'qbittorrent' ? !!row.sequentialDownload : false,
 			downloadPathLocal: row.downloadPathLocal,
 			downloadPathRemote: row.downloadPathRemote,
 			tempPathLocal: row.tempPathLocal,

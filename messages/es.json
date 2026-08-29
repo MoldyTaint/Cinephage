@@ -3136,6 +3136,7 @@
 	"settings_integrations_downloadClients_standardSabnzbd": "SABnzbd estándar",
 	"settings_integrations_downloadClients_start": "Iniciar",
 	"settings_integrations_downloadClients_startAs": "Iniciar como",
+	"settings_integrations_downloadClients_sequentialDownload": "Descargar piezas secuencialmente",
 	"settings_integrations_downloadClients_statusDegraded": "Degradado",
 	"settings_integrations_downloadClients_subtitle": "Gestiona tus clientes de descarga para descargas torrent y Usenet.",
 	"settings_integrations_downloadClients_tempDownloadFolder": "Carpeta temporal de descarga",
