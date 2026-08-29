@@ -96,7 +96,11 @@ describe('TemplateEngine.parse', () => {
 
 describe('TemplateEngine.render', () => {
 	it('renders the docs-advertised first-letter folder pattern', () => {
-		const result = engine.render('{Movie Title:First}/{Movie Title} ({Release Year})', movieInfo, config);
+		const result = engine.render(
+			'{Movie Title:First}/{Movie Title} ({Release Year})',
+			movieInfo,
+			config
+		);
 		expect(result).toBe('T/The Matrix (1999)');
 	});
 
@@ -116,9 +120,9 @@ describe('TemplateEngine.render', () => {
 
 	it('conditional blocks unaffected', () => {
 		expect(engine.render('{[{HDR}]}', movieInfo, config)).toBe('[HDR10]');
-		expect(engine.render('{edition-{Edition}}', { ...movieInfo, edition: 'Extended' }, config)).toBe(
-			'edition-Extended'
-		);
+		expect(
+			engine.render('{edition-{Edition}}', { ...movieInfo, edition: 'Extended' }, config)
+		).toBe('edition-Extended');
 	});
 
 	it('conditional blocks drop when token empty', () => {

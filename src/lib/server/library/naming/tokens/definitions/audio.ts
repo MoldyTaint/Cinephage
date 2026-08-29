@@ -17,7 +17,12 @@ export const audioTokens: TokenDefinition[] = [
 	},
 	{
 		name: 'AudioChannels',
-		aliases: ['MediaInfo AudioChannels', 'MediaInfo AudioChannelsFriendly', 'Audio', 'Audio Channels'],
+		aliases: [
+			'MediaInfo AudioChannels',
+			'MediaInfo AudioChannelsFriendly',
+			'Audio',
+			'Audio Channels'
+		],
 		category: 'audio',
 		description: 'Audio channels (5.1, 7.1, etc.)',
 		applicability: ['movie', 'episode'],
