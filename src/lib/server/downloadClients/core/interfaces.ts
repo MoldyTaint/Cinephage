@@ -30,6 +30,8 @@ export interface DownloadClientConfig {
 	downloadPathRemote?: string | null;
 	tempPathLocal?: string | null;
 	tempPathRemote?: string | null;
+	/** qBittorrent only: enable sequential downloading when adding a torrent. */
+	sequentialDownload?: boolean;
 }
 
 /**

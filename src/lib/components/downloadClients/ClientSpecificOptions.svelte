@@ -13,6 +13,7 @@
 		recentPriority: 'normal' | 'high' | 'force';
 		olderPriority: 'normal' | 'high' | 'force';
 		initialState: 'start' | 'pause' | 'force';
+		sequentialDownload: boolean;
 		downloadPathLocal: string;
 		downloadPathRemote: string;
 		tempPathLocal: string;
@@ -36,6 +37,7 @@
 		recentPriority = $bindable(),
 		olderPriority = $bindable(),
 		initialState = $bindable(),
+		sequentialDownload = $bindable(),
 		downloadPathLocal = $bindable(),
 		downloadPathRemote = $bindable(),
 		tempPathLocal = $bindable(),
@@ -63,6 +65,7 @@
 		bind:recentPriority
 		bind:olderPriority
 		bind:initialState
+		bind:sequentialDownload
 		bind:downloadPathLocal
 		bind:downloadPathRemote
 		bind:tempPathLocal

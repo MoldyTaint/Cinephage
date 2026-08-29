@@ -628,6 +628,10 @@ export class QBittorrentClient implements IDownloadClient {
 			formData.append('seedingTimeLimit', options.seedTimeLimit.toString());
 		}
 
+		if (this.config.sequentialDownload) {
+			formData.append('sequentialDownload', 'true');
+		}
+
 		// Determine initial state based on priority
 		const forceStart = options.priority === 'force';
 
