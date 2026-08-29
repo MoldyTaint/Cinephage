@@ -3136,6 +3136,7 @@
 	"settings_integrations_downloadClients_standardSabnzbd": "Standard SABnzbd",
 	"settings_integrations_downloadClients_start": "Start",
 	"settings_integrations_downloadClients_startAs": "Starten als",
+	"settings_integrations_downloadClients_sequentialDownload": "Teile sequenziell herunterladen",
 	"settings_integrations_downloadClients_statusDegraded": "Degradiert",
 	"settings_integrations_downloadClients_subtitle": "Verwalten Sie Ihre Download-Clients für Torrent- und Usenet-Downloads.",
 	"settings_integrations_downloadClients_tempDownloadFolder": "Temporärer Download-Ordner",

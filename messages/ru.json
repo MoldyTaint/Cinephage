@@ -3136,6 +3136,7 @@
 	"settings_integrations_downloadClients_standardSabnzbd": "Стандартный SABnzbd",
 	"settings_integrations_downloadClients_start": "Запуск",
 	"settings_integrations_downloadClients_startAs": "Запуск от имени",
+	"settings_integrations_downloadClients_sequentialDownload": "Загружать части последовательно",
 	"settings_integrations_downloadClients_statusDegraded": "Деградировал",
 	"settings_integrations_downloadClients_subtitle": "Управляйте клиентами загрузок для торрент- и Usenet-загрузок.",
 	"settings_integrations_downloadClients_tempDownloadFolder": "Временная папка загрузок",

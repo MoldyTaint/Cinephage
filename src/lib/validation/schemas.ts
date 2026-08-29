@@ -480,6 +480,7 @@ const nonDebridDownloadClientFields = {
 		.optional()
 		.nullable(),
 	seedTimeLimit: z.number().int().min(0).optional().nullable(),
+	sequentialDownload: z.boolean().optional(),
 	downloadPathLocal: z.string().optional().nullable(),
 	downloadPathRemote: z.string().optional().nullable(),
 	tempPathLocal: z.string().optional().nullable(),
@@ -503,7 +504,16 @@ const nonDebridDownloadClientCreateSchema = z
 		apiToken: z.never().optional(),
 		removeAfterImport: z.never().optional()
 	})
-	.strict();
+	.strict()
+	.superRefine((data, context) => {
+		if (data.implementation !== 'qbittorrent' && data.sequentialDownload !== undefined) {
+			context.addIssue({
+				code: 'custom',
+				path: ['sequentialDownload'],
+				message: 'Sequential download is only supported by qBittorrent'
+			});
+		}
+	});
 
 export const downloadClientCreateSchema = z.union([
 	debridDownloadClientCreateSchema,
@@ -567,6 +577,7 @@ const nonDebridDownloadClientUpdateSchema = z
 			.optional()
 			.nullable(),
 		seedTimeLimit: z.number().int().min(0).optional().nullable(),
+		sequentialDownload: z.boolean().optional(),
 		downloadPathLocal: z.string().optional().nullable(),
 		downloadPathRemote: z.string().optional().nullable(),
 		tempPathLocal: z.string().optional().nullable(),
@@ -596,6 +607,7 @@ const NON_DEBRID_ONLY_UPDATE_FIELDS = [
 	'initialState',
 	'seedRatioLimit',
 	'seedTimeLimit',
+	'sequentialDownload',
 	'downloadPathLocal',
 	'downloadPathRemote',
 	'tempPathLocal',
@@ -623,6 +635,13 @@ export function downloadClientUpdateSchemaForImplementation(storedImplementation
 					message: `Field is not valid for ${storedImplementation}`
 				});
 			}
+		}
+		if (!storedIsDebrid && storedImplementation !== 'qbittorrent' && 'sequentialDownload' in data) {
+			context.addIssue({
+				code: 'custom',
+				path: ['sequentialDownload'],
+				message: 'Sequential download is only supported by qBittorrent'
+			});
 		}
 	});
 }

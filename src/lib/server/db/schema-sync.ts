@@ -136,8 +136,9 @@ import {
  * Version 125: Add api_token and remove_after_import columns to download_clients (debrid support)
  * Version 126: Add metadata_language and prefer_original_title columns to movies and series tables
  * Version 127: Add cinephage_api_config identity auto-sync columns (latest_version, latest_commit, auto_update)
+ * Version 132: Add qBittorrent sequential download setting to download_clients
  */
-export const CURRENT_SCHEMA_VERSION = 128;
+export const CURRENT_SCHEMA_VERSION = 132;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -276,6 +277,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"initial_state" text DEFAULT 'start',
 		"seed_ratio_limit" text,
 		"seed_time_limit" integer,
+		"sequential_download" integer DEFAULT 0,
 		"download_path_local" text,
 		"download_path_remote" text,
 		"temp_path_local" text,

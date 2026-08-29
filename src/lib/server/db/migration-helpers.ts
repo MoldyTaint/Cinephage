@@ -569,7 +569,8 @@ export const MIGRATION_COLUMN_MAP: Record<number, Array<{ table: string; column:
 	125: [
 		{ table: 'download_clients', column: 'api_token' },
 		{ table: 'download_clients', column: 'remove_after_import' }
-	]
+	],
+	132: [{ table: 'download_clients', column: 'sequential_download' }]
 };
 
 /**

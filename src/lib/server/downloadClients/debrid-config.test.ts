@@ -122,6 +122,7 @@ describe('debrid client configuration', () => {
 			'downloadPathLocal',
 			'movieCategory',
 			'seedRatioLimit',
+			'sequentialDownload',
 			'initialState'
 		]) {
 			expect(() => downloadClientCreateSchema.parse({ ...debrid, [field]: 'forbidden' })).toThrow();
