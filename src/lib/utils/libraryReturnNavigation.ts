@@ -75,3 +75,21 @@ export function getSafeLibraryReturnTo(
 		return null;
 	}
 }
+
+/**
+ * Compute the detail-page back-link target from the current page URL.
+ *
+ * Returns the validated absolute list URL (or null when no valid returnTo is
+ * present) WITHOUT passing it through resolvePath(). The header components
+ * apply resolvePath() to their backHref exactly once, and during SSR — with
+ * kit.paths.relative at its default — resolve() returns a ../..-prefixed
+ * relative path. Pre-resolving here would feed that relative value back into
+ * the header's resolve() call, which throws on non-absolute input and turns
+ * the whole detail page into a 500 (PR #518 regression).
+ */
+export function getLibraryDetailBackHref(
+	pageUrl: URL,
+	expectedListPath: '/library/movies' | '/library/tv'
+): string | null {
+	return getSafeLibraryReturnTo(pageUrl.searchParams.get('returnTo'), expectedListPath);
+}

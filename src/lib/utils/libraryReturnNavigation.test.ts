@@ -1,10 +1,28 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	getLibraryDetailBackHref,
 	getLibraryDetailWithReturnTo,
 	getLibraryNavigationContext,
 	getSafeLibraryReturnTo
 } from './libraryReturnNavigation';
+
+/**
+ * Faithful simulation of SvelteKit's server-side resolve() during SSR
+ * (kit.paths.relative defaults to true, empty base — @sveltejs/kit 2.70.2,
+ * src/runtime/app/paths/server.js): absolute paths are returned relative to
+ * the page being rendered, and non-absolute input throws.
+ */
+function ssrResolve(path: string, currentPathname: string): string {
+	if (!path.startsWith('/')) {
+		throw new Error(
+			`Cannot use \`resolve(...)\` with a non-absolute pathname or route ID (got "${path}").`
+		);
+	}
+	const segments = currentPathname.split('/').slice(2);
+	const prefix = segments.map(() => '..').join('/') || '.';
+	return prefix + path;
+}
 
 describe('library return navigation', () => {
 	it('recognizes Movies and TV list/detail routes independently', () => {
@@ -118,5 +136,83 @@ describe('getSafeLibraryReturnTo', () => {
 		expect(getSafeLibraryReturnTo(null, '/library/movies')).toBeNull();
 		expect(getSafeLibraryReturnTo('', '/library/movies')).toBeNull();
 		expect(getSafeLibraryReturnTo('not-a-path', '/library/movies')).toBeNull();
+	});
+});
+
+describe('getLibraryDetailBackHref', () => {
+	it('returns the validated filtered Movies list URL from the page URL', () => {
+		const url = new URL(
+			'/library/movie/movie-id?returnTo=%2Flibrary%2Fmovies%3Fmonitored%3Dunmonitored%26sort%3Dyear-desc%26q%3Dmatrix',
+			'http://cinephage.local'
+		);
+		expect(getLibraryDetailBackHref(url, '/library/movies')).toBe(
+			'/library/movies?monitored=unmonitored&sort=year-desc&q=matrix'
+		);
+	});
+
+	it('returns the validated filtered TV list URL from the page URL', () => {
+		const url = new URL(
+			'/library/tv/series-id?returnTo=%2Flibrary%2Ftv%3Fstatus%3Dended%26q%3Dvoyager',
+			'http://cinephage.local'
+		);
+		expect(getLibraryDetailBackHref(url, '/library/tv')).toBe('/library/tv?status=ended&q=voyager');
+	});
+
+	it('returns null for missing, external, and cross-section returnTo values', () => {
+		expect(
+			getLibraryDetailBackHref(
+				new URL('/library/movie/movie-id', 'http://cinephage.local'),
+				'/library/movies'
+			)
+		).toBeNull();
+		expect(
+			getLibraryDetailBackHref(
+				new URL(
+					'/library/movie/movie-id?returnTo=https%3A%2F%2Fevil.example.com%2Flibrary%2Fmovies',
+					'http://cinephage.local'
+				),
+				'/library/movies'
+			)
+		).toBeNull();
+		expect(
+			getLibraryDetailBackHref(
+				new URL(
+					'/library/movie/movie-id?returnTo=%2Flibrary%2Ftv%3Fstatus%3Dended',
+					'http://cinephage.local'
+				),
+				'/library/movies'
+			)
+		).toBeNull();
+	});
+
+	it('returns an absolute path that survives the header single-resolve during SSR', () => {
+		// What the header does: resolvePath(backHref) once, while rendering
+		// /library/movie/movie-id server-side.
+		const backHref = getLibraryDetailBackHref(
+			new URL(
+				'/library/movie/movie-id?returnTo=%2Flibrary%2Fmovies%3Fmonitored%3Dtrue',
+				'http://cinephage.local'
+			),
+			'/library/movies'
+		)!;
+		expect(backHref.startsWith('/')).toBe(true);
+
+		const href = ssrResolve(backHref, '/library/movie/movie-id');
+		expect(href).toBe('../../library/movies?monitored=true');
+	});
+
+	it('double-resolving the back value throws during SSR (the PR #518 regression)', () => {
+		// The pre-fix detail pages called resolvePath() on the validated value
+		// before the header resolved it again. During SSR the first call
+		// relativizes the path and the second throws — HTTP 500.
+		const backHref = getLibraryDetailBackHref(
+			new URL(
+				'/library/tv/series-id?returnTo=%2Flibrary%2Ftv%3Fstatus%3Dended',
+				'http://cinephage.local'
+			),
+			'/library/tv'
+		)!;
+		const preResolved = ssrResolve(backHref, '/library/tv/series-id');
+		expect(() => ssrResolve(preResolved, '/library/tv/series-id')).toThrow(/non-absolute pathname/);
 	});
 });

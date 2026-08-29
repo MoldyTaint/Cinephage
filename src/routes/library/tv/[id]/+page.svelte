@@ -33,7 +33,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
-	import { getSafeLibraryReturnTo } from '$lib/utils/libraryReturnNavigation';
+	import { getLibraryDetailBackHref } from '$lib/utils/libraryReturnNavigation';
 	import { createDynamicSSE } from '$lib/sse';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { createSubtitleProgress } from '$lib/stores/subtitleProgress.svelte';
@@ -57,11 +57,10 @@
 	const queueItems = $derived(queueItemsState ?? data.queueItems);
 
 	// Back link target: the validated returnTo URL carries the exact filtered
-	// list state from the page the user navigated from (issue #515).
-	const tvBackHref = $derived.by(() => {
-		const validated = getSafeLibraryReturnTo(page.url.searchParams.get('returnTo'), '/library/tv');
-		return validated ? resolvePath(validated) : null;
-	});
+	// list state from the page the user navigated from (issue #515). It stays
+	// absolute — LibrarySeriesHeader applies resolvePath() exactly once, and
+	// pre-resolving here relativizes it during SSR and throws (PR #518).
+	const tvBackHref = $derived(getLibraryDetailBackHref(page.url, '/library/tv'));
 
 	function computeSeriesEpisodeStats(seasonList: PageData['seasons']) {
 		const regularSeasons = seasonList.filter((season) => season.seasonNumber > 0);

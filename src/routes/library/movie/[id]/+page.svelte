@@ -45,7 +45,7 @@
 	import { page } from '$app/state';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
-	import { getSafeLibraryReturnTo } from '$lib/utils/libraryReturnNavigation';
+	import { getLibraryDetailBackHref } from '$lib/utils/libraryReturnNavigation';
 	import { createDynamicSSE } from '$lib/sse';
 	import { getFileName } from '$lib/utils/format.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
@@ -65,14 +65,10 @@
 	const queueItem = $derived(queueItemState === undefined ? data.queueItem : queueItemState);
 
 	// Back link target: the validated returnTo URL carries the exact filtered
-	// list state from the page the user navigated from (issue #515).
-	const moviesBackHref = $derived.by(() => {
-		const validated = getSafeLibraryReturnTo(
-			page.url.searchParams.get('returnTo'),
-			'/library/movies'
-		);
-		return validated ? resolvePath(validated) : null;
-	});
+	// list state from the page the user navigated from (issue #515). It stays
+	// absolute — LibraryMovieHeader applies resolvePath() exactly once, and
+	// pre-resolving here relativizes it during SSR and throws (PR #518).
+	const moviesBackHref = $derived(getLibraryDetailBackHref(page.url, '/library/movies'));
 
 	function describeError(error: unknown, fallback: string): string {
 		return error instanceof Error ? error.message : fallback;
