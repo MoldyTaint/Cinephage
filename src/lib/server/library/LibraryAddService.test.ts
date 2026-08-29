@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+	select: vi.fn(),
+	from: vi.fn(),
+	where: vi.fn(),
+	limit: vi.fn(),
 	seedDefaultScoringProfiles: vi.fn(),
 	getProfile: vi.fn(),
 	getDefaultScoringProfile: vi.fn(),
@@ -8,7 +12,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('$lib/server/db/index.js', () => ({
-	db: {},
+	db: {
+		select: mocks.select
+	},
 	sqlite: {},
 	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
@@ -52,12 +58,74 @@ vi.mock('$lib/logging', () => ({
 	}))
 }));
 
-import { getEffectiveScoringProfileId } from './LibraryAddService.js';
+import { getEffectiveScoringProfileId, validateRootFolder } from './LibraryAddService.js';
 import { ValidationError } from '$lib/errors';
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	mocks.select.mockReturnValue({ from: mocks.from });
+	mocks.from.mockReturnValue({ where: mocks.where });
+	mocks.where.mockReturnValue({ limit: mocks.limit });
 	mocks.seedDefaultScoringProfiles.mockResolvedValue(undefined);
+});
+
+describe('validateRootFolder', () => {
+	it('allows read-only folders by default', async () => {
+		mocks.limit.mockResolvedValue([
+			{
+				id: 'root-1',
+				name: 'Remote movies',
+				path: '/media/movies',
+				mediaType: 'movie',
+				mediaSubType: 'standard',
+				readOnly: true
+			}
+		]);
+
+		await expect(validateRootFolder('root-1', 'movie')).resolves.toMatchObject({
+			id: 'root-1',
+			path: '/media/movies'
+		});
+	});
+
+	it('rejects read-only folders when writable access is required', async () => {
+		mocks.limit.mockResolvedValue([
+			{
+				id: 'root-1',
+				name: 'Remote movies',
+				path: '/media/movies',
+				mediaType: 'movie',
+				mediaSubType: 'standard',
+				readOnly: true
+			}
+		]);
+
+		await expect(validateRootFolder('root-1', 'movie', { requireWritable: true })).rejects.toThrow(
+			'Root folder is read-only'
+		);
+	});
+
+	it('allows writable folders when writable access is required', async () => {
+		mocks.limit.mockResolvedValue([
+			{
+				id: 'root-1',
+				name: 'Local movies',
+				path: '/media/movies',
+				mediaType: 'movie',
+				mediaSubType: 'standard',
+				readOnly: false
+			}
+		]);
+
+		await expect(validateRootFolder('root-1', 'movie', { requireWritable: true })).resolves.toEqual(
+			{
+				id: 'root-1',
+				path: '/media/movies',
+				mediaType: 'movie',
+				mediaSubType: 'standard'
+			}
+		);
+	});
 });
 
 describe('getEffectiveScoringProfileId', () => {

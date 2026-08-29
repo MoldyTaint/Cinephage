@@ -59,7 +59,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		} = result.data;
 
 		// Verify root folder exists and is for movies
-		await validateRootFolder(rootFolderId, 'movie');
+		await validateRootFolder(rootFolderId, 'movie', { requireWritable: true });
 		const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
 			rootFolderId,
 			'movie'

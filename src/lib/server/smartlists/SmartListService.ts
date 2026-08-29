@@ -829,6 +829,7 @@ export class SmartListService {
 				}
 
 				// Fetch movie details from TMDB
+				await validateRootFolder(list.rootFolderId, 'movie', { requireWritable: true });
 				const movieDetails = await fetchMovieDetails(item.tmdbId);
 				const year = movieDetails.release_date
 					? new Date(movieDetails.release_date).getFullYear()
@@ -925,6 +926,7 @@ export class SmartListService {
 				}
 
 				// Fetch series details from TMDB
+				await validateRootFolder(list.rootFolderId, 'tv', { requireWritable: true });
 				const seriesDetails = await fetchSeriesDetails(item.tmdbId);
 				const year = seriesDetails.first_air_date
 					? new Date(seriesDetails.first_air_date).getFullYear()
@@ -1438,6 +1440,9 @@ export class SmartListService {
 
 		// Process only new items
 		const newItems = items.filter((i) => !existingMovieIds.has(i.tmdbId));
+		if (newItems.length > 0) {
+			await validateRootFolder(list.rootFolderId!, 'movie', { requireWritable: true });
+		}
 
 		for (const item of newItems) {
 			try {
@@ -1587,6 +1592,9 @@ export class SmartListService {
 
 		// Process only new items
 		const newItems = items.filter((i) => !existingSeriesIds.has(i.tmdbId));
+		if (newItems.length > 0) {
+			await validateRootFolder(list.rootFolderId!, 'tv', { requireWritable: true });
+		}
 
 		for (const item of newItems) {
 			try {

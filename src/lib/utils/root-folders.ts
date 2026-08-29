@@ -4,6 +4,19 @@ interface RootFolderLike {
 	mediaType: string;
 	mediaSubType?: string | null;
 	isDefault?: boolean;
+	readOnly?: boolean;
+}
+
+export function getWritableRootFoldersForMediaType<T extends RootFolderLike>(
+	rootFolders: T[],
+	mediaType: 'movie' | 'tv',
+	mediaSubType?: 'standard' | 'anime'
+): T[] {
+	return sortRootFoldersForMediaType(
+		rootFolders.filter((folder) => !folder.readOnly),
+		mediaType,
+		mediaSubType
+	);
 }
 
 export function sortRootFoldersForMediaType<T extends RootFolderLike>(

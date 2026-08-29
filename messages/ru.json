@@ -4024,6 +4024,7 @@
 	"smartlists_settings_maxItems": "Максимум элементов",
 	"smartlists_settings_monitorAdded": "Отслеживать добавленные элементы",
 	"smartlists_settings_noRootFolders": "Корневые папки для {mediaType} не настроены.",
+	"smartlists_settings_noWritableRootFolders": "Корневые папки {mediaType} с возможностью записи не настроены.",
 	"smartlists_settings_refreshInterval": "Интервал обновления",
 	"smartlists_settings_rootFolder": "Корневая папка",
 	"smartlists_settings_scoringProfile": "Профиль оценки",

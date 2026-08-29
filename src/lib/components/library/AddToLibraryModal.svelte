@@ -3,7 +3,7 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
-	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
+	import { getWritableRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 	import type { RootFolderWithSpaceAndDefault as RootFolder } from '$lib/types/downloadClient.js';
 	import type { DesiredQuality } from '$lib/types/library.js';
@@ -132,7 +132,7 @@
 		enforceAnimeSubtype ? (detectedAnime ? ('anime' as const) : ('standard' as const)) : undefined
 	);
 	const filteredRootFolders = $derived(
-		sortRootFoldersForMediaType(rootFolders, mediaType, requiredMediaSubType)
+		getWritableRootFoldersForMediaType(rootFolders, mediaType, requiredMediaSubType)
 	);
 	const rootFolderLibraryMap = $derived.by(() => {
 		const assignments = new SvelteMap<string, LibraryEntity>();

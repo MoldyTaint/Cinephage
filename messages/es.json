@@ -4024,6 +4024,7 @@
 	"smartlists_settings_maxItems": "Máx. elementos",
 	"smartlists_settings_monitorAdded": "Monitorear elementos añadidos",
 	"smartlists_settings_noRootFolders": "Sin carpetas raíz de {mediaType} configuradas.",
+	"smartlists_settings_noWritableRootFolders": "No hay carpetas raíz escribibles de {mediaType} configuradas.",
 	"smartlists_settings_refreshInterval": "Intervalo de actualización",
 	"smartlists_settings_rootFolder": "Carpeta raíz",
 	"smartlists_settings_scoringProfile": "Perfil de puntuación",

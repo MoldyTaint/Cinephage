@@ -838,6 +838,7 @@ export class ManualImportService {
 		});
 
 		await validateRootFolder(destinationRootFolderId, 'movie', {
+			requireWritable: true,
 			enforceAnimeSubtype,
 			isAnimeMedia,
 			mediaTitle: tmdbMovie.title
@@ -957,6 +958,7 @@ export class ManualImportService {
 		});
 
 		await validateRootFolder(destinationRootFolderId, 'tv', {
+			requireWritable: true,
 			enforceAnimeSubtype,
 			isAnimeMedia,
 			mediaTitle: tvShow.name

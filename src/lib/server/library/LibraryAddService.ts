@@ -34,6 +34,7 @@ export interface RootFolderInfo {
 }
 
 export interface RootFolderValidationOptions {
+	requireWritable?: boolean;
 	enforceAnimeSubtype?: boolean;
 	isAnimeMedia?: boolean;
 	mediaTitle?: string;
@@ -73,6 +74,13 @@ export async function validateRootFolder(
 		throw new ValidationError(`Root folder is not configured for ${typeLabel}`, {
 			mediaType: folder.mediaType,
 			expected: expectedMediaType
+		});
+	}
+
+	if (options.requireWritable && folder.readOnly) {
+		throw new ValidationError('Root folder is read-only', {
+			rootFolderId: folder.id,
+			rootFolderName: folder.name
 		});
 	}
 

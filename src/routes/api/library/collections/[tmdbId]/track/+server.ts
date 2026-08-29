@@ -117,6 +117,7 @@ export const POST: RequestHandler = async (event) => {
 			});
 
 			await validateRootFolder(rootFolderId, 'movie', {
+				requireWritable: true,
 				enforceAnimeSubtype,
 				isAnimeMedia,
 				mediaTitle: movieDetails.title
