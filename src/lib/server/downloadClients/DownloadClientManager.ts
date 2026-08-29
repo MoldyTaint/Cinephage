@@ -603,7 +603,7 @@ export class DownloadClientManager {
 			password: config.password,
 			implementation: config.implementation,
 			sequentialDownload:
-				config.implementation === 'qbittorrent' ? config.sequentialDownload : false,
+				config.implementation === 'qbittorrent' ? (config.sequentialDownload ?? false) : false,
 			// For SABnzbd, the API key is stored in the password field
 			apiKey:
 				this.normalizeImplementation(config.implementation) === 'sabnzbd'
