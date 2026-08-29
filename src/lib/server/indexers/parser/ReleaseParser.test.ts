@@ -675,6 +675,23 @@ describe('ReleaseParser', () => {
 			expect(result.releaseGroup).toBeUndefined();
 		});
 
+		it('should not treat the episode-title tail as a group when bracketed quality is unrecognized', () => {
+			// Cinephage-generated names wrap audio in brackets; normalizeTitle
+			// turns "2.0" into "2 0" so no audio matcher registers, and the
+			// span must ignore the bracket block to still see the title tail.
+			const result = parseRelease(
+				'Supernatural (2005) - S02E01 - In My Time of Dying [AAC 2.0]-Dying.strm'
+			);
+			expect(result.releaseGroup).toBeUndefined();
+		});
+
+		it('should keep a real group after unrecognized bracketed quality', () => {
+			const result = parseRelease(
+				'Blue Mountain State (2010) - S03E10 - One Week [AAC 2.0]-RARBG.strm'
+			);
+			expect(result.releaseGroup).toBe('RARBG');
+		});
+
 		it('should not treat capitalized episode-title tail words as release groups', () => {
 			const result = parseRelease('The Boys - S00E35 - An Important Update on Homelander');
 			expect(result.releaseGroup).toBeUndefined();

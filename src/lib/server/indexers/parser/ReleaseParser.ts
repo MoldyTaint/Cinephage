@@ -247,7 +247,14 @@ export class ReleaseParser {
 		}
 
 		const span = stripped.slice(spanStart, spanEnd).trim();
-		const lastWord = span.split(/\s+/).pop();
+		// Tokenize ignoring bracket-wrapped quality blocks and punctuation so
+		// bracketed audio (e.g. "[AAC 2 0]" — dots were normalized to spaces)
+		// does not mask the title tail when no quality matcher registered.
+		const spanTokens = span
+			.replace(/\[[^\]]*\]/g, ' ')
+			.split(/[^A-Za-z0-9]+/)
+			.filter(Boolean);
+		const lastWord = spanTokens[spanTokens.length - 1];
 
 		if (lastWord && lastWord.toLowerCase() === group.toLowerCase()) {
 			return undefined;
