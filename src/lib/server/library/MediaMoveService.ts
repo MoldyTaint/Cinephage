@@ -107,7 +107,8 @@ class MediaMoveService {
 			const folders = await db
 				.select({
 					id: rootFolders.id,
-					path: rootFolders.path
+					path: rootFolders.path,
+					readOnly: rootFolders.readOnly
 				})
 				.from(rootFolders)
 				.where(inArray(rootFolders.id, [input.sourceRootFolderId, input.destinationRootFolderId]));
@@ -117,6 +118,9 @@ class MediaMoveService {
 
 			if (!sourceRoot?.path || !destinationRoot?.path) {
 				throw new Error('Source or destination root folder path is missing');
+			}
+			if (destinationRoot.readOnly) {
+				throw new Error('Cannot move media to read-only root folder');
 			}
 
 			const moved = await moveDirectoryWithinRoots(

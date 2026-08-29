@@ -200,16 +200,19 @@ export type RootFolderWithSpaceAndDefault = Omit<
 		| 'mediaSubType'
 		| 'isDefault'
 		| 'defaultMonitored'
+		| 'readOnly'
 		| 'freeSpaceBytes'
 	>,
 	'mediaType' | 'mediaSubType'
 > & {
 	mediaType: string;
 	mediaSubType?: string | null;
+	readOnly?: boolean;
 };
 
 export type RootFolderBasic = Omit<Pick<RootFolder, 'id' | 'path' | 'mediaType'>, 'mediaType'> & {
 	mediaType: string;
+	readOnly?: boolean | null;
 };
 
 /**

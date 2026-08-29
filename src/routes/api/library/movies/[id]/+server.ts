@@ -288,6 +288,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				);
 			}
 
+			const shouldMoveFiles =
+				moveFilesOnRootChange === true &&
+				hasExistingFiles &&
+				Boolean(currentMovie?.path) &&
+				canMoveFromCurrentRoot;
+
 			const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
 			let isAnimeMedia = false;
 			if (enforceAnimeSubtype && currentMovie) {
@@ -303,16 +309,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			}
 
 			await validateRootFolder(nextRootFolderId, 'movie', {
+				requireWritable: shouldMoveFiles,
 				enforceAnimeSubtype,
 				isAnimeMedia,
 				mediaTitle: currentMovie?.title
 			});
 
-			const shouldMoveFiles =
-				moveFilesOnRootChange === true &&
-				currentMovie?.hasFile === true &&
-				currentMovie?.path &&
-				canMoveFromCurrentRoot;
 			if (shouldMoveFiles && currentRootFolderId && currentMovie?.path) {
 				moveRequest = {
 					mediaId: params.id,

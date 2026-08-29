@@ -187,6 +187,7 @@ export const POST: RequestHandler = async (event) => {
 
 		// Verify root folder exists and is for TV (with optional anime subtype enforcement)
 		await validateRootFolder(rootFolderId, 'tv', {
+			requireWritable: true,
 			enforceAnimeSubtype,
 			isAnimeMedia,
 			mediaTitle: tvDetails.name

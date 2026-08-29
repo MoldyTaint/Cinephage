@@ -174,3 +174,47 @@ describe('MediaMoveService scan-in-progress refusal', () => {
 		expect(mockCompleteTask).not.toHaveBeenCalled();
 	});
 });
+
+describe('MediaMoveService read-only destination refusal', () => {
+	it('fails the task without moving files when the destination root is read-only', async () => {
+		const sourceRootId = crypto.randomUUID();
+		const destinationRootId = crypto.randomUUID();
+		await testDb.db.insert(schema.rootFolders).values([
+			{
+				id: sourceRootId,
+				path: '/movies-root',
+				mediaType: 'movie',
+				name: 'movies-root'
+			},
+			{
+				id: destinationRootId,
+				path: '/remote-root',
+				mediaType: 'movie',
+				name: 'remote-root',
+				readOnly: true
+			}
+		]);
+
+		try {
+			// @ts-expect-error accessing private method for testing
+			await mediaMoveService.executeMoveTaskLocked('move-task', 'move-history', {
+				mediaType: 'movie',
+				mediaId: 'movie-1',
+				mediaTitle: 'Movie',
+				relativePath: 'Movie (2020)',
+				sourceRootFolderId: sourceRootId,
+				destinationRootFolderId: destinationRootId
+			});
+
+			expect(mockedMoveDirectoryWithinRoots).not.toHaveBeenCalled();
+			expect(mockFailTask).toHaveBeenCalledWith('move-history', [
+				'Cannot move media to read-only root folder'
+			]);
+			expect(mockCompleteTask).not.toHaveBeenCalled();
+		} finally {
+			await testDb.db
+				.delete(schema.rootFolders)
+				.where(inArray(schema.rootFolders.id, [sourceRootId, destinationRootId]));
+		}
+	});
+});

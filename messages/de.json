@@ -4024,6 +4024,7 @@
 	"smartlists_settings_maxItems": "Max. Elemente",
 	"smartlists_settings_monitorAdded": "Hinzugefügte Elemente überwachen",
 	"smartlists_settings_noRootFolders": "Keine {mediaType}-Stammordner konfiguriert.",
+	"smartlists_settings_noWritableRootFolders": "Keine beschreibbaren {mediaType}-Stammordner konfiguriert.",
 	"smartlists_settings_refreshInterval": "Aktualisierungsintervall",
 	"smartlists_settings_rootFolder": "Stammordner",
 	"smartlists_settings_scoringProfile": "Bewertungsprofil",

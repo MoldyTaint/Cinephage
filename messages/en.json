@@ -4024,6 +4024,7 @@
 	"smartlists_settings_maxItems": "Max Items",
 	"smartlists_settings_monitorAdded": "Monitor added items",
 	"smartlists_settings_noRootFolders": "No {mediaType} root folders configured.",
+	"smartlists_settings_noWritableRootFolders": "No writable {mediaType} root folders configured.",
 	"smartlists_settings_refreshInterval": "Refresh Interval",
 	"smartlists_settings_rootFolder": "Root Folder",
 	"smartlists_settings_scoringProfile": "Scoring Profile",
