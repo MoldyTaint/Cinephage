@@ -30,7 +30,7 @@ import { libraryOperationLock } from '../library-operation-lock.js';
 import { diskScanService } from '../disk-scan.js';
 import { moveFile, fileExists } from '$lib/server/downloadClients/import/FileTransfer';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
-import { rename, stat, readdir, rmdir } from 'node:fs/promises';
+import { rename, stat, readdir, rmdir, mkdir } from 'node:fs/promises';
 import { chooseBestParsedRelease, resolveAudioLanguages } from './preview-metadata';
 import {
 	getMediaBrowserManager,
@@ -812,6 +812,11 @@ export class RenamePreviewService {
 				newFolderName
 			);
 
+			// The target parent may not exist yet (e.g. letter-bucket naming like
+			// "T/Title (2026) [tmdbid-x]") and rename() does not create intermediate
+			// directories — create the parent chain before the move.
+			await mkdir(dirname(actualNewFolder), { recursive: true });
+
 			// Atomically rename the folder on disk.
 			await rename(actualOldFolder, actualNewFolder);
 
@@ -875,6 +880,17 @@ export class RenamePreviewService {
 			// both survive the notifier's per-path dedup.
 			getMediaBrowserNotifier().queueUpdate(actualOldFolder, 'Deleted', 'rename');
 			getMediaBrowserNotifier().queueUpdate(actualNewFolder, 'Modified', 'rename');
+
+			// Tidy: when the title moved out of a nested parent (e.g. a letter
+			// bucket), remove that parent if the rename left it empty. Never
+			// touches the root folder itself. tryRemoveEmptyDir is a no-op on
+			// non-empty directories, so siblings in the same bucket are safe.
+			const oldParent = dirname(actualOldFolder);
+			const resolvedRoot = resolve(rootFolderPath);
+			const resolvedOldParent = resolve(oldParent);
+			if (resolvedOldParent !== resolvedRoot && resolvedOldParent.startsWith(resolvedRoot + '/')) {
+				await this.tryRemoveEmptyDir(oldParent);
+			}
 
 			logger.info(
 				{ mediaId, mediaType, from: actualOldFolder, to: actualNewFolder },

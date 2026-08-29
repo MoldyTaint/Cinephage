@@ -55,7 +55,8 @@ vi.mock('node:fs/promises', () => ({
 	rename: vi.fn(),
 	stat: vi.fn(),
 	readdir: vi.fn(),
-	rmdir: vi.fn()
+	rmdir: vi.fn(),
+	mkdir: vi.fn()
 }));
 
 // Import the mocked module to get references to the mock functions.
@@ -78,6 +79,7 @@ function resetAllMocks() {
 	});
 	(mockFs.readdir as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 	(mockFs.rmdir as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+	(mockFs.mkdir as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
 }
 
 afterAll(() => {
@@ -1941,6 +1943,105 @@ describe('reorganizeFolder rename history', () => {
 		await db.delete(schema.movieFiles).where(eq(schema.movieFiles.id, fileId));
 		await db.delete(schema.movies).where(eq(schema.movies.id, movieId));
 		await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+	});
+});
+
+describe('reorganizeFolder nested (letter-bucket) targets', () => {
+	beforeEach(() => {
+		resetAllMocks();
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('creates the missing letter-dir parent before renaming into a nested target', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const movieId = randomUUID();
+		const root = '/tmp/opencode/nested-reorg-root';
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: root,
+			mediaType: 'movie',
+			name: 'nested-reorg-root'
+		});
+		await db.insert(schema.movies).values({
+			id: movieId,
+			rootFolderId,
+			path: 'The Mandalorian and Grogu (2026)',
+			title: 'The Mandalorian and Grogu',
+			year: 2026,
+			tmdbId: 1228710
+		});
+
+		const svc = new RenamePreviewService();
+		const folderNameSpy = vi
+			.spyOn(NamingService.prototype, 'generateMovieFolderName')
+			.mockReturnValue('T/The Mandalorian and Grogu (2026) [tmdbid-1228710]');
+
+		try {
+			const result = await svc.reorganizeFolder(movieId, 'movie');
+
+			expect(result.success).toBe(true);
+			expect(mockFs.mkdir).toHaveBeenCalledWith(`${root}/T`, { recursive: true });
+			// mkdir must happen BEFORE the rename — rename() cannot create parents.
+			const mkdirOrder = (mockFs.mkdir as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
+			const renameOrder = (mockFs.rename as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
+			expect(mkdirOrder).toBeLessThan(renameOrder);
+			expect(mockFs.rename).toHaveBeenCalledWith(
+				`${root}/The Mandalorian and Grogu (2026)`,
+				`${root}/T/The Mandalorian and Grogu (2026) [tmdbid-1228710]`
+			);
+		} finally {
+			folderNameSpy.mockRestore();
+			await db.delete(schema.movies).where(eq(schema.movies.id, movieId));
+			await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+		}
+	});
+
+	it('removes the emptied letter dir after moving a title out of a nested path (revert)', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const movieId = randomUUID();
+		const root = '/tmp/opencode/nested-revert-root';
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: root,
+			mediaType: 'movie',
+			name: 'nested-revert-root'
+		});
+		await db.insert(schema.movies).values({
+			id: movieId,
+			rootFolderId,
+			path: 'T/The Mandalorian and Grogu (2026) [tmdbid-1228710]',
+			title: 'The Mandalorian and Grogu',
+			year: 2026,
+			tmdbId: 1228710
+		});
+
+		const svc = new RenamePreviewService();
+		const folderNameSpy = vi
+			.spyOn(NamingService.prototype, 'generateMovieFolderName')
+			.mockReturnValue('The Mandalorian and Grogu (2026)');
+
+		try {
+			const result = await svc.reorganizeFolder(movieId, 'movie');
+
+			expect(result.success).toBe(true);
+			expect(mockFs.rename).toHaveBeenCalledWith(
+				`${root}/T/The Mandalorian and Grogu (2026) [tmdbid-1228710]`,
+				`${root}/The Mandalorian and Grogu (2026)`
+			);
+			// The emptied letter bucket must be tidied up.
+			expect(mockFs.rmdir).toHaveBeenCalledWith(`${root}/T`);
+			// The root folder itself must never be removed.
+			expect(mockFs.rmdir).not.toHaveBeenCalledWith(root);
+		} finally {
+			folderNameSpy.mockRestore();
+			await db.delete(schema.movies).where(eq(schema.movies.id, movieId));
+			await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+		}
 	});
 });
 
