@@ -4,12 +4,19 @@
 
 	interface Props {
 		monitored: boolean;
+		partiallyMonitored?: boolean;
 		disabled?: boolean;
 		size?: 'sm' | 'md' | 'lg';
 		onToggle?: (newValue: boolean) => void;
 	}
 
-	let { monitored, disabled = false, size = 'md', onToggle }: Props = $props();
+	let {
+		monitored,
+		partiallyMonitored = false,
+		disabled = false,
+		size = 'md',
+		onToggle
+	}: Props = $props();
 
 	const sizeClasses = {
 		sm: 'btn-xs',
@@ -28,13 +35,25 @@
 			onToggle(!monitored);
 		}
 	}
+
+	const colorClass = $derived(
+		monitored ? (partiallyMonitored ? 'text-warning' : 'text-success') : 'text-base-content/50'
+	);
+
+	const tooltip = $derived(
+		monitored
+			? partiallyMonitored
+				? m.library_monitorToggle_partiallyMonitored()
+				: m.library_monitorToggle_monitored()
+			: m.library_monitorToggle_notMonitored()
+	);
 </script>
 
 <button
-	class="btn btn-ghost {sizeClasses[size]} {monitored ? 'text-success' : 'text-base-content/50'}"
+	class="btn btn-ghost {sizeClasses[size]} {colorClass}"
 	class:btn-disabled={disabled}
 	onclick={handleClick}
-	title={monitored ? m.library_monitorToggle_monitored() : m.library_monitorToggle_notMonitored()}
+	title={tooltip}
 	{disabled}
 >
 	{#if monitored}

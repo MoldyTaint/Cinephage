@@ -393,6 +393,7 @@
 			options: [
 				{ value: 'all', label: m.library_tv_filterAll() },
 				{ value: 'monitored', label: m.library_tv_filterMonitoredOnly() },
+				{ value: 'partial', label: m.library_tv_filterPartiallyMonitored() },
 				{ value: 'unmonitored', label: m.library_tv_filterNotMonitored() }
 			]
 		},
