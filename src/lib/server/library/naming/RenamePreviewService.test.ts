@@ -1874,6 +1874,80 @@ describe('reorganizeFolder DB-failure rollback', () => {
 	});
 });
 
+describe('reorganizeFolder read-only guard', () => {
+	beforeEach(() => {
+		resetAllMocks();
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('refuses to reorganize a movie in a read-only root folder without touching disk', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const movieId = randomUUID();
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: '/tmp/opencode/reorg-root',
+			mediaType: 'movie',
+			name: 'reorg-root',
+			readOnly: true
+		});
+		await db.insert(schema.movies).values({
+			id: movieId,
+			rootFolderId,
+			path: 'Wrong (1900)',
+			title: 'Test Movie',
+			year: 2020,
+			tmdbId: 44
+		});
+
+		const svc = new RenamePreviewService();
+		const result = await svc.reorganizeFolder(movieId, 'movie');
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/read-only/i);
+		expect(mockFs.rename).not.toHaveBeenCalled();
+
+		await db.delete(schema.movies).where(eq(schema.movies.id, movieId));
+		await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+	});
+
+	it('reports read-only roots as per-item failures in batch reorganization', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const movieId = randomUUID();
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: '/tmp/opencode/reorg-root',
+			mediaType: 'movie',
+			name: 'reorg-root',
+			readOnly: true
+		});
+		await db.insert(schema.movies).values({
+			id: movieId,
+			rootFolderId,
+			path: 'Wrong (1900)',
+			title: 'Test Movie',
+			year: 2020,
+			tmdbId: 45
+		});
+
+		const svc = new RenamePreviewService();
+		const result = await svc.reorganizeFolders([{ mediaId: movieId, mediaType: 'movie' }]);
+
+		expect(result.organized).toBe(0);
+		expect(result.failed).toBe(1);
+		expect(result.results[0]?.success).toBe(false);
+		expect(result.results[0]?.error).toMatch(/read-only/i);
+		expect(mockFs.rename).not.toHaveBeenCalled();
+
+		await db.delete(schema.movies).where(eq(schema.movies.id, movieId));
+		await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+	});
+});
+
 describe('reorganizeFolder rename history', () => {
 	beforeEach(() => {
 		resetAllMocks();

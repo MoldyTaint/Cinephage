@@ -725,6 +725,9 @@ export class RenamePreviewService {
 				.where(eq(rootFolders.id, rootFolderId))
 				.get();
 			if (!rootFolder) return { success: false, error: 'Root folder not found' };
+			if (rootFolder.readOnly) {
+				return { success: false, error: 'Cannot reorganize: the root folder is read-only' };
+			}
 			rootFolderPath = rootFolder.path;
 
 			// Compute the target folder name using the current naming config.

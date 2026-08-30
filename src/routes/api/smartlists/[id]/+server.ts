@@ -147,7 +147,8 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 			const [folder] = await db
 				.select({
 					id: rootFolders.id,
-					mediaType: rootFolders.mediaType
+					mediaType: rootFolders.mediaType,
+					readOnly: rootFolders.readOnly
 				})
 				.from(rootFolders)
 				.where(eq(rootFolders.id, effectiveRootFolderId))
@@ -164,6 +165,13 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 					{
 						error: `Selected root folder is a ${actual} folder. Choose a ${expected} folder.`
 					},
+					{ status: 400 }
+				);
+			}
+
+			if (folder.readOnly) {
+				return json(
+					{ error: 'Selected root folder is read-only. Choose a writable folder.' },
 					{ status: 400 }
 				);
 			}
