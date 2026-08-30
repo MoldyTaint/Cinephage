@@ -74,6 +74,19 @@
 		};
 	}
 
+	// A series is partially monitored when it is monitored but only some aired episodes are.
+	const partiallyMonitored = $derived.by(() => {
+		if (!series.monitored) return false;
+		const today = todayDateString();
+		const allEps = seasons
+			.filter((s) => s.seasonNumber > 0)
+			.flatMap((s) => s.episodes)
+			.filter((ep) => ep.airDate && ep.airDate <= today);
+		if (allEps.length === 0) return false;
+		const monitoredCount = allEps.filter((ep) => ep.monitored !== false).length;
+		return monitoredCount > 0 && monitoredCount < allEps.length;
+	});
+
 	// Keep series completion counters aligned with the actual episode rows shown in seasons.
 	const seriesForDisplay = $derived.by(() => {
 		const { totalEpisodes, totalFiles, percentComplete } = computeSeriesEpisodeStats(seasons);
@@ -1697,6 +1710,7 @@
 		{searchingMissing}
 		{missingSearchProgress}
 		{missingSearchResult}
+		{partiallyMonitored}
 		onMonitorToggle={handleMonitorToggle}
 		onSearch={handleSearch}
 		onSearchMissing={handleSearchMissing}

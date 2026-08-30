@@ -52,6 +52,9 @@
 	const itemIsMovie = $derived(isMovie(item));
 	const size = $derived(getItemSize(item));
 	const qualityBadges = $derived(getQualityBadges(item, () => hasStreamerProfile));
+	const partiallyMonitored = $derived(
+		isSeries(item) && (item as LibrarySeries).partiallyMonitored === true
+	);
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -75,9 +78,13 @@
 		{/if}
 		<div class="flex flex-1 flex-wrap items-center gap-1.5">
 			{#if item.monitored}
-				<span class="badge gap-1.5 badge-sm badge-success">
+				<span
+					class="badge gap-1.5 badge-sm {partiallyMonitored ? 'badge-warning' : 'badge-success'}"
+				>
 					<Eye class="h-3.5 w-3.5" />
-					{m.library_monitorToggle_monitored()}
+					{partiallyMonitored
+						? m.library_monitorToggle_partiallyMonitored()
+						: m.library_monitorToggle_monitored()}
 				</span>
 			{:else}
 				<span class="badge gap-1.5 badge-sm badge-neutral">
