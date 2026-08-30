@@ -258,7 +258,9 @@ class BlocklistService {
 
 	async removeFromBlocklistByIds(ids: string[]): Promise<void> {
 		if (ids.length === 0) return;
-		await db.delete(blocklist).where(inArray(blocklist.id, ids));
+		for (let i = 0; i < ids.length; i += 500) {
+			await db.delete(blocklist).where(inArray(blocklist.id, ids.slice(i, i + 500)));
+		}
 	}
 
 	async updateExpiry(id: string, expiresInHours: number | null): Promise<void> {

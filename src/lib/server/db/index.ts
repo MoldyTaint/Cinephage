@@ -25,6 +25,9 @@ try {
 	sqlite.pragma('wal_autocheckpoint = 4000');
 	sqlite.pragma('temp_store = MEMORY');
 	sqlite.pragma('foreign_keys = ON');
+	// 32MB page cache: reduces re-reads of hot tables (episodes, storage_items, episode_files)
+	// during reconcile and scan passes on large libraries.
+	sqlite.pragma('cache_size = -32000');
 } catch (error) {
 	logger.warn(
 		{
