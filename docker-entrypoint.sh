@@ -182,6 +182,7 @@ if [ "$(id -u)" = "0" ] && [ -z "${CINEPHAGE_REEXEC:-}" ]; then
       "$INDEXER_CUSTOM_DEFINITIONS_PATH" \
       "$EXTERNAL_LISTS_CUSTOM_PRESETS_PATH" \
       "$HOME" \
+      "${HOME}/.cache" \
       "$CAMOUFOX_CACHE_DIR" \
       "$CAMOUFOX_TMP_DIR" \
       "$OWNERSHIP_STAMP_FILE" 2>/dev/null || true
