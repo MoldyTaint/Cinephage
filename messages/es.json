@@ -2457,6 +2457,7 @@
 	"reports_renaming_stat_permissionIo": "Permisos / E/S",
 	"reports_renaming_stat_total": "Fallos de renombrado",
 	"reports_resolve": "Resolver",
+	"reports_resolveAll": "Resolver todo ({count})",
 	"reports_resolveSelected": "Resolver ({count})",
 	"reports_resolvedAt": "Resuelto {date}",
 	"reports_search_fileOrTitle": "Buscar archivo o título…",

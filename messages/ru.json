@@ -2457,6 +2457,7 @@
 	"reports_renaming_stat_permissionIo": "Доступ / ввод-вывод",
 	"reports_renaming_stat_total": "Ошибки переименования",
 	"reports_resolve": "Устранить",
+	"reports_resolveAll": "Устранить все ({count})",
 	"reports_resolveSelected": "Решить ({count})",
 	"reports_resolvedAt": "Устранено {date}",
 	"reports_search_fileOrTitle": "Поиск по файлу или названию…",

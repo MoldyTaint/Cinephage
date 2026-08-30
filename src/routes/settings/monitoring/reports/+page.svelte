@@ -621,6 +621,34 @@
 		}
 	}
 
+	async function resolveAll() {
+		const tab = activeTab;
+		if (tab === 'unmatched-imports' || total === 0) return;
+		if (!confirm(`Resolve all ${total} records in this tab?`)) return;
+		try {
+			const res = await fetch(`/api/reports/${tab}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ resolveAll: true, status: 'resolved' })
+			});
+			const result = await res.json();
+			if (result.success) {
+				records = [];
+				total = 0;
+				selectedIds = new Set();
+				toasts.success(`${result.data.updated} records resolved`);
+				refreshCounts();
+				if (tab === 'rejected-releases') loadRejectedStats();
+				else if (tab === 'import-failures') loadImportStats();
+				else if (tab === 'renaming-failures') loadRenamingStats();
+			} else {
+				toasts.error(result.error || 'Failed to resolve all');
+			}
+		} catch {
+			toasts.error('Failed to resolve all');
+		}
+	}
+
 	async function resolveRecord(id: string) {
 		const tab = activeTab;
 		if (tab === 'unmatched-imports') return;
@@ -1723,6 +1751,12 @@
 							{m.reports_copySelected()} ({selectedIds.size})
 						</button>
 					{/if}
+					{#if total > 0}
+						<button class="btn gap-1.5 btn-outline btn-error btn-sm" onclick={() => resolveAll()}>
+							<Check class="h-3.5 w-3.5" />
+							{m.reports_resolveAll({ count: total })}
+						</button>
+					{/if}
 					<div class="relative">
 						<button
 							class="btn gap-1.5 btn-neutral btn-sm"
@@ -2323,6 +2357,12 @@
 							{m.reports_copySelected()} ({selectedIds.size})
 						</button>
 					{/if}
+					{#if total > 0}
+						<button class="btn gap-1.5 btn-outline btn-error btn-sm" onclick={() => resolveAll()}>
+							<Check class="h-3.5 w-3.5" />
+							{m.reports_resolveAll({ count: total })}
+						</button>
+					{/if}
 					<div class="relative">
 						<button
 							class="btn gap-1.5 btn-neutral btn-sm"
@@ -2898,6 +2938,12 @@
 						>
 							<Copy class="h-3.5 w-3.5" />
 							{m.reports_copySelected()} ({selectedIds.size})
+						</button>
+					{/if}
+					{#if total > 0}
+						<button class="btn gap-1.5 btn-outline btn-error btn-sm" onclick={() => resolveAll()}>
+							<Check class="h-3.5 w-3.5" />
+							{m.reports_resolveAll({ count: total })}
 						</button>
 					{/if}
 					<div class="relative">
