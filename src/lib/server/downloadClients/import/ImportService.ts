@@ -458,7 +458,8 @@ export class ImportService extends EventEmitter {
 			// Mark as failed in the database
 			downloadMonitor.markFailed(
 				queueItemId,
-				`Import failed after ${attempts} attempts: ${reason}`
+				`Import failed after ${attempts} attempts: ${reason}`,
+				{ terminalImport: true }
 			);
 			return;
 		}
