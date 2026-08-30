@@ -189,7 +189,7 @@ function todayStr(): string {
 function buildPreUpdateFilename(schemaVersion: number): string {
 	const version = resolveAppVersion();
 	const date = todayStr();
-	return `cinephage-pre-update-v${version}-schema${schemaVersion}-${date}.db`;
+	return `cinephage-pre-update-${version}-schema${schemaVersion}-${date}.db`;
 }
 
 function buildScheduledFilename(): string {
