@@ -19,7 +19,7 @@ import {
 } from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { extname, join, dirname, basename, resolve } from 'path';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger, getRequestId } from '$lib/logging';
 import { todayDateString } from '$lib/utils/format.js';
 import { randomUUID } from 'node:crypto';
 
@@ -98,7 +98,7 @@ async function recordRenamingFailure(opts: {
 }): Promise<void> {
 	await db.insert(renamingFailures).values({
 		id: randomUUID(),
-		correlationId: randomUUID(),
+		correlationId: getRequestId() ?? randomUUID(),
 		fileId: opts.fileId,
 		fileType: opts.fileType,
 		sourcePath: opts.sourcePath,

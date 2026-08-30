@@ -21,7 +21,7 @@ import { StreamingHandler } from './handlers/StreamingHandler.js';
 import { NzbStreamingHandler } from './handlers/NzbStreamingHandler.js';
 import { DebridHandler } from './handlers/DebridHandler.js';
 import { getDefaultAcquisitionProtocol } from '$lib/server/settings/acquisition.js';
-import { createChildLogger } from '$lib/logging/index.js';
+import { createChildLogger, getRequestId } from '$lib/logging/index.js';
 import { grabRejectionLogLevel } from './grab-rejection-log-level.js';
 
 const logger = createChildLogger({ module: 'GrabService', logDomain: 'downloads' });
@@ -417,7 +417,7 @@ class GrabServiceImpl {
 
 		await db.insert(rejectedReleases).values({
 			id: randomUUID(),
-			correlationId: randomUUID(),
+			correlationId: getRequestId() ?? randomUUID(),
 			releaseTitle: release.title,
 			indexerName: release.indexerName ?? undefined,
 			protocol: release.protocol ?? undefined,

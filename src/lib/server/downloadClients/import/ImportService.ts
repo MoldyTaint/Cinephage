@@ -56,7 +56,7 @@ import {
 	type MediaNamingInfo
 } from '$lib/server/library/naming/NamingService';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger, runWithLogContext } from '$lib/logging';
 import { todayDateString } from '$lib/utils/format.js';
 import {
 	DOWNLOAD,
@@ -109,11 +109,12 @@ async function recordImportFailure(opts: {
 	dangerousFiles?: Array<{ path: string; extension: string }>;
 	attemptCount?: number;
 	downloadClientId?: string | null;
+	correlationId?: string;
 }): Promise<void> {
 	try {
 		await db.insert(importFailures).values({
 			id: randomUUID(),
-			correlationId: randomUUID(),
+			correlationId: opts.correlationId ?? randomUUID(),
 			releaseTitle: opts.releaseTitle,
 			sourcePath: opts.sourcePath ?? null,
 			destinationPath: opts.destinationPath ?? null,
@@ -560,6 +561,17 @@ export class ImportService extends EventEmitter {
 	 * Process a single import
 	 */
 	async processImport(queueItemId: string): Promise<ImportJobResult> {
+		const correlationId = randomUUID();
+		return runWithLogContext(
+			{ correlationId, requestId: correlationId, logDomain: 'imports' },
+			() => this._processImport(queueItemId, correlationId)
+		);
+	}
+
+	private async _processImport(
+		queueItemId: string,
+		correlationId: string
+	): Promise<ImportJobResult> {
 		logger.info({ queueItemId }, 'Processing import');
 
 		// Get queue item
@@ -657,7 +669,8 @@ export class ImportService extends EventEmitter {
 				releaseTitle: queueItem.title ?? queueItemId,
 				failureStage: 'max_retries',
 				reason: 'max_retries_exceeded',
-				downloadClientId: queueItem.downloadClientId
+				downloadClientId: queueItem.downloadClientId,
+				correlationId
 			});
 			return {
 				success: false,
@@ -783,7 +796,8 @@ export class ImportService extends EventEmitter {
 					reason: result.failureReason ?? 'transfer_failed',
 					reasonDetail: result.error,
 					dangerousFiles: result.dangerousFiles,
-					downloadClientId: queueItem.downloadClientId
+					downloadClientId: queueItem.downloadClientId,
+					correlationId
 				});
 			}
 
@@ -798,7 +812,8 @@ export class ImportService extends EventEmitter {
 				releaseTitle: queueItemId,
 				failureStage: 'transfer',
 				reason: 'transfer_failed',
-				reasonDetail: errorMessage
+				reasonDetail: errorMessage,
+				correlationId
 			});
 
 			return {
@@ -845,7 +860,7 @@ export class ImportService extends EventEmitter {
 			result.error = 'Movie not found in library';
 			result.failureStage = 'library_entity';
 			result.failureReason = 'library_entity_missing';
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			return result;
 		}
 
@@ -860,7 +875,7 @@ export class ImportService extends EventEmitter {
 			result.error = 'Root folder not found';
 			result.failureStage = 'root_folder';
 			result.failureReason = 'root_folder_unavailable';
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			return result;
 		}
 
@@ -869,7 +884,7 @@ export class ImportService extends EventEmitter {
 			result.error = 'Cannot import to read-only root folder';
 			result.failureStage = 'root_folder';
 			result.failureReason = 'root_folder_unavailable';
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			worker.log('error', 'Root folder is read-only, cannot import files');
 			return result;
 		}
@@ -901,7 +916,7 @@ export class ImportService extends EventEmitter {
 				},
 				'Rejecting import due to dangerous files'
 			);
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			worker.log('error', result.error);
 			return result;
 		}
@@ -927,7 +942,7 @@ export class ImportService extends EventEmitter {
 			result.error = blockedExtCheck;
 			result.failureStage = 'path_resolution';
 			result.failureReason = 'path_unavailable';
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			worker.log('error', result.error);
 			return result;
 		}
@@ -1283,7 +1298,7 @@ export class ImportService extends EventEmitter {
 
 		if (!seriesData) {
 			result.error = 'Series not found in library';
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			return result;
 		}
 
@@ -1300,14 +1315,14 @@ export class ImportService extends EventEmitter {
 
 		if (!rootFolder) {
 			result.error = 'Root folder not found';
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			return result;
 		}
 
 		// Check if root folder is read-only
 		if (rootFolder.readOnly) {
 			result.error = 'Cannot import to read-only root folder';
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			worker.log('error', 'Root folder is read-only, cannot import files');
 			return result;
 		}
@@ -1334,7 +1349,7 @@ export class ImportService extends EventEmitter {
 				},
 				'Rejecting import due to dangerous files'
 			);
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			worker.log('error', result.error);
 			return result;
 		}
@@ -1369,7 +1384,7 @@ export class ImportService extends EventEmitter {
 		);
 		if (blockedExtCheck) {
 			result.error = blockedExtCheck;
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			worker.log('error', result.error);
 			return result;
 		}
