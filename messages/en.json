@@ -2457,6 +2457,7 @@
 	"reports_renaming_stat_permissionIo": "Permission / IO",
 	"reports_renaming_stat_total": "Renaming Failures",
 	"reports_resolve": "Resolve",
+	"reports_resolveAll": "Resolve All ({count})",
 	"reports_resolveSelected": "Resolve ({count})",
 	"reports_resolvedAt": "Resolved {date}",
 	"reports_search_fileOrTitle": "Search file or title…",

@@ -2457,6 +2457,7 @@
 	"reports_renaming_stat_permissionIo": "Berechtigung / IO",
 	"reports_renaming_stat_total": "Umbenennungsfehler",
 	"reports_resolve": "Beheben",
+	"reports_resolveAll": "Alle beheben ({count})",
 	"reports_resolveSelected": "Auflösen ({count})",
 	"reports_resolvedAt": "Behoben {date}",
 	"reports_search_fileOrTitle": "Datei oder Titel suchen…",
