@@ -786,7 +786,8 @@ const TABLE_DEFINITIONS: string[] = [
 		"import_attempts" integer DEFAULT 0,
 		"last_attempt_at" text,
 		"is_automatic" integer DEFAULT false,
-		"is_upgrade" integer DEFAULT false
+		"is_upgrade" integer DEFAULT false,
+		"import_failed" integer NOT NULL DEFAULT 0
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "download_queue_tombstones" (
