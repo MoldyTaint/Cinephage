@@ -13,15 +13,22 @@ function errorResponse(message: string, code: string, status: number): Response 
 	});
 }
 
+function wantsRefresh(url: URL): boolean {
+	const refresh = url.searchParams.get('refresh');
+	return refresh === '1' || refresh === 'true';
+}
+
 async function resolveMovieSession(
-	tmdbId: string
+	tmdbId: string,
+	forceRefresh: boolean
 ): Promise<{ session: PlaybackSession | null; error?: string; invalid?: boolean }> {
 	if (!tmdbId || !/^\d+$/.test(tmdbId)) {
 		return { session: null, error: undefined, invalid: true };
 	}
 	return getPlaybackSessionService().createOrReuseSession({
 		tmdbId: parseInt(tmdbId, 10),
-		type: 'movie'
+		type: 'movie',
+		forceRefresh
 	});
 }
 
@@ -35,7 +42,7 @@ async function resolveMovieSession(
  * authenticated proxy URLs, while direct containers are streamed unchanged.
  */
 export const GET: RequestHandler = async ({ params, request, url }) => {
-	const { session, error, invalid } = await resolveMovieSession(params.tmdbId);
+	const { session, error, invalid } = await resolveMovieSession(params.tmdbId, wantsRefresh(url));
 	if (invalid) {
 		return errorResponse('Invalid TMDB ID', 'INVALID_PARAM', 400);
 	}
@@ -49,8 +56,8 @@ export const GET: RequestHandler = async ({ params, request, url }) => {
 	return await getSessionProxyService().renderLaunchMedia(session, baseUrl, apiKey, request);
 };
 
-export const HEAD: RequestHandler = async ({ params, request }) => {
-	const { session, error, invalid } = await resolveMovieSession(params.tmdbId);
+export const HEAD: RequestHandler = async ({ params, request, url }) => {
+	const { session, error, invalid } = await resolveMovieSession(params.tmdbId, wantsRefresh(url));
 	if (invalid) {
 		return errorResponse('Invalid TMDB ID', 'INVALID_PARAM', 400);
 	}

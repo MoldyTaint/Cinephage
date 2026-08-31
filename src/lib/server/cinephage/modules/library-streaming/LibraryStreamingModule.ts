@@ -31,6 +31,8 @@ export interface CinephageStreamLookupParams {
 	type: PlaybackMediaType;
 	season?: number;
 	episode?: number;
+	/** Bypass the gateway's stream cache and force a fresh provider sweep. */
+	refresh?: boolean;
 	signal?: AbortSignal;
 }
 
@@ -240,7 +242,20 @@ function normalizeSource(entry: unknown, apiBaseUrl: string): StreamSource | nul
 		entry.playlist
 	);
 	if (!url) return null;
-	const referer = getFirstString(entry.referer, headers?.Referer, headers?.referer) ?? apiBaseUrl;
+	const headerRefererKey = headers
+		? Object.keys(headers).find((key) => key.toLowerCase() === 'referer')
+		: undefined;
+	const headerReferer = headers && headerRefererKey ? headers[headerRefererKey] : undefined;
+	// An explicit empty referer — top-level or inside headers — means "fetch
+	// this source without a Referer header": some CDNs reject any request
+	// carrying one. An empty headers entry is dropped so no empty Referer is
+	// transmitted; when the gateway stays silent, fall back as before.
+	const explicitReferer = typeof entry.referer === 'string' ? entry.referer : headerReferer;
+	const referer =
+		explicitReferer !== undefined ? explicitReferer.trim() : headerReferer?.trim() || apiBaseUrl;
+	if (headers && headerRefererKey && headerReferer !== undefined && headerReferer.trim() === '') {
+		delete headers[headerRefererKey];
+	}
 	const quality =
 		getFirstString(entry.quality, entry.label, entry.resolution, entry.name, entry.title) ?? 'Auto';
 	const server = getFirstString(entry.server, entry.source, entry.sourceName, entry.name);
@@ -404,6 +419,9 @@ export class LibraryStreamingModule extends BaseCinephageModule {
 		if (params.type === 'tv') {
 			if (params.season !== undefined) url.searchParams.set('season', String(params.season));
 			if (params.episode !== undefined) url.searchParams.set('episode', String(params.episode));
+		}
+		if (params.refresh) {
+			url.searchParams.set('refresh', '1');
 		}
 
 		try {

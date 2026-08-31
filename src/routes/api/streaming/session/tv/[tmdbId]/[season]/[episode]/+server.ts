@@ -13,10 +13,16 @@ function errorResponse(message: string, code: string, status: number): Response 
 	});
 }
 
+function wantsRefresh(url: URL): boolean {
+	const refresh = url.searchParams.get('refresh');
+	return refresh === '1' || refresh === 'true';
+}
+
 async function resolveEpisodeSession(
 	tmdbId: string,
 	season: string,
-	episode: string
+	episode: string,
+	forceRefresh: boolean
 ): Promise<{
 	session: PlaybackSession | null;
 	error?: string;
@@ -38,7 +44,8 @@ async function resolveEpisodeSession(
 		tmdbId: parseInt(tmdbId, 10),
 		type: 'tv',
 		season: parseInt(season, 10),
-		episode: parseInt(episode, 10)
+		episode: parseInt(episode, 10),
+		forceRefresh
 	});
 }
 
@@ -55,7 +62,8 @@ export const GET: RequestHandler = async ({ params, request, url }) => {
 	const { session, error, invalid, code } = await resolveEpisodeSession(
 		params.tmdbId,
 		params.season,
-		params.episode
+		params.episode,
+		wantsRefresh(url)
 	);
 	if (invalid) {
 		return errorResponse(error || 'Invalid parameters', code || 'INVALID_PARAM', 400);
@@ -70,11 +78,12 @@ export const GET: RequestHandler = async ({ params, request, url }) => {
 	return await getSessionProxyService().renderLaunchMedia(session, baseUrl, apiKey, request);
 };
 
-export const HEAD: RequestHandler = async ({ params, request }) => {
+export const HEAD: RequestHandler = async ({ params, request, url }) => {
 	const { session, error, invalid, code } = await resolveEpisodeSession(
 		params.tmdbId,
 		params.season,
-		params.episode
+		params.episode,
+		wantsRefresh(url)
 	);
 	if (invalid) {
 		return errorResponse(error || 'Invalid parameters', code || 'INVALID_PARAM', 400);

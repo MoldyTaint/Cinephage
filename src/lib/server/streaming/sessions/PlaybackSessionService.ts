@@ -80,6 +80,7 @@ export class PlaybackSessionService {
 			type: params.type,
 			season: params.season,
 			episode: params.episode,
+			refresh: params.forceRefresh,
 			signal: params.signal
 		});
 

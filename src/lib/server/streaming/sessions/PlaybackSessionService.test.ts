@@ -151,4 +151,65 @@ describe('PlaybackSessionService', () => {
 
 		vi.restoreAllMocks();
 	});
+
+	it('forces a fresh resolve and passes refresh to the lookup when forceRefresh is set', async () => {
+		getStreamsMock.mockResolvedValue({
+			success: true,
+			sources: [
+				{
+					quality: '1080p',
+					title: 'Test stream',
+					url: 'https://stream.example.com/direct.mp4',
+					type: 'mp4',
+					referer: 'https://player.example.com/',
+					requiresSegmentProxy: false,
+					provider: 'Mapple'
+				}
+			]
+		});
+
+		const { getPlaybackSessionService } = await import('./PlaybackSessionService');
+		const service = getPlaybackSessionService();
+
+		const first = await service.createOrReuseSession({ tmdbId: 550, type: 'movie' });
+		expect(first.session).toBeTruthy();
+
+		const second = await service.createOrReuseSession({
+			tmdbId: 550,
+			type: 'movie',
+			forceRefresh: true
+		});
+
+		// The cached session is skipped and the gateway is told to bypass its cache.
+		expect(second.session?.token).not.toBe(first.session?.token);
+		expect(getStreamsMock).toHaveBeenCalledTimes(2);
+		expect(getStreamsMock).toHaveBeenLastCalledWith(expect.objectContaining({ refresh: true }));
+	});
+
+	it('omits the Referer header when a source carries an explicit empty referer', async () => {
+		getStreamsMock.mockResolvedValue({
+			success: true,
+			sources: [
+				{
+					quality: '1080p',
+					title: 'Test stream',
+					url: 'https://stream.example.com/direct.mp4',
+					type: 'mp4',
+					referer: '',
+					requiresSegmentProxy: false,
+					provider: 'Vidlink',
+					headers: { 'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20' }
+				}
+			]
+		});
+
+		const { getPlaybackSessionService } = await import('./PlaybackSessionService');
+		const service = getPlaybackSessionService();
+
+		const { session } = await service.createOrReuseSession({ tmdbId: 550, type: 'movie' });
+		expect(session).toBeTruthy();
+		expect(session?.requestHeaders['User-Agent']).toBe('VLC/3.0.20 LibVLC/3.0.20');
+		expect(session?.requestHeaders['Referer']).toBeUndefined();
+		expect(session?.requestHeaders['referer']).toBeUndefined();
+	});
 });
