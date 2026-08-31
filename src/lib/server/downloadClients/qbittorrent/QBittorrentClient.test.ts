@@ -83,7 +83,10 @@ describe('QBittorrentClient add response parsing', () => {
 		);
 
 		await expect(
-			createClient().addDownload({ downloadUrl: 'https://example.com/test.torrent' })
+			createClient().addDownload({
+				downloadUrl: 'https://example.com/test.torrent',
+				category: 'movies'
+			})
 		).resolves.toBe('3e0e520f8ac598a94539458192f71cbd01857c1e');
 	});
 
@@ -99,7 +102,10 @@ describe('QBittorrentClient add response parsing', () => {
 		);
 
 		await expect(
-			createClient().addDownload({ downloadUrl: 'https://example.com/test.torrent' })
+			createClient().addDownload({
+				downloadUrl: 'https://example.com/test.torrent',
+				category: 'movies'
+			})
 		).resolves.toBe('');
 	});
 
@@ -114,7 +120,10 @@ describe('QBittorrentClient add response parsing', () => {
 		);
 
 		await expect(
-			createClient().addDownload({ downloadUrl: 'https://example.com/test.torrent' })
+			createClient().addDownload({
+				downloadUrl: 'https://example.com/test.torrent',
+				category: 'movies'
+			})
 		).rejects.toThrow('qBittorrent rejected the torrent');
 	});
 
@@ -122,7 +131,10 @@ describe('QBittorrentClient add response parsing', () => {
 		stubAddResponse('Fails.');
 
 		await expect(
-			createClient().addDownload({ downloadUrl: 'https://example.com/test.torrent' })
+			createClient().addDownload({
+				downloadUrl: 'https://example.com/test.torrent',
+				category: 'movies'
+			})
 		).rejects.toThrow('qBittorrent rejected the torrent: Fails.');
 	});
 });
