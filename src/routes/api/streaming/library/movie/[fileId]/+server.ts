@@ -1,0 +1,140 @@
+/**
+ * GET/HEAD /api/streaming/library/movie/[fileId]
+ *
+ * Stream a local movie file directly from disk with HTTP Range support.
+ * Resolves the file by database ID, never by raw path and validates the
+ * resolved absolute path is within a configured root folder before opening it.
+ *
+ * Auth: API key (x-api-key header or ?api_key= query param).
+ */
+
+import { createReadStream, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { Readable } from 'node:stream';
+import type { RequestHandler } from './$types';
+import { db } from '$lib/server/db/index.js';
+import { movieFiles, movies, rootFolders } from '$lib/server/db/schema.js';
+import { eq } from 'drizzle-orm';
+import { isPathInsideManagedRoot } from '$lib/server/filesystem/path-guard.js';
+import { getContentType, parseRangeHeader } from '$lib/server/streaming/usenet/types.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'streams' as const, component: 'LocalMovieStream' });
+
+async function resolveMovieFile(
+	fileId: string
+): Promise<{ absolutePath: string; size: number; contentType: string } | null> {
+	const row = await db
+		.select({
+			relativePath: movieFiles.relativePath,
+			size: movieFiles.size,
+			moviePath: movies.path,
+			rootFolderPath: rootFolders.path
+		})
+		.from(movieFiles)
+		.innerJoin(movies, eq(movieFiles.movieId, movies.id))
+		.innerJoin(rootFolders, eq(movies.rootFolderId, rootFolders.id))
+		.where(eq(movieFiles.id, fileId))
+		.get();
+
+	if (!row) return null;
+
+	const absolutePath = join(row.rootFolderPath, row.moviePath, row.relativePath);
+
+	if (!(await isPathInsideManagedRoot(absolutePath))) {
+		logger.warn(
+			{ fileId, absolutePath },
+			'[LocalMovieStream] Path outside managed root — rejecting'
+		);
+		return null;
+	}
+
+	let size = row.size ?? 0;
+	if (size === 0) {
+		try {
+			size = statSync(absolutePath).size;
+		} catch {
+			return null;
+		}
+	}
+
+	return { absolutePath, size, contentType: getContentType(row.relativePath) };
+}
+
+export const GET: RequestHandler = async (event) => {
+	// Accept either a streaming API key (validated by hooks) or an admin session
+	if (!event.locals.apiKey && event.locals.user?.role !== 'admin') {
+		return new Response('Unauthorized', { status: 401 });
+	}
+
+	const { params, request } = event;
+	const { fileId } = params;
+
+	const file = await resolveMovieFile(fileId);
+	if (!file) {
+		return new Response('Not found', { status: 404 });
+	}
+
+	const rangeHeader = request.headers.get('range');
+	const range = parseRangeHeader(rangeHeader, file.size);
+
+	const headers: Record<string, string> = {
+		'Content-Type': file.contentType,
+		'Accept-Ranges': 'bytes',
+		'Cache-Control': 'no-cache',
+		Connection: 'keep-alive'
+	};
+
+	if (rangeHeader && !range) {
+		// Malformed / unsatisfiable range
+		headers['Content-Range'] = `bytes */${file.size}`;
+		return new Response('Range Not Satisfiable', { status: 416, headers });
+	}
+
+	if (range) {
+		const startByte = range.start;
+		const endByte = range.end === -1 ? file.size - 1 : range.end;
+		const contentLength = endByte - startByte + 1;
+
+		headers['Content-Range'] = `bytes ${startByte}-${endByte}/${file.size}`;
+		headers['Content-Length'] = String(contentLength);
+
+		logger.debug(
+			{ fileId, startByte, endByte, totalSize: file.size },
+			'[LocalMovieStream] Serving partial content'
+		);
+
+		const nodeStream = createReadStream(file.absolutePath, { start: startByte, end: endByte });
+		return new Response(Readable.toWeb(nodeStream) as ReadableStream, { status: 206, headers });
+	}
+
+	headers['Content-Length'] = String(file.size);
+
+	logger.debug({ fileId, totalSize: file.size }, '[LocalMovieStream] Serving full content');
+
+	const nodeStream = createReadStream(file.absolutePath);
+	return new Response(Readable.toWeb(nodeStream) as ReadableStream, { status: 200, headers });
+};
+
+export const HEAD: RequestHandler = async (event) => {
+	if (!event.locals.apiKey && event.locals.user?.role !== 'admin') {
+		return new Response(null, { status: 401 });
+	}
+
+	const { params } = event;
+	const { fileId } = params;
+
+	const file = await resolveMovieFile(fileId);
+	if (!file) {
+		return new Response(null, { status: 404 });
+	}
+
+	return new Response(null, {
+		status: 200,
+		headers: {
+			'Content-Type': file.contentType,
+			'Content-Length': String(file.size),
+			'Accept-Ranges': 'bytes'
+		}
+	});
+};
