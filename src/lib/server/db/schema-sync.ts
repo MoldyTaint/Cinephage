@@ -137,10 +137,11 @@ import {
  * Version 126: Add metadata_language and prefer_original_title columns to movies and series tables
  * Version 127: Add cinephage_api_config identity auto-sync columns (latest_version, latest_commit, auto_update)
  * Version 132: Add qBittorrent sequential download setting to download_clients
- * Version 133: Backfill canonical info hashes on download queue rows
+ * Version 133: Add import_failed and backfill canonical info hashes on download queue rows
  * Version 134: Store canonical info hashes on download history rows
+ * Version 135: Deduplicate active download queue rows by client and info hash
  */
-export const CURRENT_SCHEMA_VERSION = 134;
+export const CURRENT_SCHEMA_VERSION = 135;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -788,7 +789,8 @@ const TABLE_DEFINITIONS: string[] = [
 		"import_attempts" integer DEFAULT 0,
 		"last_attempt_at" text,
 		"is_automatic" integer DEFAULT false,
-		"is_upgrade" integer DEFAULT false
+		"is_upgrade" integer DEFAULT false,
+		"import_failed" integer NOT NULL DEFAULT 0
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "download_queue_tombstones" (

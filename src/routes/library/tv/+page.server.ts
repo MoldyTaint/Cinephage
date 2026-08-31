@@ -100,7 +100,8 @@ export const load: PageServerLoad = async ({ url }) => {
 						.select({
 							id: episodes.id,
 							seriesId: episodes.seriesId,
-							airDate: episodes.airDate
+							airDate: episodes.airDate,
+							monitored: episodes.monitored
 						})
 						.from(episodes)
 						.where(and(inArray(episodes.seriesId, seriesIds), ne(episodes.seasonNumber, 0)))
@@ -112,11 +113,18 @@ export const load: PageServerLoad = async ({ url }) => {
 			allRegularEpisodes.filter(isAired).map((ep) => [ep.id, ep.seriesId])
 		);
 		const episodeTotalsBySeries = new Map<string, number>();
+		const monitoredEpisodeBySeries = new Map<string, number>();
 		for (const episode of allRegularEpisodes.filter(isAired)) {
 			episodeTotalsBySeries.set(
 				episode.seriesId,
 				(episodeTotalsBySeries.get(episode.seriesId) ?? 0) + 1
 			);
+			if (episode.monitored !== false) {
+				monitoredEpisodeBySeries.set(
+					episode.seriesId,
+					(monitoredEpisodeBySeries.get(episode.seriesId) ?? 0) + 1
+				);
+			}
 		}
 
 		// Fetch all episode files for file-type filtering, size aggregation, and derived episode-file counts.
@@ -174,7 +182,14 @@ export const load: PageServerLoad = async ({ url }) => {
 						? Math.round((derivedEpisodeFileCount / derivedEpisodeCount) * 100)
 						: 0,
 				totalSize: seriesTotalSizeMap.get(s.id) ?? 0,
-				libraryId: s.libraryId ?? null
+				libraryId: s.libraryId ?? null,
+				partiallyMonitored: (() => {
+					if (s.monitored !== true) return false;
+					const total = episodeTotalsBySeries.get(s.id) ?? 0;
+					if (total === 0) return false;
+					const monitored = monitoredEpisodeBySeries.get(s.id) ?? 0;
+					return monitored > 0 && monitored < total;
+				})()
 			};
 		}) as (LibrarySeries & {
 			libraryId?: string | null;
@@ -293,9 +308,11 @@ export const load: PageServerLoad = async ({ url }) => {
 
 		// Filter by monitored status
 		if (monitored === 'monitored') {
-			filteredSeries = filteredSeries.filter((s) => s.monitored);
+			filteredSeries = filteredSeries.filter((s) => s.monitored && !s.partiallyMonitored);
 		} else if (monitored === 'unmonitored') {
 			filteredSeries = filteredSeries.filter((s) => !s.monitored);
+		} else if (monitored === 'partial') {
+			filteredSeries = filteredSeries.filter((s) => s.partiallyMonitored);
 		}
 
 		// Filter by series status

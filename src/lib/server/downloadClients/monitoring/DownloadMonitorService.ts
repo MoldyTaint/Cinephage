@@ -1561,6 +1561,14 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			status: newStatus
 		};
 
+		// If the item has exhausted its import attempts, keep it permanently failed.
+		// The download client (e.g. SABnzbd history) reports 'completed' forever, but
+		// the failure is on Cinephage's import side, not the client's and should not
+		// be treated as a client-side recovery.
+		if (queueItem.importFailed && queueItem.status === 'failed') {
+			return;
+		}
+
 		// Track when the download entered the stalled state so handleStalledDownloads()
 		// can apply the timeout. The timer is persisted (survives restarts) and is
 		// deliberately resistant to flapping: a magnet that briefly flips metaDL →
@@ -2523,7 +2531,9 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				},
 				'Max import attempts exceeded, marking as failed'
 			);
-			await this.markFailed(id, `Import failed after ${newAttempts} attempts`);
+			await this.markFailed(id, `Import failed after ${newAttempts} attempts`, {
+				terminalImport: true
+			});
 			return 'max_attempts';
 		}
 
@@ -3220,13 +3230,18 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		this.scheduleBlockedExtensionCheck(true);
 	}
 
-	async markFailed(id: string, errorMessage: string): Promise<void> {
+	async markFailed(
+		id: string,
+		errorMessage: string,
+		options?: { terminalImport?: boolean }
+	): Promise<void> {
 		await db
 			.update(downloadQueue)
 			.set({
 				status: 'failed',
 				errorMessage,
-				lastAttemptAt: new Date().toISOString()
+				lastAttemptAt: new Date().toISOString(),
+				...(options?.terminalImport ? { importFailed: true } : {})
 			})
 			.where(eq(downloadQueue.id, id));
 

@@ -1360,7 +1360,11 @@ export const downloadQueue = sqliteTable(
 		// Whether this was an automatic grab or manual
 		isAutomatic: integer('is_automatic', { mode: 'boolean' }).default(false),
 		// Whether this is an upgrade for existing file
-		isUpgrade: integer('is_upgrade', { mode: 'boolean' }).default(false)
+		isUpgrade: integer('is_upgrade', { mode: 'boolean' }).default(false),
+		// Set when markFailed() is called due to exhausted import attempts.
+		// Prevents the polling loop from treating the download client's
+		// persistent 'completed' status as a client-side recovery.
+		importFailed: integer('import_failed', { mode: 'boolean' }).notNull().default(false)
 	},
 	(table) => [
 		index('idx_download_queue_status').on(table.status),

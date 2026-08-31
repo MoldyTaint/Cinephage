@@ -109,6 +109,7 @@ function createQueueRecord(
 		lastAttemptAt: null,
 		isAutomatic: false,
 		isUpgrade: false,
+		importFailed: false,
 		releaseGroup: null,
 		...overrides
 	};

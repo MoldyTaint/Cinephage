@@ -89,6 +89,7 @@
 		percentComplete?: number;
 		totalSeriesSize?: number;
 		downloadingCount?: number;
+		partiallyMonitored?: boolean;
 		onMonitorToggle?: (newValue: boolean) => void;
 		onSearch?: () => void;
 		onSearchMissing?: () => void;
@@ -119,6 +120,7 @@
 		percentComplete = 0,
 		totalSeriesSize = 0,
 		downloadingCount = 0,
+		partiallyMonitored = false,
 		onMonitorToggle,
 		onSearch,
 		onSearchMissing,
@@ -219,7 +221,12 @@
 		<div class="flex shrink-0 items-center gap-1 sm:gap-2">
 			<!-- MonitorToggle hidden on mobile (shown in bottom bar) -->
 			<div class="hidden sm:block">
-				<MonitorToggle monitored={series.monitored ?? false} onToggle={onMonitorToggle} size="md" />
+				<MonitorToggle
+					monitored={series.monitored ?? false}
+					{partiallyMonitored}
+					onToggle={onMonitorToggle}
+					size="md"
+				/>
 			</div>
 			<!-- Auto-grab (desktop) -->
 			<button

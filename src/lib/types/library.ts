@@ -135,6 +135,7 @@ export interface LibrarySeries {
 	missingRootFolder?: boolean;
 	scoringProfileId: string | null;
 	monitored: boolean | null;
+	partiallyMonitored?: boolean;
 	seasonFolder: boolean | null;
 	wantsSubtitles: boolean | null;
 	added: string;

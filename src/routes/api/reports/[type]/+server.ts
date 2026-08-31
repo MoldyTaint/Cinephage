@@ -324,16 +324,20 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		return json({ success: false, error: `Unknown report type: ${type}` }, { status: 400 });
 	}
 
-	let body: { ids: string[]; status: string };
+	let body: { ids?: string[]; status: string; resolveAll?: boolean };
 	try {
 		body = await request.json();
 	} catch {
 		return json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
 	}
 
-	if (!Array.isArray(body.ids) || body.ids.length === 0 || !body.status) {
+	if (!body.status) {
+		return json({ success: false, error: 'status is required' }, { status: 400 });
+	}
+
+	if (!body.resolveAll && (!Array.isArray(body.ids) || body.ids.length === 0)) {
 		return json(
-			{ success: false, error: 'ids (array) and status (string) are required' },
+			{ success: false, error: 'ids (array) or resolveAll (boolean) is required' },
 			{ status: 400 }
 		);
 	}
@@ -341,47 +345,92 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	const resolvedAt = new Date().toISOString();
 
 	try {
-		// SQLite doesn't support inArray with drizzle update easily, so we iterate
-		// For small batches (UI use) this is fine; a proper bulk update can be added later
-		switch (type) {
-			case 'rejected-releases':
-				for (const id of body.ids) {
-					await db
+		let updated = 0;
+
+		if (body.resolveAll) {
+			// Resolve every unresolved record for this type — no IDs needed
+			switch (type) {
+				case 'rejected-releases': {
+					const result = await db
 						.update(rejectedReleases)
 						.set({ status: body.status })
-						.where(eq(rejectedReleases.id, id));
+						.where(ne(rejectedReleases.status, body.status));
+					updated = result.changes;
+					break;
 				}
-				break;
-			case 'import-failures':
-				for (const id of body.ids) {
-					await db
+				case 'import-failures': {
+					const result = await db
 						.update(importFailures)
 						.set({
 							status: body.status,
 							resolvedAt: body.status === 'resolved' ? resolvedAt : null
 						})
-						.where(eq(importFailures.id, id));
+						.where(ne(importFailures.status, body.status));
+					updated = result.changes;
+					break;
 				}
-				break;
-			case 'renaming-failures':
-				for (const id of body.ids) {
-					await db
+				case 'renaming-failures': {
+					const result = await db
 						.update(renamingFailures)
 						.set({
 							status: body.status,
 							resolvedAt: body.status === 'resolved' ? resolvedAt : null
 						})
-						.where(eq(renamingFailures.id, id));
+						.where(ne(renamingFailures.status, body.status));
+					updated = result.changes;
+					break;
 				}
-				break;
-			case 'unmatched-imports':
-				return json(
-					{ success: false, error: 'Unmatched imports are managed via the library page' },
-					{ status: 400 }
-				);
+				case 'unmatched-imports':
+					return json(
+						{ success: false, error: 'Unmatched imports are managed via the library page' },
+						{ status: 400 }
+					);
+			}
+		} else {
+			const ids = body.ids!;
+			// SQLite doesn't support inArray with drizzle update easily, so we iterate
+			// For small batches (UI use) this is fine; a proper bulk update can be added later
+			switch (type) {
+				case 'rejected-releases':
+					for (const id of ids) {
+						await db
+							.update(rejectedReleases)
+							.set({ status: body.status })
+							.where(eq(rejectedReleases.id, id));
+					}
+					break;
+				case 'import-failures':
+					for (const id of ids) {
+						await db
+							.update(importFailures)
+							.set({
+								status: body.status,
+								resolvedAt: body.status === 'resolved' ? resolvedAt : null
+							})
+							.where(eq(importFailures.id, id));
+					}
+					break;
+				case 'renaming-failures':
+					for (const id of ids) {
+						await db
+							.update(renamingFailures)
+							.set({
+								status: body.status,
+								resolvedAt: body.status === 'resolved' ? resolvedAt : null
+							})
+							.where(eq(renamingFailures.id, id));
+					}
+					break;
+				case 'unmatched-imports':
+					return json(
+						{ success: false, error: 'Unmatched imports are managed via the library page' },
+						{ status: 400 }
+					);
+			}
+			updated = ids.length;
 		}
 
-		return json({ success: true, data: { updated: body.ids.length } });
+		return json({ success: true, data: { updated } });
 	} catch (err) {
 		logger.error({ err, type }, '[Reports] Failed to update record status');
 		return json({ success: false, error: 'Failed to update records' }, { status: 500 });

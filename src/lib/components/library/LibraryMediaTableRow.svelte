@@ -73,6 +73,9 @@
 	const missing = $derived(isItemMissing(item));
 	const isNearBottom = $derived(idx >= 10);
 	const relDate = $derived(formatRelativeDate(item.added));
+	const partiallyMonitored = $derived(
+		isSeries(item) && (item as LibrarySeries).partiallyMonitored === true
+	);
 </script>
 
 <tr
@@ -138,11 +141,16 @@
 	<td>
 		<div class="flex items-center gap-1.5">
 			{#if item.monitored}
-				<span class="badge gap-1.5 badge-sm badge-success">
+				<span
+					class="badge gap-1.5 badge-sm {partiallyMonitored ? 'badge-warning' : 'badge-success'}"
+					title={partiallyMonitored
+						? m.library_monitorToggle_partiallyMonitored()
+						: m.common_monitored()}
+				>
 					<Eye class="h-3.5 w-3.5" />
 				</span>
 			{:else}
-				<span class="badge gap-1.5 badge-ghost badge-sm">
+				<span class="badge gap-1.5 badge-ghost badge-sm" title={m.common_unmonitored()}>
 					<EyeOff class="h-3.5 w-3.5" />
 				</span>
 			{/if}

@@ -25,6 +25,10 @@ describe('migration v133', () => {
 		migration_v133.apply(sqlite);
 
 		expect(
+			sqlite.prepare('SELECT import_failed FROM download_queue WHERE id = ?').get('magnet-row')
+		).toEqual({ import_failed: 0 });
+
+		expect(
 			sqlite.prepare('SELECT info_hash FROM download_queue WHERE id = ?').get('magnet-row')
 		).toEqual({ info_hash: '0123456789abcdef0123456789abcdef01234567' });
 		expect(
