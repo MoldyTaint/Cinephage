@@ -214,6 +214,7 @@ export class DebridImportFinalizer {
 						downloadClientId: queue.downloadClientId,
 						downloadClientName: client?.name,
 						downloadId: queue.downloadId,
+						infoHash: queue.infoHash,
 						title: queue.title,
 						protocol: queue.protocol,
 						movieId: queue.movieId,

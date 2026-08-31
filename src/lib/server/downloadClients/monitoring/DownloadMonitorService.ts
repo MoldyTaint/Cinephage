@@ -19,10 +19,10 @@ import {
 	episodes,
 	stalledOrphanTracking
 } from '$lib/server/db/schema';
-import { eq, and, inArray, not, notInArray, isNull, isNotNull, desc } from 'drizzle-orm';
+import { eq, and, or, inArray, not, notInArray, isNull, isNotNull, desc } from 'drizzle-orm';
 import { getDownloadClientManager } from '../DownloadClientManager';
 import { mapClientPathToLocal } from './PathMapping';
-import { extractInfoHash } from '../utils/hashUtils';
+import { resolveInfoHash } from '../utils/hashUtils';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
 import {
 	cleanupExpiredQueueTombstones,
@@ -1405,7 +1405,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 			// Fallback: try extracting hash from magnetUrl
 			if (!download && queueItem.magnetUrl) {
-				const extractedHash = extractInfoHash(queueItem.magnetUrl);
+				const extractedHash = resolveInfoHash(queueItem.magnetUrl);
 				if (extractedHash) {
 					download = downloadMap.get(extractedHash.toLowerCase());
 					if (download) matchedBy = 'magnetUrl';
@@ -2173,32 +2173,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		isAutomatic?: boolean;
 		isUpgrade?: boolean;
 	}): Promise<QueueItem> {
-		// Check if download already in queue (prevent duplicates)
-		// Only consider active downloads as duplicates - allow re-downloading removed/failed/imported items
-		const existing = await db
-			.select()
-			.from(downloadQueue)
-			.where(
-				and(
-					eq(downloadQueue.downloadClientId, params.downloadClientId),
-					eq(downloadQueue.downloadId, params.downloadId),
-					notInArray(downloadQueue.status, ['removed', 'failed', ...POST_IMPORT_STATUSES])
-				)
-			)
-			.limit(1);
-
-		if (existing.length > 0) {
-			// Return existing queue item instead of creating duplicate
-			logger.info(
-				{
-					downloadId: params.downloadId,
-					existingId: existing[0].id,
-					status: existing[0].status
-				},
-				'Download already in queue, returning existing item'
-			);
-			return rowToQueueItem(existing[0]);
-		}
+		const infoHash = resolveInfoHash(params.infoHash, params.magnetUrl, params.downloadUrl);
 
 		// Automatic grabs are suppressed for a short window when the same remote item
 		// was recently removed locally while the client was unavailable.
@@ -2207,52 +2182,92 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				downloadClientId: params.downloadClientId,
 				protocol: params.protocol,
 				downloadId: params.downloadId,
-				infoHash: params.infoHash
+				infoHash
 			});
 			if (suppressed) {
 				throw new Error('Download temporarily suppressed after local removal');
 			}
 		}
 
-		// Create new queue item
-		const id = randomUUID();
-		const now = new Date().toISOString();
+		const result = db.transaction((tx) => {
+			const duplicateConditions = [
+				and(
+					eq(downloadQueue.downloadClientId, params.downloadClientId),
+					eq(downloadQueue.downloadId, params.downloadId),
+					notInArray(downloadQueue.status, ['removed', 'failed', ...POST_IMPORT_STATUSES])
+				)
+			];
+			if (infoHash) {
+				duplicateConditions.push(
+					and(
+						eq(downloadQueue.infoHash, infoHash),
+						notInArray(downloadQueue.status, ['removed', ...POST_IMPORT_STATUSES])
+					)
+				);
+			}
 
-		// Parse the release group once at write time so the activity feed can rely on
-		// the stored value without re-parsing (which is separator-sensitive). Callers
-		// normally supply it; derive from the title as a safety net so the column is
-		// always populated when a group is actually present.
-		const releaseGroup =
-			params.releaseGroup ?? releaseParser.parse(params.title).releaseGroup ?? undefined;
+			const existing = tx
+				.select()
+				.from(downloadQueue)
+				.where(or(...duplicateConditions))
+				.limit(1)
+				.all();
 
-		await db.insert(downloadQueue).values({
-			id,
-			downloadClientId: params.downloadClientId,
-			downloadId: params.downloadId,
-			infoHash: params.infoHash,
-			title: params.title,
-			indexerId: params.indexerId,
-			indexerName: params.indexerName,
-			downloadUrl: params.downloadUrl,
-			magnetUrl: params.magnetUrl,
-			protocol: params.protocol || 'torrent',
-			movieId: params.movieId,
-			seriesId: params.seriesId,
-			episodeIds: params.episodeIds,
-			seasonNumber: params.seasonNumber,
-			status: 'queued',
-			quality: params.quality,
-			size: params.size,
-			releaseGroup,
-			addedAt: now,
-			isAutomatic: params.isAutomatic || false,
-			isUpgrade: params.isUpgrade || false
+			if (existing.length > 0) {
+				logger.info(
+					{
+						downloadId: params.downloadId,
+						existingId: existing[0].id,
+						status: existing[0].status
+					},
+					'Download already in queue, returning existing item'
+				);
+				return { created: false, item: rowToQueueItem(existing[0]) };
+			}
+
+			const id = randomUUID();
+			const now = new Date().toISOString();
+			const releaseGroup =
+				params.releaseGroup ?? releaseParser.parse(params.title).releaseGroup ?? undefined;
+
+			tx.insert(downloadQueue)
+				.values({
+					id,
+					downloadClientId: params.downloadClientId,
+					downloadId: params.downloadId,
+					infoHash,
+					title: params.title,
+					indexerId: params.indexerId,
+					indexerName: params.indexerName,
+					downloadUrl: params.downloadUrl,
+					magnetUrl: params.magnetUrl,
+					protocol: params.protocol || 'torrent',
+					movieId: params.movieId,
+					seriesId: params.seriesId,
+					episodeIds: params.episodeIds,
+					seasonNumber: params.seasonNumber,
+					status: 'queued',
+					quality: params.quality,
+					size: params.size,
+					releaseGroup,
+					addedAt: now,
+					isAutomatic: params.isAutomatic || false,
+					isUpgrade: params.isUpgrade || false
+				})
+				.run();
+
+			const item = tx
+				.select()
+				.from(downloadQueue)
+				.where(eq(downloadQueue.id, id))
+				.limit(1)
+				.all()[0];
+			if (!item) throw new Error('Failed to create queue item');
+			return { created: true, item: rowToQueueItem(item) };
 		});
 
-		const item = await this.getQueueItem(id);
-		if (!item) {
-			throw new Error('Failed to create queue item');
-		}
+		if (!result.created) return result.item;
+		const item = result.item;
 
 		this.emit('queue:added', item);
 		this.emitSSE('queue:added', item);
@@ -3266,6 +3281,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				downloadClientId: queueItem.downloadClientId,
 				downloadClientName: client?.name,
 				downloadId: queueItem.downloadId,
+				infoHash: queueItem.infoHash,
 				title: queueItem.title,
 				indexerId: queueItem.indexerId,
 				indexerName: queueItem.indexerName,

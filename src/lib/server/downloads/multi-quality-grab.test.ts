@@ -1,6 +1,12 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../../test/db-helper.js';
-import { downloadClients, downloadQueue, movies } from '$lib/server/db/schema.js';
+import {
+	downloadClients,
+	downloadHistory,
+	downloadQueue,
+	movieFiles,
+	movies
+} from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 
 const testDb: TestDatabase = createTestDb();
@@ -53,7 +59,11 @@ vi.mock('$lib/server/quality/QualityFilter.js', () => ({
 // occupied - the exact scenario the bucket-aware fix must not over-block.
 vi.mock('./handlers/TorrentHandler.js', () => ({
 	TorrentHandler: class {
-		async handle(request: { release: { title: string } }, resolved: { movieId?: string }) {
+		async handle(
+			request: { release: { title: string; infoHash?: string } },
+			resolved: { movieId?: string }
+		) {
+			await new Promise((resolve) => setTimeout(resolve, 10));
 			const { db } = await import('$lib/server/db/index.js');
 			const { downloadQueue } = await import('$lib/server/db/schema.js');
 			const { ReleaseParser } = await import('$lib/server/indexers/parser/ReleaseParser.js');
@@ -64,6 +74,7 @@ vi.mock('./handlers/TorrentHandler.js', () => ({
 				id,
 				downloadClientId: 'client-1',
 				downloadId: `hash-${id}`,
+				infoHash: request.release.infoHash,
 				title: request.release.title,
 				movieId: resolved.movieId,
 				status: 'queued',
@@ -87,6 +98,8 @@ const { grabService } = await import('./GrabService.js');
 function resetDb() {
 	testDb.sqlite.exec(`
 		DELETE FROM download_queue;
+		DELETE FROM download_history;
+		DELETE FROM movie_files;
 		DELETE FROM movies;
 		DELETE FROM download_clients;
 	`);
@@ -111,6 +124,16 @@ function seedMovieAndClient() {
 			title: 'Test Movie',
 			path: 'Test Movie (2026)',
 			desiredQualities: ['2160p', '1080p']
+		})
+		.run();
+	testDb.db
+		.insert(movies)
+		.values({
+			id: 'movie-2',
+			tmdbId: 101,
+			title: 'Test Movie Two',
+			path: 'Test Movie Two (2026)',
+			desiredQualities: ['1080p']
 		})
 		.run();
 }
@@ -173,5 +196,160 @@ describe('GrabService multi-quality two-bucket grab (integration)', () => {
 			.from(downloadQueue)
 			.where(eq(downloadQueue.movieId, 'movie-1'));
 		expect(allQueued).toHaveLength(2);
+	});
+
+	it('serializes the same hash across different media targets', async () => {
+		const infoHash = '0123456789abcdef0123456789abcdef01234567';
+		const options = {
+			force: false,
+			skipBlocklist: true,
+			isAutomatic: false,
+			allowSidegrade: false,
+			skipDelay: true
+		};
+
+		const [first, second] = await Promise.all(
+			['movie-1', 'movie-2'].map((movieId) =>
+				grabService.grab({
+					release: {
+						title: 'Test.Movie.2026.1080p.WEB-DL-GROUP',
+						infoHash,
+						protocol: 'torrent',
+						size: 4_000_000_000
+					},
+					target: { type: 'movie', movieId },
+					options
+				})
+			)
+		);
+
+		expect([first, second].filter((result) => result.success)).toHaveLength(1);
+		expect([first, second].find((result) => !result.success)?.decision.rejectionType).toBe(
+			'duplicate_hash'
+		);
+		expect(
+			testDb.db.select().from(downloadQueue).where(eq(downloadQueue.infoHash, infoHash)).all()
+		).toHaveLength(1);
+	});
+
+	it('rejects an already imported hash when the media file still exists', async () => {
+		const infoHash = 'abcdef0123456789abcdef0123456789abcdef01';
+		testDb.db
+			.insert(movieFiles)
+			.values({
+				id: 'file-existing',
+				movieId: 'movie-1',
+				relativePath: 'Test Movie (2026)/movie.1080p.mkv',
+				quality: { resolution: '1080p' }
+			})
+			.run();
+		testDb.db
+			.insert(downloadHistory)
+			.values({
+				id: 'history-existing',
+				downloadId: 'provider-item-1',
+				infoHash,
+				title: 'Test.Movie.2026.1080p.WEB-DL.DDP5.1.H.264-GROUP',
+				movieId: 'movie-1',
+				protocol: 'torrent',
+				status: 'imported'
+			})
+			.run();
+
+		const result = await grabService.grab({
+			release: {
+				title: 'Test.Movie.2026.1080p.WEB-DL.DDP5.1.H.264-GROUP',
+				infoHash,
+				protocol: 'torrent',
+				size: 4_000_000_000
+			},
+			target: { type: 'movie', movieId: 'movie-1' },
+			options: {
+				force: false,
+				skipBlocklist: true,
+				isAutomatic: false,
+				allowSidegrade: false,
+				skipDelay: true
+			}
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.decision.rejectionType).toBe('duplicate_hash');
+		expect(testDb.db.select().from(downloadQueue).all()).toHaveLength(0);
+	});
+
+	it('rejects an imported hash even when the target has no file or differs', async () => {
+		const infoHash = 'abcdef0123456789abcdef0123456789abcdef01';
+		testDb.db
+			.insert(downloadHistory)
+			.values({
+				id: 'history-existing',
+				downloadId: 'provider-item-1',
+				infoHash,
+				title: 'Test.Movie.2026.1080p.WEB-DL.DDP5.1.H.264-GROUP',
+				movieId: 'movie-1',
+				protocol: 'torrent',
+				status: 'imported'
+			})
+			.run();
+
+		const result = await grabService.grab({
+			release: {
+				title: 'Test.Movie.2026.1080p.WEB-DL.DDP5.1.H.264-GROUP',
+				infoHash,
+				protocol: 'torrent',
+				size: 4_000_000_000
+			},
+			target: { type: 'movie', movieId: 'movie-2' },
+			options: {
+				force: false,
+				skipBlocklist: true,
+				isAutomatic: false,
+				allowSidegrade: false,
+				skipDelay: true
+			}
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.decision.rejectionType).toBe('duplicate_hash');
+		expect(testDb.db.select().from(downloadQueue).all()).toHaveLength(0);
+	});
+
+	it('does not create a new queue row when a failed row matches the magnet hash', async () => {
+		const infoHash = '0123456789abcdef0123456789abcdef01234567';
+		testDb.db
+			.insert(downloadQueue)
+			.values({
+				id: 'queue-failed',
+				downloadClientId: 'client-1',
+				downloadId: infoHash,
+				infoHash,
+				title: 'Test.Movie.2026.1080p.WEB-DL.DDP5.1.H.264-GROUP',
+				movieId: 'movie-1',
+				status: 'failed',
+				protocol: 'torrent'
+			})
+			.run();
+
+		const result = await grabService.grab({
+			release: {
+				title: 'Test.Movie.2026.1080p.WEB-DL.DDP5.1.H.264-GROUP',
+				magnetUrl: `magnet:?xt=urn:btih:${infoHash}`,
+				protocol: 'torrent',
+				size: 4_000_000_000
+			},
+			target: { type: 'movie', movieId: 'movie-1' },
+			options: {
+				force: false,
+				skipBlocklist: true,
+				isAutomatic: false,
+				allowSidegrade: false,
+				skipDelay: true
+			}
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.decision.rejectionType).toBe('duplicate_hash');
+		expect(testDb.db.select().from(downloadQueue).all()).toHaveLength(1);
 	});
 });

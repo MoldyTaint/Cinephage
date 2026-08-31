@@ -42,6 +42,7 @@ function createHistoryRecord(
 		downloadClientId: null,
 		downloadClientName: null,
 		downloadId: null,
+		infoHash: null,
 		title: 'Example.Movie.2025.1080p.WEB-DL-GRP',
 		indexerId: null,
 		indexerName: null,

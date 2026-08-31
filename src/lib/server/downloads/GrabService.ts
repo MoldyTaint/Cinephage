@@ -23,8 +23,33 @@ import { DebridHandler } from './handlers/DebridHandler.js';
 import { getDefaultAcquisitionProtocol } from '$lib/server/settings/acquisition.js';
 import { createChildLogger } from '$lib/logging/index.js';
 import { grabRejectionLogLevel } from './grab-rejection-log-level.js';
+import { resolveInfoHash } from '$lib/server/downloadClients/utils/hashUtils.js';
 
 const logger = createChildLogger({ module: 'GrabService', logDomain: 'downloads' });
+
+const grabHashLocks = new Map<string, Promise<void>>();
+
+async function withGrabHashLock<T>(
+	infoHash: string | undefined,
+	operation: () => Promise<T>
+): Promise<T> {
+	if (!infoHash) return operation();
+
+	const previous = grabHashLocks.get(infoHash);
+	let release!: () => void;
+	const current = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	grabHashLocks.set(infoHash, current);
+
+	if (previous) await previous;
+	try {
+		return await operation();
+	} finally {
+		release();
+		if (grabHashLocks.get(infoHash) === current) grabHashLocks.delete(infoHash);
+	}
+}
 
 class GrabServiceImpl {
 	private static instance: GrabServiceImpl;
@@ -37,8 +62,15 @@ class GrabServiceImpl {
 	}
 
 	async grab(request: GrabRequest, opts?: { forceOverride?: boolean }): Promise<GrabResult> {
-		return mediaOccupancyService.runExclusive(request.target, () =>
-			this.grabUnlocked(request, opts?.forceOverride ?? false)
+		const infoHash = resolveInfoHash(
+			request.release.infoHash,
+			request.release.magnetUrl,
+			request.release.downloadUrl
+		);
+		return withGrabHashLock(infoHash, () =>
+			mediaOccupancyService.runExclusive(request.target, () =>
+				this.grabUnlocked(request, opts?.forceOverride ?? false)
+			)
 		);
 	}
 

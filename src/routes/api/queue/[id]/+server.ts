@@ -66,6 +66,7 @@ async function writeRemovedHistory(queueItem: typeof downloadQueue.$inferSelect)
 					size: queueItem.size,
 					quality: queueItem.quality,
 					releaseGroup: queueItem.releaseGroup,
+					infoHash: queueItem.infoHash,
 					completedAt: queueItem.completedAt
 				})
 				.where(eq(downloadHistory.id, existingFailedHistory.id));
@@ -88,6 +89,7 @@ async function writeRemovedHistory(queueItem: typeof downloadQueue.$inferSelect)
 		size: queueItem.size,
 		quality: queueItem.quality,
 		releaseGroup: queueItem.releaseGroup,
+		infoHash: queueItem.infoHash,
 		grabbedAt: queueItem.addedAt,
 		completedAt: queueItem.completedAt,
 		importedAt: queueItem.importedAt,

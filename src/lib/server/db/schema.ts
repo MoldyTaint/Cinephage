@@ -1364,6 +1364,7 @@ export const downloadQueue = sqliteTable(
 	},
 	(table) => [
 		index('idx_download_queue_status').on(table.status),
+		index('idx_download_queue_info_hash').on(table.infoHash),
 		index('idx_download_queue_movie').on(table.movieId),
 		index('idx_download_queue_series').on(table.seriesId)
 	]
@@ -1433,6 +1434,7 @@ export const downloadHistory = sqliteTable('download_history', {
 	downloadClientId: text('download_client_id'),
 	downloadClientName: text('download_client_name'),
 	downloadId: text('download_id'),
+	infoHash: text('info_hash'),
 	title: text('title').notNull(),
 	indexerId: text('indexer_id'),
 	indexerName: text('indexer_name'),

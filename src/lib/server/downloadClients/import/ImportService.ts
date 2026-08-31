@@ -2898,6 +2898,7 @@ export class ImportService extends EventEmitter {
 			downloadClientId: queueItem.downloadClientId,
 			downloadClientName: client?.name,
 			downloadId: queueItem.downloadId,
+			infoHash: queueItem.infoHash,
 			title: extras.title ?? queueItem.title,
 			indexerId: queueItem.indexerId,
 			indexerName: queueItem.indexerName,

@@ -137,8 +137,10 @@ import {
  * Version 126: Add metadata_language and prefer_original_title columns to movies and series tables
  * Version 127: Add cinephage_api_config identity auto-sync columns (latest_version, latest_commit, auto_update)
  * Version 132: Add qBittorrent sequential download setting to download_clients
+ * Version 133: Backfill canonical info hashes on download queue rows
+ * Version 134: Store canonical info hashes on download history rows
  */
-export const CURRENT_SCHEMA_VERSION = 132;
+export const CURRENT_SCHEMA_VERSION = 134;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -806,6 +808,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"download_client_id" text,
 		"download_client_name" text,
 		"download_id" text,
+		"info_hash" text,
 		"title" text NOT NULL,
 		"indexer_id" text,
 		"indexer_name" text,
@@ -1517,6 +1520,7 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_library_job_items_job_status" ON "library_job_items" ("job_id", "status")`,
 	`CREATE INDEX IF NOT EXISTS "idx_library_job_items_path" ON "library_job_items" ("path")`,
 	`CREATE INDEX IF NOT EXISTS "idx_download_queue_status" ON "download_queue" ("status")`,
+	`CREATE INDEX IF NOT EXISTS "idx_download_queue_info_hash" ON "download_queue" ("info_hash")`,
 	`CREATE INDEX IF NOT EXISTS "idx_download_queue_movie" ON "download_queue" ("movie_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_download_queue_series" ON "download_queue" ("series_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_download_queue_tombstones_client" ON "download_queue_tombstones" ("download_client_id")`,
@@ -1600,6 +1604,7 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_alternate_titles_source" ON "alternate_titles" ("source")`,
 
 	// download_history indexes for activity query performance
+	`CREATE INDEX IF NOT EXISTS "idx_download_history_info_hash" ON "download_history" ("info_hash")`,
 	`CREATE INDEX IF NOT EXISTS "idx_dh_status" ON "download_history" ("status")`,
 	`CREATE INDEX IF NOT EXISTS "idx_dh_movie" ON "download_history" ("movie_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_dh_series" ON "download_history" ("series_id")`,
