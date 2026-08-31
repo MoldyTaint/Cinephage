@@ -39,6 +39,43 @@ interface QBittorrentCategory {
 }
 
 /**
+ * Response from /api/v2/torrents/add in qBittorrent WebAPI v2.14.0+.
+ */
+interface QBittorrentAddResponse {
+	added_torrent_ids: string[];
+	failure_count: number;
+	pending_count: number;
+	success_count: number;
+}
+
+function parseAddResponse(response: string): QBittorrentAddResponse | null {
+	try {
+		const parsed: unknown = JSON.parse(response);
+		if (!parsed || typeof parsed !== 'object') return null;
+
+		const candidate = parsed as Record<string, unknown>;
+		if (
+			!Array.isArray(candidate.added_torrent_ids) ||
+			!candidate.added_torrent_ids.every((id) => typeof id === 'string') ||
+			typeof candidate.failure_count !== 'number' ||
+			typeof candidate.pending_count !== 'number' ||
+			typeof candidate.success_count !== 'number'
+		) {
+			return null;
+		}
+
+		return {
+			added_torrent_ids: candidate.added_torrent_ids as string[],
+			failure_count: candidate.failure_count,
+			pending_count: candidate.pending_count,
+			success_count: candidate.success_count
+		};
+	} catch {
+		return null;
+	}
+}
+
+/**
  * QBittorrent torrent info from /api/v2/torrents/info
  */
 interface QBittorrentTorrent {
@@ -659,9 +696,17 @@ export class QBittorrentClient implements IDownloadClient {
 			'[QBittorrent] Add torrent response'
 		);
 
-		// qBittorrent returns "Ok." on success, "Fails." on failure
-		// An empty response also indicates success in some versions
-		if (response && response.toLowerCase().includes('fail')) {
+		// WebAPI v2.14.0+ returns structured counters and torrent IDs. Older
+		// versions return "Ok." on success, "Fails." on failure, or an empty
+		// response on success.
+		const addResponse = parseAddResponse(response);
+		const responseIndicatesFailure = addResponse
+			? addResponse.failure_count > 0 &&
+				addResponse.success_count === 0 &&
+				addResponse.pending_count === 0
+			: response.trim().toLowerCase() === 'fails.';
+
+		if (responseIndicatesFailure) {
 			// Check if it's actually a duplicate that wasn't caught before
 			// (can happen with torrent files where we don't know hash beforehand)
 			if (infoHash) {
@@ -695,8 +740,9 @@ export class QBittorrentClient implements IDownloadClient {
 			throw new Error(`qBittorrent rejected the torrent: ${response}`);
 		}
 
-		// Get the hash to return
-		const returnHash = infoHash || '';
+		// WebAPI v2.14.0+ returns the added hash, which is useful when the source
+		// was a URL and Cinephage could not determine the hash before adding it.
+		const returnHash = infoHash || addResponse?.added_torrent_ids[0] || '';
 
 		// Apply file selection for episode pointers before force-starting.
 		if (returnHash && options.fileSelection && options.fileSelection.fileIndices.length > 0) {
