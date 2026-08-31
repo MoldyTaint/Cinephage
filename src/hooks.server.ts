@@ -135,6 +135,9 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				if (path.startsWith('/api/streaming/usenet/')) {
 					return true;
 				}
+				if (path.startsWith('/api/streaming/library/')) {
+					return true;
+				}
 				return false;
 			}
 
@@ -242,7 +245,8 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				}
 
 				try {
-					const verifyResult = await auth.api.verifyApiKey({
+					// Accept either a streaming-scoped key or a full-access (main) key
+					let verifyResult = await auth.api.verifyApiKey({
 						body: {
 							key: apiKey,
 							permissions: {
@@ -252,13 +256,26 @@ const customHandler: Handle = async ({ event, resolve }) => {
 					});
 
 					if (!verifyResult.valid) {
+						// Fall back to main API key check. Main keys are created with
+						// { default: ['*'] }.
+						verifyResult = await auth.api.verifyApiKey({
+							body: {
+								key: apiKey,
+								permissions: {
+									default: ['*']
+								}
+							}
+						});
+					}
+
+					if (!verifyResult.valid) {
 						requestLogger.warn(
 							{
 								logDomain: 'auth',
 								endpoint: pathname,
 								error: verifyResult.error?.message || 'Invalid permissions'
 							},
-							'[Auth] Main API key attempted to access streaming endpoint'
+							'[Auth] API key does not have streaming or full-access permissions'
 						);
 
 						return json(
