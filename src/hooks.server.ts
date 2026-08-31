@@ -256,12 +256,13 @@ const customHandler: Handle = async ({ event, resolve }) => {
 					});
 
 					if (!verifyResult.valid) {
-						// Fall back to full-access key check (main API key)
+						// Fall back to main API key check. Main keys are created with
+						// { default: ['*'] }.
 						verifyResult = await auth.api.verifyApiKey({
 							body: {
 								key: apiKey,
 								permissions: {
-									'*': ['*']
+									default: ['*']
 								}
 							}
 						});

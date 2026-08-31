@@ -52,16 +52,21 @@ async function resolveEpisodeFile(
 		return null;
 	}
 
-	let size = row.size ?? 0;
-	if (size === 0) {
-		try {
-			size = statSync(absolutePath).size;
-		} catch {
-			return null;
-		}
+	// Always stat: verify the file exists, is a regular file, and get its current size.
+	// The DB size field can be stale if the file was replaced or deleted after import.
+	let stats: ReturnType<typeof statSync>;
+	try {
+		stats = statSync(absolutePath);
+	} catch {
+		logger.warn({ fileId, absolutePath }, '[LocalEpisodeStream] File not found on disk');
+		return null;
+	}
+	if (!stats.isFile()) {
+		logger.warn({ fileId, absolutePath }, '[LocalEpisodeStream] Path is not a regular file');
+		return null;
 	}
 
-	return { absolutePath, size, contentType: getContentType(row.relativePath) };
+	return { absolutePath, size: stats.size, contentType: getContentType(row.relativePath) };
 }
 
 export const GET: RequestHandler = async (event) => {
