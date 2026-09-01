@@ -16,6 +16,18 @@ import { createChildLogger } from '$lib/logging';
 import { logicalKey } from './matchers.js';
 import type { ReconcileResult } from '../types.js';
 
+/**
+ * Limits the reconcile pass to a subset of the library so imports and
+ * per-folder scans don't load the entire storage_items table.
+ *
+ * - folder: only process items whose root_folder_id matches. Triggered by
+ *   a single-folder scan completing. Server items are filtered to the
+ *   tmdb_ids present in that folder so cross-source coverage still works.
+ * - full: no filter, loads and processes everything. Used for scheduled
+ *   runs, startup backfill, and post-import triggers.
+ */
+type ReconcileScope = { type: 'folder'; rootFolderId: string } | { type: 'full' };
+
 const logger = createChildLogger({ logDomain: 'system' as const });
 
 /**
@@ -46,6 +58,7 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 	private _error?: Error;
 	private reconcileLock = false;
 	private pendingTrigger = false;
+	private pendingScope: ReconcileScope = { type: 'full' };
 	private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	private listenersAttached = false;
 	private attachPromise: Promise<void> | null = null;
@@ -99,24 +112,23 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 		this.attachPromise = Promise.all([
 			import('$lib/server/library/library-scheduler.js')
 				.then(({ getLibraryScheduler }) => {
-					getLibraryScheduler().on('scanComplete', this.handleTrigger);
+					getLibraryScheduler().on('scanComplete', this.handleScanComplete);
 				})
 				.catch((e) => {
 					logger.error('[ReconciliationService] failed to subscribe to scanComplete', e);
 				}),
 			import('$lib/server/mediaServerStats/MediaServerStatsSyncService.js')
 				.then(({ getMediaServerStatsSyncService }) => {
-					getMediaServerStatsSyncService().on('syncComplete', this.handleTrigger);
+					getMediaServerStatsSyncService().on('syncComplete', this.handleSyncComplete);
 				})
 				.catch((e) => {
 					logger.error('[ReconciliationService] failed to subscribe to syncComplete', e);
 				}),
-			// Subscribe to library data mutations (movie/series/episode/season CRUD,
-			// root-folder and library changes). Triggers are debounced so a burst of
-			// imports (e.g. 6 episodes) coalesces into one reconcile run.
+			// Subscribe to library data mutations triggered by downloads/imports (NOT
+			// disk scans, those are handled by scanComplete with a proper rootFolderId).
 			import('$lib/server/library/LibraryMediaEvents.js')
 				.then(({ libraryMediaEvents }) => {
-					libraryMediaEvents.onLibraryDataChanged(this.handleTrigger);
+					libraryMediaEvents.onLibraryDataChanged(this.handleLibraryDataChanged);
 				})
 				.catch((e) => {
 					logger.error('[ReconciliationService] failed to subscribe to library:data-changed', e);
@@ -129,46 +141,94 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 		this.listenersAttached = false;
 		void import('$lib/server/library/library-scheduler.js')
 			.then(({ getLibraryScheduler }) => {
-				getLibraryScheduler().off('scanComplete', this.handleTrigger);
+				getLibraryScheduler().off('scanComplete', this.handleScanComplete);
 			})
 			.catch((e) => {
 				logger.error('[ReconciliationService] failed to unsubscribe from scanComplete', e);
 			});
 		void import('$lib/server/mediaServerStats/MediaServerStatsSyncService.js')
 			.then(({ getMediaServerStatsSyncService }) => {
-				getMediaServerStatsSyncService().off('syncComplete', this.handleTrigger);
+				getMediaServerStatsSyncService().off('syncComplete', this.handleSyncComplete);
 			})
 			.catch((e) => {
 				logger.error('[ReconciliationService] failed to unsubscribe from syncComplete', e);
 			});
 		void import('$lib/server/library/LibraryMediaEvents.js')
 			.then(({ libraryMediaEvents }) => {
-				libraryMediaEvents.offLibraryDataChanged(this.handleTrigger);
+				libraryMediaEvents.offLibraryDataChanged(this.handleLibraryDataChanged);
 			})
 			.catch((e) => {
 				logger.error('[ReconciliationService] failed to unsubscribe from library:data-changed', e);
 			});
 	}
 
-	// Debounce triggers so a burst of library mutations (e.g. importing 6 episodes
-	// back-to-back) coalesces into a single reconcile run. If a reconcile is already
-	// running when the timer fires, set pendingTrigger so we re-run immediately after.
-	private handleTrigger = (): void => {
-		if (this.debounceTimer) clearTimeout(this.debounceTimer);
-		this.debounceTimer = setTimeout(() => {
+	/**
+	 * Triggered when a disk scan finishes. Cancels any in-flight debounce timer
+	 * (disk scans emit per-series library:data-changed events that would
+	 * otherwise cause a duplicate full reconcile 1500ms later) and immediately
+	 * starts a scoped reconcile for just the affected root folder.
+	 */
+	private handleScanComplete = (event: { type: string; rootFolderId?: string }): void => {
+		// Cancel any debounce queued by the per-series/movie library:data-changed
+		// events that fire during the scan; this scanComplete covers the same data.
+		if (this.debounceTimer) {
+			clearTimeout(this.debounceTimer);
 			this.debounceTimer = null;
-			if (this.reconcileLock) {
-				this.pendingTrigger = true;
-				return;
-			}
-			this.reconcile().catch((err) => {
-				logger.error('[ReconciliationService] reconcile failed after trigger', err);
-			});
-		}, 1500);
+		}
+		const scope: ReconcileScope = event.rootFolderId
+			? { type: 'folder', rootFolderId: event.rootFolderId }
+			: { type: 'full' };
+		this.triggerReconcile(scope);
 	};
 
 	/**
-	 * Run a full reconciliation pass. Idempotent; safe to call repeatedly.
+	 * Triggered when a media-server sync finishes. Debounced in case multiple
+	 * servers finish within the same window. Always runs a full reconcile
+	 * since server coverage can span all root folders.
+	 */
+	private handleSyncComplete = (): void => {
+		this.scheduleDebounced({ type: 'full' });
+	};
+
+	/**
+	 * Triggered by download imports, blocklist changes, and other non-scan
+	 * mutations. Debounced so a burst of imports coalesces into one run.
+	 * Disk-scan events (source 'movie'/'series' with reason 'movie-updated'/
+	 * 'series-updated') are intentionally NOT filtered here; the debounce
+	 * cancel in handleScanComplete already suppresses the duplicate.
+	 */
+	private handleLibraryDataChanged = (): void => {
+		this.scheduleDebounced({ type: 'full' });
+	};
+
+	/** Immediately trigger a reconcile, or mark it pending if one is running. */
+	private triggerReconcile(scope: ReconcileScope): void {
+		if (this.reconcileLock) {
+			this.pendingTrigger = true;
+			// Widen the pending scope: a full run covers any narrower scope.
+			if (scope.type === 'full' || this.pendingScope.type === 'full') {
+				this.pendingScope = { type: 'full' };
+			}
+			// Both are folder scopes: keep whichever arrived first; the follow-up
+			// run after the current one will use pendingScope.
+			return;
+		}
+		this.reconcile(scope).catch((err) => {
+			logger.error('[ReconciliationService] reconcile failed after trigger', err);
+		});
+	}
+
+	/** Debounce a reconcile trigger, coalescing bursts into one run. */
+	private scheduleDebounced(scope: ReconcileScope): void {
+		if (this.debounceTimer) clearTimeout(this.debounceTimer);
+		this.debounceTimer = setTimeout(() => {
+			this.debounceTimer = null;
+			this.triggerReconcile(scope);
+		}, 1500);
+	}
+
+	/**
+	 * Run a reconciliation pass, optionally scoped to a single root folder.
 	 *
 	 * The reconcile loop runs in chunks of 500 items, yielding the event loop
 	 * between chunks via setImmediate. This keeps import processing and HTTP
@@ -176,8 +236,11 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 	 * If a new trigger arrives while a reconcile is in-flight, pendingTrigger
 	 * is set and a follow-up run starts immediately after the current one
 	 * finishes, ensuring no library mutations are silently dropped.
+	 *
+	 * @param scope - Optional scope to limit the reconcile to a root folder.
+	 *   When omitted a full library reconcile runs (startup, scheduled task).
 	 */
-	async reconcile(): Promise<ReconcileResult> {
+	async reconcile(scope: ReconcileScope = { type: 'full' }): Promise<ReconcileResult> {
 		const start = Date.now();
 		if (this.reconcileLock) {
 			this.pendingTrigger = true;
@@ -195,28 +258,100 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 		}
 		this.reconcileLock = true;
 		this.pendingTrigger = false;
+		this.pendingScope = { type: 'full' };
 		try {
-			// Select only the columns needed for reconcile logic to reduce memory
-			// pressure when storage_items grows to tens of thousands of rows.
-			const [localRows, serverItemRows, existingItems, existingLinks] = await Promise.all([
-				this.loadLocalRows(),
-				this.loadServerItems(),
-				db
-					.select({
-						id: storageItems.id,
-						itemType: storageItems.itemType,
-						tmdbId: storageItems.tmdbId,
-						seasonNumber: storageItems.seasonNumber,
-						episodeNumber: storageItems.episodeNumber
-					})
-					.from(storageItems),
-				db
-					.select({
-						storageItemId: storageItemServerLinks.storageItemId,
-						serverId: storageItemServerLinks.serverId
-					})
-					.from(storageItemServerLinks)
-			]);
+			// For a folder-scoped run we load local rows first, then derive
+			// the tmdbIds needed to filter server items and existing DB rows.
+			// For a full run everything loads in parallel (no dependency).
+			const existingItemsSelect = {
+				id: storageItems.id,
+				itemType: storageItems.itemType,
+				tmdbId: storageItems.tmdbId,
+				seasonNumber: storageItems.seasonNumber,
+				episodeNumber: storageItems.episodeNumber,
+				// Change-detection fields: used to skip no-op UPDATEs
+				title: storageItems.title,
+				year: storageItems.year,
+				seriesName: storageItems.seriesName,
+				tvdbId: storageItems.tvdbId,
+				imdbId: storageItems.imdbId,
+				movieFileId: storageItems.movieFileId,
+				episodeFileId: storageItems.episodeFileId,
+				rootFolderId: storageItems.rootFolderId,
+				libraryId: storageItems.libraryId,
+				sourceSystem: storageItems.sourceSystem,
+				matchConfidence: storageItems.matchConfidence
+			};
+
+			let localRows: SourceRow[];
+			let serverItemRows: Array<typeof mediaServerSyncedItems.$inferSelect>;
+			let existingItems: Array<{
+				id: string;
+				itemType: string;
+				tmdbId: number | null;
+				seasonNumber: number | null;
+				episodeNumber: number | null;
+				title: string;
+				year: number | null;
+				seriesName: string | null;
+				tvdbId: number | null;
+				imdbId: string | null;
+				movieFileId: string | null;
+				episodeFileId: string | null;
+				rootFolderId: string | null;
+				libraryId: string | null;
+				sourceSystem: string;
+				matchConfidence: string;
+			}>;
+			let existingLinks: Array<{
+				storageItemId: string;
+				serverId: string;
+				syncedItemId: string;
+			}>;
+
+			if (scope.type === 'folder') {
+				// Phase 1: local rows for this folder only.
+				localRows = await this.loadLocalRows(scope.rootFolderId);
+
+				// Phase 2: server items filtered to the tmdbIds present in this
+				// folder; storage_items and links filtered to the same folder.
+				const folderTmdbIds = [
+					...new Set(localRows.map((r) => r.tmdbId).filter((id): id is number => id !== null))
+				];
+				const folderLinkSubquery = db
+					.select({ id: storageItems.id })
+					.from(storageItems)
+					.where(eq(storageItems.rootFolderId, scope.rootFolderId));
+				[serverItemRows, existingItems, existingLinks] = await Promise.all([
+					this.loadServerItemsForTmdbIds(folderTmdbIds),
+					db
+						.select(existingItemsSelect)
+						.from(storageItems)
+						.where(eq(storageItems.rootFolderId, scope.rootFolderId)),
+					db
+						.select({
+							storageItemId: storageItemServerLinks.storageItemId,
+							serverId: storageItemServerLinks.serverId,
+							syncedItemId: storageItemServerLinks.syncedItemId
+						})
+						.from(storageItemServerLinks)
+						.where(inArray(storageItemServerLinks.storageItemId, folderLinkSubquery))
+				]);
+			} else {
+				// Full run: load everything in parallel.
+				[localRows, serverItemRows, existingItems, existingLinks] = await Promise.all([
+					this.loadLocalRows(),
+					this.loadServerItems(),
+					db.select(existingItemsSelect).from(storageItems),
+					db
+						.select({
+							storageItemId: storageItemServerLinks.storageItemId,
+							serverId: storageItemServerLinks.serverId,
+							syncedItemId: storageItemServerLinks.syncedItemId
+						})
+						.from(storageItemServerLinks)
+				]);
+			}
 
 			// ---- Build all read-only maps before touching the DB ----
 
@@ -303,8 +438,8 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 				}
 			}
 
-			// Existing rows indexed by logical key
-			const existingByKey = new Map<string, { id: string }>();
+			// Existing rows indexed by logical key (full row for change-detection)
+			const existingByKey = new Map<string, (typeof existingItems)[number]>();
 			for (const item of existingItems) {
 				const key = logicalKey(
 					item.itemType as 'movie' | 'episode',
@@ -314,7 +449,11 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 				);
 				existingByKey.set(key, item);
 			}
-			const existingLinkIds = new Set(existingLinks.map((l) => `${l.storageItemId}:${l.serverId}`));
+			// Map from "storageItemId:serverId" -> current syncedItemId, used to skip
+			// no-op server-link updates when only lastSeenAt would change.
+			const existingLinkMap = new Map(
+				existingLinks.map((l) => [`${l.storageItemId}:${l.serverId}`, l.syncedItemId])
+			);
 
 			const keepItemIds = new Set<string>();
 			let itemsInserted = 0;
@@ -372,31 +511,56 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 								? null
 								: (localRow?.episodeNumber ?? serverItems[0]?.episodeNumber ?? null);
 
+							const newMovieFileId = localRow?.movieFileId ?? null;
+							const newEpisodeFileId = localRow?.episodeFileId ?? null;
+							const newRootFolderId = localRow?.rootFolderId ?? null;
+							const newLibraryId = localRow?.libraryId ?? null;
+
 							let itemId: string;
 							if (existing) {
 								itemId = existing.id;
-								tx.update(storageItems)
-									.set({
-										title,
-										year,
-										seriesName,
-										itemType,
-										tmdbId,
-										tvdbId,
-										imdbId,
-										seasonNumber,
-										episodeNumber,
-										movieFileId: localRow?.movieFileId ?? null,
-										episodeFileId: localRow?.episodeFileId ?? null,
-										rootFolderId: localRow?.rootFolderId ?? null,
-										libraryId: localRow?.libraryId ?? null,
-										sourceSystem,
-										matchConfidence,
-										lastReconciledAt: now
-									})
-									.where(eq(storageItems.id, existing.id))
-									.run();
-								itemsUpdated++;
+								keepItemIds.add(itemId);
+
+								// Skip the UPDATE when nothing material changed.
+								// Writing every row on every reconcile even
+								// when nothing in the library has changed causes massive unnecessary I/O.
+								const changed =
+									existing.title !== title ||
+									existing.year !== year ||
+									existing.seriesName !== seriesName ||
+									existing.tvdbId !== tvdbId ||
+									existing.imdbId !== imdbId ||
+									existing.movieFileId !== newMovieFileId ||
+									existing.episodeFileId !== newEpisodeFileId ||
+									existing.rootFolderId !== newRootFolderId ||
+									existing.libraryId !== newLibraryId ||
+									existing.sourceSystem !== sourceSystem ||
+									existing.matchConfidence !== matchConfidence;
+
+								if (changed) {
+									tx.update(storageItems)
+										.set({
+											title,
+											year,
+											seriesName,
+											itemType,
+											tmdbId,
+											tvdbId,
+											imdbId,
+											seasonNumber,
+											episodeNumber,
+											movieFileId: newMovieFileId,
+											episodeFileId: newEpisodeFileId,
+											rootFolderId: newRootFolderId,
+											libraryId: newLibraryId,
+											sourceSystem,
+											matchConfidence,
+											lastReconciledAt: now
+										})
+										.where(eq(storageItems.id, existing.id))
+										.run();
+									itemsUpdated++;
+								}
 							} else {
 								const [inserted] = tx
 									.insert(storageItems)
@@ -410,10 +574,10 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 										seriesName,
 										seasonNumber,
 										episodeNumber,
-										movieFileId: localRow?.movieFileId ?? null,
-										episodeFileId: localRow?.episodeFileId ?? null,
-										rootFolderId: localRow?.rootFolderId ?? null,
-										libraryId: localRow?.libraryId ?? null,
+										movieFileId: newMovieFileId,
+										episodeFileId: newEpisodeFileId,
+										rootFolderId: newRootFolderId,
+										libraryId: newLibraryId,
 										sourceSystem,
 										matchConfidence,
 										firstSeenAt: now,
@@ -422,14 +586,16 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 									.returning({ id: storageItems.id })
 									.all();
 								itemId = inserted.id;
+								keepItemIds.add(itemId);
 								itemsInserted++;
 							}
-							keepItemIds.add(itemId);
 
-							// Upsert server links
+							// Upsert server links: skip the UPDATE when syncedItemId
+							// hasn't changed (lastSeenAt alone isn't worth a write).
 							for (const s of serverItems) {
 								const linkKey = `${itemId}:${s.serverId}`;
-								if (!existingLinkIds.has(linkKey)) {
+								const existingSyncedId = existingLinkMap.get(linkKey);
+								if (existingSyncedId === undefined) {
 									tx.insert(storageItemServerLinks)
 										.values({
 											storageItemId: itemId,
@@ -439,7 +605,8 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 										})
 										.onConflictDoNothing()
 										.run();
-								} else {
+									linksUpserted++;
+								} else if (existingSyncedId !== s.id) {
 									tx.update(storageItemServerLinks)
 										.set({ lastSeenAt: now, syncedItemId: s.id })
 										.where(
@@ -449,8 +616,9 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 											)
 										)
 										.run();
+									linksUpserted++;
 								}
-								linksUpserted++;
+								// else: link exists with same syncedItemId, no write needed
 							}
 						} catch (itemError) {
 							// Isolate per-item failures so one bad row can't abort the
@@ -468,6 +636,8 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 			}
 
 			// Stale cleanup: remove rows no longer present in any source.
+			// For a folder-scoped run, only delete rows belonging to that folder
+			// (existingItems is already filtered to the folder).
 			// Chunked to stay within SQLite's ~999 host-parameter limit.
 			let itemsDeleted = 0;
 			const staleIds = existingItems.filter((i) => !keepItemIds.has(i.id)).map((i) => i.id);
@@ -505,11 +675,14 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 		} finally {
 			this.reconcileLock = false;
 			// A trigger that arrived while we were running sets pendingTrigger.
-			// Start a follow-up pass immediately so those mutations aren't missed.
+			// Use the accumulated pendingScope so a full-scope trigger isn't
+			// narrowed to a folder scope that arrived first.
 			if (this.pendingTrigger) {
+				const followUpScope = this.pendingScope;
 				this.pendingTrigger = false;
+				this.pendingScope = { type: 'full' };
 				setImmediate(() => {
-					this.reconcile().catch((err) => {
+					this.reconcile(followUpScope).catch((err) => {
 						logger.error('[ReconciliationService] reconcile failed on deferred trigger', err);
 					});
 				});
@@ -517,7 +690,7 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 		}
 	}
 
-	private async loadLocalRows(): Promise<SourceRow[]> {
+	private async loadLocalRows(rootFolderId?: string): Promise<SourceRow[]> {
 		const [movieFileRows, episodeFileRows] = await Promise.all([
 			db
 				.select({
@@ -530,7 +703,8 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 					rootFolderId: movies.rootFolderId
 				})
 				.from(movies)
-				.leftJoin(movieFiles, eq(movieFiles.movieId, movies.id)),
+				.leftJoin(movieFiles, eq(movieFiles.movieId, movies.id))
+				.where(rootFolderId ? eq(movies.rootFolderId, rootFolderId) : undefined),
 			db
 				.select({
 					seriesId: series.id,
@@ -545,6 +719,7 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 				})
 				.from(series)
 				.innerJoin(episodeFiles, eq(episodeFiles.seriesId, series.id))
+				.where(rootFolderId ? eq(series.rootFolderId, rootFolderId) : undefined)
 		]);
 
 		// Collect only the episode IDs referenced by episode files — avoids
@@ -664,6 +839,22 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 			.select()
 			.from(mediaServerSyncedItems)
 			.where(sql`${mediaServerSyncedItems.tmdbId} IS NOT NULL`);
+	}
+
+	private async loadServerItemsForTmdbIds(
+		tmdbIds: number[]
+	): Promise<Array<typeof mediaServerSyncedItems.$inferSelect>> {
+		if (tmdbIds.length === 0) return [];
+		const results: Array<typeof mediaServerSyncedItems.$inferSelect> = [];
+		for (let i = 0; i < tmdbIds.length; i += CHUNK_SIZE) {
+			const batch = tmdbIds.slice(i, i + CHUNK_SIZE);
+			const rows = await db
+				.select()
+				.from(mediaServerSyncedItems)
+				.where(inArray(mediaServerSyncedItems.tmdbId, batch));
+			results.push(...rows);
+		}
+		return results;
 	}
 }
 
