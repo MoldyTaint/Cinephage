@@ -5,6 +5,7 @@
 	import { Sparkles, Loader2 } from 'lucide-svelte';
 	import { SettingsPage } from '$lib/components/ui/settings';
 	import * as m from '$lib/paraglide/messages.js';
+	import { ensureVersionPrefix } from '$lib/version.js';
 	import {
 		updateCinephageConfig,
 		updateCinephageModule,
@@ -164,7 +165,7 @@
 					<span class="text-sm text-base-content/60">
 						{m.settings_cinephage_detectedIdentity()}:
 						<span class="font-mono text-base-content/80">
-							v{identity.version}
+							{ensureVersionPrefix(identity.version)}
 							{#if identity.commit}
 								({identity.commit})
 							{:else}
@@ -191,7 +192,7 @@
 						{m.settings_cinephage_latestRelease()}:
 						{#if config.latestVersion}
 							<span class="font-mono text-base-content/80">
-								v{config.latestVersion}
+								{ensureVersionPrefix(config.latestVersion)}
 								{#if config.latestCommit}({config.latestCommit}){/if}
 							</span>
 						{:else}
