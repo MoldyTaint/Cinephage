@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { createChildLogger } from '$lib/logging';
+import { ensureVersionPrefix } from '$lib/version.js';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 
@@ -43,7 +44,7 @@ async function fetchLatestRelease(): Promise<CachedRelease> {
 
 	const release = (await releaseRes.json()) as { tag_name: string };
 	const tagName = release.tag_name;
-	const version = tagName.replace(/^v/, '');
+	const version = ensureVersionPrefix(tagName);
 
 	const refRes = await fetch(`${GITHUB_API_BASE}/repos/${GITHUB_REPO}/git/ref/tags/${tagName}`, {
 		headers
