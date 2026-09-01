@@ -3389,6 +3389,7 @@
 	"settings_naming_rename_renameSelected": "Переименовать выбранные ({count})",
 	"settings_naming_rename_renaming": "Переименование...",
 	"settings_naming_rename_selectedCount": "Выбрано {selected} из {total}",
+	"settings_naming_rename_scanInProgress": "Выполняется сканирование библиотеки: переименование приостановлено до его завершения.",
 	"settings_naming_rename_selection": "Выбор",
 	"settings_naming_rename_subtitle": "Проверьте, как сохранённые настройки именования изменят файлы по всей библиотеке",
 	"settings_naming_rename_successCount": "Успешно переименовано файлов: {count}",

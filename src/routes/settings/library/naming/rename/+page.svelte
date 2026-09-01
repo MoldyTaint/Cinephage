@@ -28,6 +28,7 @@
 	let executing = $state(false);
 	let confirmPending = $state(false);
 	let reorganizing = $state(false);
+	let scanInProgress = $state(false);
 	let error = $state<string | null>(null);
 	let success = $state<string | null>(null);
 	let renameWarnings = $state<string[]>([]);
@@ -55,7 +56,13 @@
 		loading = true;
 
 		try {
-			const result = await getRenamePreview(mediaTypeFilter);
+			const [result, scanStatus] = await Promise.all([
+				getRenamePreview(mediaTypeFilter),
+				fetch('/api/library/scan/status')
+					.then((r) => r.json())
+					.catch(() => ({ scanning: false }))
+			]);
+			scanInProgress = Boolean(scanStatus?.scanning);
 
 			if (!result.success) {
 				throw new Error(result.error || 'Failed to load preview');
@@ -319,19 +326,27 @@
 						</div>
 					</div>
 				{:else}
-					<button
-						class="btn gap-2 btn-primary btn-sm"
-						onclick={executeRenames}
-						disabled={executing || selectedIds.size === 0}
-					>
-						{#if executing}
-							<RefreshCw class="h-4 w-4 animate-spin" />
-							{m.settings_naming_rename_renaming()}
-						{:else}
-							<CheckCircle class="h-4 w-4" />
-							{m.settings_naming_rename_renameSelected({ count: selectedIds.size })}
+					<div class="flex flex-col items-end gap-1">
+						<button
+							class="btn gap-2 btn-primary btn-sm"
+							onclick={executeRenames}
+							disabled={executing || selectedIds.size === 0 || scanInProgress}
+						>
+							{#if executing}
+								<RefreshCw class="h-4 w-4 animate-spin" />
+								{m.settings_naming_rename_renaming()}
+							{:else}
+								<CheckCircle class="h-4 w-4" />
+								{m.settings_naming_rename_renameSelected({ count: selectedIds.size })}
+							{/if}
+						</button>
+						{#if scanInProgress}
+							<p class="flex items-center gap-1 text-xs text-warning">
+								<AlertTriangle class="h-3 w-3" />
+								{m.settings_naming_rename_scanInProgress()}
+							</p>
 						{/if}
-					</button>
+					</div>
 				{/if}
 			</div>
 		</div>

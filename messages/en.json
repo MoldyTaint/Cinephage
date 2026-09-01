@@ -3389,6 +3389,7 @@
 	"settings_naming_rename_renameSelected": "Rename Selected ({count})",
 	"settings_naming_rename_renaming": "Renaming...",
 	"settings_naming_rename_selectedCount": "{selected} of {total} selected",
+	"settings_naming_rename_scanInProgress": "A library scan is in progress: renaming is paused until it finishes.",
 	"settings_naming_rename_selection": "Selection",
 	"settings_naming_rename_subtitle": "Review how your saved naming settings would change files across the library",
 	"settings_naming_rename_successCount": "Successfully renamed {count} file(s)",
