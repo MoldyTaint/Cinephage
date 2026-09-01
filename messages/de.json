@@ -3389,6 +3389,7 @@
 	"settings_naming_rename_renameSelected": "Ausgewählte umbenennen ({count})",
 	"settings_naming_rename_renaming": "Benenne um...",
 	"settings_naming_rename_selectedCount": "{selected} von {total} ausgewählt",
+	"settings_naming_rename_scanInProgress": "Ein Bibliotheks-Scan läuft — Umbenennen ist pausiert, bis er abgeschlossen ist.",
 	"settings_naming_rename_selection": "Auswahl",
 	"settings_naming_rename_subtitle": "Überprüfe, wie deine gespeicherten Benennungseinstellungen Dateien in der Bibliothek ändern würden",
 	"settings_naming_rename_successCount": "Erfolgreich {count} Datei(en) umbenannt",

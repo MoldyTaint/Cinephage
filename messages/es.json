@@ -3389,6 +3389,7 @@
 	"settings_naming_rename_renameSelected": "Renombrar seleccionados ({count})",
 	"settings_naming_rename_renaming": "Renombrando...",
 	"settings_naming_rename_selectedCount": "{selected} de {total} seleccionados",
+	"settings_naming_rename_scanInProgress": "Un análisis de biblioteca está en curso: el renombrado está pausado hasta que finalice.",
 	"settings_naming_rename_selection": "Selección",
 	"settings_naming_rename_subtitle": "Revisa cómo tu configuración de nomenclatura guardada cambiaría archivos en toda la biblioteca",
 	"settings_naming_rename_successCount": "{count} archivo(s) renombrado(s) exitosamente",
