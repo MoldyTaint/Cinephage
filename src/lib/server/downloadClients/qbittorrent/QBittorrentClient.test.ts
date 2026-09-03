@@ -137,4 +137,83 @@ describe('QBittorrentClient add response parsing', () => {
 			})
 		).rejects.toThrow('qBittorrent rejected the torrent: Fails.');
 	});
+
+	it('detects duplicate via infoHash on structured failure', async () => {
+		const hash = 'abc123def456abc123def456abc123def456abc1';
+		const magnetUrl = `magnet:?xt=urn:btih:${hash}&dn=test`;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string | URL | Request) => {
+				const u = String(url);
+				if (u.endsWith('/api/v2/auth/login'))
+					return new Response('Ok.', {
+						status: 200,
+						headers: { 'set-cookie': 'SID=test-session; path=/' }
+					});
+				if (u.endsWith('/api/v2/torrents/add'))
+					return new Response(
+						JSON.stringify({
+							added_torrent_ids: [],
+							failure_count: 1,
+							pending_count: 0,
+							success_count: 0
+						}),
+						{ status: 200 }
+					);
+				if (u.includes('/api/v2/torrents/info'))
+					return new Response(JSON.stringify([{ hash, name: 'test', state: 'uploading' }]), {
+						status: 200
+					});
+				throw new Error(`Unexpected request: ${u}`);
+			})
+		);
+
+		// Should return the known hash rather than throwing: it's a duplicate
+		await expect(
+			createClient().addDownload({ downloadUrl: magnetUrl, category: 'movies' })
+		).resolves.toBe(hash);
+	});
+
+	it('applies forceStart using hash returned by structured add response', async () => {
+		const returnedHash = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+		const setForceStartCalled: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string | URL | Request) => {
+				const u = String(url);
+				if (u.endsWith('/api/v2/auth/login'))
+					return new Response('Ok.', {
+						status: 200,
+						headers: { 'set-cookie': 'SID=test-session; path=/' }
+					});
+				if (u.endsWith('/api/v2/torrents/add'))
+					return new Response(
+						JSON.stringify({
+							added_torrent_ids: [returnedHash],
+							failure_count: 0,
+							pending_count: 0,
+							success_count: 1
+						}),
+						{ status: 200 }
+					);
+				if (u.includes('/api/v2/torrents/info'))
+					return new Response(JSON.stringify([{ hash: returnedHash, state: 'uploading' }]), {
+						status: 200
+					});
+				if (u.includes('/api/v2/torrents/setForceStart')) {
+					setForceStartCalled.push(u);
+					return new Response('Ok.', { status: 200 });
+				}
+				throw new Error(`Unexpected request: ${u}`);
+			})
+		);
+
+		await createClient().addDownload({
+			downloadUrl: 'https://example.com/test.torrent',
+			category: 'movies',
+			priority: 'force'
+		});
+
+		expect(setForceStartCalled.length).toBe(1);
+	});
 });
