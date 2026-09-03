@@ -5,6 +5,7 @@
  * Triggers incremental scans when files are added, removed, or changed.
  */
 
+import { promises as fsPromises } from 'node:fs';
 import chokidar, { type FSWatcher } from 'chokidar';
 import { db } from '$lib/server/db/index.js';
 import { rootFolders, librarySettings } from '$lib/server/db/schema.js';
@@ -19,6 +20,44 @@ import { createChildLogger } from '$lib/logging';
 const logger = createChildLogger({ logDomain: 'scans' as const });
 
 const DEBOUNCE_TIME = 5000;
+
+const NETWORK_FS_TYPES = new Set([
+	'nfs',
+	'nfs4',
+	'cifs',
+	'smbfs',
+	'smb2',
+	'fuse.sshfs',
+	'fuse.rclone',
+	'fuse.s3fs',
+	'glusterfs',
+	'davfs',
+	'overlay' // Docker bind mounts from Windows hosts appear as overlay
+]);
+
+async function detectFilesystemType(targetPath: string): Promise<string | null> {
+	try {
+		const mounts = await fsPromises.readFile('/proc/mounts', 'utf8');
+		let bestLength = 0;
+		let bestFsType: string | null = null;
+		for (const line of mounts.split('\n')) {
+			const parts = line.split(' ');
+			if (parts.length < 3) continue;
+			const mountPoint = parts[1];
+			const fsType = parts[2];
+			if (
+				(targetPath === mountPoint || targetPath.startsWith(mountPoint + '/')) &&
+				mountPoint.length > bestLength
+			) {
+				bestLength = mountPoint.length;
+				bestFsType = fsType;
+			}
+		}
+		return bestFsType;
+	} catch {
+		return null;
+	}
+}
 
 interface FileChange {
 	type: 'add' | 'change' | 'unlink';
@@ -102,6 +141,18 @@ export class LibraryWatcherService extends EventEmitter {
 
 		this.rootFolderMap.set(folderPath, folderId);
 
+		const fsType = await detectFilesystemType(folderPath);
+		if (fsType !== null) {
+			if (NETWORK_FS_TYPES.has(fsType)) {
+				logger.warn(
+					{ folderId, folderPath, fsType },
+					'[LibraryWatcher] Path is on a network filesystem: inotify-based watching may not function reliably over this mount type; scan-on-change may miss events'
+				);
+			} else {
+				logger.info({ folderId, folderPath, fsType }, '[LibraryWatcher] Filesystem type detected');
+			}
+		}
+
 		const watcher = chokidar.watch(folderPath, {
 			persistent: true,
 			ignoreInitial: true,
@@ -114,16 +165,35 @@ export class LibraryWatcherService extends EventEmitter {
 			ignored: [/(^|[/\\])\../, /node_modules/, /@eaDir/, /#recycle/i, /\$RECYCLE\.BIN/i]
 		});
 
+		// Suppress duplicate ENOSPC warnings.
+		let enospcWarned = false;
+
 		watcher
 			.on('add', (path) => this.handleFileEvent('add', path, folderId))
 			.on('change', (path) => this.handleFileEvent('change', path, folderId))
 			.on('unlink', (path) => this.handleFileEvent('unlink', path, folderId))
 			.on('error', (error) => {
-				logger.error({ err: error, ...{ folderId } }, '[LibraryWatcher] Error in folder');
+				if ((error as NodeJS.ErrnoException).code === 'ENOSPC') {
+					if (!enospcWarned) {
+						enospcWarned = true;
+						logger.warn(
+							{ folderId, folderPath },
+							'[LibraryWatcher] ENOSPC: system inotify watch limit reached. ' +
+								'Increase fs.inotify.max_user_watches (e.g. echo 524288 | sudo tee /proc/sys/fs/inotify/max_user_watches), ' +
+								'or disable "Watch filesystem for changes" in Settings and rely on scheduled scans instead.'
+						);
+					}
+					// ENOSPC is not recoverable by the scheduler;s suppress re-emit to avoid log spam.
+					return;
+				}
+				logger.error({ err: error, folderId }, '[LibraryWatcher] Error in folder');
 				this.emit('error', { folderId, error });
 			})
 			.on('ready', () => {
-				logger.info({ folderPath }, '[LibraryWatcher] Watching folder');
+				const watched = watcher.getWatched();
+				const dirCount = Object.keys(watched).length;
+				const fileCount = Object.values(watched).reduce((sum, files) => sum + files.length, 0);
+				logger.info({ folderPath, dirCount, fileCount }, '[LibraryWatcher] Watching folder');
 			});
 
 		this.watchers.set(folderId, watcher);
