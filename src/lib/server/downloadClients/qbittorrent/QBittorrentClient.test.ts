@@ -153,25 +153,65 @@ describe('QBittorrentClient add response parsing', () => {
 				if (u.endsWith('/api/v2/torrents/add'))
 					return new Response(
 						JSON.stringify({
-							added_torrent_ids: [],
-							failure_count: 1,
+							added_torrent_ids: [returnedHash],
+							failure_count: 0,
 							pending_count: 0,
-							success_count: 0
+							success_count: 1
+						}),
+						{ status: 200 }
+					);
+				if (u.includes('/api/v2/app/preferences'))
+					return new Response(
+						JSON.stringify({
+							save_path: '/downloads',
+							max_ratio_enabled: false,
+							max_ratio: -1,
+							max_seeding_time_enabled: false,
+							max_seeding_time: -1,
+							max_ratio_act: 0
 						}),
 						{ status: 200 }
 					);
 				if (u.includes('/api/v2/torrents/info'))
-					return new Response(JSON.stringify([{ hash, name: 'test', state: 'uploading' }]), {
-						status: 200
-					});
+					return new Response(
+						JSON.stringify([
+							{
+								hash: returnedHash,
+								state: 'uploading',
+								name: 'test',
+								size: 0,
+								progress: 0,
+								dlspeed: 0,
+								upspeed: 0,
+								priority: 0,
+								num_seeds: 0,
+								num_complete: 0,
+								num_leechs: 0,
+								num_incomplete: 0,
+								ratio: 0,
+								eta: 0,
+								category: 'movies',
+								save_path: '/downloads',
+								content_path: '/downloads/test'
+							}
+						]),
+						{ status: 200 }
+					);
+				if (u.includes('/api/v2/torrents/setForceStart')) {
+					setForceStartCalled.push(u);
+					return new Response('Ok.', { status: 200 });
+				}
 				throw new Error(`Unexpected request: ${u}`);
 			})
 		);
 
 		// Should return the known hash rather than throwing: it's a duplicate
-		await expect(
-			createClient().addDownload({ downloadUrl: magnetUrl, category: 'movies' })
-		).resolves.toBe(hash);
+		const err = await createClient()
+			.addDownload({ downloadUrl: magnetUrl, category: 'movies' })
+			.catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(Error);
+		expect((err as { isDuplicate?: boolean }).isDuplicate).toBe(true);
+		expect((err as Error).message).toContain('already exists');
 	});
 
 	it('applies forceStart using hash returned by structured add response', async () => {
@@ -204,6 +244,18 @@ describe('QBittorrentClient add response parsing', () => {
 					setForceStartCalled.push(u);
 					return new Response('Ok.', { status: 200 });
 				}
+				if (u.includes('/api/v2/app/preferences'))
+					return new Response(
+						JSON.stringify({
+							save_path: '/downloads',
+							max_ratio_enabled: false,
+							max_ratio: -1,
+							max_seeding_time_enabled: false,
+							max_seeding_time: -1,
+							max_ratio_act: 0
+						}),
+						{ status: 200 }
+					);
 				throw new Error(`Unexpected request: ${u}`);
 			})
 		);
