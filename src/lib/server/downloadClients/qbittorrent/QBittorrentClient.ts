@@ -737,7 +737,10 @@ export class QBittorrentClient implements IDownloadClient {
 				},
 				'[QBittorrent] Torrent add failed'
 			);
-			throw new Error(`qBittorrent rejected the torrent: ${response}`);
+			const failDetail = addResponse
+				? `${addResponse.failure_count} failed, ${addResponse.success_count} succeeded`
+				: response.trim();
+			throw new Error(`qBittorrent rejected the torrent: ${failDetail}`);
 		}
 
 		// WebAPI v2.14.0+ returns the added hash, which is useful when the source
