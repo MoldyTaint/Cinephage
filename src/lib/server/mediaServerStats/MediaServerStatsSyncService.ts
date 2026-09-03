@@ -6,11 +6,12 @@ import { getMediaBrowserManager } from '$lib/server/notifications/mediabrowser/M
 import { createStatsProvider } from './providers/index.js';
 import { db } from '$lib/server/db';
 import { mediaServerSyncedItems, mediaServerSyncedRuns } from '$lib/server/db/schema';
-import { eq, and, notInArray } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 
 const DEFAULT_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const CHUNK_SIZE = 500;
 
 class MediaServerStatsSyncService extends EventEmitter implements BackgroundService {
 	readonly name = 'MediaServerStatsSyncService';
@@ -216,15 +217,28 @@ class MediaServerStatsSyncService extends EventEmitter implements BackgroundServ
 			}
 
 			if (result.serverItemIds.size > 0) {
-				const idsArray = Array.from(result.serverItemIds);
-				await db
-					.delete(mediaServerSyncedItems)
-					.where(
-						and(
-							eq(mediaServerSyncedItems.serverId, server.id),
-							notInArray(mediaServerSyncedItems.serverItemId, idsArray)
-						)
-					);
+				// notInArray with large arrays exceeds SQLite's variable limit.
+				// Load existing IDs, compute stale set locally, delete in chunks.
+				const existingRows = await db
+					.select({ serverItemId: mediaServerSyncedItems.serverItemId })
+					.from(mediaServerSyncedItems)
+					.where(eq(mediaServerSyncedItems.serverId, server.id));
+
+				const staleIds = existingRows
+					.map((r) => r.serverItemId)
+					.filter((id) => !result.serverItemIds.has(id));
+
+				for (let i = 0; i < staleIds.length; i += CHUNK_SIZE) {
+					const batch = staleIds.slice(i, i + CHUNK_SIZE);
+					await db
+						.delete(mediaServerSyncedItems)
+						.where(
+							and(
+								eq(mediaServerSyncedItems.serverId, server.id),
+								inArray(mediaServerSyncedItems.serverItemId, batch)
+							)
+						);
+				}
 			}
 
 			const completedAt = new Date().toISOString();
