@@ -141,6 +141,8 @@ describe('QBittorrentClient add response parsing', () => {
 	it('detects duplicate via infoHash on structured failure', async () => {
 		const hash = 'abc123def456abc123def456abc123def456abc1';
 		const magnetUrl = `magnet:?xt=urn:btih:${hash}&dn=test`;
+		const returnedHash = hash;
+		const setForceStartCalled: string[] = [];
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async (url: string | URL | Request) => {
@@ -212,6 +214,8 @@ describe('QBittorrentClient add response parsing', () => {
 		expect(err).toBeInstanceOf(Error);
 		expect((err as { isDuplicate?: boolean }).isDuplicate).toBe(true);
 		expect((err as Error).message).toContain('already exists');
+		// Duplicate detection should short-circuit before any force-start attempt
+		expect(setForceStartCalled.length).toBe(0);
 	});
 
 	it('applies forceStart using hash returned by structured add response', async () => {
