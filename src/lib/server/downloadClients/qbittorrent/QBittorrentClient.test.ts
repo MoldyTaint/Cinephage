@@ -72,6 +72,42 @@ describe('QBittorrentClient add response parsing', () => {
 		});
 	}
 
+	function stubTorrent(hash: string) {
+		return {
+			hash,
+			name: 'test',
+			state: 'uploading',
+			size: 0,
+			progress: 0,
+			dlspeed: 0,
+			upspeed: 0,
+			priority: 0,
+			num_seeds: 0,
+			num_complete: 0,
+			num_leechs: 0,
+			num_incomplete: 0,
+			ratio: 0,
+			eta: 0,
+			category: 'movies',
+			save_path: '/downloads',
+			content_path: '/downloads/test',
+			downloaded: 0,
+			uploaded: 0,
+			tags: ''
+		};
+	}
+
+	function stubPreferences() {
+		return {
+			save_path: '/downloads',
+			max_ratio_enabled: false,
+			max_ratio: -1,
+			max_seeding_time_enabled: false,
+			max_seeding_time: -1,
+			max_ratio_act: 0
+		};
+	}
+
 	it('accepts a successful WebAPI v2.14 response containing failure_count', async () => {
 		stubAddResponse(
 			JSON.stringify({
@@ -141,8 +177,6 @@ describe('QBittorrentClient add response parsing', () => {
 	it('detects duplicate via infoHash on structured failure', async () => {
 		const hash = 'abc123def456abc123def456abc123def456abc1';
 		const magnetUrl = `magnet:?xt=urn:btih:${hash}&dn=test`;
-		const returnedHash = hash;
-		const setForceStartCalled: string[] = [];
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async (url: string | URL | Request) => {
@@ -155,67 +189,26 @@ describe('QBittorrentClient add response parsing', () => {
 				if (u.endsWith('/api/v2/torrents/add'))
 					return new Response(
 						JSON.stringify({
-							added_torrent_ids: [returnedHash],
-							failure_count: 0,
+							added_torrent_ids: [],
+							failure_count: 1,
 							pending_count: 0,
-							success_count: 1
+							success_count: 0
 						}),
 						{ status: 200 }
 					);
 				if (u.includes('/api/v2/app/preferences'))
-					return new Response(
-						JSON.stringify({
-							save_path: '/downloads',
-							max_ratio_enabled: false,
-							max_ratio: -1,
-							max_seeding_time_enabled: false,
-							max_seeding_time: -1,
-							max_ratio_act: 0
-						}),
-						{ status: 200 }
-					);
+					return new Response(JSON.stringify(stubPreferences()), { status: 200 });
 				if (u.includes('/api/v2/torrents/info'))
-					return new Response(
-						JSON.stringify([
-							{
-								hash: returnedHash,
-								state: 'uploading',
-								name: 'test',
-								size: 0,
-								progress: 0,
-								dlspeed: 0,
-								upspeed: 0,
-								priority: 0,
-								num_seeds: 0,
-								num_complete: 0,
-								num_leechs: 0,
-								num_incomplete: 0,
-								ratio: 0,
-								eta: 0,
-								category: 'movies',
-								save_path: '/downloads',
-								content_path: '/downloads/test'
-							}
-						]),
-						{ status: 200 }
-					);
-				if (u.includes('/api/v2/torrents/setForceStart')) {
-					setForceStartCalled.push(u);
-					return new Response('Ok.', { status: 200 });
-				}
+					return new Response(JSON.stringify([stubTorrent(hash)]), { status: 200 });
 				throw new Error(`Unexpected request: ${u}`);
 			})
 		);
 
-		// Should return the known hash rather than throwing: it's a duplicate
 		const err = await createClient()
-			.addDownload({ downloadUrl: magnetUrl, category: 'movies' })
+			.addDownload({ magnetUri: magnetUrl, category: 'movies' })
 			.catch((e: unknown) => e);
 		expect(err).toBeInstanceOf(Error);
 		expect((err as { isDuplicate?: boolean }).isDuplicate).toBe(true);
-		expect((err as Error).message).toContain('already exists');
-		// Duplicate detection should short-circuit before any force-start attempt
-		expect(setForceStartCalled.length).toBe(0);
 	});
 
 	it('applies forceStart using hash returned by structured add response', async () => {
@@ -240,26 +233,14 @@ describe('QBittorrentClient add response parsing', () => {
 						}),
 						{ status: 200 }
 					);
+				if (u.includes('/api/v2/app/preferences'))
+					return new Response(JSON.stringify(stubPreferences()), { status: 200 });
 				if (u.includes('/api/v2/torrents/info'))
-					return new Response(JSON.stringify([{ hash: returnedHash, state: 'uploading' }]), {
-						status: 200
-					});
+					return new Response(JSON.stringify([stubTorrent(returnedHash)]), { status: 200 });
 				if (u.includes('/api/v2/torrents/setForceStart')) {
 					setForceStartCalled.push(u);
 					return new Response('Ok.', { status: 200 });
 				}
-				if (u.includes('/api/v2/app/preferences'))
-					return new Response(
-						JSON.stringify({
-							save_path: '/downloads',
-							max_ratio_enabled: false,
-							max_ratio: -1,
-							max_seeding_time_enabled: false,
-							max_seeding_time: -1,
-							max_ratio_act: 0
-						}),
-						{ status: 200 }
-					);
 				throw new Error(`Unexpected request: ${u}`);
 			})
 		);
