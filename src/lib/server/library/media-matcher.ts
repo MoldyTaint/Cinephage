@@ -161,14 +161,6 @@ export class MediaMatcherService {
 		);
 	}
 
-	private isUniqueTmdbConstraintError(error: unknown, tableName: 'movies' | 'series'): boolean {
-		if (!(error instanceof Error)) {
-			return false;
-		}
-
-		return error.message.includes(`UNIQUE constraint failed: ${tableName}.tmdb_id`);
-	}
-
 	/**
 	 * Search TMDB and find best matches for a file
 	 *
@@ -1033,57 +1025,44 @@ export class MediaMatcherService {
 				title: tmdbMovie.title,
 				originalTitle: tmdbMovie.original_title
 			});
-			try {
-				const [newMovie] = await db
-					.insert(movies)
-					.values({
-						tmdbId,
-						imdbId: externalIds.imdb_id,
-						title: tmdbMovie.title,
-						originalTitle: tmdbMovie.original_title,
-						year: tmdbMovie.release_date
-							? parseInt(tmdbMovie.release_date.split('-')[0])
-							: undefined,
-						overview: tmdbMovie.overview,
-						posterPath: tmdbMovie.poster_path,
-						backdropPath: tmdbMovie.backdrop_path,
-						runtime: tmdbMovie.runtime,
-						genres: tmdbMovie.genres?.map((g) => g.name),
-						path: movieFolder || fileName,
-						libraryId: owningLibrary.id,
-						rootFolderId: rootFolder.id,
-						hasFile: true,
-						monitored: rootFolder.defaultMonitored ?? true,
-						scoringProfileId: owningLibrary.qualityProfileId,
-						languageProfileId: wantsSubtitles ? defaultProfileId : null,
-						wantsSubtitles
-					})
-					.returning();
+			const [newMovie] = await db
+				.insert(movies)
+				.values({
+					tmdbId,
+					imdbId: externalIds.imdb_id,
+					title: tmdbMovie.title,
+					originalTitle: tmdbMovie.original_title,
+					year: tmdbMovie.release_date ? parseInt(tmdbMovie.release_date.split('-')[0]) : undefined,
+					overview: tmdbMovie.overview,
+					posterPath: tmdbMovie.poster_path,
+					backdropPath: tmdbMovie.backdrop_path,
+					runtime: tmdbMovie.runtime,
+					genres: tmdbMovie.genres?.map((g) => g.name),
+					path: movieFolder || fileName,
+					libraryId: owningLibrary.id,
+					rootFolderId: rootFolder.id,
+					hasFile: true,
+					monitored: rootFolder.defaultMonitored ?? true,
+					scoringProfileId: owningLibrary.qualityProfileId,
+					languageProfileId: wantsSubtitles ? defaultProfileId : null,
+					wantsSubtitles
+				})
+				.onConflictDoNothing()
+				.returning();
 
+			if (newMovie) {
 				movieId = newMovie.id;
 				logger.debug(
-					{
-						movieId,
-						title: tmdbMovie.title,
-						languageProfileId: defaultProfileId
-					},
+					{ movieId, title: tmdbMovie.title, languageProfileId: defaultProfileId },
 					'[MediaMatcher] Assigned default language profile to new movie'
 				);
-			} catch (error) {
-				if (!this.isUniqueTmdbConstraintError(error, 'movies')) {
-					throw error;
-				}
-
+			} else {
 				const [concurrentMovie] = await db
 					.select({ id: movies.id })
 					.from(movies)
 					.where(eq(movies.tmdbId, tmdbId))
 					.limit(1);
-
-				if (!concurrentMovie) {
-					throw error;
-				}
-
+				if (!concurrentMovie) throw new Error(`Movie insert failed and row not found: ${tmdbId}`);
 				movieId = concurrentMovie.id;
 				await db.update(movies).set({ hasFile: true }).where(eq(movies.id, movieId));
 			}
@@ -1200,60 +1179,49 @@ export class MediaMatcherService {
 			});
 			let createdSeries = false;
 
-			try {
-				const [newSeries] = await db
-					.insert(series)
-					.values({
-						tmdbId,
-						imdbId: externalIds.imdb_id,
-						tvdbId: externalIds.tvdb_id,
-						title: tmdbSeries.name,
-						originalTitle: tmdbSeries.original_name,
-						year: tmdbSeries.first_air_date
-							? parseInt(tmdbSeries.first_air_date.split('-')[0])
-							: undefined,
-						overview: tmdbSeries.overview,
-						posterPath: tmdbSeries.poster_path,
-						backdropPath: tmdbSeries.backdrop_path,
-						status: tmdbSeries.status,
-						network: tmdbSeries.networks?.[0]?.name,
-						genres: tmdbSeries.genres?.map((g) => g.name),
-						path: seriesFolder,
-						libraryId: owningLibrary.id,
-						rootFolderId: rootFolder.id,
-						seriesType: rootFolder.mediaSubType === 'anime' || animeSignal ? 'anime' : 'standard',
-						monitored: rootFolder.defaultMonitored ?? true,
-						scoringProfileId: owningLibrary.qualityProfileId,
-						languageProfileId: wantsSubtitles ? defaultProfileId : null,
-						wantsSubtitles
-					})
-					.returning();
+			const [newSeries] = await db
+				.insert(series)
+				.values({
+					tmdbId,
+					imdbId: externalIds.imdb_id,
+					tvdbId: externalIds.tvdb_id,
+					title: tmdbSeries.name,
+					originalTitle: tmdbSeries.original_name,
+					year: tmdbSeries.first_air_date
+						? parseInt(tmdbSeries.first_air_date.split('-')[0])
+						: undefined,
+					overview: tmdbSeries.overview,
+					posterPath: tmdbSeries.poster_path,
+					backdropPath: tmdbSeries.backdrop_path,
+					status: tmdbSeries.status,
+					network: tmdbSeries.networks?.[0]?.name,
+					genres: tmdbSeries.genres?.map((g) => g.name),
+					path: seriesFolder,
+					libraryId: owningLibrary.id,
+					rootFolderId: rootFolder.id,
+					seriesType: rootFolder.mediaSubType === 'anime' || animeSignal ? 'anime' : 'standard',
+					monitored: rootFolder.defaultMonitored ?? true,
+					scoringProfileId: owningLibrary.qualityProfileId,
+					languageProfileId: wantsSubtitles ? defaultProfileId : null,
+					wantsSubtitles
+				})
+				.onConflictDoNothing()
+				.returning();
 
+			if (newSeries) {
 				seriesId = newSeries.id;
 				createdSeries = true;
 				logger.debug(
-					{
-						seriesId,
-						title: tmdbSeries.name,
-						languageProfileId: defaultProfileId
-					},
+					{ seriesId, title: tmdbSeries.name, languageProfileId: defaultProfileId },
 					'[MediaMatcher] Assigned default language profile to new series'
 				);
-			} catch (error) {
-				if (!this.isUniqueTmdbConstraintError(error, 'series')) {
-					throw error;
-				}
-
+			} else {
 				const [concurrentSeries] = await db
 					.select({ id: series.id })
 					.from(series)
 					.where(eq(series.tmdbId, tmdbId))
 					.limit(1);
-
-				if (!concurrentSeries) {
-					throw error;
-				}
-
+				if (!concurrentSeries) throw new Error(`Series insert failed and row not found: ${tmdbId}`);
 				seriesId = concurrentSeries.id;
 			}
 

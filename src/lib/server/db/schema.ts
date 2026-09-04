@@ -913,66 +913,70 @@ export const episodes = sqliteTable(
 /**
  * Episode Files - Actual episode files on disk
  */
-export const episodeFiles = sqliteTable('episode_files', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => randomUUID()),
-	seriesId: text('series_id')
-		.notNull()
-		.references(() => series.id, { onDelete: 'cascade' }),
-	seasonNumber: integer('season_number').notNull(),
-	// Can contain multiple episodes (e.g., double episodes)
-	episodeIds: text('episode_ids', { mode: 'json' }).$type<string[]>(),
-	// Path relative to the series folder
-	relativePath: text('relative_path').notNull(),
-	// File size in bytes
-	size: integer('size'),
-	// When the file was added to library
-	dateAdded: text('date_added').$defaultFn(() => new Date().toISOString()),
-	// Scene name if detected
-	sceneName: text('scene_name'),
-	// Release group if detected
-	releaseGroup: text('release_group'),
-	// Edition info (IMAX, Extended, etc.)
-	edition: text('edition'),
-	// Release type (singleEpisode, multiEpisode, seasonPack, etc.)
-	releaseType: text('release_type'),
-	// Parsed quality info as JSON
-	quality: text('quality', { mode: 'json' }).$type<{
-		resolution?: string;
-		source?: string;
-		codec?: string;
-		hdr?: string;
-	}>(),
-	// MediaInfo extracted data (same structure as movieFiles)
-	mediaInfo: text('media_info', { mode: 'json' }).$type<{
-		containerFormat?: string;
-		videoCodec?: string;
-		videoProfile?: string;
-		videoBitrate?: number;
-		videoBitDepth?: number;
-		videoHdrFormat?: string;
-		width?: number;
-		height?: number;
-		fps?: number;
-		runtime?: number;
-		audioCodec?: string;
-		audioChannels?: number;
-		audioBitrate?: number;
-		audioLanguages?: string[];
-		subtitleLanguages?: string[];
-	}>(),
-	// Languages detected in file
-	languages: text('languages', { mode: 'json' }).$type<string[]>(),
-	// Info hash of the torrent used to download this file (for duplicate detection)
-	infoHash: text('info_hash'),
-	lastSeenScanId: text('last_seen_scan_id'),
-	// Content categorization: 'main' | 'bonus' (Phase 1 pattern recognition)
-	contentCategory: text('content_category').notNull().default('main'),
-	filenameSignature: text('filename_signature'),
-	contentHash: text('content_hash'),
-	contentHashAlgorithm: text('content_hash_algorithm')
-});
+export const episodeFiles = sqliteTable(
+	'episode_files',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => randomUUID()),
+		seriesId: text('series_id')
+			.notNull()
+			.references(() => series.id, { onDelete: 'cascade' }),
+		seasonNumber: integer('season_number').notNull(),
+		// Can contain multiple episodes (e.g., double episodes)
+		episodeIds: text('episode_ids', { mode: 'json' }).$type<string[]>(),
+		// Path relative to the series folder
+		relativePath: text('relative_path').notNull(),
+		// File size in bytes
+		size: integer('size'),
+		// When the file was added to library
+		dateAdded: text('date_added').$defaultFn(() => new Date().toISOString()),
+		// Scene name if detected
+		sceneName: text('scene_name'),
+		// Release group if detected
+		releaseGroup: text('release_group'),
+		// Edition info (IMAX, Extended, etc.)
+		edition: text('edition'),
+		// Release type (singleEpisode, multiEpisode, seasonPack, etc.)
+		releaseType: text('release_type'),
+		// Parsed quality info as JSON
+		quality: text('quality', { mode: 'json' }).$type<{
+			resolution?: string;
+			source?: string;
+			codec?: string;
+			hdr?: string;
+		}>(),
+		// MediaInfo extracted data (same structure as movieFiles)
+		mediaInfo: text('media_info', { mode: 'json' }).$type<{
+			containerFormat?: string;
+			videoCodec?: string;
+			videoProfile?: string;
+			videoBitrate?: number;
+			videoBitDepth?: number;
+			videoHdrFormat?: string;
+			width?: number;
+			height?: number;
+			fps?: number;
+			runtime?: number;
+			audioCodec?: string;
+			audioChannels?: number;
+			audioBitrate?: number;
+			audioLanguages?: string[];
+			subtitleLanguages?: string[];
+		}>(),
+		// Languages detected in file
+		languages: text('languages', { mode: 'json' }).$type<string[]>(),
+		// Info hash of the torrent used to download this file (for duplicate detection)
+		infoHash: text('info_hash'),
+		lastSeenScanId: text('last_seen_scan_id'),
+		// Content categorization: 'main' | 'bonus' (Phase 1 pattern recognition)
+		contentCategory: text('content_category').notNull().default('main'),
+		filenameSignature: text('filename_signature'),
+		contentHash: text('content_hash'),
+		contentHashAlgorithm: text('content_hash_algorithm')
+	},
+	(table) => [uniqueIndex('idx_episode_files_unique_path').on(table.seriesId, table.relativePath)]
+);
 
 // ============================================================================
 // Alternate Titles - For multi-title search support
