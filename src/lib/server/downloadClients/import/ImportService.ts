@@ -1798,10 +1798,13 @@ export class ImportService extends EventEmitter {
 		} else {
 			// Create new file record
 			fileId = randomUUID();
-			await db.insert(episodeFiles).values({
-				id: fileId,
-				...fileData
-			});
+			await db
+				.insert(episodeFiles)
+				.values({
+					id: fileId,
+					...fileData
+				})
+				.onConflictDoNothing();
 		}
 
 		// Update episode hasFile flags
