@@ -74,6 +74,26 @@ export interface RenameExecuteResult {
 }
 
 /**
+ * NDJSON stream events emitted by GET /api/rename/preview
+ */
+export type RenameStreamEvent =
+	| { type: 'start'; totalFiles: number; computing: boolean }
+	| {
+			type: 'items';
+			category: 'willChange' | 'alreadyCorrect' | 'errors' | 'collisions';
+			data: RenamePreviewItem[];
+	  }
+	| {
+			type: 'done';
+			totalFiles: number;
+			totalWillChange: number;
+			totalAlreadyCorrect: number;
+			totalCollisions: number;
+			totalErrors: number;
+	  }
+	| { type: 'error'; message: string };
+
+/**
  * A single item in a batched reorganize request
  */
 export interface ReorganizeRequestItem {
