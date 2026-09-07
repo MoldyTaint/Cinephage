@@ -17,7 +17,7 @@ import {
 	renameHistory,
 	renamingFailures
 } from '$lib/server/db/schema';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { extname, join, dirname, basename, resolve } from 'path';
 import { createChildLogger, getRequestId } from '$lib/logging';
 import { todayDateString } from '$lib/utils/format.js';
@@ -41,6 +41,9 @@ const logger = createChildLogger({ logDomain: 'scans' as const });
 // Yield to the event loop every N files during preview computation so other
 // requests are not starved while processing large libraries.
 const PREVIEW_BATCH_SIZE = 500;
+
+export type { RenameStreamEvent } from '$lib/library/naming/types.js';
+import type { RenameStreamEvent } from '$lib/library/naming/types.js';
 
 // Number of media groups to process concurrently during rename execution.
 // Bounds open file handles and OS I/O queue depth.
@@ -174,7 +177,7 @@ export class RenamePreviewService {
 	 * Preview renames for all movies.
 	 * Batches DB queries to avoid N+1 per-movie lookups on large libraries.
 	 */
-	async previewAllMovies(): Promise<RenamePreviewResult> {
+	async previewAllMovies(emit?: (event: RenameStreamEvent) => void): Promise<RenamePreviewResult> {
 		const allMovies = db.select().from(movies).all();
 		const allRootFolders = db.select().from(rootFolders).all();
 		const allFiles = db.select().from(movieFiles).all();
@@ -189,8 +192,94 @@ export class RenamePreviewService {
 
 		const result = emptyPreviewResult();
 		let processed = 0;
+		const batchWillChange: RenamePreviewItem[] = [];
+		const batchAlreadyCorrect: RenamePreviewItem[] = [];
+		const batchErrors: RenamePreviewItem[] = [];
+
+		const flushBatch = () => {
+			if (!emit) return;
+			if (batchWillChange.length)
+				emit({ type: 'items', category: 'willChange', data: [...batchWillChange] });
+			if (batchAlreadyCorrect.length)
+				emit({ type: 'items', category: 'alreadyCorrect', data: [...batchAlreadyCorrect] });
+			if (batchErrors.length) emit({ type: 'items', category: 'errors', data: [...batchErrors] });
+			batchWillChange.length = 0;
+			batchAlreadyCorrect.length = 0;
+			batchErrors.length = 0;
+		};
 
 		for (const movie of allMovies) {
+			const rootFolder = movie.rootFolderId ? rootFolderById.get(movie.rootFolderId) : undefined;
+			const rootFolderPath = rootFolder?.path ?? '';
+			const rootFolderReadOnly = rootFolder?.readOnly ?? false;
+			const files = filesByMovieId.get(movie.id) ?? [];
+
+			for (const file of files) {
+				const item = this.buildMoviePreviewItem(movie, file, rootFolderPath, rootFolderReadOnly);
+				result.totalFiles++;
+
+				if (item.status === 'error') {
+					result.errors.push(item);
+					result.totalErrors++;
+					if (emit) batchErrors.push(item);
+				} else if (
+					item.currentRelativePath === item.newRelativePath &&
+					item.currentParentPath === item.newParentPath
+				) {
+					item.status = 'already_correct';
+					result.alreadyCorrect.push(item);
+					result.totalAlreadyCorrect++;
+					if (emit) batchAlreadyCorrect.push(item);
+				} else {
+					item.status = 'will_change';
+					result.willChange.push(item);
+					result.totalWillChange++;
+					if (emit) batchWillChange.push(item);
+				}
+				if (++processed % PREVIEW_BATCH_SIZE === 0) {
+					flushBatch();
+					await yieldToEventLoop();
+				}
+			}
+		}
+
+		flushBatch();
+		this.detectCollisions(result);
+
+		if (emit) {
+			if (result.collisions.length) {
+				emit({ type: 'items', category: 'collisions', data: result.collisions });
+			}
+		}
+
+		return result;
+	}
+
+	/**
+	 * Preview renames for a specific set of movies (partial/targeted recompute).
+	 */
+	async previewMoviesByIds(movieIds: string[]): Promise<RenamePreviewResult> {
+		if (movieIds.length === 0) return emptyPreviewResult();
+
+		const targetMovies = db.select().from(movies).where(inArray(movies.id, movieIds)).all();
+		const allRootFolders = db.select().from(rootFolders).all();
+		const targetFiles = db
+			.select()
+			.from(movieFiles)
+			.where(inArray(movieFiles.movieId, movieIds))
+			.all();
+
+		const rootFolderById = new Map(allRootFolders.map((rf) => [rf.id, rf]));
+		const filesByMovieId = new Map<string, (typeof movieFiles.$inferSelect)[]>();
+		for (const file of targetFiles) {
+			const list = filesByMovieId.get(file.movieId) || [];
+			list.push(file);
+			filesByMovieId.set(file.movieId, list);
+		}
+
+		const result = emptyPreviewResult();
+
+		for (const movie of targetMovies) {
 			const rootFolder = movie.rootFolderId ? rootFolderById.get(movie.rootFolderId) : undefined;
 			const rootFolderPath = rootFolder?.path ?? '';
 			const rootFolderReadOnly = rootFolder?.readOnly ?? false;
@@ -215,13 +304,8 @@ export class RenamePreviewService {
 					result.willChange.push(item);
 					result.totalWillChange++;
 				}
-				if (++processed % PREVIEW_BATCH_SIZE === 0) {
-					await yieldToEventLoop();
-				}
 			}
 		}
-
-		this.detectCollisions(result);
 		return result;
 	}
 
@@ -229,7 +313,9 @@ export class RenamePreviewService {
 	 * Preview renames for all episode files.
 	 * Batches DB queries to avoid N+1 per-series lookups on large libraries.
 	 */
-	async previewAllEpisodes(): Promise<RenamePreviewResult> {
+	async previewAllEpisodes(
+		emit?: (event: RenameStreamEvent) => void
+	): Promise<RenamePreviewResult> {
 		const allSeries = db.select().from(series).all();
 		const allRootFolders = db.select().from(rootFolders).all();
 		const allFiles = db.select().from(episodeFiles).all();
@@ -251,8 +337,113 @@ export class RenamePreviewService {
 
 		const result = emptyPreviewResult();
 		let processed = 0;
+		const batchWillChange: RenamePreviewItem[] = [];
+		const batchAlreadyCorrect: RenamePreviewItem[] = [];
+		const batchErrors: RenamePreviewItem[] = [];
+
+		const flushBatch = () => {
+			if (!emit) return;
+			if (batchWillChange.length)
+				emit({ type: 'items', category: 'willChange', data: [...batchWillChange] });
+			if (batchAlreadyCorrect.length)
+				emit({ type: 'items', category: 'alreadyCorrect', data: [...batchAlreadyCorrect] });
+			if (batchErrors.length) emit({ type: 'items', category: 'errors', data: [...batchErrors] });
+			batchWillChange.length = 0;
+			batchAlreadyCorrect.length = 0;
+			batchErrors.length = 0;
+		};
 
 		for (const show of allSeries) {
+			const rootFolder = show.rootFolderId ? rootFolderById.get(show.rootFolderId) : undefined;
+			const rootFolderPath = rootFolder?.path ?? '';
+			const rootFolderReadOnly = rootFolder?.readOnly ?? false;
+			const files = filesBySeriesId.get(show.id) ?? [];
+			const seriesEpisodes = episodesBySeriesId.get(show.id) ?? [];
+			const episodeMap = new Map(seriesEpisodes.map((ep) => [ep.id, ep]));
+			const absoluteEpisodeMap = this.buildAbsoluteEpisodeFallbackMap(seriesEpisodes);
+
+			for (const file of files) {
+				const item = this.buildEpisodePreviewItem(
+					show,
+					file,
+					episodeMap,
+					rootFolderPath,
+					absoluteEpisodeMap,
+					rootFolderReadOnly
+				);
+				result.totalFiles++;
+
+				if (item.status === 'error') {
+					result.errors.push(item);
+					result.totalErrors++;
+					if (emit) batchErrors.push(item);
+				} else if (
+					item.currentRelativePath === item.newRelativePath &&
+					item.currentParentPath === item.newParentPath
+				) {
+					item.status = 'already_correct';
+					result.alreadyCorrect.push(item);
+					result.totalAlreadyCorrect++;
+					if (emit) batchAlreadyCorrect.push(item);
+				} else {
+					item.status = 'will_change';
+					result.willChange.push(item);
+					result.totalWillChange++;
+					if (emit) batchWillChange.push(item);
+				}
+				if (++processed % PREVIEW_BATCH_SIZE === 0) {
+					flushBatch();
+					await yieldToEventLoop();
+				}
+			}
+		}
+
+		flushBatch();
+		this.detectCollisions(result);
+
+		if (emit && result.collisions.length) {
+			emit({ type: 'items', category: 'collisions', data: result.collisions });
+		}
+
+		return result;
+	}
+
+	/**
+	 * Preview renames for a specific set of series (partial/targeted recompute).
+	 */
+	async previewSeriesByIds(seriesIds: string[]): Promise<RenamePreviewResult> {
+		if (seriesIds.length === 0) return emptyPreviewResult();
+
+		const targetSeries = db.select().from(series).where(inArray(series.id, seriesIds)).all();
+		const allRootFolders = db.select().from(rootFolders).all();
+		const targetFiles = db
+			.select()
+			.from(episodeFiles)
+			.where(inArray(episodeFiles.seriesId, seriesIds))
+			.all();
+		const targetEpisodes = db
+			.select()
+			.from(episodes)
+			.where(inArray(episodes.seriesId, seriesIds))
+			.all();
+
+		const rootFolderById = new Map(allRootFolders.map((rf) => [rf.id, rf]));
+		const filesBySeriesId = new Map<string, (typeof episodeFiles.$inferSelect)[]>();
+		for (const file of targetFiles) {
+			const list = filesBySeriesId.get(file.seriesId) || [];
+			list.push(file);
+			filesBySeriesId.set(file.seriesId, list);
+		}
+		const episodesBySeriesId = new Map<string, (typeof episodes.$inferSelect)[]>();
+		for (const ep of targetEpisodes) {
+			const list = episodesBySeriesId.get(ep.seriesId) || [];
+			list.push(ep);
+			episodesBySeriesId.set(ep.seriesId, list);
+		}
+
+		const result = emptyPreviewResult();
+
+		for (const show of targetSeries) {
 			const rootFolder = show.rootFolderId ? rootFolderById.get(show.rootFolderId) : undefined;
 			const rootFolderPath = rootFolder?.path ?? '';
 			const rootFolderReadOnly = rootFolder?.readOnly ?? false;
@@ -287,13 +478,9 @@ export class RenamePreviewService {
 					result.willChange.push(item);
 					result.totalWillChange++;
 				}
-				if (++processed % PREVIEW_BATCH_SIZE === 0) {
-					await yieldToEventLoop();
-				}
 			}
 		}
 
-		this.detectCollisions(result);
 		return result;
 	}
 

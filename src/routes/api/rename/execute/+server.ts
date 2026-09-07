@@ -7,6 +7,7 @@ import { parseBody } from '$lib/server/api/validate.js';
 import { ValidationError } from '$lib/errors';
 import { diskScanService } from '$lib/server/library/disk-scan.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { renamePreviewCache } from '$lib/server/library/naming/RenamePreviewCache.js';
 import { renameExecuteSchema } from '$lib/server/library/naming/rename-execute-schema.js';
 
 export const POST: RequestHandler = async (event) => {
@@ -49,6 +50,8 @@ export const POST: RequestHandler = async (event) => {
 				source: mediaType === 'episode' ? 'series' : 'movie',
 				reason: 'renames-executed'
 			});
+			// Invalidate preview cache: paths have changed on disk and in the DB.
+			renamePreviewCache.invalidateAll();
 		}
 
 		return json(result);

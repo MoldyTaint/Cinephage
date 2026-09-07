@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import { SvelteSet } from 'svelte/reactivity';
 	import * as m from '$lib/paraglide/messages.js';
-	import { getRenamePreview, executeRename, reorganizeFolderBatch } from '$lib/api/settings.js';
+	import { executeRename, reorganizeFolderBatch } from '$lib/api/settings.js';
 	import {
 		RefreshCw,
 		CheckCircle,
@@ -20,11 +20,17 @@
 		FileEdit,
 		FolderSync
 	} from 'lucide-svelte';
-	import type { RenamePreviewResult, RenameExecuteResult } from '$lib/library/naming/types.js';
+	import type {
+		RenamePreviewResult,
+		RenameExecuteResult,
+		RenameStreamEvent
+	} from '$lib/library/naming/types.js';
 	import { chunkFileIds } from '$lib/library/naming/batch-rename';
 
 	// State
 	let loading = $state(true);
+	let computing = $state(false); // true while streaming items after counts arrived
+	let computingTotal = $state(0); // estimated total from "start" event for progress
 	let executing = $state(false);
 	let confirmPending = $state(false);
 	let reorganizing = $state(false);
@@ -54,32 +60,108 @@
 
 	async function loadPreview() {
 		loading = true;
+		computing = false;
+		computingTotal = 0;
+		error = null;
+		preview = {
+			willChange: [],
+			alreadyCorrect: [],
+			collisions: [],
+			errors: [],
+			totalFiles: 0,
+			totalWillChange: 0,
+			totalAlreadyCorrect: 0,
+			totalCollisions: 0,
+			totalErrors: 0
+		};
+		selectedIds.clear();
+		confirmPending = false;
+
+		// Kick off scan-status check in parallel with the stream.
+		fetch('/api/library/scan/status')
+			.then((r) => r.json())
+			.then((s) => {
+				scanInProgress = Boolean(s?.scanning);
+			})
+			.catch(() => {});
 
 		try {
-			const [result, scanStatus] = await Promise.all([
-				getRenamePreview(mediaTypeFilter),
-				fetch('/api/library/scan/status')
-					.then((r) => r.json())
-					.catch(() => ({ scanning: false }))
-			]);
-			scanInProgress = Boolean(scanStatus?.scanning);
+			const params = new URLSearchParams({ mediaType: mediaTypeFilter });
+			const res = await fetch(`/api/rename/preview?${params}`);
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-			if (!result.success) {
-				throw new Error(result.error || 'Failed to load preview');
+			const body = res.body;
+			if (!body) throw new Error('Empty response');
+
+			const reader = body.getReader();
+			const decoder = new TextDecoder();
+			let buf = '';
+
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				buf += decoder.decode(value, { stream: true });
+				const lines = buf.split('\n');
+				buf = lines.pop() ?? '';
+				for (const line of lines) {
+					if (line.trim()) handleStreamEvent(JSON.parse(line) as RenameStreamEvent);
+				}
 			}
-
-			preview = result as unknown as RenamePreviewResult;
-
-			// Auto-select all "will change" items
-			selectedIds.clear();
-			for (const item of preview?.willChange || []) {
-				selectedIds.add(item.fileId);
-			}
-			confirmPending = false;
+			if (buf.trim()) handleStreamEvent(JSON.parse(buf) as RenameStreamEvent);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load preview';
 		} finally {
 			loading = false;
+			computing = false;
+		}
+	}
+
+	function handleStreamEvent(msg: RenameStreamEvent) {
+		if (!preview) return;
+
+		if (msg.type === 'start') {
+			computingTotal = msg.totalFiles;
+			computing = msg.computing;
+			loading = false;
+		} else if (msg.type === 'items') {
+			if (msg.category === 'willChange') {
+				preview.willChange.push(...msg.data);
+				preview.totalWillChange = preview.willChange.length;
+				for (const item of msg.data) selectedIds.add(item.fileId);
+			} else if (msg.category === 'alreadyCorrect') {
+				preview.alreadyCorrect.push(...msg.data);
+				preview.totalAlreadyCorrect = preview.alreadyCorrect.length;
+			} else if (msg.category === 'collisions') {
+				// Items sent here may have been tentatively added to willChange during
+				// a cold-cache stream; remove them from willChange before adding to collisions.
+				const collisionIds = new Set(msg.data.map((i) => i.fileId));
+				preview.willChange = preview.willChange.filter((i) => !collisionIds.has(i.fileId));
+				for (const id of collisionIds) selectedIds.delete(id);
+				preview.collisions.push(...msg.data);
+				preview.totalWillChange = preview.willChange.length;
+				preview.totalCollisions = preview.collisions.length;
+			} else if (msg.category === 'errors') {
+				preview.errors.push(...msg.data);
+				preview.totalErrors = preview.errors.length;
+			}
+			preview.totalFiles =
+				preview.totalWillChange +
+				preview.totalAlreadyCorrect +
+				preview.totalCollisions +
+				preview.totalErrors;
+		} else if (msg.type === 'done') {
+			// Finalize with accurate server-computed counts.
+			preview.totalFiles = msg.totalFiles;
+			preview.totalWillChange = msg.totalWillChange;
+			preview.totalAlreadyCorrect = msg.totalAlreadyCorrect;
+			preview.totalCollisions = msg.totalCollisions;
+			preview.totalErrors = msg.totalErrors;
+			loading = false;
+			computing = false;
+		} else if (msg.type === 'error') {
+			error = msg.message;
+			loading = false;
+			computing = false;
 		}
 	}
 
@@ -408,6 +490,22 @@
 			</div>
 		</div>
 	{:else if preview}
+		{#if computing}
+			<!-- Computing banner: counts visible but items still streaming -->
+			<div
+				class="mb-4 flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3"
+			>
+				<RefreshCw class="h-4 w-4 shrink-0 animate-spin text-primary" />
+				<div class="min-w-0 flex-1">
+					<p class="text-sm font-medium">Computing rename preview…</p>
+					{#if computingTotal > 0}
+						<p class="text-xs text-base-content/60">
+							{preview.totalFiles.toLocaleString()} / {computingTotal.toLocaleString()} files processed
+						</p>
+					{/if}
+				</div>
+			</div>
+		{/if}
 		<!-- Media Type Filter & Summary -->
 		<div class="mb-6 space-y-4">
 			<!-- Media Type Pills -->

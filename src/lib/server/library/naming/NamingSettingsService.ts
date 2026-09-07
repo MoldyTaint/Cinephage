@@ -174,8 +174,12 @@ export class NamingSettingsService {
 			}
 		}
 
-		// Invalidate cache and return updated config
+		// Invalidate NamingSettingsService config cache and rename-preview cache.
+		// A naming format change invalidates every computed path in the library.
 		this.invalidateCache();
+		import('./RenamePreviewCache.js').then(({ renamePreviewCache }) => {
+			renamePreviewCache.invalidateAll();
+		});
 		return this.getConfig();
 	}
 
