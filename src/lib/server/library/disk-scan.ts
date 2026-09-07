@@ -1268,6 +1268,7 @@ export class DiskScanService extends EventEmitter {
 							releaseType: episodeNums.length > 1 ? 'multiEpisode' : 'singleEpisode',
 							quality
 						})
+						.onConflictDoNothing()
 						.run();
 
 					for (const epId of episodeIds) {

@@ -854,7 +854,7 @@ export class SmartListService {
 					'movie'
 				);
 
-				const [newMovie] = await db
+				const [insertedMovie] = await db
 					.insert(movies)
 					.values({
 						tmdbId: item.tmdbId,
@@ -877,7 +877,15 @@ export class SmartListService {
 						wantsSubtitles,
 						languageProfileId
 					})
+					.onConflictDoNothing()
 					.returning();
+				const newMovie =
+					insertedMovie ??
+					(await db
+						.select()
+						.from(movies)
+						.where(eq(movies.tmdbId, item.tmdbId))
+						.then((rows) => rows[0]));
 
 				await db
 					.update(smartListItems)
@@ -951,7 +959,7 @@ export class SmartListService {
 					'tv'
 				);
 
-				const [newSeries] = await db
+				const [insertedSeries] = await db
 					.insert(series)
 					.values({
 						tmdbId: item.tmdbId,
@@ -983,7 +991,15 @@ export class SmartListService {
 						wantsSubtitles,
 						languageProfileId
 					})
+					.onConflictDoNothing()
 					.returning();
+				const newSeries =
+					insertedSeries ??
+					(await db
+						.select()
+						.from(series)
+						.where(eq(series.tmdbId, item.tmdbId))
+						.then((rows) => rows[0]));
 
 				await this.createSeasonsAndEpisodes(newSeries.id, item.tmdbId, monitored);
 
@@ -1475,7 +1491,7 @@ export class SmartListService {
 				);
 
 				// Insert movie into database
-				const [newMovie] = await db
+				const [insertedMovie] = await db
 					.insert(movies)
 					.values({
 						tmdbId: item.tmdbId,
@@ -1498,7 +1514,15 @@ export class SmartListService {
 						wantsSubtitles,
 						languageProfileId
 					})
+					.onConflictDoNothing()
 					.returning();
+				const newMovie =
+					insertedMovie ??
+					(await db
+						.select()
+						.from(movies)
+						.where(eq(movies.tmdbId, item.tmdbId))
+						.then((rows) => rows[0]));
 
 				// Update smart list item
 				await db
@@ -1628,7 +1652,7 @@ export class SmartListService {
 				);
 
 				// Insert series into database
-				const [newSeries] = await db
+				const [insertedSeries] = await db
 					.insert(series)
 					.values({
 						tmdbId: item.tmdbId,
@@ -1660,7 +1684,15 @@ export class SmartListService {
 						wantsSubtitles,
 						languageProfileId
 					})
+					.onConflictDoNothing()
 					.returning();
+				const newSeries =
+					insertedSeries ??
+					(await db
+						.select()
+						.from(series)
+						.where(eq(series.tmdbId, item.tmdbId))
+						.then((rows) => rows[0]));
 
 				// Create seasons and episodes
 				await this.createSeasonsAndEpisodes(newSeries.id, item.tmdbId, monitored);
@@ -1730,7 +1762,7 @@ export class SmartListService {
 				const seasonMonitored = monitored && !isSpecials;
 
 				// Create season (episodeCount will be recalculated after episodes are inserted)
-				const [newSeason] = await db
+				const [insertedSeason] = await db
 					.insert(seasons)
 					.values({
 						seriesId,
@@ -1742,7 +1774,20 @@ export class SmartListService {
 						episodeCount: 0, // Will be recalculated to only aired episodes
 						monitored: seasonMonitored
 					})
+					.onConflictDoNothing()
 					.returning();
+				const newSeason =
+					insertedSeason ??
+					(await db
+						.select()
+						.from(seasons)
+						.where(
+							and(
+								eq(seasons.seriesId, seriesId),
+								eq(seasons.seasonNumber, seasonInfo.season_number)
+							)
+						)
+						.then((rows) => rows[0]));
 
 				// Fetch season details for episodes
 				try {
@@ -1763,7 +1808,7 @@ export class SmartListService {
 						}));
 
 						if (episodesToInsert.length > 0) {
-							await db.insert(episodes).values(episodesToInsert);
+							await db.insert(episodes).values(episodesToInsert).onConflictDoNothing();
 							// Only count aired episodes (exclude specials and unaired)
 							const today = todayDateString();
 							const airedCount = episodesToInsert.filter(
