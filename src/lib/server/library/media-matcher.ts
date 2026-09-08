@@ -1096,21 +1096,24 @@ export class MediaMatcherService {
 		const parsedQuality = parseRelease(parseableFilename || originalFilename);
 
 		// Create movie file entry with proper sceneName, releaseGroup, and quality data
-		await db.insert(movieFiles).values({
-			movieId,
-			relativePath: fileName,
-			size: file.size,
-			mediaInfo,
-			sceneName: originalFilename,
-			releaseGroup: parsedQuality.releaseGroup ?? undefined,
-			edition: parsedQuality.edition ?? undefined,
-			quality: {
-				resolution: parsedQuality.resolution ?? undefined,
-				source: parsedQuality.source ?? undefined,
-				codec: parsedQuality.codec ?? undefined,
-				hdr: parsedQuality.hdr ?? undefined
-			}
-		});
+		await db
+			.insert(movieFiles)
+			.values({
+				movieId,
+				relativePath: fileName,
+				size: file.size,
+				mediaInfo,
+				sceneName: originalFilename,
+				releaseGroup: parsedQuality.releaseGroup ?? undefined,
+				edition: parsedQuality.edition ?? undefined,
+				quality: {
+					resolution: parsedQuality.resolution ?? undefined,
+					source: parsedQuality.source ?? undefined,
+					codec: parsedQuality.codec ?? undefined,
+					hdr: parsedQuality.hdr ?? undefined
+				}
+			})
+			.onConflictDoNothing();
 
 		// Trigger subtitle search if enabled (after metadata is fetched)
 		this.triggerSubtitleSearch('movie', movieId).catch((err) => {
