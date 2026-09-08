@@ -1,0 +1,296 @@
+---
+id: majomparade
+name: Majomparádé
+description: 'Majomparádé (TurkDepo) is a HUNGARIAN Private Torrent Tracker for MOVIES / TV / GENERAL'
+language: hu-HU
+type: private
+protocol: torrent
+encoding: UTF-8
+requestdelay: 2
+links:
+  - https://majomparade.eu/
+  - https://majomparade.net/
+
+caps:
+  categorymappings:
+    - { id: 2, cat: Movies/3D, desc: '3D/Kulfoldi', default: true }
+    - { id: 1, cat: Movies/3D, desc: '3D/Magyar', default: true }
+    - { id: 3, cat: Movies/HD, desc: 'Film/BR-BDRIP/Kulfoldi', default: true }
+    - { id: 4, cat: Movies/HD, desc: 'Film/BR-BDRIP/Magyar', default: true }
+    - { id: 5, cat: Movies/SD, desc: 'Film/Cam/Kulfoldi', default: true }
+    - { id: 6, cat: Movies/SD, desc: 'Film/Cam/Magyar', default: true }
+    - { id: 7, cat: Movies/DVD, desc: 'Film/DVD/Kulfoldi', default: true }
+    - { id: 8, cat: Movies/DVD, desc: 'Film/DVD/Magyar', default: true }
+    - { id: 9, cat: Movies/DVD, desc: 'Film/DVD9/Kulfold', default: true }
+    - { id: 10, cat: Movies/DVD, desc: 'Film/DVD9/Magyar', default: true }
+    - { id: 11, cat: Movies/HD, desc: 'Film/HD/Kulfoldi', default: true }
+    - { id: 12, cat: Movies/HD, desc: 'Film/HD/Magyar', default: true }
+    - { id: 13, cat: Movies/SD, desc: 'Film/XviD/Kulfoldi', default: true }
+    - { id: 14, cat: Movies/SD, desc: 'Film/XviD/Magyar', default: true }
+    - { id: 21, cat: Audio/Audiobook, desc: Hangoskonyv, default: true }
+    - { id: 24, cat: PC/Games, desc: 'Jatek/ISO', default: true }
+    - { id: 25, cat: Console, desc: 'Jatek/Konzol', default: true }
+    - { id: 26, cat: PC/Games, desc: 'Jatek/RIP', default: true }
+    - { id: 22, cat: Books, desc: 'Konyv/Kulfoldi', default: true }
+    - { id: 23, cat: Books, desc: 'Konyv/Magyar', default: true }
+    - { id: 27, cat: Audio/Lossless, desc: 'Lossless/Kulfoldi', default: true }
+    - { id: 28, cat: Audio/Lossless, desc: 'Lossless/Magyar', default: true }
+    - { id: 31, cat: PC/Mobile-Other, desc: Mobil, default: true }
+    - { id: 32, cat: PC/ISO, desc: 'Programok/ISO', default: true }
+    - { id: 33, cat: PC/0day, desc: 'Programok/RIP', default: true }
+    - { id: 20, cat: TV/HD, desc: 'Sorozat/HD/Magyar', default: true }
+    - { id: 19, cat: TV/HD, desc: 'Sorozat/HD/Kulfoldi', default: true }
+    - { id: 17, cat: TV/SD, desc: 'Sorozat/Kulfoldi', default: true }
+    - { id: 18, cat: TV/SD, desc: 'Sorozat/Magyar', default: true }
+    - { id: 15, cat: TV/Sport, desc: 'Sport/Kulfoldi', default: true }
+    - { id: 16, cat: TV/Sport, desc: 'Sport/Magyar', default: true }
+    - { id: 29, cat: Audio/Other, desc: 'Zene/Kulfoldi', default: true }
+    - { id: 30, cat: Audio/Other, desc: 'Zene/Magyar', default: true }
+    - { id: 34, cat: XXX/DVD, desc: 'XXX/DVD', default: false }
+    - { id: 36, cat: XXX/x264, desc: 'XXX/HD', default: false }
+    - { id: 35, cat: XXX/XviD, desc: 'XXX/XviD', default: false }
+    # Parent mappings are required by Cinephage's typed search routing.
+    - { id: 2, cat: Movies }
+    - { id: 1, cat: Movies }
+    - { id: 3, cat: Movies }
+    - { id: 4, cat: Movies }
+    - { id: 5, cat: Movies }
+    - { id: 6, cat: Movies }
+    - { id: 7, cat: Movies }
+    - { id: 8, cat: Movies }
+    - { id: 9, cat: Movies }
+    - { id: 10, cat: Movies }
+    - { id: 11, cat: Movies }
+    - { id: 12, cat: Movies }
+    - { id: 13, cat: Movies }
+    - { id: 14, cat: Movies }
+    - { id: 20, cat: TV }
+    - { id: 19, cat: TV }
+    - { id: 17, cat: TV }
+    - { id: 18, cat: TV }
+    - { id: 15, cat: TV }
+    - { id: 16, cat: TV }
+    - { id: 21, cat: Audio }
+    - { id: 27, cat: Audio }
+    - { id: 28, cat: Audio }
+    - { id: 29, cat: Audio }
+    - { id: 30, cat: Audio }
+    - { id: 22, cat: Books }
+    - { id: 23, cat: Books }
+    - { id: 24, cat: PC }
+    - { id: 26, cat: PC }
+    - { id: 31, cat: PC }
+    - { id: 32, cat: PC }
+    - { id: 33, cat: PC }
+    - { id: 25, cat: Console }
+    - { id: 34, cat: XXX }
+    - { id: 36, cat: XXX }
+    - { id: 35, cat: XXX }
+  modes:
+    search: [q]
+    tv-search: [q, season, ep, imdbid]
+    movie-search: [q, imdbid]
+    music-search: [q]
+    book-search: [q]
+
+settings:
+  - name: cookie
+    type: text
+    label: Cookie
+  - name: info_cookie
+    type: info_cookie
+  - name: useragent
+    type: text
+    label: User-Agent
+  - name: info_useragent
+    type: info_useragent
+  - name: sort
+    type: select
+    label: Sort requested from site
+    default: 0
+    # Cinephage stores select values as indices. Omitting the site's numeric
+    # size key keeps all exposed keys index-stable without a runtime change.
+    options:
+      0: created
+      1: title
+      5: seeders
+  - name: type
+    type: select
+    label: Order requested from site
+    default: 0
+    options:
+      0: desc
+      1: asc
+  - name: info_tpp
+    type: info
+    label: Results Per Page
+    default: 'For best results, change the Torrentek oldalankent setting to 100 on your account profile.'
+  - name: info_activity
+    type: info
+    label: Account Inactivity
+    default: 'Users who have been inactive for more than 25 weeks are automatically deleted.'
+
+login:
+  method: cookie
+  inputs:
+    cookie: '{{ .Config.cookie }}'
+  test:
+    path: index
+    selector: 'a[href^="/logout/"]'
+
+search:
+  paths:
+    # Embedding search_text in the path is intentional: Cinephage recognizes
+    # .Keywords in paths as a meaningful query without requiring a source-code
+    # whitelist entry for the tracker's custom search_text parameter.
+    - path: 'torrents/?search_text={{ if .Query.IMDBID }}{{ .Query.IMDBID }}{{ else }}{{ .Keywords }}{{ end }}'
+      categories:
+        [
+          '2',
+          '1',
+          '3',
+          '4',
+          '5',
+          '6',
+          '7',
+          '8',
+          '9',
+          '10',
+          '11',
+          '12',
+          '13',
+          '14',
+          '21',
+          '24',
+          '25',
+          '26',
+          '27',
+          '28',
+          '31',
+          '32',
+          '33',
+          '20',
+          '19',
+          '17',
+          '18',
+          '15',
+          '16',
+          '29',
+          '30'
+        ]
+    - path: 'torrents/turkalo/?search_text={{ if .Query.IMDBID }}{{ .Query.IMDBID }}{{ else }}{{ .Keywords }}{{ end }}'
+      categories:
+        [
+          '2',
+          '1',
+          '3',
+          '4',
+          '5',
+          '6',
+          '7',
+          '8',
+          '9',
+          '10',
+          '11',
+          '12',
+          '13',
+          '14',
+          '21',
+          '24',
+          '25',
+          '26',
+          '27',
+          '28',
+          '31',
+          '32',
+          '33',
+          '20',
+          '19',
+          '17',
+          '18',
+          '15',
+          '16',
+          '29',
+          '30'
+        ]
+    - path: 'torrents/xxx/?search_text={{ if .Query.IMDBID }}{{ .Query.IMDBID }}{{ else }}{{ .Keywords }}{{ end }}'
+      categories: ['34', '36', '35']
+  inputs:
+    action: search
+    incldead: 1
+    $raw: '{{ range .Categories }}&categories[]={{.}}{{end}}'
+    sort: '{{ .Config.sort }}'
+    order_by: '{{ .Config.type }}'
+  headers:
+    User-Agent: ['{{ .Config.useragent }}']
+  rows:
+    selector: article.torrent-card
+  fields:
+    category:
+      selector: 'a[href*="&categories[]="]'
+      attribute: href
+      filters:
+        - name: querystring
+          args: 'categories[]'
+    title:
+      selector: a.torrent-title
+      attribute: data-name
+    details:
+      selector: a.torrent-title
+      attribute: href
+    download:
+      selector: a.torrent-title
+      attribute: data-dl
+    imdbid:
+      selector: 'a[href*="imdb.com/title/tt"]'
+      attribute: href
+      optional: true
+    poster:
+      selector: a.torrent-title
+      attribute: data-cover
+      optional: true
+    size:
+      selector: 'div.torrent-card__meta-short span:nth-child(3)'
+      # The tracker uses Hungarian decimal commas (for example 10,03 GB).
+      # Cinephage otherwise strips the comma and interprets that as 1003 GB.
+      filters:
+        - name: replace
+          args: [',', '.']
+    grabs:
+      selector: 'a[href^="/torrent/snatches/"]'
+    seeders:
+      selector: 'a[href^="/torrent/peers/"]'
+    leechers:
+      selector: 'a[href$="leechers"]'
+    date:
+      selector: 'div.torrent-card__meta-short span:nth-child(1)'
+      filters:
+        - name: append
+          args: ' +01:00'
+        - name: dateparse
+          args: 'YYYY-MM-DD HH:mm:ss Z'
+    downloadvolumefactor:
+      text: 1
+    uploadvolumefactor:
+      case:
+        'span.torrent-chip--boost:contains("0.5x")': '0.5'
+        'span.torrent-chip--boost:contains("2x")': '2'
+        'span.torrent-chip--boost:contains("3x")': '3'
+        'span.torrent-chip--boost:contains("4x")': '4'
+        '*': '1'
+    # Resolve verification directly from the row instead of relying on a
+    # previously extracted .Result._verification variable.
+    description:
+      case:
+        span.torrent-chip--mod-ok: Verified
+        span.torrent-chip--mod-unknown: Unverified
+        span.torrent-chip--mod-bad: Blocked
+        '*': Unverified
+    genre:
+      selector: div.torrent-card__actions-row
+      remove: 'a, span.torrent-chip--boost, span.torrent-chip--mod-ok, span.torrent-chip--mod-unknown'
+      optional: true
+    minimumratio:
+      text: 1.0
+    minimumseedtime:
+      text: 172800
