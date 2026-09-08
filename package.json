@@ -88,12 +88,12 @@
 	},
 	"dependencies": {
 		"@better-auth/api-key": "^1.6.25",
+		"@parcel/watcher": "^2.6.0",
 		"adm-zip": "^0.6.0",
 		"better-auth": "^1.6.25",
 		"better-sqlite3": "^13.0.2",
 		"camoufox-js": "^0.11.5",
 		"cheerio": "^1.2.0",
-		"chokidar": "^5.0.0",
 		"date-format-parse": "^0.2.7",
 		"dotenv": "^17.4.2",
 		"fast-xml-parser": "^5.10.1",

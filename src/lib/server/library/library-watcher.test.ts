@@ -13,12 +13,11 @@ vi.mock('$lib/server/db', () => ({
 	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
 
-vi.mock('chokidar', () => ({
+vi.mock('@parcel/watcher', () => ({
 	default: {
-		watch: vi.fn(() => ({
-			on: vi.fn().mockReturnThis(),
-			close: vi.fn().mockResolvedValue(undefined)
-		}))
+		subscribe: vi.fn().mockResolvedValue({
+			unsubscribe: vi.fn().mockResolvedValue(undefined)
+		})
 	}
 }));
 
@@ -41,9 +40,23 @@ vi.mock('./media-info.js', () => ({
 
 let mockScanning = false;
 
-const { LibraryWatcherService } = await import('./library-watcher.js');
+const { LibraryWatcherService, IGNORED_PATTERNS } = await import('./library-watcher.js');
 const { diskScanService } = await import('./disk-scan.js');
 const { libraryOperationLock } = await import('./library-operation-lock.js');
+
+describe('LibraryWatcherService IGNORED_PATTERNS', () => {
+	// @parcel/watcher's subscribe() throws synchronously if any ignore RegExp
+	// carries flags ("RegExp ignore patterns must not have flags") - it has no
+	// native concept of them. Chokidar's /i-flagged patterns don't survive the
+	// swap as-is; this pins the invariant so a reintroduced flag fails loudly
+	// here instead of silently breaking every watchFolder() call in prod.
+	it('contains no flagged RegExp entries', () => {
+		for (const pattern of IGNORED_PATTERNS) {
+			expect(pattern).toBeInstanceOf(RegExp);
+			expect(pattern.flags).toBe('');
+		}
+	});
+});
 
 describe('LibraryWatcherService.processPendingChanges', () => {
 	// Access the singleton's internals for seeding/inspection (private fields).

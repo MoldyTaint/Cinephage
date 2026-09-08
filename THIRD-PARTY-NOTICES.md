@@ -47,7 +47,7 @@ Cinephage uses the following npm packages. All are MIT licensed and compatible w
 | js-yaml         | MIT     | YAML parsing for indexer definitions |
 | parse-torrent   | MIT     | Torrent file/magnet parsing          |
 | adm-zip         | MIT     | ZIP file handling                    |
-| chokidar        | MIT     | File system watching                 |
+| @parcel/watcher | MIT     | File system watching                 |
 | zod             | MIT     | Runtime type validation              |
 
 ## External Services
