@@ -72,7 +72,12 @@ const ERROR_TIMEOUT_MS = 90000;
 // ============================================================================
 
 /** Providers to test (no API key required) */
-const NO_AUTH_PROVIDERS: ProviderImplementation[] = ['yifysubtitles', 'subf2m', 'gestdown'];
+const NO_AUTH_PROVIDERS: ProviderImplementation[] = [
+	'yifysubtitles',
+	'subf2m',
+	'gestdown',
+	'supersubtitles'
+];
 
 /** Providers to test only when explicitly enabled */
 const OPTIONAL_NO_AUTH_PROVIDERS: ProviderImplementation[] = ['addic7ed'];
@@ -81,12 +86,12 @@ const OPTIONAL_NO_AUTH_PROVIDERS: ProviderImplementation[] = ['addic7ed'];
 const INCLUDE_OPTIONAL_PROVIDERS = process.env.SUBTITLE_LIVE_TESTS_INCLUDE_OPTIONAL === 'true';
 
 /** Providers that support movies */
-const MOVIE_PROVIDERS: ProviderImplementation[] = ['yifysubtitles', 'subf2m'];
+const MOVIE_PROVIDERS: ProviderImplementation[] = ['yifysubtitles', 'subf2m', 'supersubtitles'];
 
 /** Providers that support TV shows */
 const TV_PROVIDERS: ProviderImplementation[] = INCLUDE_OPTIONAL_PROVIDERS
-	? ['addic7ed', 'gestdown', 'subf2m']
-	: ['gestdown', 'subf2m'];
+	? ['addic7ed', 'gestdown', 'subf2m', 'supersubtitles']
+	: ['gestdown', 'subf2m', 'supersubtitles'];
 
 // ============================================================================
 // Helper Functions

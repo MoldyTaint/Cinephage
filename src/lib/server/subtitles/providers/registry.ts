@@ -210,6 +210,16 @@ export async function registerBuiltinProviders(): Promise<void> {
 	}
 
 	try {
+		// Import and register Super Subtitles (feliratok.eu)
+		const supersubtitles = await import('./supersubtitles');
+		if (supersubtitles.PROVIDER_INFO) {
+			providerRegistry.register(supersubtitles.PROVIDER_INFO);
+		}
+	} catch (error) {
+		logger.warn({ error }, 'Failed to register supersubtitles provider');
+	}
+
+	try {
 		// Import and register Podnapisi (Slovenian)
 		const podnapisi = await import('./podnapisi');
 		if (podnapisi.PROVIDER_INFO) {
