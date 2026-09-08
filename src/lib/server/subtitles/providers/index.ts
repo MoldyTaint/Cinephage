@@ -22,6 +22,7 @@ export * from './mixins';
 // Provider implementations
 
 // Regional providers
+export { SuperSubtitlesProvider } from './supersubtitles/SuperSubtitlesProvider';
 export { NapiprojektProvider } from './napiprojekt/NapiprojektProvider';
 export { LegendasdivxProvider } from './legendasdivx/LegendasdivxProvider';
 export { BetaseriesProvider } from './betaseries/BetaseriesProvider';

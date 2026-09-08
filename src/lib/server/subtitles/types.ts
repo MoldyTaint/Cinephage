@@ -175,6 +175,7 @@ export const PROVIDER_IMPLEMENTATIONS = [
 	'yifysubtitles',
 	'gestdown',
 	'subf2m',
+	'supersubtitles',
 	// Regional providers
 	'napiprojekt',
 	'legendasdivx',
