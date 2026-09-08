@@ -1,12 +1,23 @@
 /**
  * Library Watcher Service
  *
- * Watches root folders for filesystem changes using chokidar.
+ * Watches root folders for filesystem changes using @parcel/watcher.
  * Triggers incremental scans when files are added, removed, or changed.
+ *
+ * @parcel/watcher (not chokidar) is used deliberately: chokidar creates one
+ * native watch per FILE in addition to one per directory (confirmed by
+ * reading chokidar's handler.js - _handleFile and _handleDir both call
+ * _watchWithNodeFs, which maps 1:1 to fs.watch/inotify_add_watch). For a
+ * large ~10k+ file library that exhausts fs.inotify.max_user_watches. Linux inotify
+ * already reports create/modify/delete of files within a watched directory
+ * through that single directory-level watch, so a per-file watch is
+ * unnecessary. @parcel/watcher's native backend (inotify/FSEvents/
+ * ReadDirectoryChangesW depending on platform) watches at the directory
+ * level only, which is the structural fix.
  */
 
 import { promises as fsPromises } from 'node:fs';
-import chokidar, { type FSWatcher } from 'chokidar';
+import watcher, { type AsyncSubscription, type Event as ParcelEvent } from '@parcel/watcher';
 import { db } from '$lib/server/db/index.js';
 import { rootFolders, librarySettings } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -66,13 +77,45 @@ interface FileChange {
 	timestamp: number;
 }
 
+/**
+ * @parcel/watcher's `ignore` option rejects RegExp entries that carry flags
+ * ("RegExp ignore patterns must not have flags" - its native matcher has no
+ * concept of them), so a flagged /i pattern throws synchronously inside
+ * subscribe() rather than just being case-sensitive. Case-fold each literal
+ * character into a [xX] class instead, producing an equivalent flagless
+ * pattern chokidar's /i regexes can't express here.
+ */
+function caseInsensitiveLiteral(literal: string): string {
+	return literal
+		.split('')
+		.map((ch) => {
+			const lower = ch.toLowerCase();
+			const upper = ch.toUpperCase();
+			if (lower === upper) return ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			return `[${lower}${upper}]`;
+		})
+		.join('');
+}
+
+// Same set chokidar's `ignored` used, minus the two /i flags @parcel/watcher can't accept.
+// Exported so tests can assert every RegExp here stays flagless.
+export const IGNORED_PATTERNS = [
+	/(^|[/\\])\../,
+	/node_modules/,
+	/@eaDir/,
+	new RegExp(caseInsensitiveLiteral('#recycle')),
+	new RegExp(caseInsensitiveLiteral('$RECYCLE.BIN'))
+];
+
 export class LibraryWatcherService extends EventEmitter {
 	private static instance: LibraryWatcherService;
-	private watchers: Map<string, FSWatcher> = new Map();
+	private subscriptions: Map<string, AsyncSubscription> = new Map();
 	private pendingChanges: Map<string, FileChange> = new Map();
 	private processTimeout: NodeJS.Timeout | null = null;
 	private enabled = false;
 	private rootFolderMap: Map<string, string> = new Map();
+	// Suppress duplicate ENOSPC warnings per folder (events can keep arriving after the first).
+	private enospcWarned: Set<string> = new Set();
 
 	private constructor() {
 		super();
@@ -117,14 +160,15 @@ export class LibraryWatcherService extends EventEmitter {
 	}
 
 	async shutdown(): Promise<void> {
-		for (const [folderId, watcher] of this.watchers) {
-			await watcher.close();
+		for (const [folderId, subscription] of this.subscriptions) {
+			await subscription.unsubscribe();
 			logger.debug({ folderId }, '[LibraryWatcher] Stopped watching folder');
 		}
 
-		this.watchers.clear();
+		this.subscriptions.clear();
 		this.rootFolderMap.clear();
 		this.pendingChanges.clear();
+		this.enospcWarned.clear();
 
 		if (this.processTimeout) {
 			clearTimeout(this.processTimeout);
@@ -135,11 +179,12 @@ export class LibraryWatcherService extends EventEmitter {
 	}
 
 	async watchFolder(folderId: string, folderPath: string): Promise<void> {
-		if (this.watchers.has(folderId)) {
-			await this.watchers.get(folderId)?.close();
+		if (this.subscriptions.has(folderId)) {
+			await this.subscriptions.get(folderId)?.unsubscribe();
 		}
 
 		this.rootFolderMap.set(folderPath, folderId);
+		this.enospcWarned.delete(folderId);
 
 		const fsType = await detectFilesystemType(folderPath);
 		if (fsType !== null) {
@@ -153,57 +198,65 @@ export class LibraryWatcherService extends EventEmitter {
 			}
 		}
 
-		const watcher = chokidar.watch(folderPath, {
-			persistent: true,
-			ignoreInitial: true,
-			followSymlinks: false,
-			depth: 10,
-			awaitWriteFinish: {
-				stabilityThreshold: 2000,
-				pollInterval: 500
-			},
-			ignored: [/(^|[/\\])\../, /node_modules/, /@eaDir/, /#recycle/i, /\$RECYCLE\.BIN/i]
-		});
+		try {
+			const subscription = await watcher.subscribe(
+				folderPath,
+				(err, events) => this.handleParcelEvents(folderId, folderPath, err, events),
+				{ ignore: IGNORED_PATTERNS }
+			);
+			this.subscriptions.set(folderId, subscription);
+			logger.info({ folderId, folderPath }, '[LibraryWatcher] Watching folder');
+		} catch (error) {
+			this.handleWatchError(folderId, folderPath, error);
+		}
+	}
 
-		// Suppress duplicate ENOSPC warnings.
-		let enospcWarned = false;
+	/**
+	 * Handles both the initial subscribe() rejection and later async errors
+	 * delivered via the subscribe() callback (e.g. a nested directory created
+	 * after subscription pushes past the watch-descriptor limit).
+	 */
+	private handleWatchError(folderId: string, folderPath: string, error: unknown): void {
+		if ((error as NodeJS.ErrnoException)?.code === 'ENOSPC') {
+			if (!this.enospcWarned.has(folderId)) {
+				this.enospcWarned.add(folderId);
+				logger.warn(
+					{ folderId, folderPath },
+					'[LibraryWatcher] ENOSPC: system inotify watch limit reached. ' +
+						'Increase fs.inotify.max_user_watches (e.g. echo 524288 | sudo tee /proc/sys/fs/inotify/max_user_watches), ' +
+						'or disable "Watch filesystem for changes" in Settings and rely on scheduled scans instead.'
+				);
+			}
+			// ENOSPC is not recoverable by the scheduler; suppress re-emit to avoid log spam.
+			return;
+		}
+		logger.error({ err: error, folderId }, '[LibraryWatcher] Error in folder');
+		this.emit('error', { folderId, error });
+	}
 
-		watcher
-			.on('add', (path) => this.handleFileEvent('add', path, folderId))
-			.on('change', (path) => this.handleFileEvent('change', path, folderId))
-			.on('unlink', (path) => this.handleFileEvent('unlink', path, folderId))
-			.on('error', (error) => {
-				if ((error as NodeJS.ErrnoException).code === 'ENOSPC') {
-					if (!enospcWarned) {
-						enospcWarned = true;
-						logger.warn(
-							{ folderId, folderPath },
-							'[LibraryWatcher] ENOSPC: system inotify watch limit reached. ' +
-								'Increase fs.inotify.max_user_watches (e.g. echo 524288 | sudo tee /proc/sys/fs/inotify/max_user_watches), ' +
-								'or disable "Watch filesystem for changes" in Settings and rely on scheduled scans instead.'
-						);
-					}
-					// ENOSPC is not recoverable by the scheduler;s suppress re-emit to avoid log spam.
-					return;
-				}
-				logger.error({ err: error, folderId }, '[LibraryWatcher] Error in folder');
-				this.emit('error', { folderId, error });
-			})
-			.on('ready', () => {
-				const watched = watcher.getWatched();
-				const dirCount = Object.keys(watched).length;
-				const fileCount = Object.values(watched).reduce((sum, files) => sum + files.length, 0);
-				logger.info({ folderPath, dirCount, fileCount }, '[LibraryWatcher] Watching folder');
-			});
+	private handleParcelEvents(
+		folderId: string,
+		folderPath: string,
+		err: Error | null,
+		events: ParcelEvent[]
+	): void {
+		if (err) {
+			this.handleWatchError(folderId, folderPath, err);
+			return;
+		}
 
-		this.watchers.set(folderId, watcher);
+		for (const event of events) {
+			const type = event.type === 'create' ? 'add' : event.type === 'delete' ? 'unlink' : 'change';
+			this.handleFileEvent(type, event.path, folderId);
+		}
 	}
 
 	async unwatchFolder(folderId: string): Promise<void> {
-		const watcher = this.watchers.get(folderId);
-		if (watcher) {
-			await watcher.close();
-			this.watchers.delete(folderId);
+		const subscription = this.subscriptions.get(folderId);
+		if (subscription) {
+			await subscription.unsubscribe();
+			this.subscriptions.delete(folderId);
+			this.enospcWarned.delete(folderId);
 
 			for (const [path, id] of this.rootFolderMap) {
 				if (id === folderId) {
@@ -306,7 +359,7 @@ export class LibraryWatcherService extends EventEmitter {
 	getStatus(): { enabled: boolean; watchedFolders: string[] } {
 		return {
 			enabled: this.enabled,
-			watchedFolders: Array.from(this.watchers.keys())
+			watchedFolders: Array.from(this.subscriptions.keys())
 		};
 	}
 
