@@ -1,6 +1,6 @@
 import { db } from '$lib/server/db';
 import { movies, series, episodes } from '$lib/server/db/schema';
-import { eq, and, gte, lte } from 'drizzle-orm';
+import { eq, and, gte, lte, inArray } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import type { DiscoverItem } from '$lib/server/tmdb.js';
 import { toDateString, todayDateString } from '$lib/utils/format.js';
@@ -147,10 +147,15 @@ export async function getCalendarData(
 	const includeEpisodes = type === 'all' || type === 'episodes';
 
 	if (includeMovies) {
-		const [tmdbItems, libraryMovies] = await Promise.all([
-			fetchTmdbUpcoming(certifications),
-			db.select({ tmdbId: movies.tmdbId, id: movies.id }).from(movies)
-		]);
+		const tmdbItems = await fetchTmdbUpcoming(certifications);
+		const tmdbIds = tmdbItems.map((item) => item.id);
+		const libraryMovies =
+			tmdbIds.length > 0
+				? await db
+						.select({ tmdbId: movies.tmdbId, id: movies.id })
+						.from(movies)
+						.where(inArray(movies.tmdbId, tmdbIds))
+				: [];
 
 		const libraryMovieMap = new Map(libraryMovies.map((m) => [m.tmdbId, m.id]));
 		const libraryTmdbIds = new Set(libraryMovieMap.keys());
@@ -268,9 +273,18 @@ export async function getUpcomingItems(
 	}
 
 	if (items.length < limit) {
+		const movieTmdbIds = tmdbItems.map((item) => item.id);
+		const tvTmdbIds = tmdbTvItems.map((item) => item.id);
 		const [libraryMovies, librarySeries] = await Promise.all([
-			db.select({ tmdbId: movies.tmdbId, id: movies.id }).from(movies),
-			db.select({ tmdbId: series.tmdbId }).from(series)
+			movieTmdbIds.length > 0
+				? db
+						.select({ tmdbId: movies.tmdbId, id: movies.id })
+						.from(movies)
+						.where(inArray(movies.tmdbId, movieTmdbIds))
+				: Promise.resolve([]),
+			tvTmdbIds.length > 0
+				? db.select({ tmdbId: series.tmdbId }).from(series).where(inArray(series.tmdbId, tvTmdbIds))
+				: Promise.resolve([])
 		]);
 		const libraryMovieMap = new Map(libraryMovies.map((m) => [m.tmdbId, m.id]));
 		const libraryMovieTmdbIds = new Set(libraryMovieMap.keys());

@@ -250,7 +250,7 @@
 						<span class="label-text text-base-content">
 							{m.settings_libraries_scan_watch()}
 						</span>
-						<div class="text-xs text-base-content/60">
+						<div class="text-xs whitespace-normal text-base-content/60">
 							{m.settings_libraries_scan_watch_hint()}
 						</div>
 					</div>
@@ -267,7 +267,7 @@
 						<span class="label-text text-base-content">
 							{m.settings_libraries_scan_on_startup()}
 						</span>
-						<div class="text-xs text-base-content/60">
+						<div class="text-xs whitespace-normal text-base-content/60">
 							{m.settings_libraries_scan_on_startup_hint()}
 						</div>
 					</div>

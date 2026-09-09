@@ -48,14 +48,22 @@ export class HealthIssuesRule implements StorageInsightRule {
 			});
 		}
 
-		// 3. Root folders needing scan (warning) — no completed scan history
+		// 3. Root folders needing scan (warning) — no completed scan history.
+		// Scoped to one row per root folder (the most recent scan) via a
+		// correlated MAX(startedAt) subquery, instead of loading the entire
+		// scan-history table.
 		const latestScans = ctx.db
 			.select({
 				rootFolderId: libraryScanHistory.rootFolderId,
 				status: libraryScanHistory.status
 			})
 			.from(libraryScanHistory)
-			.orderBy(sql`${libraryScanHistory.startedAt} DESC`)
+			.where(
+				sql`${libraryScanHistory.startedAt} = (
+					SELECT MAX(started_at) FROM library_scan_history h2
+					WHERE h2.root_folder_id = ${libraryScanHistory.rootFolderId}
+				)`
+			)
 			.all();
 
 		const latestScanByFolder = new Map<string, string>();

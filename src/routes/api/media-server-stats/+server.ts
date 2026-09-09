@@ -6,20 +6,32 @@ import {
 	mediaServerSyncedRuns,
 	mediaBrowserServers
 } from '$lib/server/db/schema';
-import { sql, desc } from 'drizzle-orm';
+import { sql, desc, eq, and, or, isNull } from 'drizzle-orm';
 import type {
 	StatsSummary,
 	AggregatedMediaItem,
 	ServerSyncStatus
 } from '$lib/server/mediaServerStats/types.js';
 
-function bucketResolution(height: number | null): string {
-	if (!height) return 'Unknown';
-	if (height >= 2160) return '4K';
-	if (height >= 1080) return '1080p';
-	if (height >= 720) return '720p';
-	if (height >= 480) return '480p';
-	return 'SD';
+/**
+ * Matches the (tmdbId, tvdbId, title) identifying key aggregateItems() groups by.
+ * Used to re-fetch full row detail for a small, already-ranked set of items
+ * instead of loading the whole table.
+ */
+function matchesIdentifyingKey(key: {
+	tmdbId: number | null;
+	tvdbId: number | null;
+	title: string;
+}) {
+	return and(
+		key.tmdbId != null
+			? eq(mediaServerSyncedItems.tmdbId, key.tmdbId)
+			: isNull(mediaServerSyncedItems.tmdbId),
+		key.tvdbId != null
+			? eq(mediaServerSyncedItems.tvdbId, key.tvdbId)
+			: isNull(mediaServerSyncedItems.tvdbId),
+		eq(mediaServerSyncedItems.title, key.title)
+	);
 }
 
 function aggregateItems(
@@ -86,18 +98,29 @@ function aggregateItems(
 }
 
 export const GET: RequestHandler = async () => {
+	const resolutionBucket = sql`CASE
+		WHEN ${mediaServerSyncedItems.height} >= 2160 THEN '4K'
+		WHEN ${mediaServerSyncedItems.height} >= 1080 THEN '1080p'
+		WHEN ${mediaServerSyncedItems.height} >= 720 THEN '720p'
+		WHEN ${mediaServerSyncedItems.height} >= 480 THEN '480p'
+		WHEN ${mediaServerSyncedItems.height} IS NULL THEN 'Unknown'
+		ELSE 'SD'
+	END`;
+
 	const [
 		totalPlaysRow,
 		uniqueItemsRow,
 		serversSyncedRow,
 		totalFileSizeRow,
-		allItems,
+		resolutionRows,
 		codecRows,
 		hdrRows,
 		audioCodecRows,
 		containerRows,
 		servers,
-		syncRuns
+		itemCountsByServerRows,
+		topPlayedKeys,
+		largestRawRows
 	] = await Promise.all([
 		db
 			.select({ total: sql<number>`coalesce(sum(${mediaServerSyncedItems.playCount}), 0)` })
@@ -115,7 +138,10 @@ export const GET: RequestHandler = async () => {
 		db
 			.select({ total: sql<number>`coalesce(sum(${mediaServerSyncedItems.fileSize}), 0)` })
 			.from(mediaServerSyncedItems),
-		db.select().from(mediaServerSyncedItems),
+		db
+			.select({ label: resolutionBucket.as('label'), count: sql<number>`count(*)` })
+			.from(mediaServerSyncedItems)
+			.groupBy(resolutionBucket),
 		db
 			.select({
 				videoCodec: mediaServerSyncedItems.videoCodec,
@@ -153,16 +179,73 @@ export const GET: RequestHandler = async () => {
 			.groupBy(mediaServerSyncedItems.containerFormat)
 			.orderBy(sql`count(*) desc`),
 		db.select().from(mediaBrowserServers),
-		db.select().from(mediaServerSyncedRuns).orderBy(desc(mediaServerSyncedRuns.startedAt))
+		db
+			.select({ serverId: mediaServerSyncedItems.serverId, count: sql<number>`count(*)` })
+			.from(mediaServerSyncedItems)
+			.where(sql`${mediaServerSyncedItems.serverId} IS NOT NULL`)
+			.groupBy(mediaServerSyncedItems.serverId),
+		db
+			.select({
+				tmdbId: mediaServerSyncedItems.tmdbId,
+				tvdbId: mediaServerSyncedItems.tvdbId,
+				title: mediaServerSyncedItems.title
+			})
+			.from(mediaServerSyncedItems)
+			.groupBy(
+				mediaServerSyncedItems.tmdbId,
+				mediaServerSyncedItems.tvdbId,
+				mediaServerSyncedItems.title
+			)
+			.orderBy(sql`sum(${mediaServerSyncedItems.playCount}) desc`)
+			.limit(25),
+		db
+			.select()
+			.from(mediaServerSyncedItems)
+			.where(sql`${mediaServerSyncedItems.fileSize} IS NOT NULL`)
+			.orderBy(desc(mediaServerSyncedItems.fileSize))
+			.limit(10)
 	]);
 
-	const resolutionMap = new Map<string, number>();
-	for (const item of allItems) {
-		const label = bucketResolution(item.height);
-		resolutionMap.set(label, (resolutionMap.get(label) ?? 0) + 1);
-	}
-	const resolutionBreakdown = Array.from(resolutionMap.entries())
-		.map(([label, count]) => ({ label, count }))
+	// Latest sync run per server - one small limited query per (bounded, small) server
+	// list instead of loading the whole run-history table.
+	const syncRuns = (
+		await Promise.all(
+			servers.map((server) =>
+				db
+					.select()
+					.from(mediaServerSyncedRuns)
+					.where(eq(mediaServerSyncedRuns.serverId, server.id))
+					.orderBy(desc(mediaServerSyncedRuns.startedAt))
+					.limit(1)
+			)
+		)
+	).flat();
+
+	// Fetch full row detail only for the items that actually made the top-25/top-10
+	// lists above, so serverBreakdown can still be built without loading every row.
+	const topPlayedRows =
+		topPlayedKeys.length > 0
+			? await db
+					.select()
+					.from(mediaServerSyncedItems)
+					.where(or(...topPlayedKeys.map(matchesIdentifyingKey)))
+			: [];
+
+	const largestKeys = largestRawRows.map((item) => ({
+		tmdbId: item.tmdbId,
+		tvdbId: item.tvdbId,
+		title: item.title
+	}));
+	const largestDetailRows =
+		largestKeys.length > 0
+			? await db
+					.select()
+					.from(mediaServerSyncedItems)
+					.where(or(...largestKeys.map(matchesIdentifyingKey)))
+			: [];
+
+	const resolutionBreakdown = resolutionRows
+		.map((r) => ({ label: r.label as string, count: r.count }))
 		.sort((a, b) => b.count - a.count);
 
 	const codecBreakdown = codecRows.map((r) => ({
@@ -188,47 +271,38 @@ export const GET: RequestHandler = async () => {
 		count: r.count
 	}));
 
-	const aggregated = aggregateItems(allItems);
-	const topPlayedItems = aggregated
+	const topPlayedItems = aggregateItems(topPlayedRows)
 		.sort((a, b) => b.totalPlayCount - a.totalPlayCount)
 		.slice(0, 25);
 
-	const largestItems = allItems
-		.filter((item) => item.fileSize != null)
-		.sort((a, b) => (b.fileSize ?? 0) - (a.fileSize ?? 0))
-		.slice(0, 10)
-		.map((item) => {
-			const agg = aggregated.find(
-				(a) => a.tmdbId === item.tmdbId && a.tvdbId === item.tvdbId && a.title === item.title
-			);
-			return (
-				agg ?? {
-					tmdbId: item.tmdbId ?? null,
-					tvdbId: item.tvdbId ?? null,
-					imdbId: item.imdbId ?? null,
-					title: item.title,
-					year: item.year ?? null,
-					itemType: item.itemType,
-					totalPlayCount: item.playCount ?? 0,
-					lastPlayedDate: item.lastPlayedDate ?? null,
-					serverBreakdown: []
-				}
-			);
-		});
+	const largestAggregated = aggregateItems(largestDetailRows);
+	const largestItems = largestRawRows.map((item) => {
+		const agg = largestAggregated.find(
+			(a) => a.tmdbId === item.tmdbId && a.tvdbId === item.tvdbId && a.title === item.title
+		);
+		return (
+			agg ?? {
+				tmdbId: item.tmdbId ?? null,
+				tvdbId: item.tvdbId ?? null,
+				imdbId: item.imdbId ?? null,
+				title: item.title,
+				year: item.year ?? null,
+				itemType: item.itemType,
+				totalPlayCount: item.playCount ?? 0,
+				lastPlayedDate: item.lastPlayedDate ?? null,
+				serverBreakdown: []
+			}
+		);
+	});
 
 	const latestRunsMap = new Map<string, (typeof syncRuns)[0]>();
 	for (const run of syncRuns) {
-		if (!latestRunsMap.has(run.serverId)) {
-			latestRunsMap.set(run.serverId, run);
-		}
+		latestRunsMap.set(run.serverId, run);
 	}
 
-	const itemCountsMap = new Map<string, number>();
-	for (const item of allItems) {
-		if (item.serverId) {
-			itemCountsMap.set(item.serverId, (itemCountsMap.get(item.serverId) ?? 0) + 1);
-		}
-	}
+	const itemCountsMap = new Map<string, number>(
+		itemCountsByServerRows.map((r) => [r.serverId as string, r.count])
+	);
 
 	const serverStatuses: ServerSyncStatus[] = servers.map((server) => {
 		const latestRun = latestRunsMap.get(server.id);
