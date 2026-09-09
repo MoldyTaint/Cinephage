@@ -19,7 +19,7 @@ import {
 	episodes,
 	stalledOrphanTracking
 } from '$lib/server/db/schema';
-import { eq, and, or, inArray, not, notInArray, isNull, isNotNull, desc } from 'drizzle-orm';
+import { eq, and, or, inArray, not, notInArray, isNull, isNotNull, desc, sql } from 'drizzle-orm';
 import { getDownloadClientManager } from '../DownloadClientManager';
 import { mapClientPathToLocal } from './PathMapping';
 import { resolveInfoHash } from '../utils/hashUtils';
@@ -937,24 +937,21 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 		logger.info({ olderThanDays, dryRun }, 'Clearing failed queue items');
 
-		// Get all failed items
-		let failedItems = await db
+		const ageCutoffCondition =
+			olderThanDays !== undefined && olderThanDays > 0
+				? sql`coalesce(${downloadQueue.lastAttemptAt}, ${downloadQueue.addedAt}) < ${new Date(
+						Date.now() - olderThanDays * 24 * 60 * 60 * 1000
+					).toISOString()}`
+				: undefined;
+
+		const failedItems = await db
 			.select()
 			.from(downloadQueue)
-			.where(eq(downloadQueue.status, 'failed'));
-
-		// Filter by age if specified
-		if (olderThanDays !== undefined && olderThanDays > 0) {
-			const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
-			failedItems = failedItems.filter((item) => {
-				const failedAt = item.lastAttemptAt
-					? new Date(item.lastAttemptAt).getTime()
-					: item.addedAt
-						? new Date(item.addedAt).getTime()
-						: Date.now();
-				return failedAt < cutoff;
-			});
-		}
+			.where(
+				ageCutoffCondition
+					? and(eq(downloadQueue.status, 'failed'), ageCutoffCondition)
+					: eq(downloadQueue.status, 'failed')
+			);
 
 		const result = {
 			cleared: [] as { id: string; title: string; errorMessage?: string | null }[],

@@ -480,7 +480,7 @@
 			{#if activeInsights.length > 0 || dismissedInsights.length > 0}
 				<button
 					type="button"
-					class="btn gap-2 btn-ghost btn-sm"
+					class="btn gap-1 btn-ghost btn-sm"
 					onclick={() => (insightsOpen = true)}
 				>
 					<Lightbulb class="h-4 w-4" />

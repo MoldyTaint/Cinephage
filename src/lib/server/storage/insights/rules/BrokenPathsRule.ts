@@ -11,6 +11,12 @@ import {
 } from '$lib/server/db/schema';
 import type { StorageInsightRule, RuleContext, InsightFinding } from '../types.js';
 
+const YIELD_INTERVAL = 500;
+
+function yieldToEventLoop(): Promise<void> {
+	return new Promise((resolve) => setImmediate(resolve));
+}
+
 /**
  * Verifies that file paths referenced by storage_items still exist on disk.
  * Builds full paths by joining storage_items -> movie_files/episode_files ->
@@ -61,22 +67,30 @@ export class BrokenPathsRule implements StorageInsightRule {
 			fullPath: string;
 		}> = [];
 
+		// existsSync() is a blocking syscall per file - yielding periodically
+		// keeps this rule from freezing the event loop for its full duration
+		// on a large library.
+		let processed = 0;
 		for (const row of movieBacked) {
 			const rootPath = row.rootFolderId ? folderPathById.get(row.rootFolderId) : null;
-			if (!rootPath) continue;
-			const fullPath = join(rootPath, row.moviePath ?? '', row.relativePath ?? '');
-			if (!existsSync(fullPath)) {
-				broken.push({ storageId: row.storageId, title: row.title, tmdbId: row.tmdbId, fullPath });
+			if (rootPath) {
+				const fullPath = join(rootPath, row.moviePath ?? '', row.relativePath ?? '');
+				if (!existsSync(fullPath)) {
+					broken.push({ storageId: row.storageId, title: row.title, tmdbId: row.tmdbId, fullPath });
+				}
 			}
+			if (++processed % YIELD_INTERVAL === 0) await yieldToEventLoop();
 		}
 
 		for (const row of episodeBacked) {
 			const rootPath = row.rootFolderId ? folderPathById.get(row.rootFolderId) : null;
-			if (!rootPath) continue;
-			const fullPath = join(rootPath, row.seriesPath ?? '', row.relativePath ?? '');
-			if (!existsSync(fullPath)) {
-				broken.push({ storageId: row.storageId, title: row.title, tmdbId: row.tmdbId, fullPath });
+			if (rootPath) {
+				const fullPath = join(rootPath, row.seriesPath ?? '', row.relativePath ?? '');
+				if (!existsSync(fullPath)) {
+					broken.push({ storageId: row.storageId, title: row.title, tmdbId: row.tmdbId, fullPath });
+				}
 			}
+			if (++processed % YIELD_INTERVAL === 0) await yieldToEventLoop();
 		}
 
 		if (broken.length === 0) return [];

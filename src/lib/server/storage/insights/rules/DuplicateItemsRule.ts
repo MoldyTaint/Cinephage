@@ -17,57 +17,50 @@ export class DuplicateItemsRule implements StorageInsightRule {
 	readonly type = 'duplicate-items' as const;
 
 	async evaluate(ctx: RuleContext): Promise<InsightFinding[]> {
-		type MovieFileRow = {
+		type DupeGroupRow = {
 			movieId: string;
 			tmdbId: number | null;
 			title: string | null;
-			quality: unknown;
+			resolution: string;
+			fileCount: number;
 		};
 
-		const rows = ctx.db
+		// GROUP BY movie+resolution HAVING COUNT(*) > 1 returns only the
+		// duplicate groups directly.
+		const resolutionExpr = sql`coalesce(json_extract(${movieFiles.quality}, '$.resolution'), 'unknown')`;
+		const dupeGroups = ctx.db
 			.select({
 				movieId: movies.id,
 				tmdbId: movies.tmdbId,
 				title: movies.title,
-				quality: movieFiles.quality
+				resolution: resolutionExpr.as('resolution'),
+				fileCount: sql<number>`count(*)`
 			})
 			.from(movies)
 			.innerJoin(movieFiles, sql`${movieFiles.movieId} = ${movies.id}`)
 			.where(sql`${movies.tmdbId} IS NOT NULL`)
-			.all() as MovieFileRow[];
+			.groupBy(movies.id, resolutionExpr)
+			.having(sql`count(*) > 1`)
+			.all() as DupeGroupRow[];
 
-		// Group files per movie into resolution buckets. A movie is a duplicate
-		// only when at least one resolution bucket contains more than one file.
+		// A movie can have more than one dupe-resolution group; fileCount is
+		// the max across them.
 		const movieMap = new Map<
 			string,
-			{
-				tmdbId: number | null;
-				title: string | null;
-				buckets: Map<string, number>;
-			}
+			{ tmdbId: number | null; title: string | null; fileCount: number }
 		>();
-
-		for (const row of rows) {
-			const resolution = (row.quality as { resolution?: string } | null)?.resolution ?? 'unknown';
-			let entry = movieMap.get(row.movieId);
-			if (!entry) {
-				entry = { tmdbId: row.tmdbId, title: row.title, buckets: new Map() };
-				movieMap.set(row.movieId, entry);
+		for (const row of dupeGroups) {
+			const entry = movieMap.get(row.movieId);
+			if (!entry || row.fileCount > entry.fileCount) {
+				movieMap.set(row.movieId, {
+					tmdbId: row.tmdbId,
+					title: row.title,
+					fileCount: row.fileCount
+				});
 			}
-			entry.buckets.set(resolution, (entry.buckets.get(resolution) ?? 0) + 1);
 		}
 
-		const duplicates = [...movieMap.values()]
-			.map((entry) => {
-				// fileCount is the max same-resolution dup count (not total files); name kept for frontend.
-				const maxSameResolution = Math.max(...entry.buckets.values());
-				return {
-					tmdbId: entry.tmdbId,
-					title: entry.title,
-					fileCount: maxSameResolution
-				};
-			})
-			.filter((d) => d.fileCount > 1);
+		const duplicates = [...movieMap.values()];
 
 		if (duplicates.length === 0) return [];
 

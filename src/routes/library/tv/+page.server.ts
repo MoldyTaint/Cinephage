@@ -9,7 +9,7 @@ import {
 	episodeFiles,
 	downloadQueue
 } from '$lib/server/db/schema.js';
-import { eq, and, inArray, ne, isNotNull } from 'drizzle-orm';
+import { eq, and, inArray, ne, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 import type { LibrarySeries, EpisodeFile, QualityProfileSummary } from '$lib/types/library';
 import { logger } from '$lib/logging';
@@ -127,16 +127,46 @@ export const load: PageServerLoad = async ({ url }) => {
 			}
 		}
 
-		// Fetch all episode files for file-type filtering, size aggregation, and derived episode-file counts.
-		const allEpisodeFiles = await db
-			.select({
-				seriesId: episodeFiles.seriesId,
-				episodeIds: episodeFiles.episodeIds,
-				size: episodeFiles.size,
-				quality: episodeFiles.quality,
-				mediaInfo: episodeFiles.mediaInfo
-			})
-			.from(episodeFiles);
+		// Fetch all episode files for file-type filtering and derived episode-file
+		// counts (episodeIds is a JSON array cross-referenced against aired
+		// episodes below.
+		const resolutionExpr = sql`json_extract(${episodeFiles.quality}, '$.resolution')`;
+		const codecExpr = sql`json_extract(${episodeFiles.mediaInfo}, '$.videoCodec')`;
+		const hdrExpr = sql`json_extract(${episodeFiles.mediaInfo}, '$.hdrFormat')`;
+		const [allEpisodeFiles, sizeBySeriesRows, resolutionRows, codecRows, hdrRows] =
+			await Promise.all([
+				db
+					.select({
+						seriesId: episodeFiles.seriesId,
+						episodeIds: episodeFiles.episodeIds,
+						size: episodeFiles.size,
+						quality: episodeFiles.quality,
+						mediaInfo: episodeFiles.mediaInfo
+					})
+					.from(episodeFiles),
+				db
+					.select({
+						seriesId: episodeFiles.seriesId,
+						total: sql<number>`coalesce(sum(${episodeFiles.size}), 0)`
+					})
+					.from(episodeFiles)
+					.groupBy(episodeFiles.seriesId),
+				db
+					.select({ value: resolutionExpr.as('value') })
+					.from(episodeFiles)
+					.where(sql`${resolutionExpr} IS NOT NULL`)
+					.groupBy(resolutionExpr),
+				db
+					.select({ value: codecExpr.as('value') })
+					.from(episodeFiles)
+					.where(sql`${codecExpr} IS NOT NULL`)
+					.groupBy(codecExpr),
+				db
+					.select({ value: hdrExpr.as('value') })
+					.from(episodeFiles)
+					.where(sql`${hdrExpr} IS NOT NULL`)
+					.groupBy(hdrExpr)
+			]);
 
 		const episodeFilesBySeries = new Map<string, Set<string>>();
 		for (const file of allEpisodeFiles) {
@@ -156,14 +186,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		}
 
 		// Calculate percentages and format data using derived episode/file linkage (source of truth).
-		// Build seriesId -> total size map
-		const seriesTotalSizeMap = new Map<string, number>();
-		for (const file of allEpisodeFiles) {
-			seriesTotalSizeMap.set(
-				file.seriesId,
-				(seriesTotalSizeMap.get(file.seriesId) ?? 0) + (file.size ?? 0)
-			);
-		}
+		const seriesTotalSizeMap = new Map(sizeBySeriesRows.map((r) => [r.seriesId, r.total]));
 
 		const seriesWithStats: (LibrarySeries & {
 			libraryId?: string | null;
@@ -240,18 +263,10 @@ export const load: PageServerLoad = async ({ url }) => {
 			).length
 		}));
 
-		// Extract unique file attribute values for filter dropdowns
-		const uniqueResolutions = new Set<string>();
-		const uniqueCodecs = new Set<string>();
-		const uniqueHdrFormats = new Set<string>();
-
-		for (const file of allEpisodeFiles) {
-			const quality = file.quality as EpisodeFile['quality'];
-			const mediaInfo = file.mediaInfo as EpisodeFile['mediaInfo'];
-			if (quality?.resolution) uniqueResolutions.add(quality.resolution);
-			if (mediaInfo?.videoCodec) uniqueCodecs.add(mediaInfo.videoCodec);
-			if (mediaInfo?.hdrFormat) uniqueHdrFormats.add(mediaInfo.hdrFormat);
-		}
+		// Unique file attribute values for filter dropdowns.
+		const uniqueResolutions = new Set(resolutionRows.map((r) => r.value as string));
+		const uniqueCodecs = new Set(codecRows.map((r) => r.value as string));
+		const uniqueHdrFormats = new Set(hdrRows.map((r) => r.value as string));
 
 		// Fetch quality profiles and resolve the effective default profile ID
 		const dbProfiles = await db
@@ -279,27 +294,38 @@ export const load: PageServerLoad = async ({ url }) => {
 			isDefault: p.id === resolvedDefaultId
 		}));
 
-		// Build sets of series IDs that have matching files (for filtering)
+		// Build sets of series IDs that have matching files (for filtering).
 		const seriesWithResolution = new Set<string>();
 		const seriesWithCodec = new Set<string>();
 		const seriesWithHdr = new Set<string>();
 		const seriesWithSdr = new Set<string>();
+		const needsResolutionMembership = resolution !== 'all';
+		const needsCodecMembership = videoCodec !== 'all';
+		const needsSdrMembership = hdrFormat === 'sdr';
+		const needsHdrMembership = hdrFormat !== 'all' && hdrFormat !== 'sdr';
 
-		for (const file of allEpisodeFiles) {
-			const quality = file.quality as EpisodeFile['quality'];
-			const mediaInfo = file.mediaInfo as EpisodeFile['mediaInfo'];
+		if (
+			needsResolutionMembership ||
+			needsCodecMembership ||
+			needsSdrMembership ||
+			needsHdrMembership
+		) {
+			for (const file of allEpisodeFiles) {
+				const quality = file.quality as EpisodeFile['quality'];
+				const mediaInfo = file.mediaInfo as EpisodeFile['mediaInfo'];
 
-			if (resolution !== 'all' && quality?.resolution === resolution) {
-				seriesWithResolution.add(file.seriesId);
-			}
-			if (videoCodec !== 'all' && mediaInfo?.videoCodec === videoCodec) {
-				seriesWithCodec.add(file.seriesId);
-			}
-			if (!mediaInfo?.hdrFormat) {
-				seriesWithSdr.add(file.seriesId);
-			}
-			if (hdrFormat !== 'all' && hdrFormat !== 'sdr' && mediaInfo?.hdrFormat === hdrFormat) {
-				seriesWithHdr.add(file.seriesId);
+				if (needsResolutionMembership && quality?.resolution === resolution) {
+					seriesWithResolution.add(file.seriesId);
+				}
+				if (needsCodecMembership && mediaInfo?.videoCodec === videoCodec) {
+					seriesWithCodec.add(file.seriesId);
+				}
+				if (needsSdrMembership && !mediaInfo?.hdrFormat) {
+					seriesWithSdr.add(file.seriesId);
+				}
+				if (needsHdrMembership && mediaInfo?.hdrFormat === hdrFormat) {
+					seriesWithHdr.add(file.seriesId);
+				}
 			}
 		}
 
@@ -480,18 +506,10 @@ export const actions: Actions = {
 				) ?? defaultLibrary;
 
 			if (!selectedLibrary) {
-				const allSeriesIds = (await db.select({ id: series.id }).from(series)).map((s) => s.id);
+				// Global toggle across every series - no scoping needed for the cascade.
 				await db.update(series).set({ monitored });
-				if (allSeriesIds.length > 0) {
-					await db
-						.update(seasons)
-						.set({ monitored })
-						.where(inArray(seasons.seriesId, allSeriesIds));
-					await db
-						.update(episodes)
-						.set({ monitored })
-						.where(inArray(episodes.seriesId, allSeriesIds));
-				}
+				await db.update(seasons).set({ monitored });
+				await db.update(episodes).set({ monitored });
 				libraryMediaEvents.emitLibraryDataChanged({
 					source: 'series',
 					reason: 'toggle-all-monitored'
@@ -499,16 +517,31 @@ export const actions: Actions = {
 				return { success: true };
 			}
 
-			const allSeries = await db
+			// Series with a real libraryId (the modern, common case) can be updated
+			// and cascaded directly via a correlated subquery - no row fetch needed.
+			// Only legacy series with libraryId NULL need the join-based subtype
+			// inference below, scoped to just that (shrinking) subset.
+			const modernSeriesIds = db
+				.select({ id: series.id })
+				.from(series)
+				.where(eq(series.libraryId, selectedLibrary.id));
+			await db.update(series).set({ monitored }).where(eq(series.libraryId, selectedLibrary.id));
+			await db.update(seasons).set({ monitored }).where(inArray(seasons.seriesId, modernSeriesIds));
+			await db
+				.update(episodes)
+				.set({ monitored })
+				.where(inArray(episodes.seriesId, modernSeriesIds));
+
+			const legacySeries = await db
 				.select({
 					id: series.id,
-					libraryId: series.libraryId,
 					rootFolderMediaSubType: rootFolders.mediaSubType,
 					libraryMediaSubType: libraries.mediaSubType
 				})
 				.from(series)
 				.leftJoin(rootFolders, eq(series.rootFolderId, rootFolders.id))
-				.leftJoin(libraries, eq(series.libraryId, libraries.id));
+				.leftJoin(libraries, eq(series.libraryId, libraries.id))
+				.where(isNull(series.libraryId));
 
 			const inferLegacySubtype = (show: {
 				rootFolderMediaSubType?: string | null;
@@ -518,11 +551,8 @@ export const actions: Actions = {
 				return candidate === 'anime' ? 'anime' : 'standard';
 			};
 
-			const scopedIds = allSeries
+			const scopedIds = legacySeries
 				.filter((show) => {
-					if (show.libraryId) {
-						return show.libraryId === selectedLibrary.id;
-					}
 					const inferredSubtype = inferLegacySubtype(show);
 					if (selectedLibrary.mediaSubType === 'anime') return inferredSubtype === 'anime';
 					if (selectedLibrary.mediaSubType === 'standard') return inferredSubtype === 'standard';
