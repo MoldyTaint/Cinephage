@@ -6,6 +6,8 @@ import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 import { syncSchema } from './schema-sync';
+import { tableExists, getAppliedMigrations, getSchemaVersion } from './migration-helpers';
+import { MIGRATIONS } from './migrations/index';
 
 // Ensure data directory exists before creating database connection
 const DATA_DIR = process.env.DATA_DIR || 'data';
@@ -20,7 +22,12 @@ try {
 	sqlite.pragma('journal_mode = WAL');
 	sqlite.pragma('synchronous = NORMAL');
 	sqlite.pragma('busy_timeout = 5000');
+	sqlite.pragma('wal_autocheckpoint = 4000');
+	sqlite.pragma('temp_store = MEMORY');
 	sqlite.pragma('foreign_keys = ON');
+	// 32MB page cache: reduces re-reads of hot tables (episodes, storage_items, episode_files)
+	// during reconcile and scan passes on large libraries.
+	sqlite.pragma('cache_size = -32000');
 } catch (error) {
 	logger.warn(
 		{
@@ -48,14 +55,72 @@ let initialized = false;
  * 2. Existing database - Ensures all tables exist, runs incremental updates
  * 3. Migration-era database - Backward compatible with old migration system
  */
+function runStartupMaintenance(): void {
+	// Maintenance must never brick boot: on constrained deployments a VACUUM
+	// can fail (OOM kill mid-write, pre-existing corruption) and a thrown
+	// error here previously left the whole app unstartable with no recovery
+	// path short of hand-editing the data directory (#513).
+	try {
+		runVacuumMaintenance();
+	} catch (err) {
+		logger.error(
+			{
+				err: err instanceof Error ? err : new Error(String(err))
+			},
+			'[DB] Startup maintenance failed; continuing without it. ' +
+				'If errors persist, restore from Settings > System > Database Backups.'
+		);
+	}
+}
+
+function runVacuumMaintenance(): void {
+	// One-time: switch from auto_vacuum=NONE to INCREMENTAL so deleted pages are
+	// reclaimed incrementally instead of building up as freelist bloat.
+	// PRAGMA auto_vacuum can only change outside a transaction and requires VACUUM
+	// to take effect — the pragma value itself (2 = INCREMENTAL) is the done-marker.
+	const autoVacuumMode = sqlite.pragma('auto_vacuum', { simple: true }) as number;
+
+	if (autoVacuumMode !== 2) {
+		logger.info(
+			'[DB] Running one-time VACUUM to reclaim freelist space and enable incremental auto-vacuum (this may take a moment)...'
+		);
+		const start = Date.now();
+		sqlite.pragma('auto_vacuum = INCREMENTAL');
+		sqlite.exec('VACUUM');
+		logger.info({ durationMs: Date.now() - start }, '[DB] VACUUM complete');
+		return;
+	}
+
+	// Every startup: reclaim any pages freed since last run.
+	sqlite.pragma('incremental_vacuum');
+}
+
 export async function initializeDatabase(): Promise<void> {
 	if (initialized) return;
 
 	try {
 		logger.info('Initializing database...');
 
+		// Pre-update backup: if pending migrations exist, snapshot the DB before applying them.
+		// Only triggered on existing installs (schema_migrations table present) with new migrations.
+		const hasMigrationsTable = tableExists(sqlite, 'schema_migrations');
+		if (hasMigrationsTable) {
+			const applied = getAppliedMigrations(sqlite);
+			const hasPending = MIGRATIONS.some((m) => {
+				const row = applied.get(m.version);
+				return !row || row.success === 0;
+			});
+			if (hasPending) {
+				const { dbBackupService } = await import('./DbBackupService.js');
+				const schemaVersion = getSchemaVersion(sqlite);
+				await dbBackupService.runPreUpdateBackup(sqlite, schemaVersion);
+			}
+		}
+
 		// Use embedded schema sync (no external migration files needed)
 		syncSchema(sqlite);
+
+		runStartupMaintenance();
 
 		const { keywordBlocklistService } =
 			await import('$lib/server/settings/KeywordBlocklistService.js');

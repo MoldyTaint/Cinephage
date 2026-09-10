@@ -306,13 +306,16 @@ export const tmdb = {
 			`/movie/${id}?append_to_response=credits,videos,images,recommendations,similar,watch/providers,release_dates,keywords&include_image_language=null,en`
 		) as Promise<MovieDetails>;
 	},
-	async getTVShow(id: number): Promise<TVShowDetails> {
+	async getTVShow(id: number, language?: string | null): Promise<TVShowDetails> {
+		const languageQuery = language ? `language=${language}&` : '';
 		return this.fetch(
-			`/tv/${id}?append_to_response=credits,videos,images,recommendations,similar,watch/providers,content_ratings,keywords&include_image_language=null,en`
+			`/tv/${id}?${languageQuery}append_to_response=credits,videos,images,recommendations,similar,watch/providers,content_ratings,keywords&include_image_language=null,en`
 		) as Promise<TVShowDetails>;
 	},
-	async getSeason(tvId: number, seasonNumber: number): Promise<Season> {
-		return this.fetch(`/tv/${tvId}/season/${seasonNumber}`) as Promise<Season>;
+	async getSeason(tvId: number, seasonNumber: number, language?: string | null): Promise<Season> {
+		return this.fetch(
+			`/tv/${tvId}/season/${seasonNumber}${language ? `?language=${language}` : ''}`
+		) as Promise<Season>;
 	},
 	async getEpisodeGroups(tvId: number): Promise<EpisodeGroupsResponse> {
 		return this.fetch(`/tv/${tvId}/episode_groups`) as Promise<EpisodeGroupsResponse>;

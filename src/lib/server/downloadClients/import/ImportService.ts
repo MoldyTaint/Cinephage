@@ -24,7 +24,8 @@ import {
 	episodes,
 	episodeFiles,
 	rootFolders,
-	downloadClients
+	downloadClients,
+	importFailures
 } from '$lib/server/db/schema';
 import { eq, and, or, inArray, gte } from 'drizzle-orm';
 import { downloadMonitor } from '../monitoring/DownloadMonitorService';
@@ -55,7 +56,7 @@ import {
 	type MediaNamingInfo
 } from '$lib/server/library/naming/NamingService';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger, runWithLogContext } from '$lib/logging';
 import { todayDateString } from '$lib/utils/format.js';
 import {
 	DOWNLOAD,
@@ -68,8 +69,8 @@ import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.
 import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import { getMediaParseStem } from '$lib/server/library/media-utils.js';
 import {
-	getMediaParseStem,
 	matchEpisodesByIdentifier,
 	matchEpisodesFromQueueContext as matchEpisodesFromQueueContextShared,
 	resolveEpisodeIdentifierWithFallback as resolveEpisodeIdentifierWithFallbackShared,
@@ -78,6 +79,58 @@ import {
 import { isImportedQueueStatus, type QueueStatus } from '$lib/types/queue';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
+
+type ImportFailureStage =
+	| 'path_resolution'
+	| 'dangerous_files'
+	| 'disk_space'
+	| 'root_folder'
+	| 'library_entity'
+	| 'transfer'
+	| 'max_retries';
+
+type ImportFailureReason =
+	| 'path_unavailable'
+	| 'library_entity_missing'
+	| 'root_folder_unavailable'
+	| 'insufficient_disk_space'
+	| 'dangerous_files_detected'
+	| 'transfer_failed'
+	| 'max_retries_exceeded'
+	| 'no_linked_media';
+
+async function recordImportFailure(opts: {
+	releaseTitle: string;
+	sourcePath?: string;
+	destinationPath?: string;
+	failureStage: ImportFailureStage;
+	reason: ImportFailureReason;
+	reasonDetail?: string;
+	dangerousFiles?: Array<{ path: string; extension: string }>;
+	attemptCount?: number;
+	downloadClientId?: string | null;
+	correlationId?: string;
+}): Promise<void> {
+	try {
+		await db.insert(importFailures).values({
+			id: randomUUID(),
+			correlationId: opts.correlationId ?? randomUUID(),
+			releaseTitle: opts.releaseTitle,
+			sourcePath: opts.sourcePath ?? null,
+			destinationPath: opts.destinationPath ?? null,
+			failureStage: opts.failureStage,
+			reason: opts.reason,
+			reasonDetail: opts.reasonDetail ?? null,
+			dangerousFiles: opts.dangerousFiles ?? null,
+			attemptCount: opts.attemptCount ?? 1,
+			downloadClientId: opts.downloadClientId ?? null,
+			failedAt: new Date().toISOString(),
+			status: 'failed'
+		});
+	} catch (err) {
+		logger.warn({ err }, '[ImportService] Failed to persist import failure record');
+	}
+}
 
 /**
  * Import result for a single file
@@ -111,6 +164,9 @@ export interface ImportJobResult {
 	failedFiles: ImportResult[];
 	totalSize: number;
 	error?: string;
+	failureStage?: ImportFailureStage;
+	failureReason?: ImportFailureReason;
+	dangerousFiles?: Array<{ path: string; extension: string }>;
 }
 
 interface ImportableFileOptions {
@@ -403,7 +459,8 @@ export class ImportService extends EventEmitter {
 			// Mark as failed in the database
 			downloadMonitor.markFailed(
 				queueItemId,
-				`Import failed after ${attempts} attempts: ${reason}`
+				`Import failed after ${attempts} attempts: ${reason}`,
+				{ terminalImport: true }
 			);
 			return;
 		}
@@ -504,6 +561,17 @@ export class ImportService extends EventEmitter {
 	 * Process a single import
 	 */
 	async processImport(queueItemId: string): Promise<ImportJobResult> {
+		const correlationId = randomUUID();
+		return runWithLogContext(
+			{ correlationId, requestId: correlationId, logDomain: 'imports' },
+			() => this._processImport(queueItemId, correlationId)
+		);
+	}
+
+	private async _processImport(
+		queueItemId: string,
+		correlationId: string
+	): Promise<ImportJobResult> {
 		logger.info({ queueItemId }, 'Processing import');
 
 		// Get queue item
@@ -597,6 +665,13 @@ export class ImportService extends EventEmitter {
 
 		if (markResult === 'max_attempts') {
 			worker.fail('Max import attempts exceeded');
+			recordImportFailure({
+				releaseTitle: queueItem.title ?? queueItemId,
+				failureStage: 'max_retries',
+				reason: 'max_retries_exceeded',
+				downloadClientId: queueItem.downloadClientId,
+				correlationId
+			});
 			return {
 				success: false,
 				queueItemId,
@@ -712,6 +787,18 @@ export class ImportService extends EventEmitter {
 				});
 			} else {
 				worker.fail(result.error || 'Import failed');
+				// Persist import failure for diagnostic reports (fire-and-forget)
+				const downloadPath = queueItem.outputPath || queueItem.clientDownloadPath;
+				recordImportFailure({
+					releaseTitle: queueItem.title ?? queueItem.id,
+					sourcePath: downloadPath ?? undefined,
+					failureStage: result.failureStage ?? 'transfer',
+					reason: result.failureReason ?? 'transfer_failed',
+					reasonDetail: result.error,
+					dangerousFiles: result.dangerousFiles,
+					downloadClientId: queueItem.downloadClientId,
+					correlationId
+				});
 			}
 
 			return result;
@@ -719,6 +806,15 @@ export class ImportService extends EventEmitter {
 			const errorMessage = error instanceof Error ? error.message : String(error);
 			await downloadMonitor.markFailed(queueItemId, errorMessage);
 			worker.fail(errorMessage);
+
+			// Persist the exception case
+			recordImportFailure({
+				releaseTitle: queueItemId,
+				failureStage: 'transfer',
+				reason: 'transfer_failed',
+				reasonDetail: errorMessage,
+				correlationId
+			});
 
 			return {
 				success: false,
@@ -762,7 +858,9 @@ export class ImportService extends EventEmitter {
 
 		if (!movie) {
 			result.error = 'Movie not found in library';
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			result.failureStage = 'library_entity';
+			result.failureReason = 'library_entity_missing';
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			return result;
 		}
 
@@ -775,14 +873,18 @@ export class ImportService extends EventEmitter {
 
 		if (!rootFolder) {
 			result.error = 'Root folder not found';
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			result.failureStage = 'root_folder';
+			result.failureReason = 'root_folder_unavailable';
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			return result;
 		}
 
 		// Check if root folder is read-only
 		if (rootFolder.readOnly) {
 			result.error = 'Cannot import to read-only root folder';
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			result.failureStage = 'root_folder';
+			result.failureReason = 'root_folder_unavailable';
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			worker.log('error', 'Root folder is read-only, cannot import files');
 			return result;
 		}
@@ -791,6 +893,8 @@ export class ImportService extends EventEmitter {
 		const downloadPath = queueItem.outputPath || queueItem.clientDownloadPath;
 		if (!downloadPath) {
 			result.error = 'Download path not available';
+			result.failureStage = 'path_resolution';
+			result.failureReason = 'path_unavailable';
 			await downloadMonitor.markFailed(queueItem.id, result.error);
 			return result;
 		}
@@ -802,6 +906,9 @@ export class ImportService extends EventEmitter {
 				.map((f) => `${basename(f.path)} (${f.extension})`)
 				.join(', ');
 			result.error = `Caution: Found potentially dangerous files: ${fileList}`;
+			result.failureStage = 'dangerous_files';
+			result.failureReason = 'dangerous_files_detected';
+			result.dangerousFiles = dangerousScan.dangerousFiles;
 			logger.warn(
 				{
 					downloadPath,
@@ -809,7 +916,7 @@ export class ImportService extends EventEmitter {
 				},
 				'Rejecting import due to dangerous files'
 			);
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			worker.log('error', result.error);
 			return result;
 		}
@@ -819,6 +926,8 @@ export class ImportService extends EventEmitter {
 
 		if (videoFiles.length === 0) {
 			result.error = 'No video files found in download';
+			result.failureStage = 'path_resolution';
+			result.failureReason = 'path_unavailable';
 			await downloadMonitor.markFailed(queueItem.id, result.error);
 			return result;
 		}
@@ -831,7 +940,9 @@ export class ImportService extends EventEmitter {
 		);
 		if (blockedExtCheck) {
 			result.error = blockedExtCheck;
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			result.failureStage = 'path_resolution';
+			result.failureReason = 'path_unavailable';
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			worker.log('error', result.error);
 			return result;
 		}
@@ -884,6 +995,8 @@ export class ImportService extends EventEmitter {
 			if (!hasSpace) {
 				const msg = `Insufficient disk space on destination: less than ${minFreeGb} GB free`;
 				result.error = msg;
+				result.failureStage = 'disk_space';
+				result.failureReason = 'insufficient_disk_space';
 				worker.log('error', msg);
 				await downloadMonitor.markFailed(queueItem.id, msg);
 				return result;
@@ -910,6 +1023,8 @@ export class ImportService extends EventEmitter {
 				error: transferResult.error
 			});
 			result.error = `Failed to transfer file: ${transferResult.error}`;
+			result.failureStage = 'transfer';
+			result.failureReason = 'transfer_failed';
 			worker.fileProcessed(basename(mainFile.path), false, transferResult.error);
 			await downloadMonitor.markFailed(queueItem.id, result.error);
 			return result;
@@ -1183,7 +1298,7 @@ export class ImportService extends EventEmitter {
 
 		if (!seriesData) {
 			result.error = 'Series not found in library';
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			return result;
 		}
 
@@ -1200,14 +1315,14 @@ export class ImportService extends EventEmitter {
 
 		if (!rootFolder) {
 			result.error = 'Root folder not found';
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			return result;
 		}
 
 		// Check if root folder is read-only
 		if (rootFolder.readOnly) {
 			result.error = 'Cannot import to read-only root folder';
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			worker.log('error', 'Root folder is read-only, cannot import files');
 			return result;
 		}
@@ -1234,7 +1349,7 @@ export class ImportService extends EventEmitter {
 				},
 				'Rejecting import due to dangerous files'
 			);
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			worker.log('error', result.error);
 			return result;
 		}
@@ -1269,7 +1384,7 @@ export class ImportService extends EventEmitter {
 		);
 		if (blockedExtCheck) {
 			result.error = blockedExtCheck;
-			await downloadMonitor.markFailed(queueItem.id, result.error);
+			await downloadMonitor.markFailed(queueItem.id, result.error, { terminalImport: true });
 			worker.log('error', result.error);
 			return result;
 		}
@@ -1683,10 +1798,13 @@ export class ImportService extends EventEmitter {
 		} else {
 			// Create new file record
 			fileId = randomUUID();
-			await db.insert(episodeFiles).values({
-				id: fileId,
-				...fileData
-			});
+			await db
+				.insert(episodeFiles)
+				.values({
+					id: fileId,
+					...fileData
+				})
+				.onConflictDoNothing();
 		}
 
 		// Update episode hasFile flags
@@ -2799,6 +2917,7 @@ export class ImportService extends EventEmitter {
 			downloadClientId: queueItem.downloadClientId,
 			downloadClientName: client?.name,
 			downloadId: queueItem.downloadId,
+			infoHash: queueItem.infoHash,
 			title: extras.title ?? queueItem.title,
 			indexerId: queueItem.indexerId,
 			indexerName: queueItem.indexerName,

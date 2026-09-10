@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { FolderOpen, BarChart3, Search, Captions } from 'lucide-svelte';
 	import { resolve } from '$app/paths';
-	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
+	import { getWritableRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import { formatBytes } from '$lib/utils/format.js';
 	import type { RootFolderWithSpaceAndDefault as RootFolder } from '$lib/types/downloadClient.js';
@@ -43,7 +43,7 @@
 	}: Props = $props();
 
 	const filteredRootFolders = $derived(
-		sortRootFoldersForMediaType(rootFolders, mediaType, requiredMediaSubType)
+		getWritableRootFoldersForMediaType(rootFolders, mediaType, requiredMediaSubType)
 	);
 	const selectedRootFolderObj = $derived(
 		filteredRootFolders.find((f) => f.id === selectedRootFolder)

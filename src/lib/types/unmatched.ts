@@ -16,6 +16,7 @@ export interface UnmatchedFile {
 	suggestedMatches: SuggestedMatch[] | null;
 	reason: UnmatchedReason | null;
 	discoveredAt: string;
+	correlationId: string | null;
 }
 
 export interface SuggestedMatch {
@@ -29,9 +30,12 @@ export type UnmatchedReason =
 	| 'no_match'
 	| 'low_confidence'
 	| 'multiple_matches'
+	| 'ambiguous'
 	| 'rejected'
 	| 'parse_error'
-	| 'manual_review';
+	| 'parse_failed'
+	| 'manual_review'
+	| 'root_folder_conflict';
 
 export interface UnmatchedFolder {
 	folderPath: string;

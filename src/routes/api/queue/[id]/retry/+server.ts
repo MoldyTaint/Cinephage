@@ -7,10 +7,12 @@ import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadCl
 import { getImportService } from '$lib/server/downloadClients/import';
 import { getContentPath, buildTorrentRecoveryPath } from '$lib/server/downloadClients/monitoring';
 import type { DownloadInfo } from '$lib/server/downloadClients/core/interfaces';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { redactUrl } from '$lib/server/utils/urlSecurity';
 import { matchesImportError } from '$lib/types/activity.js';
 import { DebridHandler } from '$lib/server/downloads/handlers/DebridHandler.js';
+
+const logger = createChildLogger({ module: 'QueueRetryApi', logDomain: 'downloads' });
 
 const MAX_IMPORT_ATTEMPTS = 10;
 const AMBIGUOUS_SUBMISSION_MARKER = '[ambiguous_submission]';

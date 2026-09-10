@@ -4,8 +4,11 @@ import { z } from 'zod';
 import { manualImportSchema } from '$lib/validation/schemas.js';
 import { manualImportQueueService } from '$lib/server/library/ManualImportQueueService.js';
 import { isPathAllowed, isPathInsideManagedRoot } from '$lib/server/filesystem/path-guard.js';
-import { logger } from '$lib/logging';
+import { MAX_BULK_IMPORT_JOBS } from '$lib/shared/bulk-import.js';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryImportBulkApi', logDomain: 'scans' });
 
 const bulkSchema = z.object({
 	jobs: z
@@ -16,7 +19,7 @@ const bulkSchema = z.object({
 			})
 		)
 		.min(1)
-		.max(500)
+		.max(MAX_BULK_IMPORT_JOBS)
 });
 
 export const POST: RequestHandler = async (event) => {
@@ -28,7 +31,13 @@ export const POST: RequestHandler = async (event) => {
 		let body: unknown;
 		try {
 			body = await request.json();
-		} catch {
+		} catch (error) {
+			// adapter-node aborts the request stream when the body exceeds
+			// BODY_SIZE_LIMIT, surfacing here as a 413 Payload Too Large.
+			const status = (error as { status?: number } | null)?.status;
+			if (status === 413) {
+				return json({ success: false, error: 'Request payload too large' }, { status: 413 });
+			}
 			return json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
 		}
 

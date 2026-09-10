@@ -1,20 +1,27 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { RenamePreviewService } from '$lib/server/library/naming/RenamePreviewService';
-import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { parseBody } from '$lib/server/api/validate.js';
-import { z } from 'zod';
+import { ValidationError } from '$lib/errors';
+import { diskScanService } from '$lib/server/library/disk-scan.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { renamePreviewCache } from '$lib/server/library/naming/RenamePreviewCache.js';
+import { renameExecuteSchema } from '$lib/server/library/naming/rename-execute-schema.js';
+import { createChildLogger } from '$lib/logging';
 
-const renameExecuteSchema = z.object({
-	fileIds: z.array(z.string()).min(1, 'fileIds array is required and must not be empty'),
-	mediaType: z.enum(['movie', 'episode', 'mixed']).optional().default('mixed')
-});
+const logger = createChildLogger({ module: 'RenameExecuteApi', logDomain: 'scans' });
 
 export const POST: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);
 	if (authError) return authError;
+
+	if (diskScanService.scanning) {
+		return json(
+			{ error: 'A library scan is in progress. Wait for it to finish, then retry the rename.' },
+			{ status: 409 }
+		);
+	}
 
 	const { request } = event;
 	try {
@@ -45,13 +52,23 @@ export const POST: RequestHandler = async (event) => {
 				source: mediaType === 'episode' ? 'series' : 'movie',
 				reason: 'renames-executed'
 			});
+			// Invalidate preview cache: paths have changed on disk and in the DB.
+			renamePreviewCache.invalidateAll();
 		}
 
 		return json(result);
 	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (/scan is in progress/i.test(message)) {
+			return json({ error: message }, { status: 409 });
+		}
+		if (error instanceof ValidationError) {
+			return json({ error: message }, { status: 400 });
+		}
+
 		logger.error(
 			{
-				error: error instanceof Error ? error.message : String(error)
+				error
 			},
 			'[RenameExecute API] Failed to execute renames'
 		);

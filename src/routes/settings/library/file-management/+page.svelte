@@ -122,13 +122,13 @@
 					type="radio"
 					name="importMode"
 					value="move"
-					class="radio radio-primary mt-0.5 shrink-0"
+					class="radio mt-0.5 shrink-0 radio-primary"
 					bind:group={importMode}
 				/>
 				<div class="min-w-0 flex-1">
 					<div class="flex items-center gap-2">
 						<span class="font-medium">{m.settings_fileManagement_moveLabel()}</span>
-						<span class="badge badge-primary badge-sm">Recommended</span>
+						<span class="badge badge-sm badge-primary">Recommended</span>
 					</div>
 					<p class="mt-1 text-sm text-base-content/60">
 						{m.settings_fileManagement_moveDesc()}
@@ -147,7 +147,7 @@
 					type="radio"
 					name="importMode"
 					value="copy"
-					class="radio radio-primary mt-0.5 shrink-0"
+					class="radio mt-0.5 shrink-0 radio-primary"
 					bind:group={importMode}
 				/>
 				<div class="min-w-0 flex-1">
@@ -169,7 +169,7 @@
 					type="radio"
 					name="importMode"
 					value="symlink"
-					class="radio radio-primary mt-0.5 shrink-0"
+					class="radio mt-0.5 shrink-0 radio-primary"
 					bind:group={importMode}
 				/>
 				<div class="min-w-0 flex-1">
@@ -193,7 +193,7 @@
 			>
 				<input
 					type="checkbox"
-					class="checkbox checkbox-primary mt-0.5 shrink-0"
+					class="checkbox mt-0.5 shrink-0 checkbox-primary"
 					bind:checked={preferHardlink}
 				/>
 				<div class="min-w-0 flex-1">
@@ -214,7 +214,7 @@
 			<label class="label-text text-sm font-medium" for="minFreeSpace">
 				{m.settings_fileManagement_minimumFreeSpaceLabel()}
 			</label>
-			<p class="text-sm text-base-content/70 mb-2">
+			<p class="mb-2 text-sm text-base-content/70">
 				{m.settings_fileManagement_minimumFreeSpaceDesc()}
 			</p>
 			<div class="flex items-center gap-2">
@@ -223,7 +223,7 @@
 					type="number"
 					min="0"
 					step="1"
-					class="input input-bordered w-32"
+					class="input-bordered input w-32"
 					bind:value={minimumFreeSpaceGb}
 				/>
 				<span class="text-sm text-base-content/70">
@@ -244,7 +244,7 @@
 		>
 			<input
 				type="checkbox"
-				class="checkbox checkbox-primary mt-0.5 shrink-0"
+				class="checkbox mt-0.5 shrink-0 checkbox-primary"
 				bind:checked={deleteEmptyFolders}
 			/>
 			<div class="min-w-0 flex-1">
@@ -267,7 +267,7 @@
 		>
 			<input
 				type="checkbox"
-				class="checkbox checkbox-primary mt-0.5 shrink-0"
+				class="checkbox mt-0.5 shrink-0 checkbox-primary"
 				bind:checked={recycleEnabled}
 			/>
 			<div class="min-w-0 flex-1">
@@ -311,7 +311,7 @@
 					type="radio"
 					name="permissionsMode"
 					value="default"
-					class="radio radio-primary mt-0.5 shrink-0"
+					class="radio mt-0.5 shrink-0 radio-primary"
 					bind:group={permissionsMode}
 				/>
 				<div class="min-w-0 flex-1">
@@ -333,7 +333,7 @@
 					type="radio"
 					name="permissionsMode"
 					value="preserve"
-					class="radio radio-primary mt-0.5 shrink-0"
+					class="radio mt-0.5 shrink-0 radio-primary"
 					bind:group={permissionsMode}
 				/>
 				<div class="min-w-0 flex-1">
@@ -355,7 +355,7 @@
 					type="radio"
 					name="permissionsMode"
 					value="custom"
-					class="radio radio-primary mt-0.5 shrink-0"
+					class="radio mt-0.5 shrink-0 radio-primary"
 					bind:group={permissionsMode}
 				/>
 				<div class="min-w-0 flex-1">
@@ -367,7 +367,7 @@
 						<div class="mt-3">
 							<input
 								type="text"
-								class="input input-bordered w-32 font-mono {chmodError ? 'input-error' : ''}"
+								class="input-bordered input w-32 font-mono {chmodError ? 'input-error' : ''}"
 								placeholder={m.settings_fileManagement_permissionsChmodPlaceholder()}
 								bind:value={chmodInput}
 							/>
@@ -389,14 +389,14 @@
 			<label class="label-text text-sm font-medium" for="defaultImportFolder">
 				{m.settings_fileManagement_defaultImportFolderLabel()}
 			</label>
-			<p class="text-sm text-base-content/70 mb-2">
+			<p class="mb-2 text-sm text-base-content/70">
 				{m.settings_fileManagement_defaultImportFolderDesc()}
 			</p>
 			<div class="flex items-center gap-2">
 				<input
 					id="defaultImportFolder"
 					type="text"
-					class="input input-bordered flex-1"
+					class="input-bordered input flex-1"
 					placeholder={m.settings_fileManagement_defaultImportFolderPlaceholder()}
 					bind:value={defaultImportFolder}
 				/>
@@ -438,7 +438,7 @@
 	<div class="flex justify-end">
 		<button class="btn btn-primary" onclick={save} disabled={saving || !canSave}>
 			{#if saving}
-				<span class="loading loading-spinner loading-sm"></span>
+				<span class="loading loading-sm loading-spinner"></span>
 			{:else}
 				<FolderSync class="h-4 w-4" />
 			{/if}

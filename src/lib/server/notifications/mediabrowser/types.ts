@@ -76,6 +76,26 @@ export interface MediaBrowserServerPublic {
 export type LibraryUpdateType = 'Created' | 'Modified' | 'Deleted';
 
 /**
+ * The library-changing operation that caused an update. Used to enforce the
+ * per-server event toggles (onImport/onUpgrade/onRename/onDelete).
+ */
+export type MediaEventKind = 'import' | 'upgrade' | 'rename' | 'delete';
+
+/**
+ * Which media_browser_servers toggle column governs each event kind.
+ * Toggles are nullable; null is treated as enabled (schema default).
+ */
+export const MEDIA_EVENT_KIND_TOGGLE: Record<
+	MediaEventKind,
+	'onImport' | 'onUpgrade' | 'onRename' | 'onDelete'
+> = {
+	import: 'onImport',
+	upgrade: 'onUpgrade',
+	rename: 'onRename',
+	delete: 'onDelete'
+};
+
+/**
  * Single library update entry
  */
 export interface LibraryUpdateEntry {
@@ -127,4 +147,7 @@ export interface PendingUpdate {
 	path: string;
 	updateType: LibraryUpdateType;
 	addedAt: number;
+	/** Event kind for per-server toggle enforcement. Undefined = legacy update,
+	 *  delivered to every enabled server (backward compatibility). */
+	eventKind?: MediaEventKind;
 }

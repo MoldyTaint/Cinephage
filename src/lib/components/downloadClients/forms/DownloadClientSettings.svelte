@@ -11,6 +11,7 @@
 		recentPriority?: 'normal' | 'high' | 'force';
 		olderPriority?: 'normal' | 'high' | 'force';
 		initialState?: 'start' | 'pause' | 'force';
+		sequentialDownload?: boolean;
 		downloadPathLocal?: string;
 		downloadPathRemote?: string;
 		tempPathLocal?: string;
@@ -36,6 +37,7 @@
 		recentPriority = $bindable(),
 		olderPriority = $bindable(),
 		initialState = $bindable(),
+		sequentialDownload = $bindable(),
 		downloadPathLocal = $bindable(),
 		downloadPathRemote = $bindable(),
 		tempPathLocal = $bindable(),
@@ -199,6 +201,20 @@
 				</div>
 			</div>
 		{/if}
+
+		{#if definition?.id === 'qbittorrent'}
+			<label class="label mt-3 cursor-pointer justify-start gap-2" for="sequentialDownload">
+				<input
+					id="sequentialDownload"
+					type="checkbox"
+					class="checkbox checkbox-sm"
+					bind:checked={sequentialDownload}
+				/>
+				<span class="label-text text-sm"
+					>{m.settings_integrations_downloadClients_sequentialDownload()}</span
+				>
+			</label>
+		{/if}
 	{/if}
 {/if}
 
@@ -245,7 +261,7 @@
 					<input
 						id="downloadPathLocal"
 						type="text"
-						class="input-bordered input input-sm join-item flex-1"
+						class="input-bordered input join-item flex-1 input-sm"
 						bind:value={downloadPathLocal}
 						placeholder="/mnt/downloads"
 					/>
@@ -294,7 +310,7 @@
 						<input
 							id="tempPathLocal"
 							type="text"
-							class="input-bordered input input-sm join-item flex-1"
+							class="input-bordered input join-item flex-1 input-sm"
 							bind:value={tempPathLocal}
 							placeholder="/mnt/incomplete"
 						/>

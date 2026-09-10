@@ -31,7 +31,7 @@
 		<input
 			type="text"
 			placeholder={m.search_placeholder_filterResults()}
-			class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 px-4 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none sm:w-48"
+			class="input w-full rounded-full border-base-content/20 bg-base-200/60 px-4 transition-all duration-200 input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none sm:w-48"
 			value={filterQuery}
 			oninput={(e) => onFilterChange(e.currentTarget.value)}
 		/>
@@ -68,33 +68,33 @@
 		<span class="text-xs text-base-content/60">{m.search_label_sort()}</span>
 		<div class="join">
 			<button
-				class="btn btn-xs join-item {sortBy === 'score'
+				class="btn join-item btn-xs {sortBy === 'score'
 					? 'btn-primary'
-					: 'btn-ghost border border-base-content/20'}"
+					: 'border border-base-content/20 btn-ghost'}"
 				onclick={() => onSortByChange('score')}
 			>
 				{m.search_sort_score()}
 			</button>
 			<button
-				class="btn btn-xs join-item {sortBy === 'seeders'
+				class="btn join-item btn-xs {sortBy === 'seeders'
 					? 'btn-primary'
-					: 'btn-ghost border border-base-content/20'}"
+					: 'border border-base-content/20 btn-ghost'}"
 				onclick={() => onSortByChange('seeders')}
 			>
 				{m.search_sort_seeders()}
 			</button>
 			<button
-				class="btn btn-xs join-item {sortBy === 'size'
+				class="btn join-item btn-xs {sortBy === 'size'
 					? 'btn-primary'
-					: 'btn-ghost border border-base-content/20'}"
+					: 'border border-base-content/20 btn-ghost'}"
 				onclick={() => onSortByChange('size')}
 			>
 				{m.search_sort_size()}
 			</button>
 			<button
-				class="btn btn-xs join-item {sortBy === 'age'
+				class="btn join-item btn-xs {sortBy === 'age'
 					? 'btn-primary'
-					: 'btn-ghost border border-base-content/20'}"
+					: 'border border-base-content/20 btn-ghost'}"
 				onclick={() => onSortByChange('age')}
 			>
 				Age

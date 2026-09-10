@@ -2,14 +2,16 @@
 	import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
 	import { Download, Loader2, Search, CalendarSync, CalendarClock, X, Trash2 } from 'lucide-svelte';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { copyToClipboard } from '$lib/utils/clipboard';
 
 	import * as m from '$lib/paraglide/messages.js';
 	import { SettingsPage } from '$lib/components/ui/settings';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
-	import type {
-		CapturedLogDomain,
-		CapturedLogEntry,
-		CapturedLogLevel
+	import {
+		DOMAIN_LABELS,
+		type CapturedLogDomain,
+		type CapturedLogEntry,
+		type CapturedLogLevel
 	} from '$lib/logging/log-capture';
 	import { createDynamicSSE } from '$lib/sse';
 	import { toasts } from '$lib/stores/toast.svelte';
@@ -31,6 +33,8 @@
 		retentionDays: number;
 		defaultRetentionDays: number;
 		maxRetentionDays: number;
+		minLevel: CapturedLogLevel;
+		defaultMinLevel: CapturedLogLevel;
 	}
 
 	interface LogHistoryResponse {
@@ -44,13 +48,43 @@
 	}
 
 	const LIVE_BUFFER_LIMIT = 300;
+	const MAX_LIVE_ENTRIES = 500;
+	const MAX_TOTAL_ENTRIES = 5000;
 	const DEFAULT_LEVELS: CapturedLogLevel[] = ['debug', 'info', 'warn', 'error'];
+	const VIEW_FILTER_STORAGE_KEY = 'cinephage.logs.viewFilter';
+
+	interface StoredViewFilter {
+		levels?: CapturedLogLevel[];
+		domain?: CapturedLogDomain | 'all';
+	}
+
+	function loadStoredViewFilter(): StoredViewFilter | null {
+		if (typeof window === 'undefined') return null;
+		try {
+			const raw = window.localStorage.getItem(VIEW_FILTER_STORAGE_KEY);
+			if (!raw) return null;
+			return JSON.parse(raw) as StoredViewFilter;
+		} catch {
+			return null;
+		}
+	}
+
+	function saveViewFilter(): void {
+		if (typeof window === 'undefined') return;
+		try {
+			const stored: StoredViewFilter = { levels: [...levels], domain: selectedDomain };
+			window.localStorage.setItem(VIEW_FILTER_STORAGE_KEY, JSON.stringify(stored));
+		} catch {
+			/* localStorage unavailable (private mode, quota, etc.) - view filter just won't persist */
+		}
+	}
 
 	let { data }: { data: PageData } = $props();
 	const availableLevels = $derived(data.availableLevels);
 	const availableDomains = $derived(data.availableDomains);
 	const defaultRetentionDays = $derived(data.defaultRetentionDays);
 	const maxRetentionDays = $derived(data.maxRetentionDays);
+	const defaultMinLevel = $derived(data.defaultMinLevel);
 
 	let entries = $state<CapturedLogEntry[]>([]);
 	let historyLoading = $state(false);
@@ -65,13 +99,17 @@
 	let initialized = false;
 
 	let search = $state('');
+	let correlationIdScope = $state(''); // set when navigating from "View trace"; sent as dedicated param
 	let selectedDomain = $state<CapturedLogDomain | 'all'>('all');
 	let levels = new SvelteSet<CapturedLogLevel>(DEFAULT_LEVELS);
 	let from = $state('');
 	let to = $state('');
 
 	let retentionDays = $state(7);
-	let retentionSaving = $state(false);
+	let minLevel = $state<CapturedLogLevel>('info');
+	let logSettingsSaving = $state(false);
+	let logSettingsOpen = $state(false);
+	let logSettingsContainer = $state<HTMLDivElement | null>(null);
 
 	let livePaused = $state(false);
 	let autoFollowEnabled = $state(true);
@@ -88,6 +126,17 @@
 	$effect(() => {
 		if (initialized) return;
 		initialized = true;
+
+		// Pre-populate correlationId scope from URL param (e.g. ?correlationId=... from "View trace" link)
+		if (typeof window !== 'undefined') {
+			const sp = new URLSearchParams(window.location.search);
+			const corrId = sp.get('correlationId');
+			if (corrId) {
+				correlationIdScope = corrId;
+				search = corrId; // also show it in the search field for visibility
+			}
+		}
+
 		entries = structuredClone(data.initialEntries);
 		historyPage = data.initialPage;
 		historyPageSize = data.initialPageSize;
@@ -98,14 +147,31 @@
 			historyPagesLoaded.add(data.initialPage);
 		}
 		retentionDays = data.retentionDays;
+		minLevel = data.minLevel;
 		selectedEntryId = null;
+
+		const storedFilter = loadStoredViewFilter();
+		let restoredNonDefaultFilter = false;
+		if (storedFilter?.levels && storedFilter.levels.length > 0) {
+			levels.clear();
+			for (const level of storedFilter.levels) levels.add(level);
+			if (storedFilter.levels.length !== DEFAULT_LEVELS.length) restoredNonDefaultFilter = true;
+		}
+		if (storedFilter?.domain && storedFilter.domain !== 'all') {
+			selectedDomain = storedFilter.domain;
+			restoredNonDefaultFilter = true;
+		}
+
 		lastLoadedFilterKey = buildFilterKey();
+
+		// If a correlationId was provided, or a non-default view filter was
+		// restored, immediately load history matching that filter.
+		if (search || restoredNonDefaultFilter) void loadHistoryPage(1, 'replace');
 	});
 
 	$effect(() => {
 		if (!initialized) return;
-		if (retentionSaving) return;
-		retentionDays = data.retentionDays;
+		saveViewFilter();
 	});
 
 	const selectedEntry = $derived.by(
@@ -159,7 +225,8 @@
 
 		if (page) params.set('page', String(page));
 		if (selectedDomain !== 'all') params.set('logDomain', selectedDomain);
-		if (search.trim()) params.set('search', search.trim());
+		if (correlationIdScope) params.set('correlationId', correlationIdScope);
+		else if (search.trim()) params.set('search', search.trim());
 		if (from) params.set('from', new Date(from).toISOString());
 		if (to) params.set('to', new Date(to).toISOString());
 
@@ -170,7 +237,7 @@
 		return [
 			[...levels].sort().join(','),
 			selectedDomain,
-			search.trim(),
+			correlationIdScope || search.trim(),
 			from || 'none',
 			to || 'none'
 		].join('||');
@@ -204,6 +271,12 @@
 	function closeInspector(): void {
 		selectedEntryId = null;
 		mobileInspectorOpen = false;
+	}
+
+	function handleWindowClick(event: MouseEvent): void {
+		if (!logSettingsOpen || !logSettingsContainer) return;
+		if (event.target instanceof Node && logSettingsContainer.contains(event.target)) return;
+		logSettingsOpen = false;
 	}
 
 	function handleListScroll(): void {
@@ -252,7 +325,7 @@
 	}
 
 	function replaceEntries(nextEntries: CapturedLogEntry[]): void {
-		entries = dedupeAndSort(nextEntries);
+		entries = dedupeAndSort(nextEntries, MAX_LIVE_ENTRIES);
 	}
 
 	function queueLiveEntry(entry: CapturedLogEntry): void {
@@ -322,8 +395,8 @@
 			const nextEntries = payload.entries ?? [];
 			entries =
 				mode === 'append'
-					? dedupeAndSort([...entries, ...nextEntries])
-					: dedupeAndSort(nextEntries);
+					? dedupeAndSort([...entries, ...nextEntries], MAX_TOTAL_ENTRIES)
+					: dedupeAndSort(nextEntries, MAX_LIVE_ENTRIES);
 
 			historyTotal = payload.total ?? 0;
 			historyPage = payload.page ?? page;
@@ -428,16 +501,18 @@
 		}
 	}
 
-	async function saveRetentionDays(): Promise<void> {
-		retentionSaving = true;
+	async function saveLogSettings(): Promise<void> {
+		logSettingsSaving = true;
 		try {
-			const payload = await updateLogSettings(retentionDays);
+			const payload = await updateLogSettings({ retentionDays, minLevel });
 			retentionDays = payload.retentionDays ?? retentionDays;
-			toasts.success(`Log retention updated to ${retentionDays} days`);
+			minLevel = payload.minLevel ?? minLevel;
+			toasts.success('Log settings saved');
+			logSettingsOpen = false;
 		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Failed to save log retention');
+			toasts.error(error instanceof Error ? error.message : 'Failed to save log settings');
 		} finally {
-			retentionSaving = false;
+			logSettingsSaving = false;
 		}
 	}
 
@@ -462,6 +537,10 @@
 			fractionalSecondDigits: 3,
 			hour12: false
 		}).format(new Date(value));
+	}
+
+	function capitalize(value: string): string {
+		return value.charAt(0).toUpperCase() + value.slice(1);
 	}
 
 	function levelBadgeClass(level: CapturedLogLevel, active: boolean): string {
@@ -490,7 +569,8 @@
 	}
 
 	function getSource(entry: CapturedLogEntry): string {
-		const parts = [entry.logDomain, entry.component, entry.service, entry.module].filter(
+		const domainLabel = entry.logDomain ? DOMAIN_LABELS[entry.logDomain] : undefined;
+		const parts = [domainLabel, entry.component, entry.service, entry.module].filter(
 			(v): v is string => typeof v === 'string' && v.length > 0
 		);
 		const deduped = parts.filter((v, i) => i === 0 || v !== parts[i - 1]);
@@ -514,11 +594,11 @@
 	}
 
 	async function copyText(value: string, label: string): Promise<void> {
-		if (!value || !navigator.clipboard) return;
-		try {
-			await navigator.clipboard.writeText(value);
+		if (!value) return;
+		const ok = await copyToClipboard(value);
+		if (ok) {
 			toasts.success(`${label} copied`);
-		} catch {
+		} else {
 			toasts.error(`Failed to copy ${label.toLowerCase()}`);
 		}
 	}
@@ -532,6 +612,7 @@
 	onkeydown={(e) => {
 		if (e.key === 'Escape' && selectedEntryId) closeInspector();
 	}}
+	onclick={handleWindowClick}
 />
 
 {#snippet inspectorBody(entry: CapturedLogEntry)}
@@ -627,8 +708,11 @@
 					/>
 					<input
 						type="text"
-						class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+						class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 						bind:value={search}
+						oninput={() => {
+							correlationIdScope = '';
+						}}
 						placeholder="Search message, source, path, payload…"
 					/>
 				</div>
@@ -636,12 +720,12 @@
 				<!-- Domain -->
 				<div class="w-full sm:w-48">
 					<select
-						class="select w-full border-base-content/20 select-sm transition-all duration-200 hover:bg-base-200 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+						class="select w-full border-base-content/20 transition-all duration-200 select-sm hover:bg-base-200 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 						bind:value={selectedDomain}
 					>
 						<option value="all">All domains</option>
 						{#each availableDomains as domain (domain)}
-							<option value={domain}>{domain}</option>
+							<option value={domain}>{DOMAIN_LABELS[domain]}</option>
 						{/each}
 					</select>
 				</div>
@@ -694,14 +778,14 @@
 					<span class="h-5 w-px shrink-0 bg-base-300"></span>
 					<input
 						type="datetime-local"
-						class="input input-sm w-44 rounded-full border-base-content/20 bg-base-200/60 px-3 text-xs transition-all hover:bg-base-200 focus:border-primary/50 focus:outline-none"
+						class="input w-44 rounded-full border-base-content/20 bg-base-200/60 px-3 text-xs transition-all input-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
 						bind:value={from}
 						title="From"
 						oninput={() => (activeQuickRange = null)}
 					/>
 					<input
 						type="datetime-local"
-						class="input input-sm w-44 rounded-full border-base-content/20 bg-base-200/60 px-3 text-xs transition-all hover:bg-base-200 focus:border-primary/50 focus:outline-none"
+						class="input w-44 rounded-full border-base-content/20 bg-base-200/60 px-3 text-xs transition-all input-sm hover:bg-base-200 focus:border-primary/50 focus:outline-none"
 						bind:value={to}
 						title="To"
 						oninput={() => (activeQuickRange = null)}
@@ -723,8 +807,16 @@
 				<span class="h-5 w-px shrink-0 bg-base-300"></span>
 
 				<!-- Retention dropdown -->
-				<div class="dropdown">
-					<button class="btn gap-1.5 text-xs btn-ghost btn-sm" aria-label="Log retention settings">
+				<div
+					class="dropdown"
+					class:dropdown-open={logSettingsOpen}
+					bind:this={logSettingsContainer}
+				>
+					<button
+						class="btn gap-1.5 btn-ghost text-xs btn-sm"
+						aria-label="Log retention settings"
+						onclick={() => (logSettingsOpen = !logSettingsOpen)}
+					>
 						<CalendarSync class="h-3.5 w-3.5" />
 						<span class="font-mono">{retentionDays}d</span>
 					</button>
@@ -745,24 +837,55 @@
 									type="number"
 									min="1"
 									max={maxRetentionDays}
-									class="input-bordered input input-xs w-20"
+									class="input-bordered input w-20 input-xs"
 									bind:value={retentionDays}
 								/>
 								<span class="text-xs text-base-content/60">days</span>
 								<button
 									class="btn ml-auto btn-ghost btn-xs"
 									onclick={() => (retentionDays = defaultRetentionDays)}
-									disabled={retentionSaving}
+									disabled={logSettingsSaving}
 								>
 									Default
 								</button>
 							</div>
-							<button
-								class="btn w-full btn-xs btn-primary"
-								onclick={saveRetentionDays}
-								disabled={retentionSaving}
+
+							<div class="my-3 h-px bg-base-300"></div>
+
+							<p
+								class="mb-3 text-[10px] font-medium tracking-widest text-base-content/50 uppercase"
 							>
-								{#if retentionSaving}
+								Minimum Level Captured
+							</p>
+							<p class="mb-3 text-xs text-base-content/50">
+								Entries below this level are not written to disk.
+							</p>
+							<div class="mb-3 flex items-center gap-2">
+								<select
+									id="min-level"
+									class="select flex-1 select-xs"
+									bind:value={minLevel}
+									disabled={logSettingsSaving}
+								>
+									{#each availableLevels as level (level)}
+										<option value={level}>{capitalize(level)}</option>
+									{/each}
+								</select>
+								<button
+									class="btn btn-ghost btn-xs"
+									onclick={() => (minLevel = defaultMinLevel)}
+									disabled={logSettingsSaving}
+								>
+									Default
+								</button>
+							</div>
+
+							<button
+								class="btn w-full btn-primary btn-xs"
+								onclick={saveLogSettings}
+								disabled={logSettingsSaving}
+							>
+								{#if logSettingsSaving}
 									<Loader2 class="h-3 w-3 animate-spin" />
 								{/if}
 								Save
@@ -772,20 +895,20 @@
 				</div>
 
 				<!-- Refresh (shows spinner inline while loading) -->
-				<button class="btn text-xs btn-ghost btn-sm" onclick={refreshCurrentView}>
+				<button class="btn btn-ghost text-xs btn-sm" onclick={refreshCurrentView}>
 					{#if historyLoading}
 						<Loader2 class="h-3.5 w-3.5 animate-spin" />
 					{/if}
 					Refresh
 				</button>
 
-				<button class="btn text-xs btn-ghost btn-sm" onclick={downloadHistoryLogs}>
+				<button class="btn btn-ghost text-xs btn-sm" onclick={downloadHistoryLogs}>
 					<Download class="h-3.5 w-3.5" />
 					<span class="sm:inline">Export</span>
 				</button>
 
 				<button
-					class="btn text-xs btn-ghost btn-sm text-error"
+					class="btn btn-ghost text-xs text-error btn-sm"
 					onclick={() => (clearConfirmOpen = true)}
 					disabled={clearingLogs}
 				>
@@ -798,7 +921,7 @@
 				</button>
 
 				{#if hasActiveFilters}
-					<button class="btn gap-1 text-error btn-ghost btn-xs" onclick={resetFilters}>
+					<button class="btn gap-1 btn-ghost text-error btn-xs" onclick={resetFilters}>
 						<X class="h-3 w-3" />
 						Clear filters
 					</button>
@@ -810,13 +933,13 @@
 				<div class="flex flex-col gap-2 border-t border-base-300 px-3 py-3 sm:hidden">
 					<input
 						type="datetime-local"
-						class="input-bordered input input-sm w-full"
+						class="input-bordered input w-full input-sm"
 						bind:value={from}
 						oninput={() => (activeQuickRange = null)}
 					/>
 					<input
 						type="datetime-local"
-						class="input-bordered input input-sm w-full"
+						class="input-bordered input w-full input-sm"
 						bind:value={to}
 						oninput={() => (activeQuickRange = null)}
 					/>
@@ -861,7 +984,7 @@
 						No logs matched the current filters. Clear filters or wait for new matching entries.
 					</div>
 				{:else}
-					<table class="table-pin-rows table w-full table-sm">
+					<table class="table table-pin-rows w-full table-sm">
 						<thead>
 							<tr
 								class="bg-base-200/90 text-[10px] tracking-[0.12em] text-base-content/50 uppercase"
@@ -947,7 +1070,7 @@
 				</div>
 				<div class="flex items-center gap-2">
 					{#if showJumpToLatest}
-						<button class="btn btn-xs btn-primary" onclick={jumpToLatest}>
+						<button class="btn btn-primary btn-xs" onclick={jumpToLatest}>
 							{#if pendingLiveCount > 0}
 								Jump to latest ({pendingLiveCount} new)
 							{:else}

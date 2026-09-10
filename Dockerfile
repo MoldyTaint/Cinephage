@@ -110,6 +110,7 @@ ENV NODE_ENV=production \
     NODE_OPTIONS="--max-old-space-size=2048" \
     HOST=0.0.0.0 \
     PORT=3000 \
+    BODY_SIZE_LIMIT=10M \
     FFPROBE_PATH=/usr/bin/ffprobe \
     ALASS_PATH=/usr/local/bin/alass-cli \
     DATA_DIR=/config/data \
@@ -118,8 +119,8 @@ ENV NODE_ENV=production \
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD node -e "const port=process.env.PORT||3000;fetch('http://127.0.0.1:'+port+'/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10m --retries=3 \
+  CMD node -e "const port=process.env.PORT||3000;fetch('http://127.0.0.1:'+port+'/api/health',{signal:AbortSignal.timeout(9000)}).then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["/usr/local/bin/cinephage-entrypoint"]
 CMD ["node", "server.js"]

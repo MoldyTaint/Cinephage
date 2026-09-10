@@ -3,7 +3,9 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { downloadHistory, movies, series } from '$lib/server/db/schema';
 import { eq, desc, and, isNotNull, isNull, inArray } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'QueueHistoryApi', logDomain: 'downloads' });
 
 /**
  * GET - Get download history with optional filtering

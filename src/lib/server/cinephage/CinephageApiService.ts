@@ -1,4 +1,4 @@
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { ServiceStatus } from '$lib/server/services/background-service.js';
 import type { CinephageSettingsService } from './settings/CinephageSettingsService.js';
 import { getCinephageSettingsService } from './settings/CinephageSettingsService.js';
@@ -23,6 +23,8 @@ import { registerBuiltinModules } from './modules/index.js';
  * Modules (library-streaming, remote-streaming) land in subsequent phases
  * and register themselves via static imports at module load time.
  */
+const logger = createChildLogger({ module: 'CinephageApiService', logDomain: 'system' });
+
 export class CinephageApiService {
 	readonly name = 'cinephage-api';
 	private _status: ServiceStatus = 'pending';
@@ -79,6 +81,15 @@ export class CinephageApiService {
 			{ enabled: config.enabled, baseUrl: config.baseUrl },
 			'CinephageAPI subsystem starting'
 		);
+
+		// Keep the gateway identity fresh: the api.cinephage.net gateway only
+		// accepts the newest release pair, so sync to the latest at boot.
+		// Best-effort and non-blocking — readiness does not wait on GitHub.
+		if (config.enabled) {
+			void this.core.refreshLatestIdentity().then(() => {
+				logger.debug('Cinephage identity sync completed at boot');
+			});
+		}
 
 		// Register built-in feature modules (library-streaming, future modules).
 		// Idempotent — skips modules that are already registered.

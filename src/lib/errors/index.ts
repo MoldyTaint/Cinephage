@@ -98,6 +98,18 @@ export class CloudflareBypassError extends AppError {
 }
 
 /**
+ * Error thrown when an unmatched file is matched to a movie/series whose
+ * root folder (or folder layout) would make the stored file path unresolvable.
+ * Mirrors the linkage rule disk-scan enforces for auto-linking.
+ */
+export class RootFolderConflictError extends AppError {
+	constructor(message: string, context?: Record<string, unknown>) {
+		super(message, 'ROOT_FOLDER_CONFLICT', 409, context);
+		this.name = 'RootFolderConflictError';
+	}
+}
+
+/**
  * Type guard to check if an error is an AppError.
  */
 export function isAppError(error: unknown): error is AppError {

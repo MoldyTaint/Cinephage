@@ -40,7 +40,12 @@ describe('OriginalTitle token', () => {
 
 		it('has correct metadata', () => {
 			expect(originalTitleToken.name).toBe('OriginalTitle');
-			expect(originalTitleToken.aliases).toEqual(['SeriesOriginalTitle', 'MovieOriginalTitle']);
+			expect(originalTitleToken.aliases).toEqual([
+				'SeriesOriginalTitle',
+				'MovieOriginalTitle',
+				'Movie OriginalTitle',
+				'Series OriginalTitle'
+			]);
 			expect(originalTitleToken.category).toBe('core');
 			expect(originalTitleToken.applicability).toEqual(['movie', 'series']);
 		});
@@ -125,6 +130,61 @@ describe('OriginalTitle token', () => {
 		it('Year token still exists', () => {
 			const yearToken = coreTokens.find((t) => t.name === 'Year');
 			expect(yearToken).toBeDefined();
+		});
+	});
+
+	describe(':First format spec (first-letter organization, issue #497)', () => {
+		const titleToken = coreTokens.find((t) => t.name === 'Title')!;
+		const cleanTitleToken = coreTokens.find((t) => t.name === 'CleanTitle')!;
+		const originalTitleToken = coreTokens.find((t) => t.name === 'OriginalTitle')!;
+		const originalCleanTitleToken = coreTokens.find((t) => t.name === 'OriginalCleanTitle')!;
+
+		it('{Title:First} returns first alphanumeric character uppercased', () => {
+			expect(titleToken.render({ title: 'the matrix' }, {} as any, 'First')).toBe('T');
+			expect(titleToken.render({ title: 'The Matrix' }, {} as any, 'First')).toBe('T');
+			expect(titleToken.render({ title: '7 Days' }, {} as any, 'First')).toBe('7');
+			expect(titleToken.render({ title: '!!!Bang' }, {} as any, 'First')).toBe('B');
+			expect(titleToken.render({ title: 'THE MATRIX' }, {} as any, 'first')).toBe('T');
+		});
+
+		it('{Title:First} returns empty string for empty title', () => {
+			expect(titleToken.render({ title: '' }, {} as any, 'First')).toBe('');
+			expect(titleToken.render({ title: '!!!' }, {} as any, 'First')).toBe('');
+		});
+
+		it('{CleanTitle:First} uses the cleaned title', () => {
+			expect(cleanTitleToken.render({ title: 'The Matrix?' }, {} as any, 'First')).toBe('T');
+			expect(cleanTitleToken.render({ title: '' }, {} as any, 'First')).toBe('');
+		});
+
+		it('{OriginalTitle:First} uses the original title', () => {
+			expect(
+				originalTitleToken.render(
+					{ title: 'Fallback', originalTitle: 'Crouching Tiger, Hidden Dragon' },
+					{} as any,
+					'First'
+				)
+			).toBe('C');
+		});
+
+		it('{OriginalCleanTitle:First} uses the cleaned original title', () => {
+			expect(
+				originalCleanTitleToken.render(
+					{ title: 'Fallback', originalTitle: 'Sen to Chihiro' },
+					{} as any,
+					'First'
+				)
+			).toBe('S');
+		});
+
+		it('language-code specs still work for {Title:ES}', () => {
+			expect(
+				titleToken.render(
+					{ title: 'English Title', localizedTitles: { es: 'Título' } },
+					{} as any,
+					'ES'
+				)
+			).toBe('Título');
 		});
 	});
 });

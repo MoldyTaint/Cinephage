@@ -22,8 +22,10 @@ import {
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { ValidationError } from '$lib/errors';
-import { logger } from '$lib/logging';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryMoviesBulkApi', logDomain: 'scans' });
 
 interface BulkAddResult {
 	added: number;
@@ -59,7 +61,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		} = result.data;
 
 		// Verify root folder exists and is for movies
-		await validateRootFolder(rootFolderId, 'movie');
+		await validateRootFolder(rootFolderId, 'movie', { requireWritable: true });
 		const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
 			rootFolderId,
 			'movie'
@@ -78,7 +80,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const moviesToAdd = tmdbIds.filter((id) => !existingTmdbIds.has(id));
 
 		// Get the effective scoring profile once (shared across all movies)
-		const effectiveProfileId = await getEffectiveScoringProfileId(scoringProfileId);
+		const effectiveProfileId = await getEffectiveScoringProfileId(scoringProfileId, owningLibrary);
 
 		const results: BulkAddResult = {
 			added: 0,

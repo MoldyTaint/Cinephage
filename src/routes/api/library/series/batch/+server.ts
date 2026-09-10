@@ -11,10 +11,12 @@ import {
 } from '$lib/server/db/schema.js';
 import { eq, inArray } from 'drizzle-orm';
 import { deleteDirectoryWithinRoot } from '$lib/server/filesystem/delete-helpers.js';
-import { logger } from '$lib/logging';
 import { deleteAllAlternateTitles } from '$lib/server/services/index.js';
 import { monitoringSearchService } from '$lib/server/monitoring/search/MonitoringSearchService.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibrarySeriesBatchApi', logDomain: 'scans' });
 
 /**
  * PATCH /api/library/series/batch

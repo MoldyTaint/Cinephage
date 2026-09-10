@@ -551,7 +551,9 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 				);
 
 				if (consecutiveErrors >= maxConsecutiveErrors) {
-					throw new Error(`Too many consecutive errors (${consecutiveErrors}): ${msg}`);
+					throw new Error(`Too many consecutive errors (${consecutiveErrors}): ${msg}`, {
+						cause: error
+					});
 				}
 
 				// Exponential backoff: 1s, 2s, 4s, 8s, 16s

@@ -101,6 +101,7 @@
 	let recentPriority = $state<'normal' | 'high' | 'force'>('normal');
 	let olderPriority = $state<'normal' | 'high' | 'force'>('normal');
 	let initialState = $state<'start' | 'pause' | 'force'>('start');
+	let sequentialDownload = $state(false);
 
 	let downloadPathLocal = $state('');
 	let downloadPathRemote = $state('');
@@ -230,6 +231,7 @@
 			recentPriority = dcClient?.recentPriority ?? 'normal';
 			olderPriority = dcClient?.olderPriority ?? 'normal';
 			initialState = dcClient?.initialState ?? 'start';
+			sequentialDownload = dcClient?.sequentialDownload ?? false;
 			removeAfterImport = dcClient?.removeAfterImport ?? false;
 			downloadPathLocal = dcClient?.downloadPathLocal ?? '';
 			downloadPathRemote = dcClient?.downloadPathRemote ?? '';
@@ -294,6 +296,7 @@
 			recentPriority,
 			olderPriority,
 			initialState,
+			sequentialDownload,
 			downloadPathLocal,
 			downloadPathRemote,
 			tempPathLocal,
@@ -557,6 +560,7 @@
 							bind:recentPriority
 							bind:olderPriority
 							bind:initialState
+							bind:sequentialDownload
 							bind:downloadPathLocal
 							bind:downloadPathRemote
 							bind:tempPathLocal

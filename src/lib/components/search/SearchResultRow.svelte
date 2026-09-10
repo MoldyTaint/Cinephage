@@ -226,15 +226,15 @@
 				</p>
 				<div class="flex shrink-0 items-center gap-1">
 					{#if blocked}
-						<span class="badge gap-1 badge-warning badge-sm"><Ban size={10} /></span>
+						<span class="badge gap-1 badge-sm badge-warning"><Ban size={10} /></span>
 					{:else if grabbed}
-						<span class="badge gap-1 badge-success badge-sm"><Check size={10} /></span>
+						<span class="badge gap-1 badge-sm badge-success"><Check size={10} /></span>
 					{:else if error}
-						<span class="badge gap-1 badge-error badge-sm" title={error}><X size={10} /></span>
+						<span class="badge gap-1 badge-sm badge-error" title={error}><X size={10} /></span>
 					{:else}
 						{#if release.protocol === 'usenet' && showUsenetStreamButton}
 							<button
-								class="btn btn-xs btn-accent"
+								class="btn btn-accent btn-xs"
 								onclick={handleStream}
 								disabled={grabbing || streaming || !canUsenetStream}
 								title={canUsenetStream
@@ -249,7 +249,7 @@
 							</button>
 						{/if}
 						<button
-							class="btn btn-xs btn-primary"
+							class="btn btn-primary btn-xs"
 							onclick={handleGrab}
 							disabled={grabbing || streaming}
 						>
@@ -286,7 +286,7 @@
 					<span class="badge badge-xs badge-success">{m.search_freeleechBadge()}</span>
 				{/if}
 				{#if release.rejected && release.rejections?.length}
-					<span class="badge badge-xs badge-error gap-1" title={release.rejections.join('\n')}>
+					<span class="badge gap-1 badge-xs badge-error" title={release.rejections.join('\n')}>
 						<Ban size={8} />
 						{release.rejectionReason || release.rejections[0]}
 						{#if release.rejections.length > 1}+{release.rejections.length - 1}{/if}
@@ -306,7 +306,7 @@
 				<div class="ml-auto flex shrink-0 items-center gap-0.5 border-l border-base-300 pl-2">
 					{#if onBlock && !blocked}
 						<button
-							class="btn btn-ghost btn-xs text-error/70 hover:text-error"
+							class="btn btn-ghost text-error/70 btn-xs hover:text-error"
 							onclick={() => onBlock(release)}
 							title={m.search_blockRelease()}
 						>
@@ -318,7 +318,7 @@
 							href={release.commentsUrl}
 							target="_blank"
 							rel="noopener noreferrer"
-							class="btn btn-ghost btn-xs text-base-content/60 hover:text-base-content"
+							class="btn btn-ghost text-base-content/60 btn-xs hover:text-base-content"
 							title={m.search_viewComments()}
 						>
 							<ExternalLink size={13} />
@@ -358,7 +358,7 @@
 						<span class="badge badge-sm badge-success">{m.search_freeleechBadge()}</span>
 					{/if}
 					{#if release.rejected && release.rejections?.length}
-						<span class="badge badge-sm badge-error gap-1" title={release.rejections.join('\n')}>
+						<span class="badge gap-1 badge-sm badge-error" title={release.rejections.join('\n')}>
 							<Ban size={10} />
 							{release.rejectionReason || release.rejections[0]}
 							{#if release.rejections.length > 1}
@@ -370,7 +370,7 @@
 			</div>
 
 			<!-- Quick stats -->
-			<div class="shrink-0 flex items-center gap-4 text-xs">
+			<div class="flex shrink-0 items-center gap-4 text-xs">
 				<!-- Indexer -->
 				<div class="flex items-center gap-1.5">
 					<span class="h-2 w-2 rounded-full {getProtocolColor()}"></span>
@@ -432,7 +432,7 @@
 				{:else if !blocked}
 					{#if release.protocol === 'usenet' && showUsenetStreamButton}
 						<button
-							class="btn btn-sm btn-accent"
+							class="btn btn-accent btn-sm"
 							onclick={handleStream}
 							disabled={grabbing || streaming || !canUsenetStream}
 							title={canUsenetStream
@@ -447,7 +447,7 @@
 						</button>
 					{/if}
 					<button
-						class="btn btn-sm btn-primary"
+						class="btn btn-primary btn-sm"
 						onclick={handleGrab}
 						disabled={grabbing || streaming}
 					>
@@ -461,7 +461,7 @@
 
 				{#if onBlock && !blocked}
 					<button
-						class="btn btn-ghost btn-sm text-error"
+						class="btn btn-ghost text-error btn-sm"
 						onclick={() => onBlock(release)}
 						title={m.search_blockRelease()}
 					>
@@ -500,7 +500,7 @@
 	<!-- Expanded content -->
 	{#if expanded}
 		<div class="border-t border-base-300 bg-base-100 p-4">
-			<p class="mb-3 break-all text-xs text-base-content/70 sm:hidden">{release.title}</p>
+			<p class="mb-3 text-xs break-all text-base-content/70 sm:hidden">{release.title}</p>
 			<!-- Score breakdown section -->
 			{#if release.scoringResult?.breakdown}
 				<div class="mb-4">

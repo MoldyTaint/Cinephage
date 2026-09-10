@@ -13,7 +13,6 @@
 
 import {
 	link,
-	copyFile,
 	mkdir,
 	stat,
 	statfs,
@@ -28,6 +27,8 @@ import {
 	open,
 	chmod
 } from 'fs/promises';
+import { createReadStream, createWriteStream } from 'fs';
+import { pipeline } from 'stream/promises';
 import { join, dirname, basename, extname, resolve } from 'path';
 import { createChildLogger } from '$lib/logging';
 import {
@@ -38,6 +39,17 @@ import {
 } from '$lib/config/constants.js';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
+
+/**
+ * Copy a file without preserving the source mode bits. Node's built-in
+ * copyFile performs an implicit fchmod on the destination after the data copy,
+ * which fails with EPERM on filesystems without per-file permission bits
+ * (exfat, FAT). A plain stream copy never chmods, so it succeeds everywhere;
+ * permission handling is owned by applyFilePermissions where requested.
+ */
+async function copyFileNoChmod(source: string, dest: string): Promise<void> {
+	await pipeline(createReadStream(source), createWriteStream(dest));
+}
 
 /**
  * Transfer mode for files (low-level operation)
@@ -259,7 +271,7 @@ export async function transferFile(
 		}
 
 		// Fall back to copy
-		await copyFile(source, dest);
+		await copyFileNoChmod(source, dest);
 		logger.debug({ source, dest }, 'File copied successfully');
 
 		return {
@@ -376,7 +388,7 @@ export async function moveFile(source: string, dest: string): Promise<TransferRe
 			};
 		} catch {
 			// Cross-device move — copy then delete source.
-			await copyFile(source, dest);
+			await copyFileNoChmod(source, dest);
 			await unlink(source);
 
 			return {
@@ -885,7 +897,7 @@ export async function copyExtraFiles(
 			if (doMove) {
 				await moveFile(src, dst);
 			} else {
-				await copyFile(src, dst);
+				await copyFileNoChmod(src, dst);
 			}
 			if (permissions) {
 				await applyFilePermissions(

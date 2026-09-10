@@ -291,7 +291,7 @@
 							</button>
 						{/if}
 						<button
-							class="btn btn-ghost btn-sm btn-error"
+							class="btn btn-ghost btn-error btn-sm"
 							onclick={handleRemove}
 							disabled={actionLoading}
 						>

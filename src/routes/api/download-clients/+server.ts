@@ -65,6 +65,7 @@ export const POST: RequestHandler = async (event) => {
 			initialState: validated.initialState,
 			seedRatioLimit: validated.seedRatioLimit,
 			seedTimeLimit: validated.seedTimeLimit,
+			sequentialDownload: validated.sequentialDownload,
 			downloadPathLocal: validated.downloadPathLocal,
 			downloadPathRemote: validated.downloadPathRemote,
 			tempPathLocal: validated.tempPathLocal,

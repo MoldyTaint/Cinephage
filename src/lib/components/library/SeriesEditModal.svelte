@@ -237,11 +237,7 @@
 	$effect(() => {
 		if (open) {
 			monitored = series.monitored ?? true;
-			const defaultProfileId = qualityProfiles.find((p) => p.isDefault)?.id;
-			qualityProfileId =
-				series.scoringProfileId && series.scoringProfileId !== defaultProfileId
-					? series.scoringProfileId
-					: '';
+			qualityProfileId = series.scoringProfileId ?? '';
 			delayProfileId = (series as { delayProfileId?: string | null }).delayProfileId ?? null;
 			rootFolderId = series.rootFolderId ?? '';
 			seasonFolder = series.seasonFolder ?? true;
@@ -354,7 +350,7 @@
 		<!-- Monitoring -->
 		<section>
 			<h4
-				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/50"
+				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold tracking-wider text-base-content/50 uppercase"
 			>
 				Monitoring
 			</h4>
@@ -390,7 +386,12 @@
 						bind:value={qualityProfileId}
 						class="select-bordered select w-full select-sm"
 					>
-						<option value=""
+						{#if defaultProfile}
+							<option value="" hidden
+								>{defaultProfile?.name ?? m.common_default()} ({m.common_default()})</option
+							>
+						{/if}
+						<option value={defaultProfile?.id ?? ''}
 							>{defaultProfile?.name ?? m.common_default()} ({m.common_default()})</option
 						>
 						{#each nonDefaultProfiles as profile (profile.id)}
@@ -446,7 +447,7 @@
 		{#if delayProfiles.length > 0}
 			<section>
 				<h4
-					class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/50"
+					class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold tracking-wider text-base-content/50 uppercase"
 				>
 					Scheduling
 				</h4>
@@ -471,7 +472,7 @@
 		<!-- Files -->
 		<section>
 			<h4
-				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/50"
+				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold tracking-wider text-base-content/50 uppercase"
 			>
 				Files
 			</h4>
@@ -516,7 +517,7 @@
 						{/each}
 					</select>
 					{#if enforceAnimeSubtype}
-						<div class="text-xs text-base-content/70 mt-1">
+						<div class="mt-1 text-xs text-base-content/70">
 							Limited to <strong>{requiredMediaSubType === 'anime' ? 'Anime' : 'Standard'}</strong> root
 							folders.
 						</div>
@@ -525,7 +526,7 @@
 
 				{#if canMoveExistingFiles}
 					<label class="label cursor-pointer">
-						<span class="label-text text-warning text-xs"
+						<span class="label-text text-xs text-warning"
 							>Move existing files to new root folder</span
 						>
 						<input
@@ -542,7 +543,7 @@
 				{#if series.path}
 					<div class="form-control w-full">
 						<label class="label py-0.5" for="series-folder-path">
-							<span class="flex items-center gap-1 label-text text-xs text-base-content/80">
+							<span class="label-text flex items-center gap-1 text-xs text-base-content/80">
 								Folder name
 								<span
 									class="tooltip tooltip-right"
@@ -570,7 +571,7 @@
 								<input
 									id="series-folder-path"
 									type="text"
-									class="input-bordered input input-sm join-item flex-1 font-mono"
+									class="input-bordered input join-item flex-1 font-mono input-sm"
 									bind:value={folderPath}
 								/>
 								<button
@@ -599,7 +600,7 @@
 		<!-- Metadata -->
 		<section>
 			<h4
-				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/50"
+				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold tracking-wider text-base-content/50 uppercase"
 			>
 				Metadata
 			</h4>

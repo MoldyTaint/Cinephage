@@ -273,7 +273,7 @@
 	{#if onBulkSync && subtitles.length > 1}
 		<div class="mb-4 flex flex-wrap items-center gap-2">
 			<button
-				class="btn gap-2 btn-sm btn-primary"
+				class="btn gap-2 btn-primary btn-sm"
 				onclick={() => handleBulkSync(false)}
 				disabled={bulkSyncStatus === 'syncing' || syncingSubtitleId !== null}
 			>
@@ -288,7 +288,7 @@
 
 			{#if unsyncedCount > 0 && unsyncedCount !== subtitles.length}
 				<button
-					class="btn gap-2 btn-outline btn-sm btn-primary"
+					class="btn gap-2 btn-outline btn-primary btn-sm"
 					onclick={() => handleBulkSync(true)}
 					disabled={bulkSyncStatus === 'syncing' || syncingSubtitleId !== null}
 				>
@@ -393,7 +393,7 @@
 						</div>
 
 						<button
-							class="btn gap-2 btn-sm btn-primary"
+							class="btn gap-2 btn-primary btn-sm"
 							onclick={() => handleSync(subtitle.id)}
 							disabled={syncingSubtitleId === subtitle.id ||
 								syncState === 'syncing' ||
@@ -496,7 +496,7 @@
 										</div>
 
 										<button
-											class="btn gap-1 btn-xs btn-primary"
+											class="btn gap-1 btn-primary btn-xs"
 											onclick={() => handleSync(subtitle.id)}
 											disabled={syncingSubtitleId === subtitle.id ||
 												syncState === 'syncing' ||

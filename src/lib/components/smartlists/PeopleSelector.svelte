@@ -66,7 +66,7 @@
 			bind:value={query}
 			oninput={handleInput}
 			placeholder={m.smartlists_filter_castCrewPlaceholder()}
-			class="input-bordered input input-sm w-full"
+			class="input-bordered input w-full input-sm"
 		/>
 		{#if searching}
 			<Loader2 class="absolute top-2 right-3 h-4 w-4 animate-spin" />
@@ -93,14 +93,14 @@
 					<div class="flex gap-1">
 						<button
 							type="button"
-							class="btn btn-xs btn-primary"
+							class="btn btn-primary btn-xs"
 							onclick={() => addPerson(person, 'cast')}
 						>
 							{m.smartlists_filter_cast()}
 						</button>
 						<button
 							type="button"
-							class="btn btn-xs btn-secondary"
+							class="btn btn-secondary btn-xs"
 							onclick={() => addPerson(person, 'crew')}
 						>
 							{m.smartlists_filter_crew()}

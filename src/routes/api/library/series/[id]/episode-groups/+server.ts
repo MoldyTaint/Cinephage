@@ -8,11 +8,13 @@ import type { RequestHandler } from './$types.js';
 import { db } from '$lib/server/db/index.js';
 import { series } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
+import { createChildLogger } from '$lib/logging';
 import {
 	fetchEpisodeGroups,
 	buildEpisodeGroupInfoList
 } from '$lib/server/metadata/EpisodeGroupService.js';
-import { logger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibrarySeriesEpisodeGroupsApi', logDomain: 'scans' });
 
 export const GET: RequestHandler = async ({ params }) => {
 	try {

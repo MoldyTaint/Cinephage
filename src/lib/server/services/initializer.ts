@@ -1,5 +1,5 @@
 import { building } from '$app/environment';
-import { logger, registerServerLogSinks } from '$lib/logging';
+import { createChildLogger, registerServerLogSinks } from '$lib/logging';
 import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
 import { libraryJobWorker } from '$lib/server/library/jobs/LibraryJobWorker.js';
 import { isFFprobeAvailable, getFFprobeVersion } from '$lib/server/library/ffprobe.js';
@@ -32,6 +32,8 @@ import { logCaptureStore } from '$lib/server/logging/log-capture-store.js';
 import { logHistoryService } from '$lib/server/logging/log-history.js';
 import { getCinephageApiService } from '$lib/server/cinephage/CinephageApiService.js';
 import { getDebridPollService } from '$lib/server/downloadClients/debrid/DebridPollService.js';
+
+const logger = createChildLogger({ module: 'Initializer', logDomain: 'system' });
 
 let initializationPromise: Promise<void> | null = null;
 let initializationStarted = false;
@@ -123,19 +125,22 @@ async function initializeServices(): Promise<void> {
 			serviceManager.register(mediaBrowserNotifier);
 			logger.info('MediaBrowser notifier initialized for Jellyfin/Emby/Plex integration');
 
-			// Wire library events to media server notifications
+			// Wire library events to media server notifications. The event kind
+			// (import/upgrade/delete) lets each server's notification toggles filter
+			// what it actually receives.
 			const importSvc = getImportService();
 			importSvc.on('file:imported', (event: { importedPath?: string; wasUpgrade?: boolean }) => {
 				if (event.importedPath) {
 					mediaBrowserNotifier.queueUpdate(
 						event.importedPath,
-						event.wasUpgrade ? 'Modified' : 'Created'
+						event.wasUpgrade ? 'Modified' : 'Created',
+						event.wasUpgrade ? 'upgrade' : 'import'
 					);
 				}
 			});
 			importSvc.on('file:deleted', (event: { filePath?: string }) => {
 				if (event.filePath) {
-					mediaBrowserNotifier.queueUpdate(event.filePath, 'Deleted');
+					mediaBrowserNotifier.queueUpdate(event.filePath, 'Deleted', 'delete');
 				}
 			});
 

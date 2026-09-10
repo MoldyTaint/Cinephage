@@ -380,7 +380,7 @@
 						type="text"
 						bind:value={captchaSettings.proxyUrl}
 						placeholder={m.settings_integrations_captcha_proxyPlaceholder()}
-						class="input-bordered input input-sm w-full min-w-0"
+						class="input-bordered input w-full min-w-0 input-sm"
 						disabled={!captchaSettings.enabled}
 					/>
 					<div class="label whitespace-normal">
@@ -405,7 +405,7 @@
 								type="text"
 								bind:value={captchaSettings.proxyUsername}
 								placeholder={m.settings_integrations_captcha_optional()}
-								class="input-bordered input input-sm w-full min-w-0"
+								class="input-bordered input w-full min-w-0 input-sm"
 								disabled={!captchaSettings.enabled}
 							/>
 						</div>
@@ -421,7 +421,7 @@
 								type="password"
 								bind:value={captchaSettings.proxyPassword}
 								placeholder={m.settings_integrations_captcha_optional()}
-								class="input-bordered input input-sm w-full min-w-0"
+								class="input-bordered input w-full min-w-0 input-sm"
 								disabled={!captchaSettings.enabled}
 							/>
 						</div>
@@ -431,7 +431,7 @@
 
 			<div class="flex justify-end">
 				<button
-					class="btn w-full gap-2 btn-sm btn-primary sm:w-auto"
+					class="btn w-full gap-2 btn-primary btn-sm sm:w-auto"
 					onclick={saveCaptchaSettings}
 					disabled={captchaSaving}
 				>
@@ -456,11 +456,11 @@
 					type="url"
 					bind:value={testUrl}
 					placeholder={m.settings_integrations_captcha_testUrlPlaceholder()}
-					class="input-bordered input input-sm w-full min-w-0 sm:flex-1"
+					class="input-bordered input w-full min-w-0 input-sm sm:flex-1"
 					disabled={captchaTesting || !captchaSettings.enabled}
 				/>
 				<button
-					class="btn w-full gap-2 btn-sm btn-primary sm:w-auto"
+					class="btn w-full gap-2 btn-primary btn-sm sm:w-auto"
 					onclick={testSolver}
 					disabled={captchaTesting || !testUrl || !captchaSettings.enabled}
 				>

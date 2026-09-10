@@ -86,7 +86,7 @@
 					{executeError}
 				</p>
 				<div class="mt-4 flex flex-wrap gap-2">
-					<button class="btn btn-sm btn-primary" onclick={onTryAgain}>
+					<button class="btn btn-primary btn-sm" onclick={onTryAgain}>
 						{m.library_import_tryAgain()}
 					</button>
 					{#if originLibraryLink}
@@ -180,11 +180,11 @@
 				<div class="mt-4 flex flex-wrap gap-2">
 					<!-- Single-entry "View in Library" (single import OR bulk all-same-library) -->
 					{#if singleLibraryLink && bulkImportSummary}
-						<a class="btn btn-sm btn-primary" href={singleLibraryLink}>
+						<a class="btn btn-primary btn-sm" href={singleLibraryLink}>
 							{m.library_import_viewInLibrary()}
 						</a>
 					{:else if completionLink}
-						<a class="btn btn-sm btn-primary" href={completionLink}>
+						<a class="btn btn-primary btn-sm" href={completionLink}>
 							{bulkImportSummary
 								? m.library_import_viewLastImported()
 								: m.library_import_viewInLibrary()}

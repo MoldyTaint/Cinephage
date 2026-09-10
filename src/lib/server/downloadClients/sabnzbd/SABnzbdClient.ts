@@ -97,7 +97,8 @@ export class SABnzbdClient implements IDownloadClient {
 		return (
 			message.includes('unknown mode') ||
 			message.includes('bad request') ||
-			message.includes('not found')
+			message.includes('not found') ||
+			message.includes('not implemented')
 		);
 	}
 
@@ -196,6 +197,26 @@ export class SABnzbdClient implements IDownloadClient {
 	}
 
 	/**
+	 * Resolve SABnzbd's complete_dir to an absolute path for storage-path
+	 * validation. SABnzbd may report a complete_dir that is relative to its own
+	 * working directory while the per-item storage/path fields are absolute.
+	 * When the client's local download path is configured, a relative
+	 * complete_dir is resolved against it (issue #489).
+	 */
+	private resolveCompleteDir(completeDir: string): string {
+		if (
+			completeDir.startsWith('/') ||
+			/^[A-Za-z]:[\\/]/.test(completeDir) ||
+			completeDir.startsWith('\\\\')
+		) {
+			return completeDir;
+		}
+		const localBase = this.config.downloadPathLocal;
+		if (!localBase) return completeDir;
+		return `${localBase.replace(/\/+$/, '')}/${completeDir.replace(/^\/+/, '')}`;
+	}
+
+	/**
 	 * Validate that a storage path is a valid subfolder, not just the base directory.
 	 * This prevents importing from the base download folder which would scan all files.
 	 */
@@ -224,7 +245,7 @@ export class SABnzbdClient implements IDownloadClient {
 		item: SabnzbdHistoryItem,
 		sabConfig: SabnzbdConfigResponse
 	): Promise<string> {
-		const baseDir = sabConfig.misc.complete_dir;
+		const baseDir = this.resolveCompleteDir(sabConfig.misc.complete_dir);
 
 		// Use storage if it's valid (not just the base directory)
 		if (this.isValidStoragePath(item.storage, baseDir)) {
@@ -250,7 +271,7 @@ export class SABnzbdClient implements IDownloadClient {
 			return baseDir;
 		}
 
-		const category = sabConfig.categories.find(
+		const category = (sabConfig.categories ?? []).find(
 			(c) => c.name.toLowerCase() === item.category?.toLowerCase()
 		);
 		let outputDir = baseDir;
@@ -323,7 +344,28 @@ export class SABnzbdClient implements IDownloadClient {
 
 			// Get config for additional details
 			const sabConfig = await this.proxy.getConfig();
-			const categories = sabConfig.categories.map((c) => c.name);
+			// SABnzbd 5.x omits categories from get_config; fall back to the
+			// lightweight get_cats endpoint (see issue #482).
+			let categories: string[];
+			if (sabConfig.categories && sabConfig.categories.length > 0) {
+				categories = sabConfig.categories.map((c) => c.name);
+			} else {
+				try {
+					categories = await this.proxy.getCategories();
+				} catch (catError) {
+					if (!this.isOptionalDiagnosticsError(catError)) {
+						throw catError;
+					}
+
+					logger.warn(
+						{
+							error: catError instanceof Error ? catError.message : String(catError)
+						},
+						'[SABnzbd] categories endpoint not supported, skipping'
+					);
+					categories = [];
+				}
+			}
 
 			let fullStatus: SabnzbdFullStatus | null = null;
 			try {
@@ -841,7 +883,9 @@ export class SABnzbdClient implements IDownloadClient {
 	async ensureCategory(name: string, _savePath?: string): Promise<void> {
 		try {
 			const config = await this.proxy.getConfig();
-			const exists = config.categories.some((c) => c.name.toLowerCase() === name.toLowerCase());
+			const exists = (config.categories ?? []).some(
+				(c) => c.name.toLowerCase() === name.toLowerCase()
+			);
 
 			if (!exists) {
 				logger.warn(
@@ -976,7 +1020,7 @@ export class SABnzbdClient implements IDownloadClient {
 		item: SabnzbdHistoryItem,
 		sabConfig: SabnzbdConfigResponse
 	): Promise<DownloadInfo> {
-		const baseDir = sabConfig.misc.complete_dir;
+		const baseDir = this.resolveCompleteDir(sabConfig.misc.complete_dir);
 		const hasValidStorage = this.isValidStoragePath(item.storage, baseDir);
 		const outputPath = await this.resolveOutputPath(item, sabConfig);
 

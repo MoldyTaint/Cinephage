@@ -261,7 +261,7 @@ export async function syncJackettIndexers(): Promise<SyncResult> {
 		conn.lastSyncAt = new Date().toISOString();
 		conn.lastSyncError = errorMsg;
 		await saveJackettConnection(conn);
-		throw new Error(`Failed to fetch indexers from Jackett: ${errorMsg}`);
+		throw new Error(`Failed to fetch indexers from Jackett: ${errorMsg}`, { cause: err });
 	}
 
 	const jackettById = new Map(jackettIndexers.map((i) => [i.id, i]));

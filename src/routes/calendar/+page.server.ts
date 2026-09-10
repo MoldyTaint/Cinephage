@@ -3,7 +3,9 @@ import { getCalendarData } from '$lib/server/calendar/queries.js';
 import { getCalendarPreferences } from '$lib/server/settings/calendar-preferences.js';
 import { calendarPreferencesSchema } from '$lib/validation/schemas.js';
 import { tmdb } from '$lib/server/tmdb.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'CalendarPage', logDomain: 'system' });
 
 export const load: PageServerLoad = async ({ url }) => {
 	const monthParam = url.searchParams.get('month');

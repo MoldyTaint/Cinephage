@@ -86,7 +86,7 @@ export function createSubtitleProgress() {
 					let buffer = '';
 					let eventType = '';
 					let eventData: unknown = null;
-					let completed = false;
+					const completed = false;
 
 					while (true) {
 						const { done, value } = await reader.read();
@@ -110,7 +110,6 @@ export function createSubtitleProgress() {
 								handleEvent(eventType, eventData);
 
 								if (eventType === 'subtitle:completed') {
-									completed = true;
 									state.isActive = false;
 									results = eventData as SubtitleBatchResults;
 									resolve(results);

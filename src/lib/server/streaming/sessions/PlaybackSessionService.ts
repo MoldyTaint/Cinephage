@@ -80,6 +80,7 @@ export class PlaybackSessionService {
 			type: params.type,
 			season: params.season,
 			episode: params.episode,
+			refresh: params.forceRefresh,
 			signal: params.signal
 		});
 
@@ -106,9 +107,12 @@ export class PlaybackSessionService {
 			provider: source.provider,
 			entryUrl: source.url,
 			sourceType: source.type,
+			sourceFormat: source.sourceFormat,
+			sourceContentType: source.sourceContentType,
 			requestHeaders: buildSourceHeaders(source),
 			subtitles: normalizeSubtitleList(source),
-			attempts: []
+			attempts: [],
+			sourceExpiresAt: source.expiresAt
 		});
 
 		logger.info(

@@ -51,7 +51,7 @@
 			<h3 class="mt-4 text-lg font-medium">{m.library_movieFilesTab_noFilesFound()}</h3>
 			<p class="mt-1 text-sm text-base-content/60">{m.library_movieFilesTab_notDownloaded()}</p>
 			{#if onSearch}
-				<button class="btn mt-4 gap-2 btn-sm btn-primary" onclick={onSearch}>
+				<button class="btn mt-4 gap-2 btn-primary btn-sm" onclick={onSearch}>
 					<Search size={16} />
 					{m.library_movieFilesTab_searchDownloads()}
 				</button>

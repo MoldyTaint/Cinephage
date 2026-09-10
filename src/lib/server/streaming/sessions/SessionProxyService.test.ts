@@ -11,7 +11,7 @@ vi.mock('$lib/server/http/ssrf-protection', () => ({
 
 const BASE_URL = 'https://media.example.com';
 
-describe('SessionProxyService.renderLaunchResponse', () => {
+describe('SessionProxyService.renderLaunchMedia', () => {
 	beforeEach(async () => {
 		vi.clearAllMocks();
 		resolveAndValidateUrlMock.mockResolvedValue({ safe: true });
@@ -19,11 +19,16 @@ describe('SessionProxyService.renderLaunchResponse', () => {
 		getPlaybackSessionStore().clear();
 	});
 
-	it('wraps an mp4 source in an HLS VOD playlist pointing at direct.mp4', async () => {
+	it('streams an mp4 source as progressive mp4 with range passthrough', async () => {
+		const body = new Uint8Array([0x00, 0x01, 0x02, 0x03]);
 		fetchWithTimeoutMock.mockResolvedValue(
-			new Response(new Uint8Array([0x00, 0x01]), {
+			new Response(body, {
 				status: 206,
-				headers: { 'Content-Type': 'video/mp4' }
+				headers: {
+					'Content-Type': 'video/mp4',
+					'Content-Range': 'bytes 0-3/1000',
+					'Accept-Ranges': 'bytes'
+				}
 			})
 		);
 
@@ -39,27 +44,32 @@ describe('SessionProxyService.renderLaunchResponse', () => {
 			attempts: []
 		});
 
-		const response = await getSessionProxyService().renderLaunchResponse(
+		const request = new Request(`${BASE_URL}/api/streaming/session/movie/541134`, {
+			headers: { Range: 'bytes=0-3' }
+		});
+		const response = await getSessionProxyService().renderLaunchMedia(
 			session,
 			BASE_URL,
 			'api-key',
-			new Request(`${BASE_URL}/api/streaming/session/movie/541134/master.m3u8`)
+			request
 		);
 
-		expect(response.status).toBe(200);
-		expect(response.headers.get('Content-Type')).toBe('application/vnd.apple.mpegurl');
+		expect(response.status).toBe(206);
+		expect(response.headers.get('Content-Type')).toBe('video/mp4');
+		expect(response.headers.get('Content-Range')).toBe('bytes 0-3/1000');
+		expect(new Uint8Array(await new Response(response.body).arrayBuffer())).toEqual(body);
 
-		const playlist = await response.text();
-		expect(playlist).toContain('#EXTM3U');
-		expect(playlist).toContain('#EXT-X-PLAYLIST-TYPE:VOD');
-		expect(playlist).toContain('#EXT-X-ENDLIST');
-		expect(playlist).toContain(
-			`${BASE_URL}/api/streaming/session/${session.token}/direct.mp4?api_key=api-key`
-		);
+		// Upstream request must include the session's referer and the range.
+		const [upstreamUrl, upstreamInit] = fetchWithTimeoutMock.mock.calls[0];
+		expect(upstreamUrl).toBe('https://cdn.example.com/movie.mp4');
+		expect(upstreamInit.headers.Referer).toBe('https://player.example.com/');
+		expect(upstreamInit.headers.range).toBe('bytes=0-3');
 	});
 
-	it('returns 503 when the mp4 source is unreachable', async () => {
-		fetchWithTimeoutMock.mockRejectedValue(new Error('connection refused'));
+	it('returns the upstream error when an mp4 source fails', async () => {
+		fetchWithTimeoutMock.mockResolvedValue(
+			new Response(JSON.stringify({ error: 'gone' }), { status: 404 })
+		);
 
 		const { getPlaybackSessionStore } = await import('./session-store');
 		const { getSessionProxyService } = await import('./SessionProxyService');
@@ -73,19 +83,17 @@ describe('SessionProxyService.renderLaunchResponse', () => {
 			attempts: []
 		});
 
-		const response = await getSessionProxyService().renderLaunchResponse(
+		const response = await getSessionProxyService().renderLaunchMedia(
 			session,
 			BASE_URL,
-			undefined,
-			new Request(`${BASE_URL}/api/streaming/session/movie/541134/master.m3u8`)
+			'api-key',
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`)
 		);
 
-		expect(response.status).toBe(503);
-		const body = await response.json();
-		expect(body.code).toBe('PLAYBACK_UNAVAILABLE');
+		expect(response.status).toBe(404);
 	});
 
-	it('proxies and rewrites an hls source playlist unchanged behaviour', async () => {
+	it('rewrites an hls source playlist at the extension-less path', async () => {
 		const upstreamPlaylist = [
 			'#EXTM3U',
 			'#EXT-X-VERSION:3',
@@ -114,16 +122,303 @@ describe('SessionProxyService.renderLaunchResponse', () => {
 			attempts: []
 		});
 
-		const response = await getSessionProxyService().renderLaunchResponse(
+		const response = await getSessionProxyService().renderLaunchMedia(
 			session,
 			BASE_URL,
 			'api-key',
-			new Request(`${BASE_URL}/api/streaming/session/movie/541134/master.m3u8`)
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`)
 		);
 
 		expect(response.status).toBe(200);
+		expect(response.headers.get('Content-Type')).toBe('application/vnd.apple.mpegurl');
 		const playlist = await response.text();
 		expect(playlist).toContain('#EXTM3U');
 		expect(playlist).toContain(`${BASE_URL}/api/streaming/session/${session.token}/segment/`);
+	});
+
+	it('overrides an obfuscated image type with authoritative container metadata', async () => {
+		const body = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3]);
+		fetchWithTimeoutMock.mockResolvedValue(
+			new Response(body, {
+				status: 200,
+				headers: { 'Content-Type': 'image/jpeg' }
+			})
+		);
+
+		const { getPlaybackSessionStore } = await import('./session-store');
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const session = getPlaybackSessionStore().createSession({
+			mediaType: 'movie',
+			tmdbId: 541134,
+			entryUrl: 'https://cdn.example.com/obfuscated.jpeg',
+			sourceType: 'file',
+			sourceFormat: 'mkv',
+			sourceContentType: 'video/x-matroska',
+			requestHeaders: {},
+			attempts: []
+		});
+
+		const response = await getSessionProxyService().renderLaunchMedia(
+			session,
+			BASE_URL,
+			'api-key',
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`)
+		);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('Content-Type')).toBe('video/x-matroska');
+		expect(new Uint8Array(await response.arrayBuffer())).toEqual(body);
+	});
+
+	it('sniffs a disguised Matroska stream without buffering the whole response', async () => {
+		const body = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x42, 0x86, 0x81, 0x01]);
+		fetchWithTimeoutMock.mockResolvedValue(
+			new Response(body, { status: 200, headers: { 'Content-Type': 'image/png' } })
+		);
+
+		const { getPlaybackSessionStore } = await import('./session-store');
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const session = getPlaybackSessionStore().createSession({
+			mediaType: 'movie',
+			tmdbId: 541134,
+			entryUrl: 'https://cdn.example.com/obfuscated.png',
+			sourceType: 'file',
+			requestHeaders: {},
+			attempts: []
+		});
+
+		const response = await getSessionProxyService().renderLaunchMedia(
+			session,
+			BASE_URL,
+			undefined,
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`)
+		);
+
+		expect(response.headers.get('Content-Type')).toBe('video/x-matroska');
+		expect(new Uint8Array(await response.arrayBuffer())).toEqual(body);
+	});
+
+	it('preserves a 416 response and its Content-Range header', async () => {
+		fetchWithTimeoutMock.mockResolvedValue(
+			new Response(null, {
+				status: 416,
+				headers: { 'Content-Range': 'bytes */1000' }
+			})
+		);
+
+		const { getPlaybackSessionStore } = await import('./session-store');
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const session = getPlaybackSessionStore().createSession({
+			mediaType: 'movie',
+			tmdbId: 541134,
+			entryUrl: 'https://cdn.example.com/movie.mp4',
+			sourceType: 'mp4',
+			requestHeaders: {},
+			attempts: []
+		});
+
+		const response = await getSessionProxyService().renderLaunchMedia(
+			session,
+			BASE_URL,
+			undefined,
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`, {
+				headers: { Range: 'bytes=2000-' }
+			})
+		);
+
+		expect(response.status).toBe(416);
+		expect(response.headers.get('Content-Range')).toBe('bytes */1000');
+	});
+
+	it('passes a conditional 304 response through without a body', async () => {
+		fetchWithTimeoutMock.mockResolvedValue(
+			new Response(null, { status: 304, headers: { ETag: '"stream-v1"' } })
+		);
+
+		const { getPlaybackSessionStore } = await import('./session-store');
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const session = getPlaybackSessionStore().createSession({
+			mediaType: 'movie',
+			tmdbId: 541134,
+			entryUrl: 'https://cdn.example.com/movie.mp4',
+			sourceType: 'mp4',
+			requestHeaders: {},
+			attempts: []
+		});
+
+		const response = await getSessionProxyService().renderLaunchMedia(
+			session,
+			BASE_URL,
+			undefined,
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`, {
+				headers: { 'If-None-Match': '"stream-v1"' }
+			})
+		);
+
+		expect(response.status).toBe(304);
+		expect(response.headers.get('ETag')).toBe('"stream-v1"');
+		expect(await response.text()).toBe('');
+	});
+});
+
+describe('SessionProxyService.renderHeadResponse', () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		resolveAndValidateUrlMock.mockResolvedValue({ safe: true });
+		const { getPlaybackSessionStore } = await import('./session-store');
+		getPlaybackSessionStore().clear();
+	});
+
+	async function createSession(sourceType: 'mp4' | 'hls' | 'dash' | 'file') {
+		const { getPlaybackSessionStore } = await import('./session-store');
+		return getPlaybackSessionStore().createSession({
+			mediaType: 'movie',
+			tmdbId: 541134,
+			entryUrl: `https://cdn.example.com/stream.${sourceType === 'dash' ? 'mpd' : sourceType === 'hls' ? 'm3u8' : 'mp4'}`,
+			sourceType,
+			requestHeaders: {},
+			attempts: []
+		});
+	}
+
+	it('probes the upstream with HEAD and returns status without a body', async () => {
+		fetchWithTimeoutMock.mockResolvedValue(
+			new Response(null, {
+				status: 200,
+				headers: {
+					'Content-Type': 'video/mp4',
+					'Content-Length': '12345',
+					'Accept-Ranges': 'bytes'
+				}
+			})
+		);
+
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const session = await createSession('mp4');
+
+		const response = await getSessionProxyService().renderHeadResponse(
+			session,
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`)
+		);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('Content-Type')).toBe('video/mp4');
+		expect(response.headers.get('Content-Length')).toBe('12345');
+		expect(response.headers.get('Accept-Ranges')).toBe('bytes');
+		expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+		expect(await response.text()).toBe('');
+
+		const [, upstreamInit] = fetchWithTimeoutMock.mock.calls[0];
+		expect(upstreamInit.method).toBe('HEAD');
+	});
+
+	it('sets the manifest content type for hls sources', async () => {
+		fetchWithTimeoutMock.mockResolvedValue(new Response(null, { status: 200 }));
+
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const session = await createSession('hls');
+
+		const response = await getSessionProxyService().renderHeadResponse(
+			session,
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`)
+		);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('Content-Type')).toBe('application/vnd.apple.mpegurl');
+	});
+
+	it('sets the dash content type for dash sources', async () => {
+		fetchWithTimeoutMock.mockResolvedValue(new Response(null, { status: 200 }));
+
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const session = await createSession('dash');
+
+		const response = await getSessionProxyService().renderHeadResponse(
+			session,
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`)
+		);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('Content-Type')).toBe('application/dash+xml');
+	});
+
+	it('preserves the upstream content type for an unknown direct container', async () => {
+		fetchWithTimeoutMock.mockResolvedValue(
+			new Response(null, { status: 200, headers: { 'Content-Type': 'video/x-matroska' } })
+		);
+
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const session = await createSession('file');
+		const response = await getSessionProxyService().renderHeadResponse(
+			session,
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`)
+		);
+
+		expect(response.headers.get('Content-Type')).toBe('video/x-matroska');
+	});
+
+	it('forwards the upstream status on failure', async () => {
+		fetchWithTimeoutMock.mockResolvedValue(new Response(null, { status: 404 }));
+
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const session = await createSession('mp4');
+
+		const response = await getSessionProxyService().renderHeadResponse(
+			session,
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`)
+		);
+
+		expect(response.status).toBe(404);
+	});
+});
+
+describe('SessionProxyService.renderRegisteredResource', () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		resolveAndValidateUrlMock.mockResolvedValue({ safe: true });
+		const { getPlaybackSessionStore } = await import('./session-store');
+		getPlaybackSessionStore().clear();
+	});
+
+	it('materializes a cross-origin DASH template with the player-provided value', async () => {
+		fetchWithTimeoutMock.mockResolvedValue(
+			new Response(new Uint8Array([1, 2, 3]), {
+				status: 200,
+				headers: { 'Content-Type': 'video/mp4' }
+			})
+		);
+
+		const { getPlaybackSessionStore } = await import('./session-store');
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const store = getPlaybackSessionStore();
+		const session = store.createSession({
+			mediaType: 'movie',
+			tmdbId: 541134,
+			entryUrl: 'https://cdn.example.com/manifest.mpd',
+			sourceType: 'dash',
+			requestHeaders: {},
+			attempts: []
+		});
+		const resource = store.registerResource(
+			session.token,
+			'https://segments.example.com/video-$Number%05d$.m4s?token=signed',
+			'segment',
+			'm4s'
+		);
+		expect(resource).not.toBeNull();
+
+		await getSessionProxyService().renderRegisteredResource(
+			session,
+			resource!.id,
+			BASE_URL,
+			undefined,
+			new Request(
+				`${BASE_URL}/api/streaming/session/${session.token}/segment/${resource!.id}.m4s?dash_Number=00042`
+			)
+		);
+
+		expect(fetchWithTimeoutMock.mock.calls[0][0]).toBe(
+			'https://segments.example.com/video-00042.m4s?token=signed'
+		);
 	});
 });

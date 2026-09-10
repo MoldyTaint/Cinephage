@@ -456,7 +456,7 @@
 			<button type="button" class="btn btn-ghost btn-sm" onclick={handleClose}>Cancel</button>
 			<button
 				type="button"
-				class="btn btn-sm btn-primary"
+				class="btn btn-primary btn-sm"
 				onclick={handleConnect}
 				disabled={!jackettUrl || !apiKey || connecting}
 			>
@@ -521,7 +521,7 @@
 				</div>
 				<button
 					type="button"
-					class="btn gap-1.5 btn-sm btn-primary"
+					class="btn gap-1.5 btn-primary btn-sm"
 					onclick={handleSyncNow}
 					disabled={syncing}
 				>
@@ -611,7 +611,7 @@
 						auto-sync will be removed.
 					</p>
 					<div class="flex gap-2 pt-1">
-						<button type="button" class="btn btn-xs btn-error" onclick={handleDeleteConnection}>
+						<button type="button" class="btn btn-error btn-xs" onclick={handleDeleteConnection}>
 							<Trash2 class="h-3.5 w-3.5" />
 							Yes, delete
 						</button>
@@ -626,7 +626,7 @@
 				<div class="flex items-center justify-between">
 					<button
 						type="button"
-						class="btn gap-1.5 text-base-content/60 btn-ghost btn-sm"
+						class="btn gap-1.5 btn-ghost text-base-content/60 btn-sm"
 						onclick={() => {
 							jackettUrl = connection?.url ?? '';
 							apiKey = '';
@@ -639,7 +639,7 @@
 					</button>
 					<button
 						type="button"
-						class="btn gap-1.5 text-error/70 btn-ghost btn-sm"
+						class="btn gap-1.5 btn-ghost text-error/70 btn-sm"
 						onclick={() => (confirmingDelete = true)}
 					>
 						<Trash2 class="h-4 w-4" />
@@ -663,7 +663,7 @@
 					Browse &amp; import
 				{/if}
 			</button>
-			<button type="button" class="btn btn-sm btn-primary" onclick={handleClose}>
+			<button type="button" class="btn btn-primary btn-sm" onclick={handleClose}>
 				{#if savingSettings}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{/if}
@@ -735,7 +735,7 @@
 				</button>
 				<button
 					type="button"
-					class="btn btn-sm btn-primary"
+					class="btn btn-primary btn-sm"
 					onclick={handleImport}
 					disabled={selected.size === 0 || importing}
 				>
@@ -799,7 +799,7 @@
 			{/if}
 		</div>
 		<div class="flex shrink-0 justify-end border-t border-base-300 px-6 py-4">
-			<button type="button" class="btn btn-sm btn-primary" onclick={handleClose}>Done</button>
+			<button type="button" class="btn btn-primary btn-sm" onclick={handleClose}>Done</button>
 		</div>
 	{/if}
 </ModalWrapper>

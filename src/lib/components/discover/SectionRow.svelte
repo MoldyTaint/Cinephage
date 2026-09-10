@@ -28,6 +28,8 @@
 	let displayedItems = $state<T[]>([]);
 	let page = $state(1);
 	let loading = $state(false);
+	let hasMore = $state(true);
+	let retryAfter = $state(0);
 	let container: HTMLElement;
 	let showLeftArrow = $state(false);
 	let showRightArrow = $state(true);
@@ -36,30 +38,47 @@
 	$effect(() => {
 		displayedItems = items;
 		page = 1;
+		hasMore = true;
+		retryAfter = 0;
 	});
 
 	async function loadMore() {
-		if (loading || !endpoint) return;
+		if (loading || !endpoint || !hasMore || Date.now() < retryAfter) return;
 		loading = true;
 		try {
 			const next = page + 1;
-			const data = (await getTmdb(endpoint, { page: String(next) })) as { results?: T[] };
-			if (data.results && data.results.length > 0) {
-				// Filter out duplicates
-				const existingIds = new Set(displayedItems.map((i: T) => i.id));
-				let newResults = data.results.filter((i: T) => !existingIds.has(i.id));
+			const data = (await getTmdb(endpoint, { page: String(next) })) as {
+				results?: T[];
+				total_pages?: number;
+			};
 
-				// Filter out items in library if excludeInLibrary is true
-				if (excludeInLibrary) {
-					newResults = newResults.filter((i: T & { inLibrary?: boolean }) => !i.inLibrary);
-				}
+			if (!data.results || data.results.length === 0) {
+				hasMore = false;
+				return;
+			}
 
-				if (newResults.length > 0) {
-					displayedItems = [...displayedItems, ...newResults];
-					page = next;
-				}
+			// Advance the source page even if every result is a duplicate or filtered out.
+			// Otherwise the same page is fetched repeatedly and can trigger the TMDB proxy rate limit.
+			page = next;
+			if (typeof data.total_pages === 'number' && next >= data.total_pages) {
+				hasMore = false;
+			}
+
+			// Filter out duplicates
+			const existingIds = new Set(displayedItems.map((i: T) => i.id));
+			let newResults = data.results.filter((i: T) => !existingIds.has(i.id));
+
+			// Filter out items in library if excludeInLibrary is true
+			if (excludeInLibrary) {
+				newResults = newResults.filter((i: T & { inLibrary?: boolean }) => !i.inLibrary);
+			}
+
+			if (newResults.length > 0) {
+				displayedItems = [...displayedItems, ...newResults];
 			}
 		} catch (e) {
+			// Prevent reactive effects from immediately retrying a failed request in a tight loop.
+			retryAfter = Date.now() + 30_000;
 			toasts.error(m.discover_failedToLoadMore(), {
 				description: e instanceof Error ? e.message : m.discover_failedToLoadMore()
 			});
@@ -76,7 +95,12 @@
 		showRightArrow = scrollLeft < scrollWidth - clientWidth - 10;
 
 		// Load more when we're close to the end (within 200px)
-		if (endpoint && scrollWidth - (scrollLeft + clientWidth) < 200) {
+		if (
+			endpoint &&
+			hasMore &&
+			Date.now() >= retryAfter &&
+			scrollWidth - (scrollLeft + clientWidth) < 200
+		) {
 			loadMore();
 		}
 	}

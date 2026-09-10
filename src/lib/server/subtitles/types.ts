@@ -175,6 +175,7 @@ export const PROVIDER_IMPLEMENTATIONS = [
 	'yifysubtitles',
 	'gestdown',
 	'subf2m',
+	'supersubtitles',
 	// Regional providers
 	'napiprojekt',
 	'legendasdivx',
@@ -195,12 +196,7 @@ export interface SyncOptionsType {
 
 /** Subtitle history action types */
 export type SubtitleAction =
-	| 'downloaded'
-	| 'deleted'
-	| 'synced'
-	| 'upgraded'
-	| 'manual_upload'
-	| 'discovered';
+	'downloaded' | 'deleted' | 'synced' | 'upgraded' | 'manual_upload' | 'discovered';
 
 /** Blacklist reason types */
 export type BlacklistReason = 'wrong_content' | 'out_of_sync' | 'poor_quality' | 'manual';

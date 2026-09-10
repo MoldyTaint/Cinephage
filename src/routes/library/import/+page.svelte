@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
+	import { MAX_BULK_IMPORT_JOBS } from '$lib/shared/bulk-import.js';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
@@ -1137,11 +1138,20 @@
 		if (libraries.length === 0) return undefined;
 
 		const preferAnime = options?.preferAnime === true;
+
+		// Each entry's id is a root folder ID. Prefer the one the user flagged as
+		// default in Settings > Library & Storage > Root Folders, which matches AddToLibraryModal.
+		const globalDefaultRootFolderIds = new Set(
+			rootFolders.filter((rf) => rf.isDefault).map((rf) => rf.id)
+		);
+		const globalDefaultId = libraries.find((lib) => globalDefaultRootFolderIds.has(lib.id))?.id;
+
 		if (preferAnime) {
 			return (
 				libraries.find(
 					(library) => library.isDefault && (library.mediaSubType ?? 'standard') === 'anime'
 				)?.id ??
+				globalDefaultId ??
 				libraries.find(
 					(library) => library.isDefault && (library.mediaSubType ?? 'standard') === 'standard'
 				)?.id ??
@@ -1151,6 +1161,7 @@
 		}
 
 		return (
+			globalDefaultId ??
 			libraries.find(
 				(library) => library.isDefault && (library.mediaSubType ?? 'standard') === 'standard'
 			)?.id ??
@@ -2168,6 +2179,11 @@
 
 		if (jobs.length === 0) {
 			toasts.warning(m.toast_library_import_noSelectedItems());
+			return;
+		}
+
+		if (jobs.length > MAX_BULK_IMPORT_JOBS) {
+			toasts.error(m.toast_library_import_tooManyItems());
 			return;
 		}
 

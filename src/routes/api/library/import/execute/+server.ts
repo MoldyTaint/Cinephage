@@ -3,9 +3,11 @@ import type { RequestHandler } from './$types.js';
 import { manualImportSchema } from '$lib/validation/schemas.js';
 import { manualImportService } from '$lib/server/library/manual-import-service.js';
 import { isPathAllowed, isPathInsideManagedRoot } from '$lib/server/filesystem/path-guard.js';
-import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryImportExecuteApi', logDomain: 'scans' });
 
 function getExecuteErrorMessage(error: unknown): string {
 	const fsError = error as NodeJS.ErrnoException;
@@ -29,7 +31,13 @@ export const POST: RequestHandler = async (event) => {
 		let body: unknown;
 		try {
 			body = await request.json();
-		} catch {
+		} catch (error) {
+			// adapter-node aborts the request stream when the body exceeds
+			// BODY_SIZE_LIMIT, surfacing here as a 413 Payload Too Large.
+			const status = (error as { status?: number } | null)?.status;
+			if (status === 413) {
+				return json({ success: false, error: 'Request payload too large' }, { status: 413 });
+			}
 			return json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
 		}
 

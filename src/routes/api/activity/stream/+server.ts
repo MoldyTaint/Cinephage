@@ -5,8 +5,10 @@ import { mediaResolver } from '$lib/server/activity';
 import { activityStreamEvents } from '$lib/server/activity/ActivityStreamEvents';
 import type { UnifiedActivity, ActivityStatus } from '$lib/types/activity';
 import type { ActivityRefreshEvent } from '$lib/types/sse/events/activity-events.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { mapQueueStatus, projectQueueActivity } from '$lib/server/activity/projectors';
+
+const logger = createChildLogger({ module: 'ActivityStreamApi', logDomain: 'monitoring' });
 
 interface QueueItem {
 	id: string;

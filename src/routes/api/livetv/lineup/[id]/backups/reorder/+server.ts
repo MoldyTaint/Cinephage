@@ -6,9 +6,11 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { channelLineupService } from '$lib/server/livetv/lineup/ChannelLineupService';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { ValidationError } from '$lib/errors';
 import type { ReorderBackupsRequest } from '$lib/types/livetv';
+
+const logger = createChildLogger({ module: 'LiveTvLineupBackupsReorder', logDomain: 'livetv' });
 
 /**
  * Reorder backup links for a lineup item

@@ -77,6 +77,7 @@
 		configuredProviders?: { anilist: boolean; mal: boolean };
 		librarySlug?: string | null;
 		libraryName?: string | null;
+		backHref?: string | null;
 		refreshing?: boolean;
 		refreshProgress?: RefreshProgress | null;
 		missingEpisodeCount?: number;
@@ -88,6 +89,7 @@
 		percentComplete?: number;
 		totalSeriesSize?: number;
 		downloadingCount?: number;
+		partiallyMonitored?: boolean;
 		onMonitorToggle?: (newValue: boolean) => void;
 		onSearch?: () => void;
 		onSearchMissing?: () => void;
@@ -106,6 +108,7 @@
 		configuredProviders = { anilist: false, mal: false },
 		librarySlug = null,
 		libraryName = null,
+		backHref = null,
 		refreshing = false,
 		refreshProgress: _refreshProgress = null,
 		missingEpisodeCount = 0,
@@ -117,6 +120,7 @@
 		percentComplete = 0,
 		totalSeriesSize = 0,
 		downloadingCount = 0,
+		partiallyMonitored = false,
 		onMonitorToggle,
 		onSearch,
 		onSearchMissing,
@@ -204,20 +208,29 @@
 	<!-- Top action bar -->
 	<div class="flex items-center justify-between gap-2">
 		<a
-			href={resolvePath(librarySlug ? `/library/tv?library=${librarySlug}` : '/library/tv')}
-			class="btn btn-ghost btn-sm gap-1.5 text-base-content/60"
+			href={resolvePath(
+				backHref ?? (librarySlug ? `/library/tv?library=${librarySlug}` : '/library/tv')
+			)}
+			class="btn gap-1.5 btn-ghost text-base-content/60 btn-sm"
 		>
 			<ArrowLeft size={16} />
-			<span class="sm:inline">{libraryName ?? m.library_movieHeader_backToLibrary()}</span>
+			<span class="sm:inline"
+				>{m.library_backTo({ name: libraryName ?? m.library_tv_heading() })}</span
+			>
 		</a>
 		<div class="flex shrink-0 items-center gap-1 sm:gap-2">
 			<!-- MonitorToggle hidden on mobile (shown in bottom bar) -->
 			<div class="hidden sm:block">
-				<MonitorToggle monitored={series.monitored ?? false} onToggle={onMonitorToggle} size="md" />
+				<MonitorToggle
+					monitored={series.monitored ?? false}
+					{partiallyMonitored}
+					onToggle={onMonitorToggle}
+					size="md"
+				/>
 			</div>
 			<!-- Auto-grab (desktop) -->
 			<button
-				class="btn btn-primary btn-sm gap-1.5 hidden sm:flex"
+				class="btn hidden gap-1.5 btn-primary btn-sm sm:flex"
 				onclick={onSearchMissing}
 				disabled={searchingMissing || missingEpisodeCount === 0}
 			>
@@ -232,7 +245,7 @@
 				{/if}
 			</button>
 			<!-- Season Packs (desktop) -->
-			<button class="btn btn-ghost btn-sm gap-1.5 hidden sm:flex" onclick={onSearch}>
+			<button class="btn hidden gap-1.5 btn-ghost btn-sm sm:flex" onclick={onSearch}>
 				<Package size={14} />
 				{m.library_seriesHeader_seasonPacks()}
 			</button>
@@ -244,7 +257,7 @@
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 				<ul
 					tabindex="0"
-					class="dropdown-content menu z-50 w-56 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
+					class="menu dropdown-content z-50 w-56 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
 				>
 					{#if onImport}
 						<li>
@@ -418,7 +431,7 @@
 							<div class="mb-2 text-sm text-base-content/60">Cast</div>
 							<div class="flex gap-3 overflow-x-auto pb-1">
 								{#each tmdbSeries.credits.cast.slice(0, 8) as actor (actor.id)}
-									<div class="flex shrink-0 flex-col items-center gap-1.5 w-16">
+									<div class="flex w-16 shrink-0 flex-col items-center gap-1.5">
 										<div class="h-14 w-14 overflow-hidden rounded-full bg-base-300">
 											{#if actor.profile_path}
 												<TmdbImage
@@ -436,9 +449,9 @@
 											{/if}
 										</div>
 										<div class="text-center">
-											<div class="text-xs font-medium leading-tight line-clamp-2">{actor.name}</div>
+											<div class="line-clamp-2 text-xs leading-tight font-medium">{actor.name}</div>
 											{#if actor.character}
-												<div class="text-xs text-base-content/50 leading-tight line-clamp-1">
+												<div class="line-clamp-1 text-xs leading-tight text-base-content/50">
 													{actor.character}
 												</div>
 											{/if}
@@ -478,7 +491,7 @@
 							</div>
 						{/if}
 						<div
-							class="flex shrink-0 items-center gap-1 overflow-x-auto border-t border-base-content/10 pt-2 pb-0.5 sm:border-0 sm:pt-0 sm:overflow-x-visible sm:pb-0"
+							class="flex shrink-0 items-center gap-1 overflow-x-auto border-t border-base-content/10 pt-2 pb-0.5 sm:overflow-x-visible sm:border-0 sm:pt-0 sm:pb-0"
 						>
 							{#if series.tmdbId}
 								<a
@@ -654,7 +667,7 @@
 
 <!-- Mobile action bar -->
 <div
-	class="fixed bottom-0 left-0 right-0 z-40 border-t border-base-content/6 bg-base-100/75 backdrop-blur-xl sm:hidden"
+	class="fixed right-0 bottom-0 left-0 z-40 border-t border-base-content/6 bg-base-100/75 backdrop-blur-xl sm:hidden"
 	style="padding-bottom: env(safe-area-inset-bottom)"
 >
 	<div class="flex items-stretch justify-around">
@@ -706,7 +719,7 @@
 		</button>
 
 		<!-- Overflow (dropdown-top) -->
-		<div class="dropdown dropdown-top dropdown-end flex flex-1">
+		<div class="dropdown dropdown-end dropdown-top flex flex-1">
 			<button
 				tabindex="0"
 				class="flex flex-1 flex-col items-center gap-1 py-3 text-error/60 transition-colors active:text-error"
@@ -717,7 +730,7 @@
 			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 			<ul
 				tabindex="0"
-				class="dropdown-content menu z-50 mb-2 w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
+				class="menu dropdown-content z-50 mb-2 w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
 			>
 				<li>
 					<button onclick={onRefresh} disabled={refreshing}>

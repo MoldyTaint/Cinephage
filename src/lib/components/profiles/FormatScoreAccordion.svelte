@@ -180,13 +180,13 @@
 										</span>
 
 										{#if isRequired}
-											<span class="badge badge-warning badge-xs shrink-0">required</span>
+											<span class="badge shrink-0 badge-xs badge-warning">required</span>
 										{/if}
 
 										<!-- Score input -->
 										<input
 											type="number"
-											class="input-bordered input input-xs w-20 text-right font-mono"
+											class="input-bordered input w-20 text-right font-mono input-xs"
 											class:input-primary={entry.score !== 0}
 											value={entry.score}
 											disabled={readonly}

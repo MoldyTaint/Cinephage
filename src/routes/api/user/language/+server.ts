@@ -4,9 +4,12 @@ import { db } from '$lib/server/db';
 import { user } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { locales } from '$lib/paraglide/runtime.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
 import { parseBody } from '$lib/server/api/validate.js';
 import { z } from 'zod';
+
+const logger = createChildLogger({ module: 'UserLanguageApi', logDomain: 'system' });
 
 const userLanguageSchema = z.object({
 	language: z.string().min(1, 'Language is required')

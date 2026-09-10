@@ -2,8 +2,10 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { getSubtitleProviderManager } from '$lib/server/subtitles/services/SubtitleProviderManager';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { parseBody } from '$lib/server/api/validate.js';
+
+const logger = createChildLogger({ module: 'SubtitleProviderReorderApi', logDomain: 'subtitles' });
 
 /**
  * Schema for reordering providers

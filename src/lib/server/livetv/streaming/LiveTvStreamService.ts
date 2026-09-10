@@ -160,8 +160,7 @@ export class LiveTvStreamService implements BackgroundService {
 		for (let i = 0; i < fallbackRows.length; i++) {
 			const row = fallbackRows[i];
 			const stalkerData = (row.stalkerData ?? undefined) as
-				| import('$lib/types/livetv').StalkerChannelData
-				| undefined;
+				import('$lib/types/livetv').StalkerChannelData | undefined;
 			sources.push({
 				accountId: row.accountId,
 				channelId: row.id,

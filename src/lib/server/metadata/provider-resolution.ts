@@ -20,6 +20,8 @@ export interface AnimeEnrichmentInput {
 	tmdbTitle: string;
 	aliases: string[];
 	year?: number | null;
+	/** TMDB id of the media being enriched - used for conflict tracking */
+	tmdbId?: number;
 }
 
 export interface AnimeEnrichmentResult {
@@ -44,11 +46,14 @@ export async function enrichAnimeMetadata(
 	if (!registry.enrichmentEnabled) return result;
 
 	const providerIds = ['anilist', 'mal'] as const;
+	const providerResults: Record<string, { found: boolean; id?: string; error?: string }> = {};
+	const configuredProviders: string[] = [];
 
 	await Promise.all(
 		providerIds.map(async (providerId) => {
 			const provider = registry.providers.get(providerId);
 			if (!provider?.isConfigured()) return;
+			configuredProviders.push(providerId);
 
 			try {
 				const ref = await resolveAnimeProviderRef({
@@ -57,20 +62,25 @@ export async function enrichAnimeMetadata(
 					aliases: input.aliases,
 					year: input.year ?? undefined
 				});
-				if (!ref) return;
+				if (!ref) {
+					providerResults[providerId] = { found: false };
+					return;
+				}
 
 				const details = await provider.getDetails(ref, mediaType);
-				if (!details) return;
+				if (!details) {
+					providerResults[providerId] = { found: false };
+					return;
+				}
 
 				result.refs[providerId] = ref;
 				result.details[providerId] = details;
+				providerResults[providerId] = { found: true, id: ref };
 			} catch (err) {
+				const error = err instanceof Error ? err.message : String(err);
+				providerResults[providerId] = { found: false, error };
 				logger.warn(
-					{
-						providerId,
-						title: input.tmdbTitle,
-						error: err instanceof Error ? err.message : String(err)
-					},
+					{ providerId, title: input.tmdbTitle, error },
 					'[AnimeEnrichment] Provider failed - skipping'
 				);
 			}

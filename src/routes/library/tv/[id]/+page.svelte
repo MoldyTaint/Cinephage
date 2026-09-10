@@ -33,6 +33,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
+	import { getLibraryDetailBackHref } from '$lib/utils/libraryReturnNavigation';
 	import { createDynamicSSE } from '$lib/sse';
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { createSubtitleProgress } from '$lib/stores/subtitleProgress.svelte';
@@ -55,6 +56,12 @@
 	const seasons = $derived(seasonsState ?? data.seasons);
 	const queueItems = $derived(queueItemsState ?? data.queueItems);
 
+	// Back link target: the validated returnTo URL carries the exact filtered
+	// list state from the page the user navigated from (issue #515). It stays
+	// absolute — LibrarySeriesHeader applies resolvePath() exactly once, and
+	// pre-resolving here relativizes it during SSR and throws (PR #518).
+	const tvBackHref = $derived(getLibraryDetailBackHref(page.url, '/library/tv'));
+
 	function computeSeriesEpisodeStats(seasonList: PageData['seasons']) {
 		const regularSeasons = seasonList.filter((season) => season.seasonNumber > 0);
 		const allEpisodes = regularSeasons.flatMap((season) => season.episodes);
@@ -66,6 +73,19 @@
 			percentComplete: stats.percentComplete
 		};
 	}
+
+	// A series is partially monitored when it is monitored but only some aired episodes are.
+	const partiallyMonitored = $derived.by(() => {
+		if (!series.monitored) return false;
+		const today = todayDateString();
+		const allEps = seasons
+			.filter((s) => s.seasonNumber > 0)
+			.flatMap((s) => s.episodes)
+			.filter((ep) => ep.airDate && ep.airDate <= today);
+		if (allEps.length === 0) return false;
+		const monitoredCount = allEps.filter((ep) => ep.monitored !== false).length;
+		return monitoredCount > 0 && monitoredCount < allEps.length;
+	});
 
 	// Keep series completion counters aligned with the actual episode rows shown in seasons.
 	const seriesForDisplay = $derived.by(() => {
@@ -943,8 +963,7 @@
 			if (searchProgress.results) {
 				const issue = getPrimaryAutoSearchIssue(searchProgress.results);
 				const itemResult = searchProgress.results.results?.[0] as
-					| { found?: boolean; grabbed?: boolean; releaseName?: string; error?: string }
-					| undefined;
+					{ found?: boolean; grabbed?: boolean; releaseName?: string; error?: string } | undefined;
 				autoSearchEpisodeResults.set(episode.id, {
 					found: itemResult?.found ?? false,
 					grabbed: itemResult?.grabbed ?? false,
@@ -986,8 +1005,7 @@
 			if (searchProgress.results) {
 				const issue = getPrimaryAutoSearchIssue(searchProgress.results);
 				const itemResult = searchProgress.results.results?.[0] as
-					| { found?: boolean; grabbed?: boolean; releaseName?: string; error?: string }
-					| undefined;
+					{ found?: boolean; grabbed?: boolean; releaseName?: string; error?: string } | undefined;
 				autoSearchSeasonResults.set(season.id, {
 					found: itemResult?.found ?? false,
 					grabbed: itemResult?.grabbed ?? false,
@@ -1028,8 +1046,7 @@
 			if (searchProgress.results) {
 				const issue = getPrimaryAutoSearchIssue(searchProgress.results);
 				const results = searchProgress.results.results as
-					| Array<{ found?: boolean; grabbed?: boolean }>
-					| undefined;
+					Array<{ found?: boolean; grabbed?: boolean }> | undefined;
 				missingSearchResult = searchProgress.results.summary ?? {
 					searched: results?.length ?? 0,
 					found: results?.filter((r) => r.found).length ?? 0,
@@ -1681,6 +1698,7 @@
 		configuredProviders={data.configuredMetadataProviders}
 		librarySlug={data.librarySlug}
 		libraryName={data.libraryName}
+		backHref={tvBackHref}
 		refreshing={isRefreshing}
 		{refreshProgress}
 		episodeCount={seriesForDisplay.episodeCount}
@@ -1692,6 +1710,7 @@
 		{searchingMissing}
 		{missingSearchProgress}
 		{missingSearchResult}
+		{partiallyMonitored}
 		onMonitorToggle={handleMonitorToggle}
 		onSearch={handleSearch}
 		onSearchMissing={handleSearchMissing}

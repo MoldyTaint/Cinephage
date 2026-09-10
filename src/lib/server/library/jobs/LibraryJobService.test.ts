@@ -216,3 +216,37 @@ describe('LibraryJobService', () => {
 		});
 	});
 });
+
+describe('stale queued-job aging (issue #513)', () => {
+	it('resets a stuck queued job older than 1h instead of blocking its dedupeKey forever', async () => {
+		const old = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+		testDb.db
+			.insert(libraryJobs)
+			.values({
+				type: 'scan_all_root_folders',
+				status: 'queued',
+				dedupeKey: 'scan_all_root_folders',
+				createdAt: old,
+				updatedAt: old
+			})
+			.run();
+
+		const job = libraryJobService.enqueueFullScan();
+
+		expect(job.status).toBe('queued');
+		const stale = testDb.db
+			.select()
+			.from(libraryJobs)
+			.where(eq(libraryJobs.dedupeKey, 'scan_all_root_folders'))
+			.all();
+		const failed = stale.filter((j) => j.status === 'failed');
+		expect(failed).toHaveLength(1);
+		expect(failed[0].errorMessage).toContain('timed out');
+	});
+
+	it('does not age a fresh queued job', async () => {
+		const fresh = libraryJobService.enqueueFullScan();
+		const again = libraryJobService.enqueueFullScan();
+		expect(again.id).toBe(fresh.id);
+	});
+});

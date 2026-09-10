@@ -14,8 +14,10 @@
 import { db } from '$lib/server/db/index.js';
 import { delayProfiles, pendingReleases, movies, series } from '$lib/server/db/schema.js';
 import { eq, and, lte, desc } from 'drizzle-orm';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
 import type { ReleaseCandidate } from './types.js';
+
+const logger = createChildLogger({ module: 'DelaySpecification', logDomain: 'monitoring' });
 
 /**
  * Result of delay calculation

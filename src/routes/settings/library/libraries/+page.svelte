@@ -181,7 +181,7 @@
 	{#snippet actions()}
 		<button
 			type="button"
-			class="btn ml-auto w-full gap-2 btn-sm btn-primary sm:w-auto"
+			class="btn ml-auto w-full gap-2 btn-primary btn-sm sm:w-auto"
 			onclick={openAddLibraryModal}
 		>
 			<Plus class="h-4 w-4" />
@@ -210,7 +210,7 @@
 					<input
 						id="scan-interval"
 						type="number"
-						class="input-bordered input input-sm w-full"
+						class="input-bordered input w-full input-sm"
 						bind:value={scanSettings.scanIntervalHours}
 						min="1"
 						max="168"
@@ -227,7 +227,7 @@
 						id="auto-match-threshold"
 						type="number"
 						step="0.05"
-						class="input-bordered input input-sm w-full"
+						class="input-bordered input w-full input-sm"
 						bind:value={scanSettings.autoMatchThreshold}
 						min="0"
 						max="1"
@@ -250,7 +250,7 @@
 						<span class="label-text text-base-content">
 							{m.settings_libraries_scan_watch()}
 						</span>
-						<div class="text-xs text-base-content/60">
+						<div class="text-xs whitespace-normal text-base-content/60">
 							{m.settings_libraries_scan_watch_hint()}
 						</div>
 					</div>
@@ -267,7 +267,7 @@
 						<span class="label-text text-base-content">
 							{m.settings_libraries_scan_on_startup()}
 						</span>
-						<div class="text-xs text-base-content/60">
+						<div class="text-xs whitespace-normal text-base-content/60">
 							{m.settings_libraries_scan_on_startup_hint()}
 						</div>
 					</div>

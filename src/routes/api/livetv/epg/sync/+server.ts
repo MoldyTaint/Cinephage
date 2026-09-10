@@ -16,7 +16,9 @@ import { getEpgService, getEpgScheduler } from '$lib/server/livetv/epg';
 import { EPG_SYNC_CANCELLED_MESSAGE } from '$lib/server/livetv/epg/EpgService';
 import { getEpgSyncState } from '$lib/server/livetv/epg/EpgSyncState';
 import { liveTvEvents } from '$lib/server/livetv/LiveTvEvents';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LiveTvEpgSync', logDomain: 'livetv' });
 
 export const POST: RequestHandler = async ({ url }) => {
 	const accountId = url.searchParams.get('accountId');

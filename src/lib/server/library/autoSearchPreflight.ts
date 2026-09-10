@@ -78,19 +78,21 @@ export async function getAutoSearchPreflightIssue(
 	}
 
 	const manager = getDownloadClientManager();
-	const [torrentClients, usenetClients] = await Promise.all([
+	const [torrentClients, usenetClients, debridClient] = await Promise.all([
 		manager.getEnabledClientsForProtocol('torrent'),
-		manager.getEnabledClientsForProtocol('usenet')
+		manager.getEnabledClientsForProtocol('usenet'),
+		manager.getDebridClientForAcquisition()
 	]);
 
 	const hasTorrent = torrentClients.length > 0;
 	const hasUsenet = usenetClients.length > 0;
+	const hasDebrid = !!debridClient;
 
-	if (needsTorrent && !hasTorrent && !needsUsenet) {
+	if (needsTorrent && !(hasTorrent || hasDebrid) && !needsUsenet) {
 		return {
 			code: 'NO_DOWNLOAD_CLIENT',
-			message: 'No torrent download client is enabled',
-			suggestion: 'Enable a torrent client in Settings > Integrations > Download Clients.'
+			message: 'No torrent or debrid download client is enabled',
+			suggestion: 'Enable a torrent or debrid client in Settings > Integrations > Download Clients.'
 		};
 	}
 
@@ -102,20 +104,21 @@ export async function getAutoSearchPreflightIssue(
 		};
 	}
 
-	if ((needsTorrent && !hasTorrent) || (needsUsenet && !hasUsenet)) {
+	if ((needsTorrent && !(hasTorrent || hasDebrid)) || (needsUsenet && !hasUsenet)) {
 		// Mixed protocol indexers: allow search if at least one required protocol has a client.
-		if ((needsTorrent && hasTorrent) || (needsUsenet && hasUsenet)) {
+		if ((needsTorrent && (hasTorrent || hasDebrid)) || (needsUsenet && hasUsenet)) {
 			return null;
 		}
 	}
 
-	if (hasTorrent || hasUsenet) {
+	if (hasTorrent || hasDebrid || hasUsenet) {
 		return null;
 	}
 
 	return {
 		code: 'NO_DOWNLOAD_CLIENT',
 		message: 'No download client is enabled',
-		suggestion: 'Enable a torrent or usenet client in Settings > Integrations > Download Clients.'
+		suggestion:
+			'Enable a torrent, debrid, or usenet client in Settings > Integrations > Download Clients.'
 	};
 }

@@ -41,8 +41,8 @@ export async function deleteRootFolder(id: string) {
 	return apiDelete(`/api/root-folders/${id}`);
 }
 
-export async function validateRootFolder(path: string, mediaType?: string, folderId?: string) {
-	return apiPost('/api/root-folders/validate', { path, mediaType, folderId });
+export async function validateRootFolder(path: string, readOnly?: boolean, folderId?: string) {
+	return apiPost('/api/root-folders/validate', { path, readOnly, folderId });
 }
 
 export async function getLibraries(params?: { mediaType?: string; includeSystem?: boolean }) {
@@ -259,8 +259,8 @@ export async function getLogSettings() {
 	return apiGet('/api/settings/logs/settings');
 }
 
-export async function updateLogSettings(retentionDays: number) {
-	return apiPut('/api/settings/logs/settings', { retentionDays });
+export async function updateLogSettings(update: { retentionDays?: number; minLevel?: string }) {
+	return apiPut('/api/settings/logs/settings', update);
 }
 
 export async function downloadLogs(params?: Record<string, string>) {

@@ -67,9 +67,7 @@ export const PUT: RequestHandler = async (event) => {
 		const host = result.data.host ?? existing.host;
 		const apiKey = result.data.apiKey ?? existing.apiKey;
 		const serverType = (result.data.serverType ?? existing.serverType) as
-			| 'jellyfin'
-			| 'emby'
-			| 'plex';
+			'jellyfin' | 'emby' | 'plex';
 
 		testResult = await manager.testServerConfig({
 			host,

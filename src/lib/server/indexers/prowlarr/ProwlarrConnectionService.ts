@@ -244,7 +244,7 @@ export async function syncProwlarrIndexers(): Promise<SyncResult> {
 		conn.lastSyncAt = new Date().toISOString();
 		conn.lastSyncError = errorMsg;
 		await saveProwlarrConnection(conn);
-		throw new Error(`Failed to fetch indexers from Prowlarr: ${errorMsg}`);
+		throw new Error(`Failed to fetch indexers from Prowlarr: ${errorMsg}`, { cause: err });
 	}
 
 	const manager = await getIndexerManager();

@@ -1,11 +1,13 @@
 <script lang="ts">
 	import './layout.css';
 	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { ThemeSelector, LanguageSelector } from '$lib/components/ui';
 	import Toasts from '$lib/components/ui/Toasts.svelte';
-	import { layoutState } from '$lib/layout.svelte';
+	import { layoutState, type ScanProgressPayload } from '$lib/layout.svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import { createSSE } from '$lib/sse';
+	import { toasts } from '$lib/stores/toast.svelte';
 
 	import { page } from '$app/state';
 	import { resolvePath } from '$lib/utils/routing';
@@ -398,6 +400,58 @@
 		if (!browser) return;
 		localStorage.setItem(SIDEBAR_EXPANDED_STORAGE_KEY, String(layoutState.isSidebarExpanded));
 	});
+
+	// Global scan SSE - lives in the root layout so toast notifications fire
+	// regardless of which page the user is on when a scan completes.
+	// The monitoring/status sub-layout keeps its own SSE for the progress bar.
+	const _scanSse = createSSE<{
+		status: { scanning?: boolean };
+		progress: ScanProgressPayload;
+		scanStart: Record<string, unknown>;
+		scanComplete: { type?: string; results?: unknown[] };
+		scanError: { error?: { message?: string } };
+	}>('/api/library/scan/status', {
+		status: (payload) => {
+			const inProgress = Boolean(payload.scanning ?? false);
+			layoutState.setScanState(inProgress, inProgress ? layoutState.scanProgress : null);
+		},
+		progress: (payload) => {
+			layoutState.setScanState(true, payload);
+		},
+		scanStart: () => {
+			layoutState.setScanState(true, layoutState.scanProgress);
+		},
+		scanComplete: (payload) => {
+			layoutState.setScanState(false, null);
+			const count = payload.results?.length ?? 0;
+			toasts.success(m.settings_general_scanCompleteFoldersScanned({ count }));
+			void invalidateAll();
+		},
+		scanError: () => {
+			layoutState.setScanState(false, null);
+			toasts.error(m.settings_general_scanFailed());
+		}
+	});
+
+	// Global sync SSE — shows start/complete toasts from any page.
+	const _syncSse = createSSE<{
+		status: { inProgress?: boolean };
+		syncStart: { timestamp?: string };
+		syncStop: { timestamp?: string };
+	}>('/api/media-server-stats/sync/status', {
+		status: (payload) => {
+			layoutState.setMediaServerSyncing(Boolean(payload.inProgress ?? false));
+		},
+		syncStart: () => {
+			layoutState.setMediaServerSyncing(true);
+			toasts.info(m.settings_monitoring_mediaServerSyncStarted());
+		},
+		syncStop: () => {
+			layoutState.setMediaServerSyncing(false);
+			toasts.success(m.settings_monitoring_mediaServerSyncComplete());
+			void invalidateAll();
+		}
+	});
 </script>
 
 <svelte:head>
@@ -501,7 +555,7 @@
 								<img
 									src="/logo.png"
 									alt={m.common_appName()}
-									class="h-9 w-9 object-contain rounded"
+									class="h-9 w-9 rounded object-contain"
 								/>
 							</div>
 							<span
@@ -645,7 +699,7 @@
 											href={DISCORD_URL}
 											target="_blank"
 											rel="noopener noreferrer"
-											class="btn btn-ghost btn-xs px-1 text-base-content/40 hover:text-base-content/70"
+											class="btn btn-ghost px-1 text-base-content/40 btn-xs hover:text-base-content/70"
 											title="Discord"
 										>
 											<svg
@@ -677,7 +731,7 @@
 											href={GITHUB_URL}
 											target="_blank"
 											rel="noopener noreferrer"
-											class="btn btn-ghost btn-xs px-1 text-base-content/40 hover:text-base-content/70"
+											class="btn btn-ghost px-1 text-base-content/40 btn-xs hover:text-base-content/70"
 											title="GitHub"
 										>
 											<svg
@@ -694,17 +748,17 @@
 									</div>
 									<div class="hidden items-center lg:flex">
 										{#if layoutState.mobileSseStatus === 'connected'}
-											<span class="badge badge-success badge-xs gap-1">
+											<span class="badge gap-1 badge-xs badge-success">
 												<Wifi class="h-3 w-3" />
 												{m.common_live()}
 											</span>
 										{:else if layoutState.mobileSseStatus === 'error'}
-											<span class="badge badge-warning badge-xs gap-1">
+											<span class="badge gap-1 badge-xs badge-warning">
 												<Loader2 class="h-3 w-3 animate-spin" />
 												{m.common_reconnecting()}
 											</span>
 										{:else if layoutState.mobileSseStatus === 'connecting'}
-											<span class="badge badge-info badge-xs gap-1">
+											<span class="badge gap-1 badge-xs badge-info">
 												<Loader2 class="h-3 w-3 animate-spin" />
 												{m.common_connecting()}
 											</span>
@@ -727,7 +781,7 @@
 							<div class="mt-2 border-t border-base-300/70 pt-2">
 								<div class="flex items-center gap-1">
 									<button
-										class="btn flex-1 justify-start text-error btn-ghost btn-sm hover:bg-error/10"
+										class="btn flex-1 justify-start btn-ghost text-error btn-sm hover:bg-error/10"
 										onclick={handleLogout}
 										disabled={isLoggingOut}
 										title={m.action_logout()}
@@ -744,7 +798,7 @@
 											href={DISCORD_URL}
 											target="_blank"
 											rel="noopener noreferrer"
-											class="btn btn-ghost btn-xs px-2 text-base-content/40 hover:text-base-content/70"
+											class="btn btn-ghost px-2 text-base-content/40 btn-xs hover:text-base-content/70"
 											title="Discord"
 										>
 											<svg
@@ -776,7 +830,7 @@
 											href={GITHUB_URL}
 											target="_blank"
 											rel="noopener noreferrer"
-											class="btn btn-ghost btn-xs px-2 text-base-content/40 hover:text-base-content/70"
+											class="btn btn-ghost px-2 text-base-content/40 btn-xs hover:text-base-content/70"
 											title="GitHub"
 										>
 											<svg
@@ -814,7 +868,7 @@
 									<Palette class="h-5 w-5" />
 								</button>
 								<button
-									class="btn w-full justify-center text-error btn-ghost btn-sm hover:bg-error/10"
+									class="btn w-full justify-center btn-ghost text-error btn-sm hover:bg-error/10"
 									onclick={handleLogout}
 									disabled={isLoggingOut}
 									title={m.action_logout()}
@@ -827,15 +881,15 @@
 								</button>
 								{#if layoutState.mobileSseStatus}
 									{#if layoutState.mobileSseStatus === 'connected'}
-										<span class="badge badge-success badge-xs gap-1">
+										<span class="badge gap-1 badge-xs badge-success">
 											<Wifi class="h-3 w-3" />
 										</span>
 									{:else if layoutState.mobileSseStatus === 'error'}
-										<span class="badge badge-warning badge-xs gap-1">
+										<span class="badge gap-1 badge-xs badge-warning">
 											<Loader2 class="h-3 w-3 animate-spin" />
 										</span>
 									{:else if layoutState.mobileSseStatus === 'connecting'}
-										<span class="badge badge-info badge-xs gap-1">
+										<span class="badge gap-1 badge-xs badge-info">
 											<Loader2 class="h-3 w-3 animate-spin" />
 										</span>
 									{/if}

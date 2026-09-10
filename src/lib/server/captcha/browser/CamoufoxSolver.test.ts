@@ -575,4 +575,121 @@ describe('CamoufoxSolver', () => {
 			expect(navigatedUrls).toEqual(['https://example.com/']);
 		});
 	});
+
+	describe('two-phase interactive fallback', () => {
+		it('first attempt launches without the shadow-unlock addon', async () => {
+			const gotoMock = mockManagedBrowser.page.goto as ReturnType<typeof vi.fn>;
+			gotoMock.mockResolvedValue(createMockResponse(200));
+
+			await solveChallenge({ url: 'https://example.com' }, { headless: true, timeoutSeconds: 60 });
+
+			expect(mockManager.createBrowserForDomain).toHaveBeenCalledTimes(1);
+			expect(mockManager.createBrowserForDomain.mock.calls[0][1]).toMatchObject({
+				shadowUnlockAddon: false
+			});
+		});
+
+		it('browserFetch first attempt launches without the shadow-unlock addon', async () => {
+			const gotoMock = mockManagedBrowser.page.goto as ReturnType<typeof vi.fn>;
+			gotoMock.mockResolvedValue(createMockResponse(200));
+
+			await browserFetch(
+				{ url: 'https://example.com/search/Avatar/1/' },
+				{ headless: true, timeoutSeconds: 60 }
+			);
+
+			expect(mockManager.createBrowserForDomain).toHaveBeenCalledTimes(1);
+			expect(mockManager.createBrowserForDomain.mock.calls[0][1]).toMatchObject({
+				shadowUnlockAddon: false
+			});
+		});
+
+		it('retries with the addon enabled when the passive attempt stays challenged', async () => {
+			vi.useFakeTimers();
+			try {
+				(detectChallengeFromPage as ReturnType<typeof vi.fn>).mockResolvedValue({
+					detected: true,
+					type: 'cloudflare',
+					confidence: 0.95
+				} as ChallengeDetectionResult);
+				(mockManagedBrowser.page.title as ReturnType<typeof vi.fn>).mockResolvedValue(
+					'Just a moment...'
+				);
+				(mockManagedBrowser.page.context().cookies as ReturnType<typeof vi.fn>).mockResolvedValue(
+					[]
+				);
+				mockManager.extractCookies.mockResolvedValue([]);
+				const gotoMock = mockManagedBrowser.page.goto as ReturnType<typeof vi.fn>;
+				gotoMock.mockResolvedValue(createMockResponse(503));
+
+				const promise = solveChallenge(
+					{ url: 'https://example.com' },
+					{ headless: true, timeoutSeconds: 60 }
+				);
+				const drive = async () => {
+					for (let i = 0; i < 200; i++) {
+						await vi.advanceTimersByTimeAsync(500);
+					}
+					return promise;
+				};
+				const result = await drive();
+
+				expect(mockManager.createBrowserForDomain).toHaveBeenCalledTimes(2);
+				expect(mockManager.createBrowserForDomain.mock.calls[0][1]).toMatchObject({
+					shadowUnlockAddon: false
+				});
+				expect(mockManager.createBrowserForDomain.mock.calls[1][1]).toMatchObject({
+					shadowUnlockAddon: true
+				});
+				expect(result.success).toBe(false);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it('does not retry when the passive attempt succeeds', async () => {
+			const gotoMock = mockManagedBrowser.page.goto as ReturnType<typeof vi.fn>;
+			gotoMock.mockResolvedValue(createMockResponse(200));
+
+			await solveChallenge({ url: 'https://example.com' }, { headless: true, timeoutSeconds: 60 });
+
+			expect(mockManager.createBrowserForDomain).toHaveBeenCalledTimes(1);
+		});
+
+		it('does not retry when budget is exhausted', async () => {
+			vi.useFakeTimers();
+			try {
+				(detectChallengeFromPage as ReturnType<typeof vi.fn>).mockResolvedValue({
+					detected: true,
+					type: 'cloudflare',
+					confidence: 0.95
+				} as ChallengeDetectionResult);
+				(mockManagedBrowser.page.title as ReturnType<typeof vi.fn>).mockResolvedValue(
+					'Just a moment...'
+				);
+				(mockManagedBrowser.page.context().cookies as ReturnType<typeof vi.fn>).mockResolvedValue(
+					[]
+				);
+				mockManager.extractCookies.mockResolvedValue([]);
+				const gotoMock = mockManagedBrowser.page.goto as ReturnType<typeof vi.fn>;
+				gotoMock.mockResolvedValue(createMockResponse(503));
+
+				const promise = solveChallenge(
+					{ url: 'https://example.com' },
+					{ headless: true, timeoutSeconds: 2 }
+				);
+				const drive = async () => {
+					for (let i = 0; i < 40; i++) {
+						await vi.advanceTimersByTimeAsync(500);
+					}
+					return promise;
+				};
+				await drive();
+
+				expect(mockManager.createBrowserForDomain).toHaveBeenCalledTimes(1);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+	});
 });

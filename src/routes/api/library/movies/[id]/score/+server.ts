@@ -1,7 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { computeMovieFileScore } from '$lib/server/scoring/file-scorer.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryMovieScoreApi', logDomain: 'scans' });
 
 /**
  * GET /api/library/movies/[id]/score

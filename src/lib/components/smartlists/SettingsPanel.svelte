@@ -43,7 +43,7 @@
 	}: Props = $props();
 
 	const availableRootFolders = $derived(
-		rootFolders.filter((folder) => folder.mediaType === mediaType)
+		rootFolders.filter((folder) => folder.mediaType === mediaType && !folder.readOnly)
 	);
 
 	const sortOptions = [
@@ -110,7 +110,7 @@
 							bind:value={itemLimit}
 							min="1"
 							max="1000"
-							class="input-bordered input input-sm w-full"
+							class="input-bordered input w-full input-sm"
 						/>
 					</div>
 				</div>
@@ -190,7 +190,7 @@
 						</select>
 						{#if availableRootFolders.length === 0}
 							<p class="mt-1 text-xs text-warning">
-								{m.smartlists_settings_noRootFolders({
+								{m.smartlists_settings_noWritableRootFolders({
 									mediaType: mediaType === 'movie' ? 'movie' : 'TV'
 								})}
 							</p>

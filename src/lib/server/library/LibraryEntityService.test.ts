@@ -13,7 +13,8 @@ vi.mock('$lib/server/db/index.js', () => ({
 	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
 
-const { libraries, libraryRootFolders, rootFolders } = await import('$lib/server/db/schema.js');
+const { libraries, libraryRootFolders, rootFolders, scoringProfiles } =
+	await import('$lib/server/db/schema.js');
 const { eq } = await import('drizzle-orm');
 const { LibraryEntityService } = await import('./LibraryEntityService.js');
 
@@ -116,5 +117,133 @@ describe('LibraryEntityService.listLibraries (read-only regression)', () => {
 		await testDb.db.delete(libraryRootFolders).where(eq(libraryRootFolders.libraryId, libraryId));
 		await testDb.db.delete(libraries).where(eq(libraries.id, libraryId));
 		await testDb.db.delete(rootFolders).where(eq(rootFolders.id, rootFolderId));
+	});
+});
+
+describe('LibraryEntityService quality profile per library', () => {
+	async function seedScoringProfile(id: string): Promise<void> {
+		await testDb.db
+			.insert(scoringProfiles)
+			.values({ id, name: `Profile ${id}` })
+			.onConflictDoNothing()
+			.run();
+	}
+
+	it('createLibrary persists the quality profile', async () => {
+		await seedScoringProfile('test-profile-create');
+
+		const service = new LibraryEntityService();
+		const created = await service.createLibrary({
+			name: 'Profile Create Library',
+			mediaType: 'movie',
+			mediaSubType: 'standard',
+			qualityProfileId: 'test-profile-create'
+		});
+
+		expect(created.qualityProfileId).toBe('test-profile-create');
+
+		const row = await testDb.db
+			.select({ qualityProfileId: libraries.qualityProfileId })
+			.from(libraries)
+			.where(eq(libraries.id, created.id))
+			.get();
+		expect(row?.qualityProfileId).toBe('test-profile-create');
+
+		await testDb.db.delete(libraries).where(eq(libraries.id, created.id));
+		await testDb.db.delete(scoringProfiles).where(eq(scoringProfiles.id, 'test-profile-create'));
+	});
+
+	it('updateLibrary sets the quality profile', async () => {
+		await seedScoringProfile('test-profile-update');
+
+		const service = new LibraryEntityService();
+		const created = await service.createLibrary({
+			name: 'Profile Update Library',
+			mediaType: 'movie',
+			mediaSubType: 'standard'
+		});
+
+		const updated = await service.updateLibrary(created.id, {
+			qualityProfileId: 'test-profile-update'
+		});
+
+		expect(updated.qualityProfileId).toBe('test-profile-update');
+
+		await testDb.db.delete(libraries).where(eq(libraries.id, created.id));
+		await testDb.db.delete(scoringProfiles).where(eq(scoringProfiles.id, 'test-profile-update'));
+	});
+
+	it('updateLibrary clears the quality profile when set to null', async () => {
+		await seedScoringProfile('test-profile-clear');
+
+		const service = new LibraryEntityService();
+		const created = await service.createLibrary({
+			name: 'Profile Clear Library',
+			mediaType: 'movie',
+			mediaSubType: 'standard',
+			qualityProfileId: 'test-profile-clear'
+		});
+
+		const updated = await service.updateLibrary(created.id, { qualityProfileId: null });
+
+		expect(updated.qualityProfileId).toBeNull();
+
+		await testDb.db.delete(libraries).where(eq(libraries.id, created.id));
+		await testDb.db.delete(scoringProfiles).where(eq(scoringProfiles.id, 'test-profile-clear'));
+	});
+
+	it('createLibrary normalizes an empty string profile to null', async () => {
+		const service = new LibraryEntityService();
+		const created = await service.createLibrary({
+			name: 'Profile Empty Create Library',
+			mediaType: 'movie',
+			mediaSubType: 'standard',
+			qualityProfileId: ''
+		});
+
+		expect(created.qualityProfileId).toBeNull();
+
+		const row = await testDb.db
+			.select({ qualityProfileId: libraries.qualityProfileId })
+			.from(libraries)
+			.where(eq(libraries.id, created.id))
+			.get();
+		expect(row?.qualityProfileId).toBeNull();
+
+		await testDb.db.delete(libraries).where(eq(libraries.id, created.id));
+	});
+
+	it('updateLibrary normalizes an empty string profile to null', async () => {
+		const service = new LibraryEntityService();
+		const created = await service.createLibrary({
+			name: 'Profile Empty Update Library',
+			mediaType: 'movie',
+			mediaSubType: 'standard'
+		});
+
+		const updated = await service.updateLibrary(created.id, { qualityProfileId: '' });
+
+		expect(updated.qualityProfileId).toBeNull();
+
+		await testDb.db.delete(libraries).where(eq(libraries.id, created.id));
+	});
+
+	it('listLibraries returns the quality profile', async () => {
+		await seedScoringProfile('test-profile-list');
+
+		const service = new LibraryEntityService();
+		const created = await service.createLibrary({
+			name: 'Profile List Library',
+			mediaType: 'movie',
+			mediaSubType: 'standard',
+			qualityProfileId: 'test-profile-list'
+		});
+
+		const libraryEntities = await service.listLibraries();
+		const found = libraryEntities.find((library) => library.id === created.id);
+		expect(found?.qualityProfileId).toBe('test-profile-list');
+
+		await testDb.db.delete(libraries).where(eq(libraries.id, created.id));
+		await testDb.db.delete(scoringProfiles).where(eq(scoringProfiles.id, 'test-profile-list'));
 	});
 });

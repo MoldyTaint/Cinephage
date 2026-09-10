@@ -4,7 +4,9 @@ import { tmdb } from '$lib/server/tmdb';
 import { contentFilterPipeline } from '$lib/server/filters/ContentFilterPipeline.js';
 import { enrichWithReleaseDates } from '$lib/server/release-enrichment.js';
 import { z } from 'zod';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'DiscoverSearchApi', logDomain: 'system' });
 
 const searchQuerySchema = z.object({
 	query: z.string().min(1, 'Search query is required'),

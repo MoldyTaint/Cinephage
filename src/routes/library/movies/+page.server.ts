@@ -7,13 +7,15 @@ import {
 	scoringProfiles,
 	downloadQueue
 } from '$lib/server/db/schema.js';
-import { eq, and, inArray, isNotNull } from 'drizzle-orm';
+import { eq, and, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 import type { LibraryMovie, MovieFile, QualityProfileSummary } from '$lib/types/library';
-import { logger } from '$lib/logging';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryMoviesListPage', logDomain: 'scans' });
 
 export const load: PageServerLoad = async ({ url }) => {
 	// Parse URL params for sorting and filtering
@@ -177,26 +179,36 @@ export const load: PageServerLoad = async ({ url }) => {
 			).length
 		}));
 
-		// Extract unique file attribute values for filter dropdowns
-		const uniqueResolutions = new Set<string>();
-		const uniqueCodecs = new Set<string>();
-		const uniqueHdrFormats = new Set<string>();
-
-		for (const movie of moviesWithFiles) {
-			for (const file of movie.files) {
-				if (file.quality?.resolution) uniqueResolutions.add(file.quality.resolution);
-				if (file.mediaInfo?.videoCodec) uniqueCodecs.add(file.mediaInfo.videoCodec);
-				if (file.mediaInfo?.hdrFormat) uniqueHdrFormats.add(file.mediaInfo.hdrFormat);
-			}
-		}
-
-		const uniqueCollections = new Set<string>();
-		for (const movie of moviesWithFiles) {
-			if (movie.collectionName) {
-				uniqueCollections.add(movie.collectionName);
-			}
-		}
-		const sortedCollections = [...uniqueCollections].sort();
+		// Unique file attribute values for filter dropdowns.
+		const resolutionExpr = sql`json_extract(${movieFiles.quality}, '$.resolution')`;
+		const codecExpr = sql`json_extract(${movieFiles.mediaInfo}, '$.videoCodec')`;
+		const hdrExpr = sql`json_extract(${movieFiles.mediaInfo}, '$.hdrFormat')`;
+		const [resolutionRows, codecRows, hdrRows, collectionRows] = await Promise.all([
+			db
+				.select({ value: resolutionExpr.as('value') })
+				.from(movieFiles)
+				.where(sql`${resolutionExpr} IS NOT NULL`)
+				.groupBy(resolutionExpr),
+			db
+				.select({ value: codecExpr.as('value') })
+				.from(movieFiles)
+				.where(sql`${codecExpr} IS NOT NULL`)
+				.groupBy(codecExpr),
+			db
+				.select({ value: hdrExpr.as('value') })
+				.from(movieFiles)
+				.where(sql`${hdrExpr} IS NOT NULL`)
+				.groupBy(hdrExpr),
+			db
+				.select({ value: movies.collectionName })
+				.from(movies)
+				.where(isNotNull(movies.collectionName))
+				.groupBy(movies.collectionName)
+		]);
+		const uniqueResolutions = new Set(resolutionRows.map((r) => r.value as string));
+		const uniqueCodecs = new Set(codecRows.map((r) => r.value as string));
+		const uniqueHdrFormats = new Set(hdrRows.map((r) => r.value as string));
+		const sortedCollections = collectionRows.map((r) => r.value as string).sort();
 
 		// Fetch quality profiles and resolve the effective default profile ID
 		const dbProfiles = await db
@@ -411,16 +423,23 @@ export const actions: Actions = {
 				return { success: true };
 			}
 
-			const allMovies = await db
+			// Movies with a real libraryId (the modern, common case) can be updated
+			// directly with no SELECT at all. Only legacy movies with libraryId
+			// NULL need the join-based subtype inference below, so that fallback
+			// query is scoped to just that (shrinking, legacy-only) subset instead
+			// of every movie in the library.
+			await db.update(movies).set({ monitored }).where(eq(movies.libraryId, selectedLibrary.id));
+
+			const legacyMovies = await db
 				.select({
 					id: movies.id,
-					libraryId: movies.libraryId,
 					rootFolderMediaSubType: rootFolders.mediaSubType,
 					libraryMediaSubType: libraries.mediaSubType
 				})
 				.from(movies)
 				.leftJoin(rootFolders, eq(movies.rootFolderId, rootFolders.id))
-				.leftJoin(libraries, eq(movies.libraryId, libraries.id));
+				.leftJoin(libraries, eq(movies.libraryId, libraries.id))
+				.where(isNull(movies.libraryId));
 
 			const inferLegacySubtype = (movie: {
 				rootFolderMediaSubType?: string | null;
@@ -430,11 +449,8 @@ export const actions: Actions = {
 				return candidate === 'anime' ? 'anime' : 'standard';
 			};
 
-			const scopedIds = allMovies
+			const legacyScopedIds = legacyMovies
 				.filter((movie) => {
-					if (movie.libraryId) {
-						return movie.libraryId === selectedLibrary.id;
-					}
 					const inferredSubtype = inferLegacySubtype(movie);
 					if (selectedLibrary.mediaSubType === 'anime') return inferredSubtype === 'anime';
 					if (selectedLibrary.mediaSubType === 'standard') return inferredSubtype === 'standard';
@@ -442,8 +458,8 @@ export const actions: Actions = {
 				})
 				.map((m) => m.id);
 
-			if (scopedIds.length > 0) {
-				await db.update(movies).set({ monitored }).where(inArray(movies.id, scopedIds));
+			if (legacyScopedIds.length > 0) {
+				await db.update(movies).set({ monitored }).where(inArray(movies.id, legacyScopedIds));
 			}
 
 			libraryMediaEvents.emitLibraryDataChanged({

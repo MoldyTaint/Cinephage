@@ -32,7 +32,8 @@ export class ScoringStage implements DecisionStage<GrabDecisionContext> {
 			profile,
 			release.size,
 			sizeContext,
-			release.indexerName
+			release.indexerName,
+			release.protocol
 		);
 
 		ctx.computed.scoringResult = result.scoringResult;

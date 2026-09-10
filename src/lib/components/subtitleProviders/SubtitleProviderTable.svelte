@@ -369,7 +369,7 @@
 						<Settings class="h-4 w-4" />
 					</button>
 					<button
-						class="btn text-error btn-ghost btn-xs"
+						class="btn btn-ghost text-error btn-xs"
 						onclick={() => onDelete(provider)}
 						disabled={reorderMode}
 						title={m.subtitleProviders_table_deleteProvider()}

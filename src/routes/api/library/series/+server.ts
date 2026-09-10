@@ -21,12 +21,14 @@ import {
 	buildSeasonsAndEpisodesFromGroup
 } from '$lib/server/metadata/EpisodeGroupService.js';
 import { ValidationError, isAppError } from '$lib/errors';
-import { logger } from '$lib/logging';
 import { requireAuth } from '$lib/server/auth/authorization.js';
 import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibrarySeriesApi', logDomain: 'scans' });
 
 /**
  * Generate a folder name for a series using the naming service
@@ -187,6 +189,7 @@ export const POST: RequestHandler = async (event) => {
 
 		// Verify root folder exists and is for TV (with optional anime subtype enforcement)
 		await validateRootFolder(rootFolderId, 'tv', {
+			requireWritable: true,
 			enforceAnimeSubtype,
 			isAnimeMedia,
 			mediaTitle: tvDetails.name
@@ -219,7 +222,7 @@ export const POST: RequestHandler = async (event) => {
 				.reduce((sum, s) => sum + (s.episode_count ?? 0), 0) ?? 0;
 
 		// Get the effective scoring profile (shared logic)
-		const effectiveProfileId = await getEffectiveScoringProfileId(scoringProfileId);
+		const effectiveProfileId = await getEffectiveScoringProfileId(scoringProfileId, owningLibrary);
 
 		// Get the language profile if subtitles wanted (shared logic)
 		const languageProfileId = await getLanguageProfileId(wantsSubtitles, tmdbId);

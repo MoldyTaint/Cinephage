@@ -5,7 +5,12 @@ import { stderr } from 'node:process';
 
 import { eq } from 'drizzle-orm';
 
-import type { CapturedLogEntry, CapturedLogFilters } from '$lib/logging/log-capture';
+import type {
+	CapturedLogEntry,
+	CapturedLogFilters,
+	CapturedLogLevel
+} from '$lib/logging/log-capture';
+import { DEFAULT_CAPTURED_LOG_LEVEL } from '$lib/logging/log-capture';
 import { db } from '$lib/server/db/index.js';
 import { settings } from '$lib/server/db/schema.js';
 
@@ -25,10 +30,26 @@ const serviceLogger = {
 const DATA_DIR = process.env.DATA_DIR || 'data';
 const LOGS_DIR = join(DATA_DIR, 'logs');
 
+const LINE_YIELD_INTERVAL = 500;
+
+function yieldToEventLoop(): Promise<void> {
+	return new Promise((resolve) => setImmediate(resolve));
+}
+
 const LOG_RETENTION_SETTINGS_KEY = 'logs_retention_days';
 export const DEFAULT_LOG_RETENTION_DAYS = 7;
 export const MIN_LOG_RETENTION_DAYS = 1;
 export const MAX_LOG_RETENTION_DAYS = 90;
+
+const LOG_MIN_LEVEL_SETTINGS_KEY = 'logs_min_level';
+const LEVEL_ORDER: Record<CapturedLogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 };
+
+function normalizeMinLevel(value: unknown): CapturedLogLevel {
+	if (value === 'debug' || value === 'info' || value === 'warn' || value === 'error') {
+		return value;
+	}
+	return DEFAULT_CAPTURED_LOG_LEVEL;
+}
 
 export interface LogHistoryFilters extends CapturedLogFilters {
 	from?: string;
@@ -119,6 +140,7 @@ async function readLinesReverse(filePath: string, visitor: ReverseLineVisitor): 
 		const chunkSize = 1024 * 1024;
 		let position = size;
 		let remainder = '';
+		let linesSinceYield = 0;
 
 		while (position > 0) {
 			const readSize = Math.min(chunkSize, position);
@@ -134,6 +156,10 @@ async function readLinesReverse(filePath: string, visitor: ReverseLineVisitor): 
 				const shouldContinue = await visitor(lines[index]);
 				if (shouldContinue === false) {
 					return;
+				}
+				if (++linesSinceYield >= LINE_YIELD_INTERVAL) {
+					linesSinceYield = 0;
+					await yieldToEventLoop();
 				}
 			}
 		}
@@ -310,6 +336,42 @@ class LogHistoryService {
 
 	private pendingWrites = Promise.resolve();
 
+	private minCaptureLevel: CapturedLogLevel | null = null;
+
+	private async ensureMinCaptureLevelLoaded(): Promise<CapturedLogLevel> {
+		if (this.minCaptureLevel === null) {
+			this.minCaptureLevel = await this.getMinCaptureLevel();
+		}
+		return this.minCaptureLevel;
+	}
+
+	async getMinCaptureLevel(): Promise<CapturedLogLevel> {
+		const row = await db
+			.select({ value: settings.value })
+			.from(settings)
+			.where(eq(settings.key, LOG_MIN_LEVEL_SETTINGS_KEY))
+			.get();
+
+		return normalizeMinLevel(row?.value);
+	}
+
+	async setMinCaptureLevel(level: string): Promise<CapturedLogLevel> {
+		const normalized = normalizeMinLevel(level);
+		await db
+			.insert(settings)
+			.values({
+				key: LOG_MIN_LEVEL_SETTINGS_KEY,
+				value: normalized
+			})
+			.onConflictDoUpdate({
+				target: settings.key,
+				set: { value: normalized }
+			});
+
+		this.minCaptureLevel = normalized;
+		return normalized;
+	}
+
 	async getRetentionDays(): Promise<number> {
 		const row = await db
 			.select({ value: settings.value })
@@ -340,6 +402,9 @@ class LogHistoryService {
 	append(entry: CapturedLogEntry): void {
 		this.pendingWrites = this.pendingWrites
 			.then(async () => {
+				const minLevel = await this.ensureMinCaptureLevelLoaded();
+				if (LEVEL_ORDER[entry.level] < LEVEL_ORDER[minLevel]) return;
+
 				await mkdir(LOGS_DIR, { recursive: true });
 				const filePath = getLogFilePath(new Date(entry.timestamp));
 				this.rotateIfNeeded(filePath);
@@ -432,7 +497,12 @@ class LogHistoryService {
 	}
 
 	private rotateIfNeeded(filePath: string): void {
-		if (this.currentFilePath === filePath && this.stream) {
+		if (
+			this.currentFilePath === filePath &&
+			this.stream &&
+			!this.stream.destroyed &&
+			this.stream.writable
+		) {
 			return;
 		}
 

@@ -136,7 +136,7 @@
 			<input
 				type="text"
 				placeholder={m.library_import_searchDetectedItems()}
-				class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+				class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 input-md placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				bind:value={detectedGroupQuery}
 			/>
 			{#if detectedGroupQuery}
@@ -377,7 +377,7 @@
 											<input
 												type="number"
 												min="0"
-												class="input-bordered input input-xs w-20"
+												class="input-bordered input w-20 input-xs"
 												value={getSectionSeasonOverride(activeReviewTvSection) ?? ''}
 												onchange={(event) => {
 													const target = event.target as HTMLInputElement;

@@ -70,7 +70,18 @@
 	// Selection state
 	let selectedMovies = new SvelteSet<string>();
 	let showCheckboxes = $state(false);
-	let searchQuery = $state('');
+	let searchQuery = $state(page.url.searchParams.get('q') ?? '');
+
+	// Keep the title search in the URL so refresh/back-navigation restores it and
+	// the returnTo parameter carries it into the detail page. replaceState avoids a navigation per keystroke.
+	$effect(() => {
+		const query = searchQuery.trim();
+		const url = new URL(window.location.href);
+		if (query) url.searchParams.set('q', query);
+		else url.searchParams.delete('q');
+		history.replaceState(history.state, '', url.pathname + url.search);
+	});
+
 	let collapsedGroups = new SvelteSet<string>();
 	let drawerOpen = $state(false);
 	let collectionSubtitleAutoSearching = new SvelteSet<number>();
@@ -526,6 +537,9 @@
 
 	function updateUrlParam(key: string, value: string) {
 		const url = new URL(page.url);
+		const query = searchQuery.trim();
+		if (query) url.searchParams.set('q', query);
+		else url.searchParams.delete('q');
 		if (key === 'library') {
 			if (!value || value === defaultLibrarySlug) {
 				url.searchParams.delete(key);
@@ -541,10 +555,12 @@
 	}
 
 	function clearFilters() {
+		searchQuery = '';
 		const url = new URL(resolve('/library/movies'), page.url.origin);
 		if (data.libraryScope?.isSubLibraryScope && data.libraryScope?.selected?.slug) {
 			url.searchParams.set('library', data.libraryScope.selected.slug);
 		}
+		url.searchParams.delete('q');
 		goto(resolvePath(url.pathname + url.search), { keepFocus: true, noScroll: true });
 	}
 
@@ -623,7 +639,7 @@
 					<input
 						type="text"
 						placeholder={m.library_movies_searchPlaceholder()}
-						class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+						class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 input-md placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 						bind:value={searchQuery}
 					/>
 					{#if searchQuery}
@@ -676,7 +692,7 @@
 						<ChevronDown class="hidden h-3 w-3 sm:block" />
 					</div>
 					<ul
-						class="dropdown-content menu z-50 mt-2 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl"
+						class="menu dropdown-content z-50 mt-2 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl"
 					>
 						<li>
 							<button onclick={handleMonitorAll}>
@@ -747,7 +763,7 @@
 				<input
 					type="text"
 					placeholder={m.library_movies_searchPlaceholder()}
-					class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+					class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 input-md placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 					bind:value={searchQuery}
 				/>
 				{#if searchQuery}
@@ -791,7 +807,7 @@
 			<!-- Search Empty State -->
 			<div class="flex flex-col items-center justify-center py-20 text-center">
 				<div class="opacity-50">
-					<Search class="mb-4 h-16 w-16 mx-auto" />
+					<Search class="mx-auto mb-4 h-16 w-16" />
 					<p class="text-2xl font-bold">{m.library_movies_noSearchMatch({ query: searchQuery })}</p>
 					<p class="mt-2">{m.library_movies_tryDifferentSearch()}</p>
 				</div>
@@ -897,7 +913,9 @@
 								</div>
 								{#if !collapsedGroups.has(group.name ?? '__none__')}
 									{#if viewPreferences.viewMode === 'grid'}
-										<div class="grid grid-cols-3 gap-3 pt-2 sm:gap-4 lg:grid-cols-9">
+										<div
+											class="grid grid-cols-3 gap-3 pt-2 sm:grid-cols-4 sm:gap-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-9"
+										>
 											{#each group.movies as movie (movie.id)}
 												<LibraryMediaCard
 													item={movie}
@@ -930,7 +948,9 @@
 						{/each}
 					{:else}
 						{#if viewPreferences.viewMode === 'grid'}
-							<div class="grid grid-cols-3 gap-3 sm:gap-4 lg:grid-cols-9">
+							<div
+								class="grid grid-cols-3 gap-3 sm:grid-cols-4 sm:gap-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-9"
+							>
 								{#each renderer.visible as movie (movie.id)}
 									<LibraryMediaCard
 										item={movie}

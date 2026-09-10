@@ -191,8 +191,7 @@
 				class="textarea-bordered textarea h-16 textarea-sm"
 				bind:value={description}
 				disabled={isReadonly}
-				placeholder={m.formats_descriptionPlaceholder()}
-			></textarea>
+				placeholder={m.formats_descriptionPlaceholder()}></textarea>
 		</div>
 
 		<!-- Tags -->
@@ -252,13 +251,13 @@
 			<div class="flex gap-2">
 				<input
 					type="text"
-					class="input-bordered input input-sm flex-1 font-mono"
+					class="input-bordered input flex-1 font-mono input-sm"
 					bind:value={testReleaseName}
 					placeholder={m.formats_testPlaceholder()}
 				/>
 				<button
 					type="button"
-					class="btn gap-1 btn-sm btn-secondary"
+					class="btn gap-1 btn-secondary btn-sm"
 					onclick={testFormat}
 					disabled={testing || conditions.length === 0}
 				>

@@ -7,7 +7,7 @@ import type { TokenDefinition } from '../types';
 export const releaseTokens: TokenDefinition[] = [
 	{
 		name: 'ReleaseGroup',
-		aliases: ['Group'],
+		aliases: ['Group', 'Release Group'],
 		category: 'release',
 		description: 'Release group name',
 		applicability: ['movie', 'episode'],
@@ -15,6 +15,7 @@ export const releaseTokens: TokenDefinition[] = [
 	},
 	{
 		name: 'Edition',
+		aliases: ['Edition Tags'],
 		category: 'release',
 		description: 'Edition (Directors Cut, Extended, etc.)',
 		applicability: ['movie'],

@@ -55,6 +55,9 @@
 	const episodeCount = $derived(!isMovie ? (item as LibrarySeries).episodeCount : 0);
 	const episodeFileCount = $derived(!isMovie ? (item as LibrarySeries).episodeFileCount : 0);
 	const missingRootFolder = $derived(item.missingRootFolder === true);
+	const partiallyMonitored = $derived(
+		!isMovie && (item as LibrarySeries).partiallyMonitored === true
+	);
 
 	// Quality badge display
 	const qualityBadge = $derived(() => {
@@ -104,9 +107,15 @@
 		<!-- Monitored status -->
 		<div
 			class="badge border-none badge-sm shadow-sm {item.monitored
-				? 'bg-success/80 text-success-content'
+				? partiallyMonitored
+					? 'bg-warning/80 text-warning-content'
+					: 'bg-success/80 text-success-content'
 				: 'bg-base-300/80 text-base-content/60'}"
-			title={item.monitored ? m.library_mediaCard_monitored() : m.library_mediaCard_notMonitored()}
+			title={item.monitored
+				? partiallyMonitored
+					? m.library_mediaCard_partiallyMonitored()
+					: m.library_mediaCard_monitored()
+				: m.library_mediaCard_notMonitored()}
 		>
 			{#if item.monitored}
 				<Eye class="h-3 w-3" />

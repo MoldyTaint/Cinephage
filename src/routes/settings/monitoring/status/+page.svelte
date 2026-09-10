@@ -58,9 +58,23 @@
 	let retentionSaving = $state(false);
 	let insightsOpen = $state(false);
 	let scanStarting = $state(false);
+	let scanStartTimeout: ReturnType<typeof setTimeout> | null = null;
 	let syncStarting = $state(false);
 	const isScanning = $derived(layoutState.scanInProgress || scanStarting);
 	const isSyncing = $derived(layoutState.mediaServerSyncing || syncStarting);
+
+	// Once the SSE confirms the scan is underway, hand off from scanStarting to
+	// layoutState.scanInProgress so the button stays in "Scanning..." without a
+	// brief reset between the API return and the SSE event.
+	$effect(() => {
+		if (layoutState.scanInProgress && scanStarting) {
+			if (scanStartTimeout !== null) {
+				clearTimeout(scanStartTimeout);
+				scanStartTimeout = null;
+			}
+			scanStarting = false;
+		}
+	});
 
 	type Insight = {
 		id: string;
@@ -399,12 +413,22 @@
 
 	async function triggerLibraryScan(rootFolderId?: string) {
 		resetScanState();
+		if (scanStartTimeout !== null) {
+			clearTimeout(scanStartTimeout);
+			scanStartTimeout = null;
+		}
 		scanStarting = true;
 		try {
 			await scanLibrary(rootFolderId ? { rootFolderId } : { fullScan: true });
+			toasts.info(m.settings_general_scanQueued());
+			// Keep scanStarting=true until SSE scanStart confirms the job is running.
+			// Fallback: clear after 15s in case the SSE event never arrives.
+			scanStartTimeout = setTimeout(() => {
+				scanStarting = false;
+				scanStartTimeout = null;
+			}, 15_000);
 		} catch (error) {
 			scanError = error instanceof Error ? error.message : m.settings_general_failedToStartScan();
-		} finally {
 			scanStarting = false;
 		}
 	}
@@ -430,7 +454,7 @@
 		<div class="flex gap-2">
 			<button
 				type="button"
-				class="btn btn-sm btn-primary gap-2"
+				class="btn gap-2 btn-primary btn-sm"
 				onclick={() => void triggerLibraryScan()}
 				disabled={isScanning || data.rootFolders.length === 0}
 			>
@@ -445,7 +469,7 @@
 			{#if data.servers?.length > 0}
 				<button
 					type="button"
-					class="btn btn-outline btn-sm gap-2"
+					class="btn gap-2 btn-outline btn-sm"
 					onclick={() => void triggerServerSync()}
 					disabled={isSyncing}
 				>
@@ -456,7 +480,7 @@
 			{#if activeInsights.length > 0 || dismissedInsights.length > 0}
 				<button
 					type="button"
-					class="btn btn-ghost btn-sm gap-2"
+					class="btn gap-1 btn-ghost btn-sm"
 					onclick={() => (insightsOpen = true)}
 				>
 					<Lightbulb class="h-4 w-4" />
@@ -502,7 +526,7 @@
 							<input
 								id="h-file"
 								type="number"
-								class="input input-sm input-bordered w-20"
+								class="input-bordered input w-20 input-sm"
 								bind:value={retention.fileHistoryDays}
 								min="0"
 								max="3650"
@@ -522,7 +546,7 @@
 							<input
 								id="h-lib"
 								type="number"
-								class="input input-sm input-bordered w-20"
+								class="input-bordered input w-20 input-sm"
 								bind:value={retention.libraryHistoryDays}
 								min="0"
 								max="3650"
@@ -540,7 +564,7 @@
 							<input
 								id="h-scan"
 								type="number"
-								class="input input-sm input-bordered w-20"
+								class="input-bordered input w-20 input-sm"
 								bind:value={retention.scanHistoryDays}
 								min="0"
 								max="3650"
@@ -552,7 +576,7 @@
 
 				{#if forecast}
 					<div>
-						<div class="mb-2 text-xs font-medium uppercase tracking-wide text-base-content/50">
+						<div class="mb-2 text-xs font-medium tracking-wide text-base-content/50 uppercase">
 							{m.settings_history_forecast()}
 						</div>
 						<div class="grid grid-cols-3 gap-3">
@@ -587,14 +611,14 @@
 						disabled={retentionSaving}
 					>
 						{#if retentionSaving}
-							<span class="loading loading-spinner loading-xs"></span>
+							<span class="loading loading-xs loading-spinner"></span>
 						{/if}
 						Save
 					</button>
 				</div>
 			{:else}
 				<div class="flex items-center justify-center py-8">
-					<span class="loading loading-spinner loading-sm text-base-content/30"></span>
+					<span class="loading loading-sm loading-spinner text-base-content/30"></span>
 				</div>
 			{/if}
 		</div>
@@ -609,7 +633,7 @@
 		<div class="modal-box max-w-3xl">
 			<form method="dialog">
 				<button
-					class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+					class="btn absolute top-2 right-2 btn-circle btn-ghost btn-sm"
 					onclick={() => {
 						insightsOpen = false;
 						selectedInsight = null;
@@ -624,13 +648,13 @@
 				<!-- Detail view -->
 				<div class="flex min-h-0 flex-1 flex-col">
 					<div class="flex items-center gap-3 border-b border-base-300 pb-4">
-						<button class="btn btn-ghost btn-sm btn-circle" onclick={closeInsightDetail}>
+						<button class="btn btn-circle btn-ghost btn-sm" onclick={closeInsightDetail}>
 							<ArrowLeft class="h-4 w-4" />
 						</button>
 						<div class="min-w-0">
 							<div class="flex items-center gap-2">
 								<span
-									class="badge badge-sm border-none {severityBadgeClass(selectedInsight.severity)}"
+									class="badge border-none badge-sm {severityBadgeClass(selectedInsight.severity)}"
 								>
 									{insightTypeLabel(selectedInsight.insightType)}
 								</span>
@@ -643,12 +667,12 @@
 							<h3 class="text-lg font-bold text-base-content">{selectedInsight.title}</h3>
 							{#if selectedInsight.insightType === 'missing-from-media-server'}
 								<button
-									class="btn btn-xs btn-outline mt-2 gap-1"
+									class="btn mt-2 gap-1 btn-outline btn-xs"
 									onclick={handleSyncServer}
 									disabled={syncingServer}
 								>
 									{#if syncingServer}
-										<span class="loading loading-spinner loading-xs"></span>
+										<span class="loading loading-xs loading-spinner"></span>
 									{/if}
 									Sync Now
 								</button>
@@ -684,7 +708,7 @@
 									<div
 										role="button"
 										tabindex="0"
-										class="w-full text-left rounded-lg border border-base-300 bg-base-200/50 px-3 py-2.5 hover:bg-base-200 transition-colors cursor-pointer"
+										class="w-full cursor-pointer rounded-lg border border-base-300 bg-base-200/50 px-3 py-2.5 text-left transition-colors hover:bg-base-200"
 										onclick={() => {
 											if (flatItem) {
 												expandedItemId = isFlatExpanded ? null : flatItem.id;
@@ -717,7 +741,7 @@
 											{/if}
 											{#if showGroupActions && !flatItem}
 												<button
-													class="btn btn-xs btn-ghost text-error"
+													class="btn btn-ghost text-error btn-xs"
 													onclick={(e) => {
 														e.stopPropagation();
 														handleDeleteAllOrphaned(group.items);
@@ -725,7 +749,7 @@
 													disabled={actionLoading.has('orphaned-all')}
 												>
 													{#if actionLoading.has('orphaned-all')}
-														<span class="loading loading-spinner loading-xs"></span>
+														<span class="loading loading-xs loading-spinner"></span>
 													{/if}
 													Delete All
 												</button>
@@ -740,33 +764,33 @@
 												<div class="mt-2 flex gap-1">
 													{#if s.insightType === 'quality-below-cutoff'}
 														<button
-															class="btn btn-xs btn-ghost"
+															class="btn btn-ghost btn-xs"
 															onclick={(e) => {
 																e.stopPropagation();
 																handleAutoSearch(flatItem);
 															}}
 															disabled={flatItemLoading}
 														>
-															{#if flatItemLoading}<span class="loading loading-spinner loading-xs"
+															{#if flatItemLoading}<span class="loading loading-xs loading-spinner"
 																></span>{/if}
 															<Search class="h-3 w-3" /> Auto
 														</button>
 													{/if}
 													{#if s.insightType === 'missing-from-media-server'}
 														<button
-															class="btn btn-xs btn-ghost"
+															class="btn btn-ghost btn-xs"
 															onclick={(e) => {
 																e.stopPropagation();
 																handleAutoSearch(flatItem);
 															}}
 															disabled={flatItemLoading}
 														>
-															{#if flatItemLoading}<span class="loading loading-spinner loading-xs"
+															{#if flatItemLoading}<span class="loading loading-xs loading-spinner"
 																></span>{/if}
 															<Search class="h-3 w-3" /> Auto
 														</button>
 														<button
-															class="btn btn-xs btn-ghost"
+															class="btn btn-ghost btn-xs"
 															onclick={(e) => {
 																e.stopPropagation();
 																handleInteractiveSearch(flatItem);
@@ -777,54 +801,54 @@
 													{/if}
 													{#if s.insightType === 'unplayed'}
 														<button
-															class="btn btn-xs btn-ghost"
+															class="btn btn-ghost btn-xs"
 															onclick={(e) => {
 																e.stopPropagation();
 																handleUnmonitor(flatItem);
 															}}
 															disabled={flatItemLoading}
 														>
-															{#if flatItemLoading}<span class="loading loading-spinner loading-xs"
+															{#if flatItemLoading}<span class="loading loading-xs loading-spinner"
 																></span>{/if}
 															Unmonitor
 														</button>
 														<button
-															class="btn btn-xs btn-ghost text-error"
+															class="btn btn-ghost text-error btn-xs"
 															onclick={(e) => {
 																e.stopPropagation();
 																handleRemoveFromLibrary(flatItem);
 															}}
 															disabled={flatItemLoading}
 														>
-															{#if flatItemLoading}<span class="loading loading-spinner loading-xs"
+															{#if flatItemLoading}<span class="loading loading-xs loading-spinner"
 																></span>{/if}
 															Remove
 														</button>
 													{/if}
 													{#if s.insightType === 'broken-paths'}
 														<button
-															class="btn btn-xs btn-ghost text-error"
+															class="btn btn-ghost text-error btn-xs"
 															onclick={(e) => {
 																e.stopPropagation();
 																handleRemoveFromLibrary(flatItem);
 															}}
 															disabled={flatItemLoading}
 														>
-															{#if flatItemLoading}<span class="loading loading-spinner loading-xs"
+															{#if flatItemLoading}<span class="loading loading-xs loading-spinner"
 																></span>{/if}
 															Remove
 														</button>
 													{/if}
 													{#if s.insightType === 'orphaned-files'}
 														<button
-															class="btn btn-xs btn-ghost text-error"
+															class="btn btn-ghost text-error btn-xs"
 															onclick={(e) => {
 																e.stopPropagation();
 																handleDeleteOrphaned(flatItem);
 															}}
 															disabled={flatItemLoading}
 														>
-															{#if flatItemLoading}<span class="loading loading-spinner loading-xs"
+															{#if flatItemLoading}<span class="loading loading-xs loading-spinner"
 																></span>{/if}
 															Delete
 														</button>
@@ -842,7 +866,7 @@
 												<div
 													role="button"
 													tabindex="0"
-													class="w-full text-left rounded-lg border border-base-300 bg-base-200/30 px-3 py-2 hover:bg-base-200/50 transition-colors cursor-pointer"
+													class="w-full cursor-pointer rounded-lg border border-base-300 bg-base-200/30 px-3 py-2 text-left transition-colors hover:bg-base-200/50"
 													onclick={() => (expandedItemId = isExpanded ? null : item.id)}
 													onkeydown={(e) => {
 														if (e.key === 'Enter') expandedItemId = isExpanded ? null : item.id;
@@ -869,7 +893,7 @@
 															<div class="mt-2 flex gap-1">
 																{#if s.insightType === 'quality-below-cutoff'}
 																	<button
-																		class="btn btn-xs btn-ghost"
+																		class="btn btn-ghost btn-xs"
 																		onclick={(e) => {
 																			e.stopPropagation();
 																			handleAutoSearch(item);
@@ -877,14 +901,14 @@
 																		disabled={itemLoading}
 																	>
 																		{#if itemLoading}<span
-																				class="loading loading-spinner loading-xs"
+																				class="loading loading-xs loading-spinner"
 																			></span>{/if}
 																		<Search class="h-3 w-3" /> Auto
 																	</button>
 																{/if}
 																{#if s.insightType === 'missing-from-media-server'}
 																	<button
-																		class="btn btn-xs btn-ghost"
+																		class="btn btn-ghost btn-xs"
 																		onclick={(e) => {
 																			e.stopPropagation();
 																			handleAutoSearch(item);
@@ -892,12 +916,12 @@
 																		disabled={itemLoading}
 																	>
 																		{#if itemLoading}<span
-																				class="loading loading-spinner loading-xs"
+																				class="loading loading-xs loading-spinner"
 																			></span>{/if}
 																		<Search class="h-3 w-3" /> Auto
 																	</button>
 																	<button
-																		class="btn btn-xs btn-ghost"
+																		class="btn btn-ghost btn-xs"
 																		onclick={(e) => {
 																			e.stopPropagation();
 																			handleInteractiveSearch(item);
@@ -908,7 +932,7 @@
 																{/if}
 																{#if s.insightType === 'unplayed'}
 																	<button
-																		class="btn btn-xs btn-ghost"
+																		class="btn btn-ghost btn-xs"
 																		onclick={(e) => {
 																			e.stopPropagation();
 																			handleUnmonitor(item);
@@ -916,12 +940,12 @@
 																		disabled={itemLoading}
 																	>
 																		{#if itemLoading}<span
-																				class="loading loading-spinner loading-xs"
+																				class="loading loading-xs loading-spinner"
 																			></span>{/if}
 																		Unmonitor
 																	</button>
 																	<button
-																		class="btn btn-xs btn-ghost text-error"
+																		class="btn btn-ghost text-error btn-xs"
 																		onclick={(e) => {
 																			e.stopPropagation();
 																			handleRemoveFromLibrary(item);
@@ -929,14 +953,14 @@
 																		disabled={itemLoading}
 																	>
 																		{#if itemLoading}<span
-																				class="loading loading-spinner loading-xs"
+																				class="loading loading-xs loading-spinner"
 																			></span>{/if}
 																		Remove
 																	</button>
 																{/if}
 																{#if s.insightType === 'broken-paths'}
 																	<button
-																		class="btn btn-xs btn-ghost text-error"
+																		class="btn btn-ghost text-error btn-xs"
 																		onclick={(e) => {
 																			e.stopPropagation();
 																			handleRemoveFromLibrary(item);
@@ -944,14 +968,14 @@
 																		disabled={itemLoading}
 																	>
 																		{#if itemLoading}<span
-																				class="loading loading-spinner loading-xs"
+																				class="loading loading-xs loading-spinner"
 																			></span>{/if}
 																		Remove
 																	</button>
 																{/if}
 																{#if s.insightType === 'orphaned-files'}
 																	<button
-																		class="btn btn-xs btn-ghost text-error"
+																		class="btn btn-ghost text-error btn-xs"
 																		onclick={(e) => {
 																			e.stopPropagation();
 																			handleDeleteOrphaned(item);
@@ -959,7 +983,7 @@
 																		disabled={itemLoading}
 																	>
 																		{#if itemLoading}<span
-																				class="loading loading-spinner loading-xs"
+																				class="loading loading-xs loading-spinner"
 																			></span>{/if}
 																		Delete
 																	</button>
@@ -981,7 +1005,7 @@
 									</span>
 									<div class="join">
 										<button
-											class="join-item btn btn-ghost btn-xs"
+											class="btn join-item btn-ghost btn-xs"
 											disabled={detailPage <= 1}
 											onclick={() => changeDetailPage(detailPage - 1)}
 										>
@@ -991,10 +1015,10 @@
 											{@const isActive = btn === detailPage}
 											{@const isEllipsis = btn === '...'}
 											{#if isEllipsis}
-												<button class="join-item btn btn-ghost btn-xs" disabled> ... </button>
+												<button class="btn join-item btn-ghost btn-xs" disabled> ... </button>
 											{:else}
 												<button
-													class="join-item btn btn-ghost btn-xs"
+													class="btn join-item btn-ghost btn-xs"
 													class:btn-active={isActive}
 													onclick={() => changeDetailPage(btn)}
 												>
@@ -1003,7 +1027,7 @@
 											{/if}
 										{/each}
 										<button
-											class="join-item btn btn-ghost btn-xs"
+											class="btn join-item btn-ghost btn-xs"
 											disabled={detailPage >= detailTotalPages}
 											onclick={() => changeDetailPage(detailPage + 1)}
 										>
@@ -1027,10 +1051,10 @@
 			{:else}
 				<!-- Card list view -->
 				<h3 class="text-lg font-bold">Storage Insights</h3>
-				<div class="mt-4 max-h-[70vh] overflow-y-auto space-y-4">
+				<div class="mt-4 max-h-[70vh] space-y-4 overflow-y-auto">
 					{#if activeInsights.length > 0}
 						<div>
-							<h4 class="text-sm font-medium text-base-content/70 mb-2">
+							<h4 class="mb-2 text-sm font-medium text-base-content/70">
 								Active ({activeInsights.length})
 							</h4>
 							<div class="space-y-2">
@@ -1046,7 +1070,7 @@
 					{/if}
 					{#if dismissedInsights.length > 0}
 						<div>
-							<h4 class="text-sm font-medium text-base-content/70 mb-2">
+							<h4 class="mb-2 text-sm font-medium text-base-content/70">
 								Dismissed ({dismissedInsights.length})
 							</h4>
 							<div class="space-y-2">
@@ -1061,7 +1085,7 @@
 						</div>
 					{/if}
 					{#if activeInsights.length === 0 && dismissedInsights.length === 0}
-						<p class="text-base-content/50 text-sm">No storage insights</p>
+						<p class="text-sm text-base-content/50">No storage insights</p>
 					{/if}
 				</div>
 			{/if}

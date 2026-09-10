@@ -25,12 +25,7 @@ export interface NntpServerConfig {
  * NNTP connection state machine states.
  */
 export type NntpConnectionState =
-	| 'disconnected'
-	| 'connecting'
-	| 'authenticating'
-	| 'ready'
-	| 'busy'
-	| 'error';
+	'disconnected' | 'connecting' | 'authenticating' | 'ready' | 'busy' | 'error';
 
 /**
  * NNTP response codes.

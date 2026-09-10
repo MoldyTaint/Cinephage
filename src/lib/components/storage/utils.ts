@@ -218,21 +218,16 @@ export function getRootFolderTotalBytes(item: RootFolderBreakdownItem): number |
 }
 
 export function getUsedRatio(item: RootFolderBreakdownItem): number | null {
-	const totalBytes = getRootFolderTotalBytes(item);
-	if (!totalBytes || totalBytes <= 0) return null;
+	if (item.freeSpaceBytes === null || item.freeSpaceBytes === undefined) return null;
+	const totalBytes = item.usedBytes + Number(item.freeSpaceBytes);
+	if (totalBytes <= 0) return null;
 	return item.usedBytes / totalBytes;
 }
 
 export function getFreeRatio(item: RootFolderBreakdownItem): number | null {
-	const totalBytes = getRootFolderTotalBytes(item);
-	if (
-		!totalBytes ||
-		totalBytes <= 0 ||
-		item.freeSpaceBytes === null ||
-		item.freeSpaceBytes === undefined
-	) {
-		return null;
-	}
+	if (item.freeSpaceBytes === null || item.freeSpaceBytes === undefined) return null;
+	const totalBytes = item.usedBytes + Number(item.freeSpaceBytes);
+	if (totalBytes <= 0) return null;
 	return Number(item.freeSpaceBytes) / totalBytes;
 }
 

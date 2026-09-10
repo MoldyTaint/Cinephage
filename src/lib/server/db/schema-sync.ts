@@ -135,8 +135,13 @@ import {
  * Version 124: Add movie_file_id to subtitles for per-file subtitle association
  * Version 125: Add api_token and remove_after_import columns to download_clients (debrid support)
  * Version 126: Add metadata_language and prefer_original_title columns to movies and series tables
+ * Version 127: Add cinephage_api_config identity auto-sync columns (latest_version, latest_commit, auto_update)
+ * Version 132: Add qBittorrent sequential download setting to download_clients
+ * Version 133: Add import_failed and backfill canonical info hashes on download queue rows
+ * Version 134: Store canonical info hashes on download history rows
+ * Version 135: Deduplicate active download queue rows by client and info hash
  */
-export const CURRENT_SCHEMA_VERSION = 126;
+export const CURRENT_SCHEMA_VERSION = 135;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -275,6 +280,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"initial_state" text DEFAULT 'start',
 		"seed_ratio_limit" text,
 		"seed_time_limit" integer,
+		"sequential_download" integer DEFAULT 0,
 		"download_path_local" text,
 		"download_path_remote" text,
 		"temp_path_local" text,
@@ -472,6 +478,9 @@ const TABLE_DEFINITIONS: string[] = [
 		"base_url" text NOT NULL DEFAULT 'https://api.cinephage.net',
 		"version_override" text,
 		"commit_override" text,
+		"auto_update" integer DEFAULT 1 NOT NULL,
+		"latest_version" text,
+		"latest_commit" text,
 		"updated_at" text
 	)`,
 
@@ -686,7 +695,9 @@ const TABLE_DEFINITIONS: string[] = [
 		"suggested_matches" text,
 		"reason" text,
 		"discovered_at" text,
-		"last_seen_scan_id" text
+		"last_seen_scan_id" text,
+		"correlation_id" text,
+		"ambiguity_margin" real
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "library_scan_history" (
@@ -778,7 +789,8 @@ const TABLE_DEFINITIONS: string[] = [
 		"import_attempts" integer DEFAULT 0,
 		"last_attempt_at" text,
 		"is_automatic" integer DEFAULT false,
-		"is_upgrade" integer DEFAULT false
+		"is_upgrade" integer DEFAULT false,
+		"import_failed" integer NOT NULL DEFAULT 0
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "download_queue_tombstones" (
@@ -798,6 +810,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"download_client_id" text,
 		"download_client_name" text,
 		"download_id" text,
+		"info_hash" text,
 		"title" text NOT NULL,
 		"indexer_id" text,
 		"indexer_name" text,
@@ -1401,6 +1414,73 @@ const TABLE_DEFINITIONS: string[] = [
 		"error" text,
 		"operation" text NOT NULL DEFAULT 'rename',
 		"created_at" text NOT NULL
+	)`,
+
+	// =========================================================================
+	// Diagnostic Report Tables
+	// =========================================================================
+
+	`CREATE TABLE IF NOT EXISTS "rejected_releases" (
+		"id" text PRIMARY KEY NOT NULL,
+		"correlation_id" text,
+		"release_title" text NOT NULL,
+		"indexer_name" text,
+		"protocol" text,
+		"tmdb_id" integer,
+		"media_type" text,
+		"media_title" text,
+		"rejection_reasons" text,
+		"quality_profile_name" text,
+		"release_size" integer,
+		"release_group" text,
+		"rejected_at" text NOT NULL,
+		"status" text NOT NULL DEFAULT 'rejected'
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "import_failures" (
+		"id" text PRIMARY KEY NOT NULL,
+		"correlation_id" text,
+		"release_title" text NOT NULL,
+		"source_path" text,
+		"destination_path" text,
+		"failure_stage" text NOT NULL,
+		"reason" text NOT NULL,
+		"reason_detail" text,
+		"dangerous_files" text,
+		"attempt_count" integer NOT NULL DEFAULT 1,
+		"download_client_id" text,
+		"failed_at" text NOT NULL,
+		"status" text NOT NULL DEFAULT 'failed',
+		"resolved_at" text
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "renaming_failures" (
+		"id" text PRIMARY KEY NOT NULL,
+		"correlation_id" text,
+		"file_id" text NOT NULL,
+		"file_type" text NOT NULL,
+		"source_path" text NOT NULL,
+		"intended_path" text NOT NULL,
+		"naming_template" text,
+		"reason" text NOT NULL,
+		"reason_detail" text,
+		"failed_at" text NOT NULL,
+		"status" text NOT NULL DEFAULT 'failed',
+		"resolved_at" text
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "metadata_conflicts" (
+		"id" text PRIMARY KEY NOT NULL,
+		"correlation_id" text,
+		"tmdb_id" integer NOT NULL,
+		"media_type" text NOT NULL,
+		"media_title" text,
+		"conflict_type" text NOT NULL,
+		"providers_checked" text,
+		"provider_results" text,
+		"detected_at" text NOT NULL,
+		"status" text NOT NULL DEFAULT 'unresolved',
+		"resolved_at" text
 	)`
 ];
 
@@ -1442,6 +1522,7 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_library_job_items_job_status" ON "library_job_items" ("job_id", "status")`,
 	`CREATE INDEX IF NOT EXISTS "idx_library_job_items_path" ON "library_job_items" ("path")`,
 	`CREATE INDEX IF NOT EXISTS "idx_download_queue_status" ON "download_queue" ("status")`,
+	`CREATE INDEX IF NOT EXISTS "idx_download_queue_info_hash" ON "download_queue" ("info_hash")`,
 	`CREATE INDEX IF NOT EXISTS "idx_download_queue_movie" ON "download_queue" ("movie_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_download_queue_series" ON "download_queue" ("series_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_download_queue_tombstones_client" ON "download_queue_tombstones" ("download_client_id")`,
@@ -1525,6 +1606,7 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_alternate_titles_source" ON "alternate_titles" ("source")`,
 
 	// download_history indexes for activity query performance
+	`CREATE INDEX IF NOT EXISTS "idx_download_history_info_hash" ON "download_history" ("info_hash")`,
 	`CREATE INDEX IF NOT EXISTS "idx_dh_status" ON "download_history" ("status")`,
 	`CREATE INDEX IF NOT EXISTS "idx_dh_movie" ON "download_history" ("movie_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_dh_series" ON "download_history" ("series_id")`,
@@ -1540,7 +1622,20 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_synced_items_item_type" ON "media_server_synced_items" ("item_type")`,
 	// Rename history audit indexes
 	`CREATE INDEX IF NOT EXISTS "idx_rename_history_file" ON "rename_history" ("file_id")`,
-	`CREATE INDEX IF NOT EXISTS "idx_rename_history_created" ON "rename_history" ("created_at")`
+	`CREATE INDEX IF NOT EXISTS "idx_rename_history_created" ON "rename_history" ("created_at")`,
+	// Diagnostic report table indexes
+	`CREATE INDEX IF NOT EXISTS "idx_rejected_releases_rejected_at" ON "rejected_releases" ("rejected_at")`,
+	`CREATE INDEX IF NOT EXISTS "idx_rejected_releases_tmdb" ON "rejected_releases" ("tmdb_id", "media_type")`,
+	`CREATE INDEX IF NOT EXISTS "idx_rejected_releases_status" ON "rejected_releases" ("status")`,
+	`CREATE INDEX IF NOT EXISTS "idx_import_failures_failed_at" ON "import_failures" ("failed_at")`,
+	`CREATE INDEX IF NOT EXISTS "idx_import_failures_status" ON "import_failures" ("status")`,
+	`CREATE INDEX IF NOT EXISTS "idx_import_failures_stage" ON "import_failures" ("failure_stage")`,
+	`CREATE INDEX IF NOT EXISTS "idx_renaming_failures_failed_at" ON "renaming_failures" ("failed_at")`,
+	`CREATE INDEX IF NOT EXISTS "idx_renaming_failures_file" ON "renaming_failures" ("file_id", "file_type")`,
+	`CREATE INDEX IF NOT EXISTS "idx_renaming_failures_status" ON "renaming_failures" ("status")`,
+	`CREATE INDEX IF NOT EXISTS "idx_metadata_conflicts_tmdb" ON "metadata_conflicts" ("tmdb_id", "media_type")`,
+	`CREATE INDEX IF NOT EXISTS "idx_metadata_conflicts_detected_at" ON "metadata_conflicts" ("detected_at")`,
+	`CREATE INDEX IF NOT EXISTS "idx_metadata_conflicts_status" ON "metadata_conflicts" ("status")`
 ];
 
 /**

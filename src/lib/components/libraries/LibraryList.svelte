@@ -163,7 +163,7 @@
 										</button>
 										{#if !library.isSystem}
 											<button
-												class="btn btn-square text-error btn-ghost btn-sm"
+												class="btn btn-square btn-ghost text-error btn-sm"
 												onclick={() => onDelete(library)}
 												title={m.action_delete()}
 											>

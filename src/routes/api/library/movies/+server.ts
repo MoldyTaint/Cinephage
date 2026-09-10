@@ -24,8 +24,10 @@ import { fetchAndStoreMovieAlternateTitles } from '$lib/server/services/Alternat
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { ValidationError, isAppError } from '$lib/errors';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
-import { logger } from '$lib/logging';
 import { requireAuth } from '$lib/server/auth/authorization.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryMoviesApi', logDomain: 'scans' });
 
 /**
  * GET /api/library/movies
@@ -184,6 +186,7 @@ export const POST: RequestHandler = async (event) => {
 
 		// Verify root folder exists and is for movies (with optional anime subtype enforcement)
 		await validateRootFolder(rootFolderId, 'movie', {
+			requireWritable: true,
 			enforceAnimeSubtype,
 			isAnimeMedia,
 			mediaTitle: movieDetails.title
@@ -221,7 +224,7 @@ export const POST: RequestHandler = async (event) => {
 		const { imdbId } = await fetchMovieExternalIds(tmdbId);
 
 		// Get the effective scoring profile (shared logic)
-		const effectiveProfileId = await getEffectiveScoringProfileId(scoringProfileId);
+		const effectiveProfileId = await getEffectiveScoringProfileId(scoringProfileId, owningLibrary);
 
 		// Get the language profile if subtitles wanted (shared logic)
 		const languageProfileId = await getLanguageProfileId(wantsSubtitles, tmdbId);

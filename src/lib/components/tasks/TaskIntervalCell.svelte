@@ -68,7 +68,7 @@
 			bind:this={editInput}
 			bind:value={editValue}
 			onkeydown={handleKeydown}
-			class="input-bordered input input-xs w-20"
+			class="input-bordered input w-20 input-xs"
 		/>
 		<span class="text-xs">h</span>
 		<button
@@ -119,7 +119,7 @@
 	</div>
 {:else}
 	<button
-		class="btn px-2 btn-ghost btn-xs {task.intervalEditable ? 'hover:bg-base-300' : ''}"
+		class="btn btn-ghost px-2 btn-xs {task.intervalEditable ? 'hover:bg-base-300' : ''}"
 		onclick={startEditing}
 		disabled={!task.intervalEditable}
 		title={task.intervalEditable ? 'Click to edit' : 'System task - not editable'}

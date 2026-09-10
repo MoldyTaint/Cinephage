@@ -80,11 +80,11 @@
 
 	async function handleValidatePath(
 		path: string,
-		_readOnly = false,
+		readOnly = false,
 		folderId?: string
 	): Promise<PathValidationResult> {
 		try {
-			const payload = await validateRootFolder(path, undefined, folderId);
+			const payload = await validateRootFolder(path, readOnly, folderId);
 			return payload as unknown as PathValidationResult;
 		} catch (error) {
 			return {
@@ -194,7 +194,7 @@
 	{#snippet actions()}
 		<button
 			type="button"
-			class="btn ml-auto w-full gap-2 btn-sm btn-primary sm:w-auto"
+			class="btn ml-auto w-full gap-2 btn-primary btn-sm sm:w-auto"
 			onclick={openAddFolderModal}
 		>
 			<Plus class="h-4 w-4" />

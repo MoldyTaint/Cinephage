@@ -383,7 +383,7 @@
 						<div class="flex items-center gap-2">
 							<input
 								type="text"
-								class="input-bordered input input-sm flex-1"
+								class="input-bordered input flex-1 input-sm"
 								placeholder={m.mediaBrowser_localPathPlaceholder()}
 								value={mapping.localPath}
 								onchange={(e) => updatePathMapping(index, 'localPath', e.currentTarget.value)}
@@ -391,14 +391,14 @@
 							<span class="text-base-content/50">{m.mediaBrowser_to()}</span>
 							<input
 								type="text"
-								class="input-bordered input input-sm flex-1"
+								class="input-bordered input flex-1 input-sm"
 								placeholder={m.mediaBrowser_remotePathPlaceholder()}
 								value={mapping.remotePath}
 								onchange={(e) => updatePathMapping(index, 'remotePath', e.currentTarget.value)}
 							/>
 							<button
 								type="button"
-								class="btn text-error btn-ghost btn-sm"
+								class="btn btn-ghost text-error btn-sm"
 								onclick={() => removePathMapping(index)}
 								aria-label={m.action_remove()}
 							>

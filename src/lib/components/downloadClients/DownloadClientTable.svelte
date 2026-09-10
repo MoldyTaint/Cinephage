@@ -226,7 +226,7 @@
 						<Settings class="h-4 w-4" />
 					</button>
 					<button
-						class="btn text-error btn-ghost btn-xs"
+						class="btn btn-ghost text-error btn-xs"
 						onclick={() => onDelete(client)}
 						title={m.action_delete()}
 						aria-label={m.aria_deleteClient()}
@@ -382,7 +382,7 @@
 									<Settings class="h-4 w-4" />
 								</button>
 								<button
-									class="btn text-error btn-ghost btn-xs"
+									class="btn btn-ghost text-error btn-xs"
 									onclick={() => onDelete(client)}
 									title={m.action_deleteClient()}
 								>

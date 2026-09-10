@@ -192,10 +192,10 @@
 				</button>
 			{/if}
 			{#if selectedPaths.size > 0}
-				<span class="badge badge-primary badge-sm shrink-0">
+				<span class="badge shrink-0 badge-sm badge-primary">
 					{m.library_import_selectedCount({ count: selectedPaths.size })}
 				</span>
-				<button class="btn btn-ghost btn-xs shrink-0" onclick={clearSelection}>
+				<button class="btn shrink-0 btn-ghost btn-xs" onclick={clearSelection}>
 					{m.library_import_clearSelection()}
 				</button>
 			{/if}
@@ -211,7 +211,7 @@
 					</div>
 					<input
 						type="text"
-						class="input input-md w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+						class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 input-md placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 						placeholder="Filter…"
 						bind:value={browserFilter}
 					/>
@@ -247,10 +247,10 @@
 				</div>
 			{:else}
 				<div class="space-y-1">
-					<div class="flex items-center gap-2 border-b border-base-300/50 pb-1 mb-1 px-2">
+					<div class="mb-1 flex items-center gap-2 border-b border-base-300/50 px-2 pb-1">
 						<input
 							type="checkbox"
-							class="checkbox checkbox-xs shrink-0"
+							class="checkbox shrink-0 checkbox-xs"
 							checked={allSelected}
 							onchange={toggleSelectAll}
 							title="Select all"
@@ -267,7 +267,7 @@
 						>
 							<input
 								type="checkbox"
-								class="checkbox checkbox-sm shrink-0"
+								class="checkbox shrink-0 checkbox-sm"
 								checked={selectedPaths.has(entry.path)}
 								onclick={(e) => {
 									e.stopPropagation();
@@ -276,7 +276,7 @@
 							/>
 							<button
 								type="button"
-								class="flex flex-1 items-center gap-2 text-left min-w-0"
+								class="flex min-w-0 flex-1 items-center gap-2 text-left"
 								onclick={() =>
 									entry.isDirectory ? handleBrowse(entry.path) : (sourcePath = entry.path)}
 							>

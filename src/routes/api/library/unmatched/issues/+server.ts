@@ -3,8 +3,10 @@ import type { RequestHandler } from './$types.js';
 import { db } from '$lib/server/db/index.js';
 import { movies, rootFolders, series } from '$lib/server/db/schema.js';
 import { sql } from 'drizzle-orm';
-import { logger } from '$lib/logging';
 import type { LibraryIssue, RootFolderOption } from '$lib/types/unmatched.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryUnmatchedIssuesApi', logDomain: 'scans' });
 
 function resolveIssue(rootFolderId: string | null): LibraryIssue['issue'] {
 	if (rootFolderId === null || rootFolderId === '' || rootFolderId === 'null') {

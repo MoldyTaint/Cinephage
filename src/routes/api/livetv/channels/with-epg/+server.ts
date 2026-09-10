@@ -17,7 +17,9 @@ import {
 	epgPrograms
 } from '$lib/server/db/schema';
 import { eq, like, sql, and, gt } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LiveTvChannelsWithEpg', logDomain: 'livetv' });
 
 interface ChannelWithEpgInfo {
 	id: string;

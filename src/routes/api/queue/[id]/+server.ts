@@ -12,7 +12,9 @@ import { and, desc, eq } from 'drizzle-orm';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring';
 import { upsertQueueTombstoneFromQueueItem } from '$lib/server/downloadClients/monitoring/QueueTombstoneService';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'QueueItemApi', logDomain: 'downloads' });
 
 const DEFAULT_QUEUE_REMOVE_CLIENT_TIMEOUT_MS = 3000;
 
@@ -66,6 +68,7 @@ async function writeRemovedHistory(queueItem: typeof downloadQueue.$inferSelect)
 					size: queueItem.size,
 					quality: queueItem.quality,
 					releaseGroup: queueItem.releaseGroup,
+					infoHash: queueItem.infoHash,
 					completedAt: queueItem.completedAt
 				})
 				.where(eq(downloadHistory.id, existingFailedHistory.id));
@@ -88,6 +91,7 @@ async function writeRemovedHistory(queueItem: typeof downloadQueue.$inferSelect)
 		size: queueItem.size,
 		quality: queueItem.quality,
 		releaseGroup: queueItem.releaseGroup,
+		infoHash: queueItem.infoHash,
 		grabbedAt: queueItem.addedAt,
 		completedAt: queueItem.completedAt,
 		importedAt: queueItem.importedAt,

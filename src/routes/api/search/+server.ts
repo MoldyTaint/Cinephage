@@ -8,7 +8,8 @@ import {
 } from '$lib/server/indexers/types';
 import { searchQuerySchema } from '$lib/validation/schemas';
 import { qualityFilter, type EnrichmentOptions } from '$lib/server/quality';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
 import { redactUrl } from '$lib/server/utils/urlSecurity';
 import { db } from '$lib/server/db';
 import { movies, series, settings } from '$lib/server/db/schema';
@@ -20,6 +21,8 @@ import {
 	fetchAndStoreMovieAlternateTitles,
 	fetchAndStoreSeriesAlternateTitles
 } from '$lib/server/services/AlternateTitleService';
+
+const logger = createChildLogger({ module: 'SearchApi', logDomain: 'system' });
 
 /**
  * Per-indexer search timeout for interactive searches.
@@ -102,6 +105,8 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	// Resolve language preference and global adult toggle from settings.
 	// Explicit ?language= param takes precedence over the stored language preference.
+	// An empty or "any" language means no preference (all alternate titles used,
+	// no language boost) — the reporter's "any" option.
 	let effectiveLanguage: string | undefined = language;
 	let globalIncludeAdult = false;
 	try {
@@ -110,12 +115,10 @@ export const GET: RequestHandler = async ({ url }) => {
 		});
 		if (filtersSetting?.value) {
 			const globalFilters = JSON.parse(filtersSetting.value);
-			if (
-				!effectiveLanguage &&
-				globalFilters?.language &&
-				typeof globalFilters.language === 'string'
-			) {
-				effectiveLanguage = globalFilters.language.toLowerCase().split('-')[0];
+			const globalLanguage =
+				typeof globalFilters?.language === 'string' ? globalFilters.language.trim() : '';
+			if (!effectiveLanguage && globalLanguage && globalLanguage.toLowerCase() !== 'any') {
+				effectiveLanguage = globalLanguage.toLowerCase().split('-')[0];
 			}
 			if (globalFilters?.include_adult === true) {
 				globalIncludeAdult = true;

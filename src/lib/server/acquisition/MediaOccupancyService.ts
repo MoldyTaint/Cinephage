@@ -363,7 +363,7 @@ class MediaOccupancyServiceImpl {
 	}
 
 	private drainQueue(): void {
-		for (let index = 0; index < this.lockQueue.length; ) {
+		for (let index = 0; index < this.lockQueue.length;) {
 			const waiter = this.lockQueue[index];
 			if (!this.canAcquire(waiter.keys)) {
 				index += 1;

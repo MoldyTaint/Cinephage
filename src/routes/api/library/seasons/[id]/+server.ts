@@ -5,8 +5,10 @@ import { seasons, episodes, episodeFiles, series, rootFolders } from '$lib/serve
 import { eq } from 'drizzle-orm';
 import { unlink, rmdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { logger } from '$lib/logging';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibrarySeasonByIdApi', logDomain: 'scans' });
 
 /**
  * PATCH /api/library/seasons/[id]

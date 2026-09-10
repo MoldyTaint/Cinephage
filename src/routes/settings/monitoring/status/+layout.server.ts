@@ -46,25 +46,23 @@ export const load: LayoutServerLoad = async ({ parent }) => {
 		.groupBy(mediaServerSyncedItems.videoCodec)
 		.orderBy(sql`count(*) desc`);
 
-	const allItems = await db
+	const resolutionBucket = sql`CASE
+		WHEN ${mediaServerSyncedItems.height} >= 2160 THEN '4K'
+		WHEN ${mediaServerSyncedItems.height} >= 1080 THEN '1080p'
+		WHEN ${mediaServerSyncedItems.height} >= 720 THEN '720p'
+		WHEN ${mediaServerSyncedItems.height} >= 480 THEN '480p'
+		ELSE 'SD'
+	END`;
+	const resolutionRows = await db
 		.select({
-			height: mediaServerSyncedItems.height
+			label: resolutionBucket.as('label'),
+			count: sql<number>`count(*)`
 		})
 		.from(mediaServerSyncedItems)
-		.where(sql`${mediaServerSyncedItems.height} IS NOT NULL`);
-
-	const resolutionMap = new Map<string, number>();
-	for (const item of allItems) {
-		const h = item.height ?? 0;
-		let label = 'SD';
-		if (h >= 2160) label = '4K';
-		else if (h >= 1080) label = '1080p';
-		else if (h >= 720) label = '720p';
-		else if (h >= 480) label = '480p';
-		resolutionMap.set(label, (resolutionMap.get(label) ?? 0) + 1);
-	}
-	const resolutionBreakdown = Array.from(resolutionMap.entries())
-		.map(([label, count]) => ({ label, count }))
+		.where(sql`${mediaServerSyncedItems.height} IS NOT NULL`)
+		.groupBy(resolutionBucket);
+	const resolutionBreakdown = resolutionRows
+		.map((r) => ({ label: r.label as string, count: r.count }))
 		.sort((a, b) => b.count - a.count);
 
 	const hdrRows = await db

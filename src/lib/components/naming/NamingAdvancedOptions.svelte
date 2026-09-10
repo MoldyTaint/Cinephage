@@ -95,6 +95,22 @@
 						<input
 							type="checkbox"
 							class="checkbox checkbox-sm checkbox-primary"
+							bind:checked={config.useSpecialsFolder}
+						/>
+						<div class="flex flex-col gap-0.5">
+							<span class="label-text">{m.settings_naming_useSpecialsFolder()}</span>
+							<span class="text-xs text-base-content/55"
+								>{m.settings_naming_useSpecialsFolderHelp()}</span
+							>
+						</div>
+					</label>
+
+					<label
+						class="label cursor-pointer justify-start gap-3 rounded-lg border border-base-300 px-3 py-2 transition-colors hover:bg-base-300/50"
+					>
+						<input
+							type="checkbox"
+							class="checkbox checkbox-sm checkbox-primary"
 							bind:checked={config.includeQuality}
 						/>
 						<span class="label-text">{m.settings_naming_includeQuality()}</span>

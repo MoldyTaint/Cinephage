@@ -78,7 +78,7 @@
 		</div>
 		<button
 			type="button"
-			class="btn gap-1 opacity-100 btn-ghost transition-opacity btn-xs sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100"
+			class="btn gap-1 btn-ghost opacity-100 transition-opacity btn-xs sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100"
 			onclick={onReset}
 			disabled={!onReset}
 			aria-label={`Reset ${label}`}
@@ -100,8 +100,7 @@
 				aria-describedby={describedBy}
 				bind:value
 				onfocus={handleFocus}
-				onblur={handleBlur}
-			></textarea>
+				onblur={handleBlur}></textarea>
 		{:else}
 			<input
 				{id}

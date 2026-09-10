@@ -43,7 +43,8 @@ export const OPTIONS: RequestHandler = async () => {
 		headers: {
 			'Access-Control-Allow-Origin': '*',
 			'Access-Control-Allow-Methods': 'GET, OPTIONS, HEAD',
-			'Access-Control-Allow-Headers': 'Range, Content-Type'
+			'Access-Control-Allow-Headers':
+				'Range, If-Range, If-None-Match, If-Modified-Since, Content-Type'
 		}
 	});
 };

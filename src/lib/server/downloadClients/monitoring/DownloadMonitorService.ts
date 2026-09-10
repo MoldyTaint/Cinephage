@@ -19,10 +19,10 @@ import {
 	episodes,
 	stalledOrphanTracking
 } from '$lib/server/db/schema';
-import { eq, and, inArray, not, notInArray, isNull, isNotNull, lte, desc } from 'drizzle-orm';
+import { eq, and, or, inArray, not, notInArray, isNull, isNotNull, desc, sql } from 'drizzle-orm';
 import { getDownloadClientManager } from '../DownloadClientManager';
 import { mapClientPathToLocal } from './PathMapping';
-import { extractInfoHash } from '../utils/hashUtils';
+import { resolveInfoHash } from '../utils/hashUtils';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
 import {
 	cleanupExpiredQueueTombstones,
@@ -598,9 +598,17 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			// actively tracked — the completed-orphan logic below only removes finished
 			// torrents, so stalled ones would otherwise linger forever.
 			const stalledTimeoutMinutes = await this.getStalledTimeoutMinutes();
-			const stalledHandlingEnabled = stalledTimeoutMinutes > 0;
+			const stalledProgressTimeoutMinutes = await this.getStalledProgressTimeoutMinutes();
+			const stalledHandlingEnabled = stalledTimeoutMinutes > 0 || stalledProgressTimeoutMinutes > 0;
 			const stalledTimeoutMs =
 				Math.max(stalledTimeoutMinutes, DownloadMonitorService.MIN_STALLED_TIMEOUT_MINUTES) *
+				60 *
+				1000;
+			const stalledProgressTimeoutMs =
+				Math.max(
+					stalledProgressTimeoutMinutes,
+					DownloadMonitorService.MIN_STALLED_TIMEOUT_MINUTES
+				) *
 				60 *
 				1000;
 			const stalledProgressThreshold = await this.getStalledProgressThreshold();
@@ -643,6 +651,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 									{
 										progressThreshold: stalledProgressThreshold,
 										timeoutMs: stalledTimeoutMs,
+										progressTimeoutMs: stalledProgressTimeoutMs,
 										blocklistHours: stalledBlocklistHours,
 										now: sweepNow,
 										dryRun
@@ -758,6 +767,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		opts: {
 			progressThreshold: number;
 			timeoutMs: number;
+			progressTimeoutMs: number;
 			blocklistHours: number;
 			now: number;
 			dryRun: boolean;
@@ -768,16 +778,10 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			errors: { name: string; hash: string; error: string }[];
 		}
 	): Promise<void> {
-		// Above the progress threshold — it got far enough that it might still finish,
-		// so leave it alone (and don't track it).
-		if (download.progress * 100 > opts.progressThreshold) {
-			result.skipped.push({
-				name: download.name,
-				hash: download.hash,
-				reason: 'Stalled above progress threshold'
-			});
-			return;
-		}
+		// Two-tier timeout: high-progress orphans get the much longer progress
+		// window (a seeder may return); low-progress orphans use the short one.
+		const isHighProgress = download.progress * 100 > opts.progressThreshold;
+		const tierTimeoutMs = isHighProgress ? opts.progressTimeoutMs : opts.timeoutMs;
 
 		const hashLower = download.hash.toLowerCase();
 		const [tracked] = await db
@@ -793,7 +797,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 		const firstStalledMs = tracked ? Date.parse(tracked.firstStalledAt) : opts.now;
 		const elapsed = opts.now - firstStalledMs;
-		const timedOut = Number.isFinite(firstStalledMs) && elapsed >= opts.timeoutMs;
+		const timedOut = Number.isFinite(firstStalledMs) && elapsed >= tierTimeoutMs;
 
 		if (opts.dryRun) {
 			if (timedOut) {
@@ -933,24 +937,21 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 		logger.info({ olderThanDays, dryRun }, 'Clearing failed queue items');
 
-		// Get all failed items
-		let failedItems = await db
+		const ageCutoffCondition =
+			olderThanDays !== undefined && olderThanDays > 0
+				? sql`coalesce(${downloadQueue.lastAttemptAt}, ${downloadQueue.addedAt}) < ${new Date(
+						Date.now() - olderThanDays * 24 * 60 * 60 * 1000
+					).toISOString()}`
+				: undefined;
+
+		const failedItems = await db
 			.select()
 			.from(downloadQueue)
-			.where(eq(downloadQueue.status, 'failed'));
-
-		// Filter by age if specified
-		if (olderThanDays !== undefined && olderThanDays > 0) {
-			const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
-			failedItems = failedItems.filter((item) => {
-				const failedAt = item.lastAttemptAt
-					? new Date(item.lastAttemptAt).getTime()
-					: item.addedAt
-						? new Date(item.addedAt).getTime()
-						: Date.now();
-				return failedAt < cutoff;
-			});
-		}
+			.where(
+				ageCutoffCondition
+					? and(eq(downloadQueue.status, 'failed'), ageCutoffCondition)
+					: eq(downloadQueue.status, 'failed')
+			);
 
 		const result = {
 			cleared: [] as { id: string; title: string; errorMessage?: string | null }[],
@@ -1401,7 +1402,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 			// Fallback: try extracting hash from magnetUrl
 			if (!download && queueItem.magnetUrl) {
-				const extractedHash = extractInfoHash(queueItem.magnetUrl);
+				const extractedHash = resolveInfoHash(queueItem.magnetUrl);
 				if (extractedHash) {
 					download = downloadMap.get(extractedHash.toLowerCase());
 					if (download) matchedBy = 'magnetUrl';
@@ -1557,6 +1558,14 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			status: newStatus
 		};
 
+		// If the item has exhausted its import attempts, keep it permanently failed.
+		// The download client (e.g. SABnzbd history) reports 'completed' forever, but
+		// the failure is on Cinephage's import side, not the client's and should not
+		// be treated as a client-side recovery.
+		if (queueItem.importFailed && queueItem.status === 'failed') {
+			return;
+		}
+
 		// Track when the download entered the stalled state so handleStalledDownloads()
 		// can apply the timeout. The timer is persisted (survives restarts) and is
 		// deliberately resistant to flapping: a magnet that briefly flips metaDL →
@@ -1594,6 +1603,12 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		if (queueItem.status === 'failed' && newStatus !== 'failed') {
 			updates.errorMessage = null;
 			updates.lastAttemptAt = null;
+			// A recovery means a NEW download attempt was started (the previous one
+			// was removed by the stalled-timeout). The stalled clock belongs to the
+			// old torrent instance — carrying it over would let handleStalledDownloads
+			// instantly delete the freshly re-added torrent. Reset it and let the
+			// stalled transition below stamp a new one.
+			updates.stalledSince = null;
 		}
 
 		// Only update if something changed
@@ -2163,32 +2178,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		isAutomatic?: boolean;
 		isUpgrade?: boolean;
 	}): Promise<QueueItem> {
-		// Check if download already in queue (prevent duplicates)
-		// Only consider active downloads as duplicates - allow re-downloading removed/failed/imported items
-		const existing = await db
-			.select()
-			.from(downloadQueue)
-			.where(
-				and(
-					eq(downloadQueue.downloadClientId, params.downloadClientId),
-					eq(downloadQueue.downloadId, params.downloadId),
-					notInArray(downloadQueue.status, ['removed', 'failed', ...POST_IMPORT_STATUSES])
-				)
-			)
-			.limit(1);
-
-		if (existing.length > 0) {
-			// Return existing queue item instead of creating duplicate
-			logger.info(
-				{
-					downloadId: params.downloadId,
-					existingId: existing[0].id,
-					status: existing[0].status
-				},
-				'Download already in queue, returning existing item'
-			);
-			return rowToQueueItem(existing[0]);
-		}
+		const infoHash = resolveInfoHash(params.infoHash, params.magnetUrl, params.downloadUrl);
 
 		// Automatic grabs are suppressed for a short window when the same remote item
 		// was recently removed locally while the client was unavailable.
@@ -2197,52 +2187,92 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				downloadClientId: params.downloadClientId,
 				protocol: params.protocol,
 				downloadId: params.downloadId,
-				infoHash: params.infoHash
+				infoHash
 			});
 			if (suppressed) {
 				throw new Error('Download temporarily suppressed after local removal');
 			}
 		}
 
-		// Create new queue item
-		const id = randomUUID();
-		const now = new Date().toISOString();
+		const result = db.transaction((tx) => {
+			const duplicateConditions = [
+				and(
+					eq(downloadQueue.downloadClientId, params.downloadClientId),
+					eq(downloadQueue.downloadId, params.downloadId),
+					notInArray(downloadQueue.status, ['removed', 'failed', ...POST_IMPORT_STATUSES])
+				)
+			];
+			if (infoHash) {
+				duplicateConditions.push(
+					and(
+						eq(downloadQueue.infoHash, infoHash),
+						notInArray(downloadQueue.status, ['removed', ...POST_IMPORT_STATUSES])
+					)
+				);
+			}
 
-		// Parse the release group once at write time so the activity feed can rely on
-		// the stored value without re-parsing (which is separator-sensitive). Callers
-		// normally supply it; derive from the title as a safety net so the column is
-		// always populated when a group is actually present.
-		const releaseGroup =
-			params.releaseGroup ?? releaseParser.parse(params.title).releaseGroup ?? undefined;
+			const existing = tx
+				.select()
+				.from(downloadQueue)
+				.where(or(...duplicateConditions))
+				.limit(1)
+				.all();
 
-		await db.insert(downloadQueue).values({
-			id,
-			downloadClientId: params.downloadClientId,
-			downloadId: params.downloadId,
-			infoHash: params.infoHash,
-			title: params.title,
-			indexerId: params.indexerId,
-			indexerName: params.indexerName,
-			downloadUrl: params.downloadUrl,
-			magnetUrl: params.magnetUrl,
-			protocol: params.protocol || 'torrent',
-			movieId: params.movieId,
-			seriesId: params.seriesId,
-			episodeIds: params.episodeIds,
-			seasonNumber: params.seasonNumber,
-			status: 'queued',
-			quality: params.quality,
-			size: params.size,
-			releaseGroup,
-			addedAt: now,
-			isAutomatic: params.isAutomatic || false,
-			isUpgrade: params.isUpgrade || false
+			if (existing.length > 0) {
+				logger.info(
+					{
+						downloadId: params.downloadId,
+						existingId: existing[0].id,
+						status: existing[0].status
+					},
+					'Download already in queue, returning existing item'
+				);
+				return { created: false, item: rowToQueueItem(existing[0]) };
+			}
+
+			const id = randomUUID();
+			const now = new Date().toISOString();
+			const releaseGroup =
+				params.releaseGroup ?? releaseParser.parse(params.title).releaseGroup ?? undefined;
+
+			tx.insert(downloadQueue)
+				.values({
+					id,
+					downloadClientId: params.downloadClientId,
+					downloadId: params.downloadId,
+					infoHash,
+					title: params.title,
+					indexerId: params.indexerId,
+					indexerName: params.indexerName,
+					downloadUrl: params.downloadUrl,
+					magnetUrl: params.magnetUrl,
+					protocol: params.protocol || 'torrent',
+					movieId: params.movieId,
+					seriesId: params.seriesId,
+					episodeIds: params.episodeIds,
+					seasonNumber: params.seasonNumber,
+					status: 'queued',
+					quality: params.quality,
+					size: params.size,
+					releaseGroup,
+					addedAt: now,
+					isAutomatic: params.isAutomatic || false,
+					isUpgrade: params.isUpgrade || false
+				})
+				.run();
+
+			const item = tx
+				.select()
+				.from(downloadQueue)
+				.where(eq(downloadQueue.id, id))
+				.limit(1)
+				.all()[0];
+			if (!item) throw new Error('Failed to create queue item');
+			return { created: true, item: rowToQueueItem(item) };
 		});
 
-		const item = await this.getQueueItem(id);
-		if (!item) {
-			throw new Error('Failed to create queue item');
-		}
+		if (!result.created) return result.item;
+		const item = result.item;
 
 		this.emit('queue:added', item);
 		this.emitSSE('queue:added', item);
@@ -2498,7 +2528,9 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				},
 				'Max import attempts exceeded, marking as failed'
 			);
-			await this.markFailed(id, `Import failed after ${newAttempts} attempts`);
+			await this.markFailed(id, `Import failed after ${newAttempts} attempts`, {
+				terminalImport: true
+			});
 			return 'max_attempts';
 		}
 
@@ -2585,14 +2617,25 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 	 * Mark a queue item as failed
 	 */
 	/**
-	 * Default stalled download timeout in minutes (1 hour)
+	 * Default stalled download timeout in minutes for downloads at or below the
+	 * progress threshold (they never got off the ground). 3 days: stalling is
+	 * normal — torrents routinely resume when a seeder returns — so do not
+	 * assume a stalled download is dead within an hour.
 	 */
-	private static readonly DEFAULT_STALLED_TIMEOUT_MINUTES = 60;
+	private static readonly DEFAULT_STALLED_TIMEOUT_MINUTES = 3 * 24 * 60;
 
 	/**
 	 * Minimum stalled download timeout in minutes
 	 */
 	private static readonly MIN_STALLED_TIMEOUT_MINUTES = 5;
+
+	/**
+	 * Default stalled download timeout in minutes for downloads with meaningful
+	 * progress (above the progress threshold). These used to be reaped never,
+	 * which let dead torrents linger in the client for months; 14 days of zero
+	 * progress is enough to conclude the release is unreachable.
+	 */
+	private static readonly DEFAULT_STALLED_PROGRESS_TIMEOUT_MINUTES = 14 * 24 * 60;
 
 	/**
 	 * Default progress threshold (%): remove stalled downloads at or below this percentage.
@@ -2697,25 +2740,61 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 	}
 
 	/**
+	 * Stalled timeout (minutes) for downloads with meaningful progress (above
+	 * the progress threshold). Separate from the low-progress timeout: torrents
+	 * that already downloaded data get a much longer window before cleanup.
+	 */
+	private async getStalledProgressTimeoutMinutes(): Promise<number> {
+		try {
+			const [row] = await db
+				.select({ value: monitoringSettings.value })
+				.from(monitoringSettings)
+				.where(eq(monitoringSettings.key, 'stalled_download_progress_timeout_minutes'))
+				.limit(1);
+
+			if (row) {
+				const value = parseFloat(row.value);
+				if (Number.isFinite(value) && value >= 0) {
+					return value;
+				}
+			}
+		} catch (error) {
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to read stalled progress timeout from settings'
+			);
+		}
+
+		return DownloadMonitorService.DEFAULT_STALLED_PROGRESS_TIMEOUT_MINUTES;
+	}
+
+	/**
 	 * Handle stalled downloads that have timed out.
 	 *
-	 * Only acts on stalled downloads below the configured progress threshold — these
-	 * never got off the ground (e.g. magnet metadata never fetched, no seeders ever
-	 * connected). Downloads at or above the threshold are left alone since they may
-	 * still complete when a seeder appears.
+	 * Two tiers (stalling is normal — torrents routinely resume when a seeder
+	 * returns, so patience is the default):
+	 * - At/below the progress threshold (never got off the ground, e.g. magnet
+	 *   metadata never fetched, no seeders ever connected): removed after the
+	 *   short stalled timeout.
+	 * - Above the threshold (real progress, then went quiet): left alone until
+	 *   the much longer progress timeout — a seeder may still appear. Only
+	 *   genuinely long-dead partial downloads get reaped.
 	 *
-	 * For each timed-out stalled item below the threshold:
+	 * For each timed-out stalled item:
 	 * 1. Remove from the download client
 	 * 2. Mark as failed in the queue (creates history record and emits events)
 	 * 3. Reset the search cooldown on the media item so it gets re-searched
 	 *
-	 * A timeout of 0 disables stalled download handling entirely.
+	 * A timeout of 0 disables that tier's handling entirely.
 	 */
 	private async handleStalledDownloads(): Promise<void> {
 		const timeoutMinutes = await this.getStalledTimeoutMinutes();
+		const progressTimeoutMinutes = await this.getStalledProgressTimeoutMinutes();
 
-		// A timeout of 0 means the feature is disabled
-		if (timeoutMinutes === 0) return;
+		// A timeout of 0 in BOTH tiers means the feature is disabled
+		if (timeoutMinutes === 0 && progressTimeoutMinutes === 0) return;
 
 		const progressThreshold = await this.getStalledProgressThreshold();
 		const blocklistHours = await this.getStalledBlocklistHours();
@@ -2725,6 +2804,10 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			DownloadMonitorService.MIN_STALLED_TIMEOUT_MINUTES
 		);
 		const timeoutMs = effectiveTimeout * 60 * 1000;
+		const progressTimeoutMs =
+			Math.max(progressTimeoutMinutes, DownloadMonitorService.MIN_STALLED_TIMEOUT_MINUTES) *
+			60 *
+			1000;
 		const now = Date.now();
 
 		// Defensive backfill: any row that is stalled but has no recorded stall start
@@ -2741,8 +2824,8 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				)
 			);
 
-		// Find stalled items whose persisted stall start has exceeded the timeout.
-		const cutoff = new Date(now - timeoutMs).toISOString();
+		// Select every stalled row once, then tier-filter below. The two tiers have
+		// different timeouts, so a single SQL cutoff cannot express both.
 		const stalledItems = await db
 			.select()
 			.from(downloadQueue)
@@ -2750,18 +2833,25 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				and(
 					eq(downloadQueue.status, 'stalled'),
 					isNotNull(downloadQueue.stalledSince),
-					lte(downloadQueue.stalledSince, cutoff),
 					not(eq(downloadQueue.protocol, 'debrid'))
 				)
 			);
 
 		if (stalledItems.length === 0) return;
 
-		// Only act on items at or below the progress threshold.
+		// Tier assignment:
+		// - low progress (<= threshold): short timeout (still respects 0 = tier disabled)
+		// - meaningful progress (> threshold): long progress timeout (0 = tier disabled)
 		// Uses <= so that threshold=0 correctly catches downloads at exactly 0%.
-		const timedOutItems = stalledItems.filter(
-			(item) => parseFloat(item.progress || '0') * 100 <= progressThreshold
-		);
+		const shortCutoff = new Date(now - timeoutMs).toISOString();
+		const progressCutoff = new Date(now - progressTimeoutMs).toISOString();
+		const timedOutItems = stalledItems.filter((item) => {
+			const progressPct = parseFloat(item.progress || '0') * 100;
+			if (progressPct <= progressThreshold) {
+				return timeoutMinutes !== 0 && item.stalledSince! <= shortCutoff;
+			}
+			return progressTimeoutMinutes !== 0 && item.stalledSince! <= progressCutoff;
+		});
 
 		if (timedOutItems.length === 0) return;
 
@@ -2778,10 +2868,13 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		const manager = getDownloadClientManager();
 
 		for (const item of timedOutItems) {
+			const progressPct = parseFloat(item.progress || '0') * 100;
 			const errorMessage =
 				item.protocol === 'usenet'
 					? 'Download stalled - articles unavailable or expired'
-					: 'Download stalled - no seeds or peers available';
+					: progressPct <= progressThreshold
+						? 'Download stalled - no seeds or peers available'
+						: `Download stalled at ${progressPct.toFixed(1)}% - no progress for an extended period`;
 
 			// Removal must succeed before we forget about the download — otherwise the
 			// dead torrent lingers in the client while Cinephage considers it handled.
@@ -3028,6 +3121,39 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				const fileList = matchedFiles.map((f) => f.name.split('/').pop() || f.name).join(', ');
 				const errorMessage = `Blocked extension detected: ${fileList}`;
 
+				// Preferred path: the dangerous file never reaches disk if we simply
+				// exclude it via client-side file priority, so strip the junk files and
+				// let the media download continue. Only fall back to removing the whole
+				// torrent (and blocklisting the release) when the client cannot exclude
+				// files or every file in the torrent is dangerous.
+				const dangerousIndices = matchedFiles.map((f) => f.index);
+				const mediaFiles = files.filter((f) => !dangerousIndices.includes(f.index));
+
+				if (typeof instance.excludeFiles === 'function' && mediaFiles.length > 0) {
+					logger.info(
+						{
+							title: item.title,
+							matchedFiles: matchedFiles.map((f) => f.name),
+							mediaFileCount: mediaFiles.length
+						},
+						'Download contains files with blocked extensions, excluding files via priority'
+					);
+
+					try {
+						await instance.excludeFiles(clientDownloadId, dangerousIndices);
+						this.blockedExtensionCheckedHashes.add(cacheKey);
+						continue;
+					} catch (excludeError) {
+						logger.warn(
+							{
+								title: item.title,
+								error: excludeError instanceof Error ? excludeError.message : String(excludeError)
+							},
+							'Failed to exclude blocked extension files, falling back to torrent removal'
+						);
+					}
+				}
+
 				logger.info(
 					{
 						title: item.title,
@@ -3101,13 +3227,18 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		this.scheduleBlockedExtensionCheck(true);
 	}
 
-	async markFailed(id: string, errorMessage: string): Promise<void> {
+	async markFailed(
+		id: string,
+		errorMessage: string,
+		options?: { terminalImport?: boolean }
+	): Promise<void> {
 		await db
 			.update(downloadQueue)
 			.set({
 				status: 'failed',
 				errorMessage,
-				lastAttemptAt: new Date().toISOString()
+				lastAttemptAt: new Date().toISOString(),
+				...(options?.terminalImport ? { importFailed: true } : {})
 			})
 			.where(eq(downloadQueue.id, id));
 
@@ -3162,6 +3293,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				downloadClientId: queueItem.downloadClientId,
 				downloadClientName: client?.name,
 				downloadId: queueItem.downloadId,
+				infoHash: queueItem.infoHash,
 				title: queueItem.title,
 				indexerId: queueItem.indexerId,
 				indexerName: queueItem.indexerName,

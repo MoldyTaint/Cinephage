@@ -20,11 +20,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 
 	const addToBlacklist = url.searchParams.get('blacklist') === 'true';
 	const reason = url.searchParams.get('reason') as
-		| 'wrong_content'
-		| 'out_of_sync'
-		| 'poor_quality'
-		| 'manual'
-		| null;
+		'wrong_content' | 'out_of_sync' | 'poor_quality' | 'manual' | null;
 
 	const downloadService = getSubtitleDownloadService();
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { Search, X, Clapperboard, Tv, Check, Loader2 } from 'lucide-svelte';
+	import { untrack } from 'svelte';
+	import { Search, X, Clapperboard, Tv, Check, Loader2, ChevronRight } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
@@ -44,6 +45,7 @@
 	let searchResults = $state<TmdbSearchResult[]>([]);
 	let isSearching = $state(false);
 	let isMatching = $state(false);
+	let matchingId = $state<number | null>(null);
 
 	// For TV shows - season/episode selection
 	let selectedShow = $state<TmdbSearchResult | null>(null);
@@ -78,16 +80,29 @@
 		}
 	}
 
-	// Handle search on enter
+	// Debounced search-as-you-type (400ms)
+	let debounceTimer: ReturnType<typeof setTimeout>;
+	$effect(() => {
+		const q = searchQuery;
+		clearTimeout(debounceTimer);
+		if (q.trim()) {
+			debounceTimer = setTimeout(() => untrack(() => search()), 400);
+		}
+		return () => clearTimeout(debounceTimer);
+	});
+
+	// Keep Enter as an immediate search escape hatch
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter') {
-			search();
+			clearTimeout(debounceTimer);
+			untrack(() => search());
 		}
 	}
 
 	// Match to a movie
 	async function matchToMovie(movie: TmdbSearchResult) {
 		isMatching = true;
+		matchingId = movie.id;
 		try {
 			const result = await matchUnmatched(file.id, {
 				tmdbId: movie.id,
@@ -105,12 +120,14 @@
 			toasts.error(m.library_matchFile_errorMatching(), { description });
 		} finally {
 			isMatching = false;
+			matchingId = null;
 		}
 	}
 
 	// Select a TV show (step 1)
 	function selectShow(show: TmdbSearchResult) {
 		selectedShow = show;
+		matchingId = null;
 	}
 
 	// Match to a TV episode (step 2)
@@ -154,43 +171,31 @@
 
 <ModalWrapper {open} onClose={close} maxWidth="2xl" labelledBy="match-file-modal-title">
 	<!-- Header -->
-	<div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-		<h3 id="match-file-modal-title" class="text-lg font-bold">{m.library_matchFile_title()}</h3>
+	<div class="mb-4 flex items-center justify-between gap-2">
+		<div class="flex items-center gap-2">
+			<h3 id="match-file-modal-title" class="text-lg font-bold">{m.library_matchFile_title()}</h3>
+			<span
+				class="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium
+				{searchType === 'tv' ? 'bg-secondary/15 text-secondary' : 'bg-primary/15 text-primary'}"
+			>
+				{#if searchType === 'tv'}
+					<Tv class="h-3 w-3" />{m.common_tvShow()}
+				{:else}
+					<Clapperboard class="h-3 w-3" />{m.common_movie()}
+				{/if}
+			</span>
+		</div>
 		<button
-			class="btn btn-circle self-end btn-ghost btn-sm sm:self-auto"
+			class="btn btn-circle shrink-0 btn-ghost btn-sm"
 			onclick={close}
 			aria-label={m.action_close()}
 		>
 			<X class="h-4 w-4" />
 		</button>
 	</div>
-	<p class="mt-1 text-sm wrap-break-word text-base-content/70" title={file.path}>
+	<p class="mt-1 truncate text-sm wrap-break-word text-base-content/70" title={file.path}>
 		{getFileName(file.path)}
 	</p>
-
-	<!-- Search Type Toggle -->
-	<div class="mt-4 flex gap-2">
-		<button
-			class="btn btn-sm {searchType === 'movie' ? 'btn-primary' : 'btn-ghost'}"
-			onclick={() => {
-				searchType = 'movie';
-				selectedShow = null;
-			}}
-		>
-			<Clapperboard class="h-4 w-4" />
-			{m.common_movie()}
-		</button>
-		<button
-			class="btn btn-sm {searchType === 'tv' ? 'btn-primary' : 'btn-ghost'}"
-			onclick={() => {
-				searchType = 'tv';
-				selectedShow = null;
-			}}
-		>
-			<Tv class="h-4 w-4" />
-			{m.common_tvShow()}
-		</button>
-	</div>
 
 	{#if searchType === 'tv' && selectedShow}
 		<!-- TV Show Selected - Season/Episode Input -->
@@ -253,10 +258,19 @@
 		</div>
 	{:else}
 		<!-- Search Input -->
-		<div class="mt-4 flex flex-col gap-2 sm:flex-row">
+		<div class="group relative mt-4">
+			{#if isSearching}
+				<Loader2
+					class="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 animate-spin text-base-content/40"
+				/>
+			{:else}
+				<Search
+					class="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-base-content/40 transition-colors group-focus-within:text-primary"
+				/>
+			{/if}
 			<input
 				type="text"
-				class="input-bordered input w-full sm:flex-1"
+				class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-10 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				placeholder={m.library_matchFile_searchPlaceholder({
 					type:
 						searchType === 'movie'
@@ -266,21 +280,20 @@
 				bind:value={searchQuery}
 				onkeydown={handleKeydown}
 			/>
-			<button class="btn w-full btn-primary sm:w-auto" onclick={search} disabled={isSearching}>
-				{#if isSearching}
-					<Loader2 class="h-4 w-4 animate-spin" />
-				{:else}
-					<Search class="h-4 w-4" />
-				{/if}
-			</button>
 		</div>
 
 		<!-- Search Results -->
 		{#if searchResults.length > 0}
-			<div class="mt-4 max-h-80 space-y-2 overflow-y-auto">
+			<p class="mt-3 text-xs text-base-content/40">
+				{searchResults.length === 1
+					? m.library_matchFile_resultCountSingular()
+					: m.library_matchFile_resultCount({ count: searchResults.length })}
+			</p>
+			<div class="mt-1.5 max-h-80 space-y-1 overflow-y-auto">
 				{#each searchResults as result (result.id)}
+					{@const isLoadingThis = matchingId === result.id}
 					<button
-						class="flex w-full items-start gap-3 rounded-lg p-2 text-left transition-colors hover:bg-base-200"
+						class="group flex w-full cursor-pointer items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-base-300 disabled:opacity-60"
 						onclick={() => (searchType === 'movie' ? matchToMovie(result) : selectShow(result))}
 						disabled={isMatching}
 					>
@@ -304,15 +317,21 @@
 						</div>
 						<div class="min-w-0 flex-1">
 							<p class="font-medium wrap-break-word sm:truncate">{result.title || result.name}</p>
-							<p class="text-sm text-base-content/70">
-								{(result.release_date || result.first_air_date)?.substring(0, 4) || 'Unknown year'}
+							<p class="text-sm text-base-content/60">
+								{(result.release_date || result.first_air_date)?.substring(0, 4) ||
+									m.common_unknownYear()}
 							</p>
+							{#if result.overview}
+								<p class="mt-0.5 line-clamp-1 text-xs text-base-content/40">{result.overview}</p>
+							{/if}
 						</div>
-						<div class="hidden text-sm text-base-content/50 sm:block">
-							{#if searchType === 'movie'}
-								{m.library_matchFile_clickToMatch()}
+						<div class="shrink-0">
+							{#if isLoadingThis}
+								<Loader2 class="h-4 w-4 animate-spin text-base-content/40" />
 							{:else}
-								{m.action_select()}
+								<ChevronRight
+									class="h-4 w-4 text-base-content/20 transition-all group-hover:translate-x-0.5 group-hover:text-base-content/60"
+								/>
 							{/if}
 						</div>
 					</button>

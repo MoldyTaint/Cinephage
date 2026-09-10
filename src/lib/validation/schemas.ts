@@ -456,7 +456,7 @@ function isDebridImplementation(implementation: string): boolean {
 }
 
 const downloadClientBaseFields = {
-	name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or less'),
+	name: z.string().min(1, 'Name is required').max(20, 'Name must be 20 characters or less'),
 	enabled: z.boolean().default(true),
 	priority: z.number().int().min(1).max(100).default(1)
 };
@@ -480,6 +480,7 @@ const nonDebridDownloadClientFields = {
 		.optional()
 		.nullable(),
 	seedTimeLimit: z.number().int().min(0).optional().nullable(),
+	sequentialDownload: z.boolean().optional(),
 	downloadPathLocal: z.string().optional().nullable(),
 	downloadPathRemote: z.string().optional().nullable(),
 	tempPathLocal: z.string().optional().nullable(),
@@ -503,7 +504,16 @@ const nonDebridDownloadClientCreateSchema = z
 		apiToken: z.never().optional(),
 		removeAfterImport: z.never().optional()
 	})
-	.strict();
+	.strict()
+	.superRefine((data, context) => {
+		if (data.implementation !== 'qbittorrent' && data.sequentialDownload !== undefined) {
+			context.addIssue({
+				code: 'custom',
+				path: ['sequentialDownload'],
+				message: 'Sequential download is only supported by qBittorrent'
+			});
+		}
+	});
 
 export const downloadClientCreateSchema = z.union([
 	debridDownloadClientCreateSchema,
@@ -513,8 +523,69 @@ export const downloadClientCreateSchema = z.union([
 export type DownloadClientCreateDiscriminated =
 	| z.infer<typeof debridDownloadClientCreateSchema>
 	| z.infer<typeof nonDebridDownloadClientCreateSchema>;
-const debridDownloadClientUpdateSchema = debridDownloadClientCreateSchema.partial();
-const nonDebridDownloadClientUpdateSchema = nonDebridDownloadClientCreateSchema.partial();
+// Update schemas defined explicitly without .default() so that absent fields
+// are omitted from the parsed output rather than filled with default values.
+// In Zod v4, .partial() on a schema with .default() still applies defaults for
+// absent fields, which causes superRefine forbidden-field checks to fire on
+// fields the caller never sent (e.g. toggle sends {enabled:false} but Zod fills
+// in removeAfterImport:false from the debrid branch, then superRefine rejects it
+// for non-debrid clients).
+const debridDownloadClientUpdateSchema = z
+	.object({
+		name: z
+			.string()
+			.min(1, 'Name is required')
+			.max(20, 'Name must be 20 characters or less')
+			.optional(),
+		enabled: z.boolean().optional(),
+		priority: z.number().int().min(1).max(100).optional(),
+		implementation: z.enum(DEBRID_IMPLEMENTATIONS).optional(),
+		apiToken: z.string().optional().nullable(),
+		removeAfterImport: z.boolean().optional()
+	})
+	.strict();
+const nonDebridDownloadClientUpdateSchema = z
+	.object({
+		name: z
+			.string()
+			.min(1, 'Name is required')
+			.max(20, 'Name must be 20 characters or less')
+			.optional(),
+		enabled: z.boolean().optional(),
+		priority: z.number().int().min(1).max(100).optional(),
+		implementation: z.enum(NON_DEBRID_IMPLEMENTATIONS).optional(),
+		host: z.string().min(1, 'Host is required').optional(),
+		port: z
+			.number()
+			.int()
+			.min(1, 'Port must be at least 1')
+			.max(65535, 'Port must be at most 65535')
+			.optional(),
+		useSsl: z.boolean().optional(),
+		urlBase: z.string().max(200).optional().nullable(),
+		mountMode: z.enum(['nzbdav', 'altmount']).optional().nullable(),
+		username: z.string().optional().nullable(),
+		password: z.string().optional().nullable(),
+		movieCategory: z.string().min(1).optional(),
+		tvCategory: z.string().min(1).optional(),
+		recentPriority: downloadPrioritySchema.optional(),
+		olderPriority: downloadPrioritySchema.optional(),
+		initialState: downloadInitialStateSchema.optional(),
+		seedRatioLimit: z
+			.string()
+			.regex(/^\d+(\.\d+)?$/, 'Must be a valid decimal number (e.g., "1.0", "2.5")')
+			.optional()
+			.nullable(),
+		seedTimeLimit: z.number().int().min(0).optional().nullable(),
+		sequentialDownload: z.boolean().optional(),
+		downloadPathLocal: z.string().optional().nullable(),
+		downloadPathRemote: z.string().optional().nullable(),
+		tempPathLocal: z.string().optional().nullable(),
+		tempPathRemote: z.string().optional().nullable(),
+		apiToken: z.never().optional(),
+		removeAfterImport: z.never().optional()
+	})
+	.strict();
 export const downloadClientUpdateSchema = z.union([
 	debridDownloadClientUpdateSchema,
 	nonDebridDownloadClientUpdateSchema
@@ -536,6 +607,7 @@ const NON_DEBRID_ONLY_UPDATE_FIELDS = [
 	'initialState',
 	'seedRatioLimit',
 	'seedTimeLimit',
+	'sequentialDownload',
 	'downloadPathLocal',
 	'downloadPathRemote',
 	'tempPathLocal',
@@ -563,6 +635,13 @@ export function downloadClientUpdateSchemaForImplementation(storedImplementation
 					message: `Field is not valid for ${storedImplementation}`
 				});
 			}
+		}
+		if (!storedIsDebrid && storedImplementation !== 'qbittorrent' && 'sequentialDownload' in data) {
+			context.addIssue({
+				code: 'custom',
+				path: ['sequentialDownload'],
+				message: 'Sequential download is only supported by qBittorrent'
+			});
 		}
 	});
 }
@@ -672,6 +751,7 @@ export const libraryCreateSchema = z.object({
 	isDefault: z.boolean().default(false),
 	defaultSearchOnAdd: z.boolean().default(true),
 	defaultWantsSubtitles: z.boolean().default(true),
+	qualityProfileId: z.string().nullable().optional(),
 	sortOrder: z.number().int().min(0).default(100),
 	scanMode: z.enum(['manual', 'scheduled', 'scheduled_daily', 'watch']).default('scheduled'),
 	scanConfig: z
@@ -996,7 +1076,8 @@ export const namingConfigUpdateSchema = z.object({
 	mediaServerIdFormat: mediaServerIdFormatSchema.optional(),
 	includeQuality: z.boolean().optional(),
 	includeMediaInfo: z.boolean().optional(),
-	includeReleaseGroup: z.boolean().optional()
+	includeReleaseGroup: z.boolean().optional(),
+	useSpecialsFolder: z.boolean().optional()
 });
 
 export const namingPresetSelectionSchema = z.object({
@@ -1072,7 +1153,8 @@ export const cinephageSubsystemUpdateSchema = z.object({
 	enabled: z.boolean().optional(),
 	baseUrl: z.string().trim().min(1).optional(),
 	versionOverride: z.string().trim().nullable().optional(),
-	commitOverride: z.string().trim().nullable().optional()
+	commitOverride: z.string().trim().nullable().optional(),
+	autoUpdate: z.boolean().optional()
 });
 
 export type CinephageSubsystemUpdate = z.infer<typeof cinephageSubsystemUpdateSchema>;
@@ -1134,7 +1216,7 @@ export const mediaBrowserServerUpdateSchema = mediaBrowserServerCreateSchema.req
 export const mediaBrowserServerTestSchema = z.object({
 	host: z.string().url('Must be a valid URL'),
 	apiKey: z.string().min(1, 'API key is required'),
-	serverType: mediaBrowserServerTypeSchema.optional().default('jellyfin')
+	serverType: mediaBrowserServerTypeSchema.optional()
 });
 
 // MediaBrowser Type Exports
@@ -1878,14 +1960,6 @@ export const namingValidateSchema = z.object({
 	formats: z.record(z.string(), z.string())
 });
 
-/**
- * Schema for rename execute
- */
-export const renameExecuteSchema = z.object({
-	fileIds: z.array(z.string()).min(1, 'fileIds array cannot be empty'),
-	mediaType: z.enum(['movie', 'episode', 'mixed']).default('mixed')
-});
-
 // ============================================================================
 // User Schemas
 // ============================================================================
@@ -2345,7 +2419,6 @@ export type NamingPresetCreate = z.infer<typeof namingPresetCreateSchema>;
 export type NamingPresetUpdate = z.infer<typeof namingPresetUpdateSchema>;
 export type NamingPreview = z.infer<typeof namingPreviewSchema>;
 export type NamingValidate = z.infer<typeof namingValidateSchema>;
-export type RenameExecute = z.infer<typeof renameExecuteSchema>;
 
 // User Type Exports
 export type UserLanguage = z.infer<typeof userLanguageSchema>;

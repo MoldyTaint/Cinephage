@@ -11,7 +11,10 @@ export const DEFAULT_CINEPHAGE_CONFIG = {
 	enabled: true,
 	baseUrl: 'https://api.cinephage.net',
 	versionOverride: null as string | null,
-	commitOverride: null as string | null
+	commitOverride: null as string | null,
+	autoUpdate: true,
+	latestVersion: null as string | null,
+	latestCommit: null as string | null
 } as const;
 
 const DEFAULT_MODULE_SETTINGS = {} as const;
@@ -21,6 +24,9 @@ export interface CinephageSubsystemConfig {
 	baseUrl: string;
 	versionOverride: string | null;
 	commitOverride: string | null;
+	autoUpdate: boolean;
+	latestVersion: string | null;
+	latestCommit: string | null;
 }
 
 export interface CinephageModuleState {
@@ -35,6 +41,9 @@ type ConfigUpdate = Partial<{
 	baseUrl: string;
 	versionOverride: string | null;
 	commitOverride: string | null;
+	autoUpdate: boolean;
+	latestVersion: string | null;
+	latestCommit: string | null;
 }>;
 
 /**
@@ -65,7 +74,10 @@ export class CinephageSettingsService {
 			enabled: row.enabled,
 			baseUrl: row.baseUrl,
 			versionOverride: row.versionOverride,
-			commitOverride: row.commitOverride
+			commitOverride: row.commitOverride,
+			autoUpdate: row.autoUpdate,
+			latestVersion: row.latestVersion,
+			latestCommit: row.latestCommit
 		};
 	}
 
@@ -77,6 +89,9 @@ export class CinephageSettingsService {
 		if (updates.baseUrl !== undefined) setClause.baseUrl = updates.baseUrl;
 		if (updates.versionOverride !== undefined) setClause.versionOverride = updates.versionOverride;
 		if (updates.commitOverride !== undefined) setClause.commitOverride = updates.commitOverride;
+		if (updates.autoUpdate !== undefined) setClause.autoUpdate = updates.autoUpdate;
+		if (updates.latestVersion !== undefined) setClause.latestVersion = updates.latestVersion;
+		if (updates.latestCommit !== undefined) setClause.latestCommit = updates.latestCommit;
 
 		await db
 			.insert(cinephageApiConfig)
@@ -86,6 +101,9 @@ export class CinephageSettingsService {
 				baseUrl: updates.baseUrl ?? DEFAULT_CINEPHAGE_CONFIG.baseUrl,
 				versionOverride: updates.versionOverride ?? null,
 				commitOverride: updates.commitOverride ?? null,
+				autoUpdate: updates.autoUpdate ?? DEFAULT_CINEPHAGE_CONFIG.autoUpdate,
+				latestVersion: updates.latestVersion ?? null,
+				latestCommit: updates.latestCommit ?? null,
 				updatedAt: now
 			})
 			.onConflictDoUpdate({

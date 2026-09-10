@@ -11,9 +11,11 @@ import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 import { db } from '$lib/server/db/index.js';
 import { movies } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { logger } from '$lib/logging';
 import { collectAutoSearchIssues } from '$lib/server/library/autoSearchIssues.js';
 import { getAutoSearchPreflightIssue } from '$lib/server/library/autoSearchPreflight.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryMovieAutoSearchApi', logDomain: 'scans' });
 
 /**
  * POST /api/library/movies/[id]/auto-search

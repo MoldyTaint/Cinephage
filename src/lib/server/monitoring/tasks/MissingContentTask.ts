@@ -9,9 +9,11 @@ import { db } from '$lib/server/db/index.js';
 import { monitoringHistory, episodes } from '$lib/server/db/schema.js';
 import { inArray } from 'drizzle-orm';
 import { monitoringSearchService } from '../search/MonitoringSearchService.js';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
+
+const logger = createChildLogger({ module: 'MissingContentTask', logDomain: 'monitoring' });
 
 interface MissingContentTaskOptions {
 	/**
@@ -70,19 +72,34 @@ export async function executeMissingContentTask(
 		// Record history for each movie (with cancellation checks)
 		if (ctx) {
 			for await (const item of ctx.iterate(movieResults.items)) {
-				if (!item.searched && item.skipped) continue; // Skip recording skipped items
+				// Skipped items ARE recorded: without this, eligibility-skipped movies
+				// (availability gates, cooldowns) are invisible in monitoring history
+				// and look like "never searched" to users debugging matching.
+				if (!item.searched && item.skipped) {
+					await db.insert(monitoringHistory).values({
+						taskHistoryId,
+						taskType: 'missing',
+						movieId: item.itemType === 'movie' ? item.itemId : undefined,
+						episodeId: item.itemType === 'episode' ? item.itemId : undefined,
+						status: 'skipped',
+						errorMessage: item.skipReason,
+						executedAt: executedAt.toISOString()
+					});
+					continue;
+				}
 
 				await db.insert(monitoringHistory).values({
 					taskHistoryId,
 					taskType: 'missing',
 					movieId: item.itemType === 'movie' ? item.itemId : undefined,
-					status: item.grabbed
-						? 'grabbed'
-						: item.error
-							? 'error'
-							: item.releasesFound > 0
-								? 'found'
-								: 'no_results',
+					status:
+						item.grabbed || item.grabbedRelease
+							? 'grabbed'
+							: item.error
+								? 'error'
+								: item.releasesFound > 0
+									? 'found'
+									: 'no_results',
 					releasesFound: item.releasesFound,
 					releaseGrabbed: item.grabbedRelease,
 					queueItemId: item.queueItemId,

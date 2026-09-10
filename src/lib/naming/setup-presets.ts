@@ -13,6 +13,7 @@ export interface NamingConfigShape {
 	includeQuality: boolean;
 	includeMediaInfo: boolean;
 	includeReleaseGroup: boolean;
+	useSpecialsFolder: boolean;
 }
 
 export interface NamingPreset {
@@ -61,7 +62,8 @@ export const DEFAULT_SETUP_NAMING_CONFIG: NamingConfigShape = {
 	mediaServerIdFormat: 'plex',
 	includeQuality: true,
 	includeMediaInfo: true,
-	includeReleaseGroup: true
+	includeReleaseGroup: true,
+	useSpecialsFolder: false
 };
 
 const RECOMMENDED_MOVIE_FILE =

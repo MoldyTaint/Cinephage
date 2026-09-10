@@ -244,7 +244,7 @@
 						<Settings class="h-4 w-4" />
 					</button>
 					<button
-						class="btn text-error btn-ghost btn-xs"
+						class="btn btn-ghost text-error btn-xs"
 						onclick={() => onDelete(server)}
 						title={m.action_delete()}
 						aria-label={m.mediaBrowser_deleteServer()}
@@ -420,7 +420,7 @@
 									<Settings class="h-4 w-4" />
 								</button>
 								<button
-									class="btn text-error btn-ghost btn-xs"
+									class="btn btn-ghost text-error btn-xs"
 									onclick={() => onDelete(server)}
 									title={m.action_delete()}
 								>

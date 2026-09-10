@@ -119,7 +119,7 @@
 			<Search class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/50" />
 			<input
 				type="text"
-				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+				class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				placeholder={m.formats_searchPlaceholder()}
 				bind:value={searchQuery}
 			/>
@@ -141,7 +141,7 @@
 		</select>
 
 		<!-- Create button -->
-		<button type="button" class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={onCreate}>
+		<button type="button" class="btn w-full gap-2 btn-primary btn-sm sm:w-auto" onclick={onCreate}>
 			<Plus class="h-4 w-4" />
 			{m.formats_createFormat()}
 		</button>
@@ -264,7 +264,7 @@
 												</button>
 												<button
 													type="button"
-													class="btn text-error btn-ghost btn-xs"
+													class="btn btn-ghost text-error btn-xs"
 													onclick={() => onDelete(format)}
 													aria-label={m.formats_ariaDeleteFormat()}
 												>

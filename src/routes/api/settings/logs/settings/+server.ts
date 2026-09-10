@@ -2,7 +2,8 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+import { DEFAULT_CAPTURED_LOG_LEVEL } from '$lib/logging/log-capture';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import {
 	DEFAULT_LOG_RETENTION_DAYS,
@@ -10,8 +11,11 @@ import {
 	logHistoryService
 } from '$lib/server/logging/log-history.js';
 
-const updateRetentionSchema = z.object({
-	retentionDays: z.coerce.number().int().min(1).max(MAX_LOG_RETENTION_DAYS)
+const logger = createChildLogger({ module: 'LogSettingsApi', logDomain: 'system' });
+
+const updateSettingsSchema = z.object({
+	retentionDays: z.coerce.number().int().min(1).max(MAX_LOG_RETENTION_DAYS).optional(),
+	minLevel: z.enum(['debug', 'info', 'warn', 'error']).optional()
 });
 
 export const GET: RequestHandler = async (event) => {
@@ -19,19 +23,21 @@ export const GET: RequestHandler = async (event) => {
 	if (authError) return authError;
 
 	try {
-		const retentionDays = await logHistoryService.getRetentionDays();
+		const [retentionDays, minLevel] = await Promise.all([
+			logHistoryService.getRetentionDays(),
+			logHistoryService.getMinCaptureLevel()
+		]);
 		return json({
 			success: true,
 			retentionDays,
 			defaultRetentionDays: DEFAULT_LOG_RETENTION_DAYS,
-			maxRetentionDays: MAX_LOG_RETENTION_DAYS
+			maxRetentionDays: MAX_LOG_RETENTION_DAYS,
+			minLevel,
+			defaultMinLevel: DEFAULT_CAPTURED_LOG_LEVEL
 		});
 	} catch (error) {
-		logger.error({ err: error }, 'Failed to load log retention settings');
-		return json(
-			{ success: false, error: 'Failed to load log retention settings' },
-			{ status: 500 }
-		);
+		logger.error({ err: error }, 'Failed to load log settings');
+		return json({ success: false, error: 'Failed to load log settings' }, { status: 500 });
 	}
 };
 
@@ -46,7 +52,7 @@ export const PUT: RequestHandler = async (event) => {
 		return json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
 	}
 
-	const parsed = updateRetentionSchema.safeParse(body);
+	const parsed = updateSettingsSchema.safeParse(body);
 	if (!parsed.success) {
 		return json(
 			{
@@ -59,13 +65,17 @@ export const PUT: RequestHandler = async (event) => {
 	}
 
 	try {
-		const retentionDays = await logHistoryService.setRetentionDays(parsed.data.retentionDays);
-		return json({ success: true, retentionDays });
+		const [retentionDays, minLevel] = await Promise.all([
+			parsed.data.retentionDays !== undefined
+				? logHistoryService.setRetentionDays(parsed.data.retentionDays)
+				: logHistoryService.getRetentionDays(),
+			parsed.data.minLevel !== undefined
+				? logHistoryService.setMinCaptureLevel(parsed.data.minLevel)
+				: logHistoryService.getMinCaptureLevel()
+		]);
+		return json({ success: true, retentionDays, minLevel });
 	} catch (error) {
-		logger.error({ err: error }, 'Failed to update log retention settings');
-		return json(
-			{ success: false, error: 'Failed to update log retention settings' },
-			{ status: 500 }
-		);
+		logger.error({ err: error }, 'Failed to update log settings');
+		return json({ success: false, error: 'Failed to update log settings' }, { status: 500 });
 	}
 };

@@ -28,6 +28,18 @@ export function extractInfoHash(magnetUrl?: string | null): string | undefined {
 }
 
 /**
+ * Resolve the first valid info hash from a direct value or a magnet/download URL.
+ */
+export function resolveInfoHash(...values: Array<string | null | undefined>): string | undefined {
+	for (const value of values) {
+		const normalized = normalizeInfoHash(value) || extractInfoHash(value);
+		if (normalized) return normalized;
+	}
+
+	return undefined;
+}
+
+/**
  * Normalize an info hash to lowercase hex format
  *
  * @param hash The hash to normalize (hex or base32)
@@ -35,15 +47,16 @@ export function extractInfoHash(magnetUrl?: string | null): string | undefined {
  */
 export function normalizeInfoHash(hash?: string | null): string | undefined {
 	if (!hash) return undefined;
+	const normalized = hash.trim();
 
 	// Already hex format (40 chars)
-	if (/^[a-fA-F0-9]{40}$/.test(hash)) {
-		return hash.toLowerCase();
+	if (/^[a-fA-F0-9]{40}$/.test(normalized)) {
+		return normalized.toLowerCase();
 	}
 
 	// Base32 format (32 chars)
-	if (/^[A-Z2-7]{32}$/i.test(hash)) {
-		return base32ToHex(hash);
+	if (/^[A-Z2-7]{32}$/i.test(normalized)) {
+		return base32ToHex(normalized);
 	}
 
 	return undefined;

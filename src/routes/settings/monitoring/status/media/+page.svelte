@@ -70,14 +70,14 @@
 
 <SettingsPage title={m.status_media_title()} subtitle={m.status_media_subtitle()}>
 	{#snippet actions()}
-		<div class="relative group w-56">
+		<div class="group relative w-56">
 			<Search
 				class="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-base-content/40 transition-colors group-focus-within:text-primary"
 			/>
 			<input
 				type="text"
 				placeholder="Search media..."
-				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none transition-all duration-200"
+				class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-9 pl-10 transition-all duration-200 input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				bind:value={searchQuery}
 			/>
 			{#if searchQuery}
@@ -112,7 +112,7 @@
 			{data.seriesCount} series
 		</span>
 		{#if hasActiveFilters}
-			<button class="btn gap-1 text-base-content/50 btn-ghost btn-xs" onclick={handleClearAll}>
+			<button class="btn gap-1 btn-ghost text-base-content/50 btn-xs" onclick={handleClearAll}>
 				<X class="h-3 w-3" />
 				Clear filters
 			</button>

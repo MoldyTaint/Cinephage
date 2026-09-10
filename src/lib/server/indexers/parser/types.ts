@@ -26,16 +26,7 @@ export type Source =
 	| 'unknown';
 
 export type Codec =
-	| 'av1'
-	| 'vvc'
-	| 'h265'
-	| 'h264'
-	| 'vp9'
-	| 'vc1'
-	| 'xvid'
-	| 'divx'
-	| 'mpeg2'
-	| 'unknown';
+	'av1' | 'vvc' | 'h265' | 'h264' | 'vp9' | 'vc1' | 'xvid' | 'divx' | 'mpeg2' | 'unknown';
 
 export type BitDepth = '8' | '10' | '12' | 'unknown';
 

@@ -8,7 +8,9 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getStalkerPortalManager } from '$lib/server/livetv/stalker';
 import { stalkerPortalDetectSchema } from '$lib/validation/schemas';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LiveTvPortalDetect', logDomain: 'livetv' });
 
 /**
  * Detect portal type from URL

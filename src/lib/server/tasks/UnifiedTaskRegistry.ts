@@ -152,6 +152,17 @@ const SCHEDULED_TASKS: UnifiedTaskDefinition[] = [
 		defaultIntervalHours: 24,
 		minIntervalHours: 1,
 		intervalEditable: false
+	},
+	{
+		id: 'dbBackup',
+		name: 'Database Backup',
+		description: 'Create a daily backup of the SQLite database to the backups/scheduled folder',
+		category: 'scheduled',
+		runEndpoint: '/api/settings/system/db-backup/run',
+		intervalKey: 'db_backup_interval_hours',
+		defaultIntervalHours: 24,
+		minIntervalHours: 1,
+		intervalEditable: false
 	}
 ];
 

@@ -13,6 +13,7 @@
 		recentPriority: 'normal' | 'high' | 'force';
 		olderPriority: 'normal' | 'high' | 'force';
 		initialState: 'start' | 'pause' | 'force';
+		sequentialDownload: boolean;
 		downloadPathLocal: string;
 		downloadPathRemote: string;
 		tempPathLocal: string;
@@ -36,6 +37,7 @@
 		recentPriority = $bindable(),
 		olderPriority = $bindable(),
 		initialState = $bindable(),
+		sequentialDownload = $bindable(),
 		downloadPathLocal = $bindable(),
 		downloadPathRemote = $bindable(),
 		tempPathLocal = $bindable(),
@@ -63,6 +65,7 @@
 		bind:recentPriority
 		bind:olderPriority
 		bind:initialState
+		bind:sequentialDownload
 		bind:downloadPathLocal
 		bind:downloadPathRemote
 		bind:tempPathLocal
@@ -86,14 +89,14 @@
 	<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 		<div class="form-control min-w-0">
 			<label class="label px-0 py-1" for="stalled-timeout-modal">
-				<span class="label-text whitespace-nowrap text-xs"
+				<span class="label-text text-xs whitespace-nowrap"
 					>{m.downloadClientModal_stalledTimeout()}</span
 				>
 			</label>
 			<input
 				id="stalled-timeout-modal"
 				type="number"
-				class="input-bordered input input-sm w-full"
+				class="input-bordered input w-full input-sm"
 				min="0"
 				step="5"
 				bind:value={stalledTimeout}
@@ -101,14 +104,14 @@
 		</div>
 		<div class="form-control min-w-0">
 			<label class="label px-0 py-1" for="stalled-threshold-modal">
-				<span class="label-text whitespace-nowrap text-xs"
+				<span class="label-text text-xs whitespace-nowrap"
 					>{m.downloadClientModal_stalledProgress()}</span
 				>
 			</label>
 			<input
 				id="stalled-threshold-modal"
 				type="number"
-				class="input-bordered input input-sm w-full"
+				class="input-bordered input w-full input-sm"
 				min="0"
 				max="100"
 				step="5"
@@ -117,14 +120,14 @@
 		</div>
 		<div class="form-control min-w-0 sm:col-span-2">
 			<label class="label px-0 py-1" for="stalled-blocklist-modal">
-				<span class="label-text whitespace-nowrap text-xs"
+				<span class="label-text text-xs whitespace-nowrap"
 					>{m.downloadClientModal_stalledBlocklist()}</span
 				>
 			</label>
 			<input
 				id="stalled-blocklist-modal"
 				type="number"
-				class="input-bordered input input-sm w-full"
+				class="input-bordered input w-full input-sm"
 				min="0"
 				step="24"
 				bind:value={stalledBlocklist}

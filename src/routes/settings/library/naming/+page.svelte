@@ -532,7 +532,7 @@
 				<span class="hidden sm:inline">{m.action_reset()}</span>
 				<span class="sm:hidden">{m.action_reset()}</span>
 			</button>
-			<button class="btn gap-2 btn-sm btn-primary" onclick={saveConfig} disabled={!canSave}>
+			<button class="btn gap-2 btn-primary btn-sm" onclick={saveConfig} disabled={!canSave}>
 				{#if saving}
 					<RefreshCw class="h-4 w-4 animate-spin" />
 					{m.common_saving()}
@@ -743,7 +743,7 @@
 							</div>
 							<div class="flex items-center gap-2">
 								<button
-									class="btn gap-1 btn-sm btn-primary"
+									class="btn gap-1 btn-primary btn-sm"
 									onclick={applyCustomPreset}
 									disabled={!selectedPresetId}
 								>
@@ -752,7 +752,7 @@
 								</button>
 								{#if selectedPresetId}
 									<button
-										class="btn gap-1 btn-ghost btn-sm btn-error"
+										class="btn gap-1 btn-ghost btn-error btn-sm"
 										onclick={() => {
 											const preset = customPresets.find((p) => p.id === selectedPresetId);
 											if (preset) deletePreset(preset.id, preset.name);
@@ -1038,8 +1038,7 @@
 					id="newPresetDescription"
 					class="textarea-bordered textarea"
 					placeholder={m.settings_naming_presetDescPlaceholder()}
-					bind:value={newPresetDescription}
-				></textarea>
+					bind:value={newPresetDescription}></textarea>
 			</div>
 		</div>
 

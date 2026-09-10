@@ -21,7 +21,6 @@ import { extractReleaseGroup } from './patterns/releaseGroup.js';
 /**
  * Patterns for extracting year from title
  */
-const YEAR_PATTERN = /\b(19\d{2}|20\d{2})\b/;
 
 /**
  * Patterns for edition detection
@@ -89,6 +88,14 @@ const STREAMING_SERVICE_PATTERNS: Array<{ service: string; pattern: RegExp }> = 
 export interface ParseOptions {
 	/** Source indexer language (ISO 639-1 code) - used for language tagging */
 	sourceLanguage?: string;
+	/**
+	 * Content context of the search that produced this title. In 'movie' mode,
+	 * ambiguous word-based "Season N" markers are not extracted, so movie titles
+	 * like "Open Season 3" keep their full title and are not mistaken for TV
+	 * season packs. Unambiguous TV notation (SxxExx) is still detected.
+	 * Default: 'auto' (all patterns, existing behavior).
+	 */
+	mode?: 'movie' | 'auto';
 }
 
 /**
@@ -118,11 +125,21 @@ export class ReleaseParser {
 		const streamingService = this.extractStreamingService(normalized);
 
 		// Extract episode info (determines if TV release)
-		const episodeMatch = extractEpisode(normalized);
+		const episodeMatch = extractEpisode(normalized, {
+			movieMode: options?.mode === 'movie'
+		});
 
 		// Extract other metadata
 		const languageMatch = extractLanguages(normalized);
 		const groupMatch = extractReleaseGroup(normalized);
+		const releaseGroup = this.resolveReleaseGroup(normalized, groupMatch, episodeMatch, [
+			resolutionMatch?.index,
+			sourceMatch?.index,
+			codecMatch?.index,
+			bitDepthMatch?.index,
+			enhancedAudio.index,
+			hdrMatch?.index
+		]);
 		const year = this.extractYear(normalized);
 		const edition = this.extractEdition(normalized);
 
@@ -150,7 +167,7 @@ export class ReleaseParser {
 			hasSource: sourceMatch !== null,
 			hasCodec: codecMatch !== null,
 			hasYear: year !== undefined,
-			hasGroup: groupMatch !== null,
+			hasGroup: releaseGroup !== undefined,
 			titleLength: cleanTitle.length
 		});
 
@@ -170,7 +187,7 @@ export class ReleaseParser {
 			languages,
 			sourceLanguage: options?.sourceLanguage,
 			streamingService,
-			releaseGroup: groupMatch?.group,
+			releaseGroup,
 			edition,
 			isProper,
 			isRepack,
@@ -179,6 +196,70 @@ export class ReleaseParser {
 			hasHardcodedSubs,
 			confidence
 		};
+	}
+
+	/**
+	 * Discard a release group that is actually the tail of the episode title.
+	 *
+	 * Stream sources expose release titles like "Show - S01E01 - In My Time of
+	 * Dying" (no scene naming), where the trailing capitalized word belongs to
+	 * the episode title, not a release group. To stay conservative, a group is
+	 * only rejected when an episode was matched AND the candidate is the last
+	 * word of the text after the SxxEyy marker, cut at the earliest quality
+	 * token that follows it (only tokens after the marker matter — earlier
+	 * ones don't bound the span): real groups almost always follow quality
+	 * tokens or sit in brackets, which keeps them.
+	 */
+	private resolveReleaseGroup(
+		normalized: string,
+		groupMatch: ReturnType<typeof extractReleaseGroup>,
+		episodeMatch: ReturnType<typeof extractEpisode>,
+		qualityIndices: Array<number | undefined>
+	): string | undefined {
+		if (!groupMatch) {
+			return undefined;
+		}
+
+		const group = groupMatch.group;
+
+		// YTS/YIFY are indexer suffixes handled by dedicated normalization
+		// patterns, never episode-title tail words.
+		if (!episodeMatch || group === 'YTS') {
+			return group;
+		}
+
+		// Drop a trailing file extension so the string end aligns with where
+		// extractReleaseGroup matched (it strips extensions itself). Note:
+		// normalizeTitle already turned dots into spaces, so extensions arrive
+		// in their space-separated form (" ... mkv"), matching the space form
+		// that extractReleaseGroup strips.
+		const stripped = normalized.replace(/\s*(?:mkv|mp4|avi|m4v|webm|strm)$/i, '');
+
+		// Episode-title span: text after the episode marker, cut at the
+		// earliest quality token that follows it. Only quality tokens after
+		// the SxxEyy marker bound the span; earlier ones are irrelevant.
+		const spanStart = episodeMatch.index + episodeMatch.matchedText.length;
+		let spanEnd = stripped.length;
+		for (const index of qualityIndices) {
+			if (index !== undefined && index > spanStart && index < spanEnd) {
+				spanEnd = index;
+			}
+		}
+
+		const span = stripped.slice(spanStart, spanEnd).trim();
+		// Tokenize ignoring bracket-wrapped quality blocks and punctuation so
+		// bracketed audio (e.g. "[AAC 2 0]" — dots were normalized to spaces)
+		// does not mask the title tail when no quality matcher registered.
+		const spanTokens = span
+			.replace(/\[[^\]]*\]/g, ' ')
+			.split(/[^A-Za-z0-9]+/)
+			.filter(Boolean);
+		const lastWord = spanTokens[spanTokens.length - 1];
+
+		if (lastWord && lastWord.toLowerCase() === group.toLowerCase()) {
+			return undefined;
+		}
+		return group;
 	}
 
 	private extractStreamingService(title: string): string | undefined {
@@ -213,13 +294,23 @@ export class ReleaseParser {
 	 * Extract year from title
 	 */
 	private extractYear(title: string): number | undefined {
-		const match = title.match(YEAR_PATTERN);
-		if (match) {
-			const year = parseInt(match[1], 10);
-			// Sanity check: year should be reasonable
-			if (year >= 1900 && year <= new Date().getFullYear() + 2) {
-				return year;
-			}
+		// Prefer an explicitly parenthesized year ("Movie (2010) 1080p") and
+		// otherwise take the LAST plausible 4-digit year: release names append
+		// the release year at the end, while number-titled movies ("1917 2019",
+		// "2001 A Space Odyssey (1968)", "Blade Runner 2049 (2017)") put their
+		// own numbers earlier in the title. First-match extraction regularly
+		// grabbed the title number instead of the release year.
+		const parenMatches = Array.from(title.matchAll(/\((19|20)\d{2}\)/g));
+		const anyMatches = Array.from(title.matchAll(/\b(?:19|20)\d{2}\b/g));
+		const pool = parenMatches.length > 0 ? parenMatches : anyMatches;
+		if (pool.length === 0) {
+			return undefined;
+		}
+		const last = pool[pool.length - 1];
+		const year = parseInt(last[0].replace(/[()]/g, ''), 10);
+		// Sanity check: year should be reasonable (cinema begins ~1888)
+		if (year >= 1888 && year <= new Date().getFullYear() + 2) {
+			return year;
 		}
 		return undefined;
 	}

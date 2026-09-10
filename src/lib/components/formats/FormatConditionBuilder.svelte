@@ -172,7 +172,7 @@
 						<!-- Condition Name -->
 						<input
 							type="text"
-							class="input-bordered input input-sm flex-1"
+							class="input-bordered input flex-1 input-sm"
 							value={condition.name}
 							disabled={readonly}
 							placeholder={m.formats_conditionNamePlaceholder()}
@@ -181,7 +181,7 @@
 						{#if !readonly}
 							<button
 								type="button"
-								class="btn text-error btn-ghost btn-sm"
+								class="btn btn-ghost text-error btn-sm"
 								onclick={() => removeCondition(index)}
 								aria-label={m.formats_conditionRemoveAria()}
 							>
@@ -354,7 +354,7 @@
 									<input
 										id="condition-value-{index}"
 										type="text"
-										class="input-bordered input input-sm w-full font-mono"
+										class="input-bordered input w-full font-mono input-sm"
 										class:input-error={regexErrors.has(index)}
 										value={condition.pattern ?? ''}
 										disabled={readonly}
@@ -376,7 +376,7 @@
 								<input
 									id="condition-value-{index}"
 									type="text"
-									class="input-bordered input input-sm w-full"
+									class="input-bordered input w-full input-sm"
 									value={condition.indexer ?? ''}
 									disabled={readonly}
 									placeholder="Indexer name"

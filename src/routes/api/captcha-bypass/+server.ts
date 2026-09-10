@@ -2,9 +2,11 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { captchaSolverSettingsService, getCaptchaSolver } from '$lib/server/captcha';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { resolveAppVersion } from '$lib/server/version.js';
+
+const logger = createChildLogger({ module: 'CaptchaBypassApi', logDomain: 'indexers' });
 
 const requestSchema = z
 	.object({

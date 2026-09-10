@@ -328,7 +328,7 @@
 						Edit
 					</button>
 					<button
-						class="btn text-error btn-ghost btn-sm"
+						class="btn btn-ghost text-error btn-sm"
 						onclick={() => onDelete(account)}
 						title="Delete"
 					>
@@ -495,7 +495,7 @@
 									<Settings class="h-4 w-4" />
 								</button>
 								<button
-									class="btn text-error btn-ghost btn-sm"
+									class="btn btn-ghost text-error btn-sm"
 									onclick={() => onDelete(account)}
 									title="Delete"
 								>

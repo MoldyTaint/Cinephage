@@ -390,8 +390,7 @@ export function yamlToUnifiedDefinition(
 			searchFormats: searchFormats
 				? {
 						episode: searchFormats.episode as
-							| ('standard' | 'european' | 'compact' | 'daily' | 'absolute')[]
-							| undefined,
+							('standard' | 'european' | 'compact' | 'daily' | 'absolute')[] | undefined,
 						movie: searchFormats.movie as ('standard' | 'yearOnly' | 'noYear')[] | undefined
 					}
 				: undefined

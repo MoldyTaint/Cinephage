@@ -170,14 +170,14 @@
 					<div
 						class="flex items-center justify-between rounded-lg border border-base-300 bg-base-200 px-3 py-2 text-sm"
 					>
-						<div class="flex items-center gap-2 min-w-0">
+						<div class="flex min-w-0 items-center gap-2">
 							<Layers class="h-4 w-4 shrink-0 text-primary" />
 							<span class="truncate font-medium">{currentCollectionName}</span>
-							<span class="badge badge-xs badge-ghost shrink-0">current</span>
+							<span class="badge shrink-0 badge-ghost badge-xs">current</span>
 						</div>
 						<button
 							type="button"
-							class="btn btn-ghost btn-xs ml-2 shrink-0 text-error"
+							class="btn ml-2 shrink-0 btn-ghost text-error btn-xs"
 							disabled={saving}
 							onclick={clearCollection}
 							title="Remove collection assignment"
@@ -201,7 +201,7 @@
 					<input
 						type="text"
 						placeholder="Search TMDB collections..."
-						class="input input-bordered w-full pl-9 pr-9"
+						class="input-bordered input w-full pr-9 pl-9"
 						bind:this={searchInputRef}
 						bind:value={query}
 						oninput={handleQueryInput}
@@ -209,7 +209,7 @@
 				</div>
 
 				{#if error}
-					<div class="alert alert-error py-2 text-sm">{error}</div>
+					<div class="alert py-2 text-sm alert-error">{error}</div>
 				{/if}
 
 				<!-- Results -->
@@ -248,7 +248,7 @@
 											{/if}
 										</div>
 										<div class="min-w-0 flex-1">
-											<p class="truncate font-medium text-sm">{col.name}</p>
+											<p class="truncate text-sm font-medium">{col.name}</p>
 											{#if col.overview}
 												<p class="mt-0.5 line-clamp-2 text-xs text-base-content/60">
 													{col.overview}
@@ -256,7 +256,7 @@
 											{/if}
 										</div>
 										{#if isCurrent}
-											<span class="badge badge-primary badge-sm shrink-0">current</span>
+											<span class="badge shrink-0 badge-sm badge-primary">current</span>
 										{/if}
 									</button>
 								</li>
@@ -268,7 +268,7 @@
 
 			<!-- Footer -->
 			<div class="border-t border-base-300 p-4">
-				<button class="btn btn-ghost w-full" onclick={onClose}>Cancel</button>
+				<button class="btn w-full btn-ghost" onclick={onClose}>Cancel</button>
 			</div>
 		</div>
 	</div>

@@ -5,6 +5,7 @@
  * Auto-matches high-confidence results and flags low-confidence for manual review.
  */
 
+import { randomUUID } from 'node:crypto';
 import { db } from '$lib/server/db/index.js';
 import { todayDateString } from '$lib/utils/format.js';
 import {
@@ -18,22 +19,21 @@ import {
 	librarySettings,
 	rootFolders
 } from '$lib/server/db/schema.js';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, gt, asc } from 'drizzle-orm';
 import { tmdb, type SearchResult } from '$lib/server/tmdb.js';
 import { mediaInfoService } from './media-info.js';
-import { basename, dirname, extname } from 'path';
+import { basename, dirname, extname, join, relative } from 'path';
+import { RootFolderConflictError } from '$lib/errors';
 import { getSubtitleSettingsService } from '$lib/server/subtitles/services/SubtitleSettingsService.js';
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
-import { logger } from '$lib/logging/index.js';
+import { logger, createChildLogger } from '$lib/logging/index.js';
 import { parseRelease, extractExternalIds } from '$lib/server/indexers/parser/ReleaseParser.js';
-import {
-	resolveTvEpisodeIdentifier,
-	extractSeasonFromPath,
-	getMediaParseStem
-} from './tv-episode-resolver.js';
+import { getMediaParseStem } from './media-utils.js';
+import { resolveTvEpisodeIdentifier, extractSeasonFromPath } from './tv-episode-resolver.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+import { canonicalizeArticleTitle, calculateMatchConfidence } from './title-matching.js';
 
 /**
  * Default match confidence threshold (0.0 - 1.0)
@@ -104,8 +104,20 @@ export class MediaMatcherService {
 		const [inserted] = await db
 			.insert(episodeFiles)
 			.values(record)
+			.onConflictDoNothing()
 			.returning({ id: episodeFiles.id });
-		return inserted.id;
+		if (inserted) return inserted.id;
+		const [raced] = await db
+			.select({ id: episodeFiles.id })
+			.from(episodeFiles)
+			.where(
+				and(
+					eq(episodeFiles.seriesId, record.seriesId),
+					eq(episodeFiles.relativePath, record.relativePath)
+				)
+			)
+			.limit(1);
+		return raced.id;
 	}
 
 	/**
@@ -129,91 +141,24 @@ export class MediaMatcherService {
 	}
 
 	/**
-	 * Calculate string similarity using Levenshtein distance
-	 */
-	private calculateSimilarity(str1: string, str2: string): number {
-		const s1 = str1.toLowerCase().trim();
-		const s2 = str2.toLowerCase().trim();
-
-		if (s1 === s2) return 1;
-		if (s1.length === 0 || s2.length === 0) return 0;
-
-		// Create matrix
-		const matrix: number[][] = [];
-		for (let i = 0; i <= s1.length; i++) {
-			matrix[i] = [i];
-		}
-		for (let j = 0; j <= s2.length; j++) {
-			matrix[0][j] = j;
-		}
-
-		// Fill matrix
-		for (let i = 1; i <= s1.length; i++) {
-			for (let j = 1; j <= s2.length; j++) {
-				const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
-				matrix[i][j] = Math.min(
-					matrix[i - 1][j] + 1, // deletion
-					matrix[i][j - 1] + 1, // insertion
-					matrix[i - 1][j - 1] + cost // substitution
-				);
-			}
-		}
-
-		const distance = matrix[s1.length][s2.length];
-		const maxLength = Math.max(s1.length, s2.length);
-		return 1 - distance / maxLength;
-	}
-
-	/**
-	 * Calculate match confidence between parsed info and TMDB result
+	 * Calculate match confidence between parsed info and TMDB result.
+	 * Delegates to the shared title-matching primitives (kept in sync with
+	 * ManualImportService).
 	 */
 	private calculateMatchConfidence(
 		parsedTitle: string,
 		parsedYear: number | undefined,
 		tmdbTitle: string,
-		tmdbYear: number | undefined
+		tmdbYear: number | undefined,
+		tmdbOriginalTitle?: string
 	): number {
-		// Base score from title similarity
-		let titleScore = this.calculateSimilarity(parsedTitle, tmdbTitle);
-
-		// Boost if year matches exactly
-		if (parsedYear && tmdbYear && parsedYear === tmdbYear) {
-			titleScore = Math.min(1, titleScore + 0.2);
-		}
-		// Penalize if years are different (but both present)
-		else if (parsedYear && tmdbYear && parsedYear !== tmdbYear) {
-			// Allow 1 year difference (common for late releases)
-			if (Math.abs(parsedYear - tmdbYear) > 1) {
-				titleScore = titleScore * 0.7;
-			}
-		}
-
-		// Check for common title variations
-		const normalizedParsed = this.normalizeTitle(parsedTitle);
-		const normalizedTmdb = this.normalizeTitle(tmdbTitle);
-		if (normalizedParsed === normalizedTmdb) {
-			titleScore = Math.max(titleScore, 0.95);
-		}
-
-		return Math.round(titleScore * 100) / 100;
-	}
-
-	/**
-	 * Normalize title for comparison
-	 */
-	private normalizeTitle(title: string): string {
-		return title
-			.toLowerCase()
-			.replace(/^(the|an?)\s+/i, '') // Remove leading articles before stripping spaces
-			.replace(/[^a-z0-9]/g, '');
-	}
-
-	private isUniqueTmdbConstraintError(error: unknown, tableName: 'movies' | 'series'): boolean {
-		if (!(error instanceof Error)) {
-			return false;
-		}
-
-		return error.message.includes(`UNIQUE constraint failed: ${tableName}.tmdb_id`);
+		return calculateMatchConfidence(
+			parsedTitle,
+			parsedYear,
+			tmdbTitle,
+			tmdbYear,
+			tmdbOriginalTitle
+		);
 	}
 
 	/**
@@ -225,11 +170,45 @@ export class MediaMatcherService {
 	 * 3. IMDB ID embedded in path → cross-reference via TMDB (100% confidence)
 	 * 4. Title search with fuzzy matching (variable confidence)
 	 */
+	/**
+	 * Derive candidate series names from the file's path segments relative to
+	 * its root folder. For TV layouts (<root>/<Series>/Season NN/<file>), the
+	 * first segment is the series directory — the most reliable title signal
+	 * available when the filename itself is polluted with episode identifiers.
+	 */
+	private async getPathSeriesCandidates(
+		file: typeof unmatchedFiles.$inferSelect
+	): Promise<string[]> {
+		if (file.mediaType !== 'tv' || !file.rootFolderId) return [];
+
+		const [root] = await db.select().from(rootFolders).where(eq(rootFolders.id, file.rootFolderId));
+		if (!root) return [];
+
+		const rel = relative(root.path, file.path);
+		const segments = rel.split(/[\\/]/).filter((s) => s.length > 0);
+		if (segments.length <= 1) return []; // file sits directly under the root
+
+		const candidates: string[] = [];
+		for (const segment of segments.slice(0, 2)) {
+			const parsedSegment = parseRelease(segment);
+			const cleaned = (parsedSegment.cleanTitle || '').trim();
+			if (!cleaned) continue;
+			// Skip structural folders ("Season 03", "Specials", "Extras", ...)
+			if (/^(season|s\d|specials?|extras?|featurettes?)/i.test(cleaned)) continue;
+			if (!candidates.some((c) => c.toLowerCase() === cleaned.toLowerCase())) {
+				candidates.push(cleaned);
+			}
+			if (candidates.length >= 2) break;
+		}
+		return candidates;
+	}
+
 	private async findMatches(
 		title: string,
 		year: number | undefined,
 		mediaType: 'movie' | 'tv',
-		filePath: string
+		filePath: string,
+		seriesCandidates: string[] = []
 	): Promise<SuggestedMatch[]> {
 		try {
 			// Extract external IDs from folder/file path
@@ -293,15 +272,59 @@ export class MediaMatcherService {
 				}
 			}
 
-			// Priority 4: Fall back to title search
+			// Search result shared by the remaining priorities
 			let results: SearchResult;
 
+			// Priority 4 (TV): series-directory context. For files organized as
+			// <root>/<Series>/Season NN/<file>, the folder name is the series
+			// title — far more reliable than the filename, which is often
+			// dominated by episode identifiers TMDB cannot match (#513).
+			if (mediaType === 'tv' && seriesCandidates.length > 0) {
+				for (const candidate of seriesCandidates) {
+					// Canonicalize inverted-article folder names ("Lion King, The")
+					// before both the TMDB query and confidence scoring.
+					const canonicalCandidate = canonicalizeArticleTitle(candidate);
+					results = await tmdb.searchTv(canonicalCandidate, undefined, true);
+					if (!results.results || results.results.length === 0) continue;
+
+					const matches: SuggestedMatch[] = results.results.slice(0, 5).map((result) => {
+						const resultTitle = result.title || result.name || '';
+						const resultDate = result.first_air_date || result.release_date;
+						const resultYear = resultDate ? parseInt(resultDate.split('-')[0]) : undefined;
+
+						return {
+							tmdbId: result.id,
+							title: resultTitle,
+							year: resultYear,
+							confidence: this.calculateMatchConfidence(
+								canonicalCandidate,
+								year,
+								resultTitle,
+								resultYear,
+								result.original_title ?? result.original_name
+							)
+						};
+					});
+					matches.sort((a, b) => b.confidence - a.confidence);
+
+					logger.info(
+						{ filePath, seriesCandidate: canonicalCandidate, candidates: matches.length },
+						'[MediaMatcher] Matched via series directory name'
+					);
+					return matches;
+				}
+			}
+
+			// Priority 5: Fall back to filename-title search
 			// Use skipFilters=true to bypass global filters (min rating, vote count)
 			// so that all TMDB results are visible for matching
+			// Canonicalize inverted-article titles ("Lion King, The" → "The Lion
+			// King") before both the TMDB query and confidence scoring.
+			const canonicalTitle = canonicalizeArticleTitle(title);
 			if (mediaType === 'movie') {
-				results = await tmdb.searchMovies(title, year, true);
+				results = await tmdb.searchMovies(canonicalTitle, year, true);
 			} else {
-				results = await tmdb.searchTv(title, year, true);
+				results = await tmdb.searchTv(canonicalTitle, year, true);
 			}
 
 			if (!results.results || results.results.length === 0) {
@@ -318,7 +341,13 @@ export class MediaMatcherService {
 					tmdbId: result.id,
 					title: resultTitle,
 					year: resultYear,
-					confidence: this.calculateMatchConfidence(title, year, resultTitle, resultYear)
+					confidence: this.calculateMatchConfidence(
+						canonicalTitle,
+						year,
+						resultTitle,
+						resultYear,
+						result.original_title ?? result.original_name
+					)
 				};
 			});
 
@@ -485,6 +514,8 @@ export class MediaMatcherService {
 			};
 		}
 
+		const correlationId = randomUUID();
+		const matchLogger = createChildLogger({ logDomain: 'scans' as const, correlationId });
 		const threshold = await this.getMatchThreshold();
 
 		// Re-parse the filename to get the correct clean title
@@ -494,21 +525,31 @@ export class MediaMatcherService {
 		const searchTitle = parsed.cleanTitle || file.parsedTitle || filename;
 		const searchYear = parsed.year || file.parsedYear || undefined;
 
-		// Find matches (checks for embedded IDs first, then falls back to title search)
+		matchLogger.info(
+			{ fileId, filePath: file.path, parsedTitle: searchTitle, mediaType: file.mediaType },
+			'[MediaMatcher] Processing unmatched file'
+		);
+
+		// Find matches (checks for embedded IDs first, then series-directory
+		// context, then falls back to title search)
+		const seriesCandidates = await this.getPathSeriesCandidates(file);
 		const matches = await this.findMatches(
 			searchTitle,
 			searchYear,
 			file.mediaType as 'movie' | 'tv',
-			file.path
+			file.path,
+			seriesCandidates
 		);
 
 		if (matches.length === 0) {
+			matchLogger.info({ fileId, filePath: file.path }, '[MediaMatcher] No TMDB matches found');
 			// Update file with no match reason
 			await db
 				.update(unmatchedFiles)
 				.set({
 					reason: 'no_match',
-					suggestedMatches: []
+					suggestedMatches: [],
+					correlationId
 				})
 				.where(eq(unmatchedFiles.id, fileId));
 
@@ -523,19 +564,75 @@ export class MediaMatcherService {
 
 		const bestMatch = matches[0];
 
+		matchLogger.info(
+			{
+				fileId,
+				candidates: matches.length,
+				topCandidate: bestMatch.title,
+				topTmdbId: bestMatch.tmdbId,
+				topConfidence: bestMatch.confidence,
+				threshold
+			},
+			'[MediaMatcher] TMDB search results'
+		);
+
 		// Store all suggested matches
 		await db
 			.update(unmatchedFiles)
 			.set({
-				suggestedMatches: matches.slice(0, 5)
+				suggestedMatches: matches.slice(0, 5),
+				correlationId
 			})
 			.where(eq(unmatchedFiles.id, fileId));
 
 		// Check if best match exceeds threshold
 		if (bestMatch.confidence >= threshold) {
 			// Auto-match
-			await this.acceptMatch(fileId, bestMatch.tmdbId, file.mediaType as 'movie' | 'tv');
+			try {
+				matchLogger.info(
+					{
+						fileId,
+						tmdbId: bestMatch.tmdbId,
+						title: bestMatch.title,
+						confidence: bestMatch.confidence
+					},
+					'[MediaMatcher] Auto-matching above threshold'
+				);
+				await this.acceptMatch(fileId, bestMatch.tmdbId, file.mediaType as 'movie' | 'tv');
+			} catch (error) {
+				if (error instanceof RootFolderConflictError) {
+					// Keep the file unmatched with a clear reason instead of
+					// writing an unresolvable file link (bug #488).
+					matchLogger.warn(
+						{ fileId, tmdbId: bestMatch.tmdbId, error: error.message },
+						'[MediaMatcher] Root folder conflict - keeping unmatched'
+					);
+					await db
+						.update(unmatchedFiles)
+						.set({ reason: 'root_folder_conflict', correlationId })
+						.where(eq(unmatchedFiles.id, fileId));
 
+					return {
+						fileId,
+						filePath: file.path,
+						matched: false,
+						tmdbId: bestMatch.tmdbId,
+						title: bestMatch.title,
+						confidence: bestMatch.confidence,
+						reason: error.message
+					};
+				}
+				matchLogger.error(
+					{ fileId, tmdbId: bestMatch.tmdbId, err: error },
+					'[MediaMatcher] acceptMatch failed'
+				);
+				throw error;
+			}
+
+			matchLogger.info(
+				{ fileId, tmdbId: bestMatch.tmdbId, title: bestMatch.title },
+				'[MediaMatcher] Auto-match successful'
+			);
 			return {
 				fileId,
 				filePath: file.path,
@@ -545,12 +642,27 @@ export class MediaMatcherService {
 				confidence: bestMatch.confidence
 			};
 		} else {
-			// Low confidence - flag for manual review
+			// Below threshold - assign a reason code that reflects why.
+			// multiple_matches: 2+ candidates with a clear leader (safe to force)
+			// ambiguous:        2+ candidates where top two are within 10pp of each other
+			// low_confidence:   single candidate or very low absolute score
+			let reason: string;
+			let ambiguityMargin: number | null = null;
+			if (matches.length >= 2) {
+				const margin = matches[0].confidence - matches[1].confidence;
+				ambiguityMargin = Math.round(margin * 100) / 100;
+				reason = margin < 0.1 ? 'ambiguous' : 'multiple_matches';
+			} else {
+				reason = 'low_confidence';
+			}
+
+			matchLogger.info(
+				{ fileId, reason, confidence: bestMatch.confidence, threshold, ambiguityMargin },
+				'[MediaMatcher] Match below threshold'
+			);
 			await db
 				.update(unmatchedFiles)
-				.set({
-					reason: bestMatch.confidence > 0.5 ? 'low_confidence' : 'multiple_matches'
-				})
+				.set({ reason, correlationId, ambiguityMargin })
 				.where(eq(unmatchedFiles.id, fileId));
 
 			return {
@@ -610,17 +722,25 @@ export class MediaMatcherService {
 	async processUnmatchedByRootFolder(
 		rootFolderId: string,
 		limit = 50,
-		offset = 0
-	): Promise<{ results: MatchResult[]; hasMore: boolean }> {
+		afterId: string | null = null
+	): Promise<{ results: MatchResult[]; hasMore: boolean; nextCursor: string | null }> {
+		// Keyset pagination (WHERE id > cursor ORDER BY id): rows deleted by a
+		// successful match must not shift the window. Absolute OFFSET skips
+		// half the remaining files when matches remove rows mid-pass (#513).
 		const rows = await db
 			.select()
 			.from(unmatchedFiles)
-			.where(eq(unmatchedFiles.rootFolderId, rootFolderId))
-			.limit(limit + 1)
-			.offset(offset);
+			.where(
+				afterId
+					? and(eq(unmatchedFiles.rootFolderId, rootFolderId), gt(unmatchedFiles.id, afterId))
+					: eq(unmatchedFiles.rootFolderId, rootFolderId)
+			)
+			.orderBy(asc(unmatchedFiles.id))
+			.limit(limit + 1);
 
 		const hasMore = rows.length > limit;
 		const page = rows.slice(0, limit);
+		const nextCursor = page.length > 0 ? page[page.length - 1].id : afterId;
 		const results: MatchResult[] = [];
 
 		for (const file of page) {
@@ -646,7 +766,7 @@ export class MediaMatcherService {
 			await new Promise<void>((resolve) => setTimeout(resolve, 250));
 		}
 
-		return { results, hasMore };
+		return { results, hasMore, nextCursor };
 	}
 
 	/**
@@ -666,15 +786,88 @@ export class MediaMatcherService {
 			throw new Error(`Unmatched file not found: ${unmatchedFileId}`);
 		}
 
+		if (!file.rootFolderId) {
+			throw new Error(`File has no root folder assigned: ${file.path}`);
+		}
+
 		// Get root folder
 		const [rootFolder] = await db
 			.select()
 			.from(rootFolders)
-			.where(eq(rootFolders.id, file.rootFolderId!));
+			.where(eq(rootFolders.id, file.rootFolderId));
 
 		if (!rootFolder) {
 			throw new Error(`Root folder not found: ${file.rootFolderId}`);
 		}
+
+		// Guard: if this file is already present in the library, the unmatchedFiles record
+		// is stale (e.g. retry after a prior partial failure). Remove it and return early
+		// rather than re-running the full create path and hitting UNIQUE constraints.
+		{
+			const relPath = file.path.replace(rootFolder.path, '').replace(/^\//, '');
+			let alreadyMatched = false;
+
+			if (mediaType === 'movie') {
+				const [existingMovie] = await db
+					.select({ id: movies.id })
+					.from(movies)
+					.where(eq(movies.tmdbId, tmdbId))
+					.limit(1);
+				if (existingMovie) {
+					const [existingFile] = await db
+						.select({ id: movieFiles.id })
+						.from(movieFiles)
+						.where(
+							and(
+								eq(movieFiles.movieId, existingMovie.id),
+								eq(movieFiles.relativePath, basename(relPath))
+							)
+						)
+						.limit(1);
+					alreadyMatched = !!existingFile;
+				}
+			} else {
+				const pathParts = relPath.split('/');
+				const seriesFolder = pathParts[0] || relPath;
+				const epRelPath = relPath.replace(seriesFolder + '/', '');
+				const [existingSeries] = await db
+					.select({ id: series.id })
+					.from(series)
+					.where(eq(series.tmdbId, tmdbId))
+					.limit(1);
+				if (existingSeries) {
+					const [existingFile] = await db
+						.select({ id: episodeFiles.id })
+						.from(episodeFiles)
+						.where(
+							and(
+								eq(episodeFiles.seriesId, existingSeries.id),
+								eq(episodeFiles.relativePath, epRelPath)
+							)
+						)
+						.limit(1);
+					alreadyMatched = !!existingFile;
+				}
+			}
+
+			if (alreadyMatched) {
+				logger.debug(
+					{ unmatchedFileId, filePath: file.path },
+					'[MediaMatcher] File already in library; removing stale unmatched record'
+				);
+				await db.delete(unmatchedFiles).where(eq(unmatchedFiles.id, unmatchedFileId));
+				return;
+			}
+		}
+
+		// Refuse matches that would produce unresolvable file links: if the
+		// target movie/series already exists, every consumer resolves file
+		// rows through the existing entry's root folder + path. Linking a file
+		// that lives outside that scope (different root folder, or a different
+		// folder layout) writes a row whose resolved path does not exist on
+		// disk - ENOENT on rename/delete/playback plus a false "complete"
+		// state. This mirrors the linkage rule disk-scan enforces.
+		await this.assertNoRootFolderConflict(file, tmdbId, mediaType);
 
 		// Skip .strm probing for existing items using the Streamer profile
 		let allowStrmProbe: boolean;
@@ -703,6 +896,76 @@ export class MediaMatcherService {
 
 		// Remove from unmatched
 		await db.delete(unmatchedFiles).where(eq(unmatchedFiles.id, unmatchedFileId));
+	}
+
+	/**
+	 * Refuse a match when the target movie/series already exists under a
+	 * different root folder or folder layout than the file being matched.
+	 *
+	 * Consumers (import/rename/playback, disk-scan) resolve file rows through
+	 * the existing entry's root folder + path, so a file outside that scope
+	 * can never be linked honestly. The disk-scan auto-link path enforces the
+	 * same rule; this keeps the accept-match path consistent with it.
+	 */
+	private async assertNoRootFolderConflict(
+		file: typeof unmatchedFiles.$inferSelect,
+		tmdbId: number,
+		mediaType: 'movie' | 'tv'
+	): Promise<void> {
+		if (mediaType === 'movie') {
+			const [existing] = await db
+				.select({
+					rootFolderId: movies.rootFolderId,
+					path: movies.path,
+					title: movies.title
+				})
+				.from(movies)
+				.where(eq(movies.tmdbId, tmdbId));
+			if (!existing?.rootFolderId) return;
+			await this.assertFileInsideEntryScope(
+				file,
+				existing.rootFolderId,
+				existing.path,
+				existing.title
+			);
+		} else {
+			const [existing] = await db
+				.select({
+					rootFolderId: series.rootFolderId,
+					path: series.path,
+					title: series.title
+				})
+				.from(series)
+				.where(eq(series.tmdbId, tmdbId));
+			if (!existing?.rootFolderId) return;
+			await this.assertFileInsideEntryScope(
+				file,
+				existing.rootFolderId,
+				existing.path,
+				existing.title
+			);
+		}
+	}
+
+	private async assertFileInsideEntryScope(
+		file: typeof unmatchedFiles.$inferSelect,
+		existingRootFolderId: string,
+		existingPath: string,
+		title: string
+	): Promise<void> {
+		const [existingRoot] = await db
+			.select({ name: rootFolders.name, path: rootFolders.path })
+			.from(rootFolders)
+			.where(eq(rootFolders.id, existingRootFolderId));
+
+		if (!existingRoot) return;
+
+		const expectedDir = join(existingRoot.path, existingPath);
+		if (!file.path.startsWith(expectedDir + '/')) {
+			throw new RootFolderConflictError(
+				`Refusing to link "${file.path}" to "${title}": the file is not inside "${expectedDir}", where "${title}" is registered under the "${existingRoot.name}" root folder. Linking it would create an unresolvable file path.`
+			);
+		}
 	}
 
 	/**
@@ -762,56 +1025,44 @@ export class MediaMatcherService {
 				title: tmdbMovie.title,
 				originalTitle: tmdbMovie.original_title
 			});
-			try {
-				const [newMovie] = await db
-					.insert(movies)
-					.values({
-						tmdbId,
-						imdbId: externalIds.imdb_id,
-						title: tmdbMovie.title,
-						originalTitle: tmdbMovie.original_title,
-						year: tmdbMovie.release_date
-							? parseInt(tmdbMovie.release_date.split('-')[0])
-							: undefined,
-						overview: tmdbMovie.overview,
-						posterPath: tmdbMovie.poster_path,
-						backdropPath: tmdbMovie.backdrop_path,
-						runtime: tmdbMovie.runtime,
-						genres: tmdbMovie.genres?.map((g) => g.name),
-						path: movieFolder || fileName,
-						libraryId: owningLibrary.id,
-						rootFolderId: rootFolder.id,
-						hasFile: true,
-						monitored: rootFolder.defaultMonitored ?? true,
-						languageProfileId: wantsSubtitles ? defaultProfileId : null,
-						wantsSubtitles
-					})
-					.returning();
+			const [newMovie] = await db
+				.insert(movies)
+				.values({
+					tmdbId,
+					imdbId: externalIds.imdb_id,
+					title: tmdbMovie.title,
+					originalTitle: tmdbMovie.original_title,
+					year: tmdbMovie.release_date ? parseInt(tmdbMovie.release_date.split('-')[0]) : undefined,
+					overview: tmdbMovie.overview,
+					posterPath: tmdbMovie.poster_path,
+					backdropPath: tmdbMovie.backdrop_path,
+					runtime: tmdbMovie.runtime,
+					genres: tmdbMovie.genres?.map((g) => g.name),
+					path: movieFolder || fileName,
+					libraryId: owningLibrary.id,
+					rootFolderId: rootFolder.id,
+					hasFile: true,
+					monitored: rootFolder.defaultMonitored ?? true,
+					scoringProfileId: owningLibrary.qualityProfileId,
+					languageProfileId: wantsSubtitles ? defaultProfileId : null,
+					wantsSubtitles
+				})
+				.onConflictDoNothing()
+				.returning();
 
+			if (newMovie) {
 				movieId = newMovie.id;
 				logger.debug(
-					{
-						movieId,
-						title: tmdbMovie.title,
-						languageProfileId: defaultProfileId
-					},
+					{ movieId, title: tmdbMovie.title, languageProfileId: defaultProfileId },
 					'[MediaMatcher] Assigned default language profile to new movie'
 				);
-			} catch (error) {
-				if (!this.isUniqueTmdbConstraintError(error, 'movies')) {
-					throw error;
-				}
-
+			} else {
 				const [concurrentMovie] = await db
 					.select({ id: movies.id })
 					.from(movies)
 					.where(eq(movies.tmdbId, tmdbId))
 					.limit(1);
-
-				if (!concurrentMovie) {
-					throw error;
-				}
-
+				if (!concurrentMovie) throw new Error(`Movie insert failed and row not found: ${tmdbId}`);
 				movieId = concurrentMovie.id;
 				await db.update(movies).set({ hasFile: true }).where(eq(movies.id, movieId));
 			}
@@ -845,21 +1096,24 @@ export class MediaMatcherService {
 		const parsedQuality = parseRelease(parseableFilename || originalFilename);
 
 		// Create movie file entry with proper sceneName, releaseGroup, and quality data
-		await db.insert(movieFiles).values({
-			movieId,
-			relativePath: fileName,
-			size: file.size,
-			mediaInfo,
-			sceneName: originalFilename,
-			releaseGroup: parsedQuality.releaseGroup ?? undefined,
-			edition: parsedQuality.edition ?? undefined,
-			quality: {
-				resolution: parsedQuality.resolution ?? undefined,
-				source: parsedQuality.source ?? undefined,
-				codec: parsedQuality.codec ?? undefined,
-				hdr: parsedQuality.hdr ?? undefined
-			}
-		});
+		await db
+			.insert(movieFiles)
+			.values({
+				movieId,
+				relativePath: fileName,
+				size: file.size,
+				mediaInfo,
+				sceneName: originalFilename,
+				releaseGroup: parsedQuality.releaseGroup ?? undefined,
+				edition: parsedQuality.edition ?? undefined,
+				quality: {
+					resolution: parsedQuality.resolution ?? undefined,
+					source: parsedQuality.source ?? undefined,
+					codec: parsedQuality.codec ?? undefined,
+					hdr: parsedQuality.hdr ?? undefined
+				}
+			})
+			.onConflictDoNothing();
 
 		// Trigger subtitle search if enabled (after metadata is fetched)
 		this.triggerSubtitleSearch('movie', movieId).catch((err) => {
@@ -928,59 +1182,49 @@ export class MediaMatcherService {
 			});
 			let createdSeries = false;
 
-			try {
-				const [newSeries] = await db
-					.insert(series)
-					.values({
-						tmdbId,
-						imdbId: externalIds.imdb_id,
-						tvdbId: externalIds.tvdb_id,
-						title: tmdbSeries.name,
-						originalTitle: tmdbSeries.original_name,
-						year: tmdbSeries.first_air_date
-							? parseInt(tmdbSeries.first_air_date.split('-')[0])
-							: undefined,
-						overview: tmdbSeries.overview,
-						posterPath: tmdbSeries.poster_path,
-						backdropPath: tmdbSeries.backdrop_path,
-						status: tmdbSeries.status,
-						network: tmdbSeries.networks?.[0]?.name,
-						genres: tmdbSeries.genres?.map((g) => g.name),
-						path: seriesFolder,
-						libraryId: owningLibrary.id,
-						rootFolderId: rootFolder.id,
-						seriesType: rootFolder.mediaSubType === 'anime' || animeSignal ? 'anime' : 'standard',
-						monitored: rootFolder.defaultMonitored ?? true,
-						languageProfileId: wantsSubtitles ? defaultProfileId : null,
-						wantsSubtitles
-					})
-					.returning();
+			const [newSeries] = await db
+				.insert(series)
+				.values({
+					tmdbId,
+					imdbId: externalIds.imdb_id,
+					tvdbId: externalIds.tvdb_id,
+					title: tmdbSeries.name,
+					originalTitle: tmdbSeries.original_name,
+					year: tmdbSeries.first_air_date
+						? parseInt(tmdbSeries.first_air_date.split('-')[0])
+						: undefined,
+					overview: tmdbSeries.overview,
+					posterPath: tmdbSeries.poster_path,
+					backdropPath: tmdbSeries.backdrop_path,
+					status: tmdbSeries.status,
+					network: tmdbSeries.networks?.[0]?.name,
+					genres: tmdbSeries.genres?.map((g) => g.name),
+					path: seriesFolder,
+					libraryId: owningLibrary.id,
+					rootFolderId: rootFolder.id,
+					seriesType: rootFolder.mediaSubType === 'anime' || animeSignal ? 'anime' : 'standard',
+					monitored: rootFolder.defaultMonitored ?? true,
+					scoringProfileId: owningLibrary.qualityProfileId,
+					languageProfileId: wantsSubtitles ? defaultProfileId : null,
+					wantsSubtitles
+				})
+				.onConflictDoNothing()
+				.returning();
 
+			if (newSeries) {
 				seriesId = newSeries.id;
 				createdSeries = true;
 				logger.debug(
-					{
-						seriesId,
-						title: tmdbSeries.name,
-						languageProfileId: defaultProfileId
-					},
+					{ seriesId, title: tmdbSeries.name, languageProfileId: defaultProfileId },
 					'[MediaMatcher] Assigned default language profile to new series'
 				);
-			} catch (error) {
-				if (!this.isUniqueTmdbConstraintError(error, 'series')) {
-					throw error;
-				}
-
+			} else {
 				const [concurrentSeries] = await db
 					.select({ id: series.id })
 					.from(series)
 					.where(eq(series.tmdbId, tmdbId))
 					.limit(1);
-
-				if (!concurrentSeries) {
-					throw error;
-				}
-
+				if (!concurrentSeries) throw new Error(`Series insert failed and row not found: ${tmdbId}`);
 				seriesId = concurrentSeries.id;
 			}
 
@@ -1097,6 +1341,7 @@ export class MediaMatcherService {
 						airDate: tmdbSeason.air_date,
 						monitored: defaultMon && seasonNumber !== 0
 					})
+					.onConflictDoNothing()
 					.returning();
 			} else {
 				// Create basic entry without TMDB data
@@ -1107,8 +1352,15 @@ export class MediaMatcherService {
 						seasonNumber,
 						monitored: defaultMon && seasonNumber !== 0
 					})
+					.onConflictDoNothing()
 					.returning();
 			}
+			// Concurrent insert; re-fetch if returning() came back empty.
+			season ??= await db
+				.select()
+				.from(seasons)
+				.where(and(eq(seasons.seriesId, seriesId), eq(seasons.seasonNumber, seasonNumber)))
+				.then((rows) => rows[0]);
 		}
 
 		// Ensure all episodes covered by this file exist and have hasFile: true.
@@ -1147,7 +1399,19 @@ export class MediaMatcherService {
 						hasFile: true,
 						monitored: episodeMonitored
 					})
+					.onConflictDoNothing()
 					.returning();
+				ep ??= await db
+					.select()
+					.from(episodes)
+					.where(
+						and(
+							eq(episodes.seriesId, seriesId),
+							eq(episodes.seasonNumber, seasonNumber),
+							eq(episodes.episodeNumber, epNum)
+						)
+					)
+					.then((rows) => rows[0]);
 			} else {
 				const updates: Record<string, unknown> = { hasFile: true };
 				if (tmdbEp && !ep.title) {
@@ -1271,8 +1535,20 @@ export class MediaMatcherService {
 						episodeFileCount: 0,
 						monitored: defaultMonitored && !isSpecials
 					})
+					.onConflictDoNothing()
 					.returning();
-				seasonId = newSeason.id;
+				seasonId =
+					newSeason?.id ??
+					(await db
+						.select({ id: seasons.id })
+						.from(seasons)
+						.where(
+							and(
+								eq(seasons.seriesId, seriesId),
+								eq(seasons.seasonNumber, seasonInfo.season_number)
+							)
+						)
+						.then((rows) => rows[0]?.id ?? ''));
 			}
 
 			// Fetch full season details to get episodes
@@ -1295,19 +1571,22 @@ export class MediaMatcherService {
 
 						if (!existingEpisode) {
 							// Create episode with TMDB metadata
-							await db.insert(episodes).values({
-								seriesId,
-								seasonId,
-								tmdbId: ep.id,
-								seasonNumber: ep.season_number,
-								episodeNumber: ep.episode_number,
-								title: ep.name,
-								overview: ep.overview,
-								airDate: ep.air_date,
-								runtime: ep.runtime,
-								monitored: defaultMonitored && !isSpecials,
-								hasFile: false
-							});
+							await db
+								.insert(episodes)
+								.values({
+									seriesId,
+									seasonId,
+									tmdbId: ep.id,
+									seasonNumber: ep.season_number,
+									episodeNumber: ep.episode_number,
+									title: ep.name,
+									overview: ep.overview,
+									airDate: ep.air_date,
+									runtime: ep.runtime,
+									monitored: defaultMonitored && !isSpecials,
+									hasFile: false
+								})
+								.onConflictDoNothing();
 						}
 					}
 				}

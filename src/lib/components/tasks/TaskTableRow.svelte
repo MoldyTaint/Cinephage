@@ -205,7 +205,7 @@
 		<div class="flex items-center gap-1">
 			{#if isRunning}
 				<button
-					class="btn btn-square text-error btn-ghost btn-xs"
+					class="btn btn-square btn-ghost text-error btn-xs"
 					onclick={cancelTask}
 					disabled={isCancelling}
 					title={m.action_cancel()}

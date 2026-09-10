@@ -17,6 +17,17 @@ Cinephage is a self-hosted media management application — automated movie/TV l
 	<WebUI>http://[IP]:[PORT:3000]</WebUI>
 	<Icon>https://raw.githubusercontent.com/MoldyTaint/Cinephage/main/deploy/unraid/icon.png</Icon>
 	<TemplateURL>https://raw.githubusercontent.com/MoldyTaint/Cinephage/main/deploy/unraid/cinephage.xml</TemplateURL>
+	<Branches>
+		<Branch>
+			<Tag>latest</Tag>
+			<TagDescription>Stable Release</TagDescription>
+		</Branch>
+		<Branch>
+			<Tag>dev</Tag>
+			<TagDescription>Development Branch</TagDescription>
+			<Repository>ghcr.io/moldytaint/cinephage:dev</Repository>
+		</Branch>
+	</Branches>
 	<ExtraParams>--shm-size=256m</ExtraParams>
 	<Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="Web UI port" Type="Port" Display="always" Required="true" Mask="false"/>
 	<Config Name="Config" Target="/config" Default="/mnt/user/appdata/cinephage" Mode="rw" Description="Configuration and app data" Type="Path" Display="always" Required="true" Mask="false"/>

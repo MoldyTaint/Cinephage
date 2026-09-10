@@ -5,7 +5,9 @@ import {
 	ensureDefaultApiKeysForUser,
 	getManagedApiKeysForRequest
 } from '$lib/server/auth/index.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'ApiKeysApi', logDomain: 'auth' });
 
 // POST /api/settings/system/api-keys - Auto-generate Main and Media Streaming API keys
 export const POST: RequestHandler = async (event) => {

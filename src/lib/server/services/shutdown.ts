@@ -1,6 +1,9 @@
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { getImportService } from '$lib/server/downloadClients/import/ImportService.js';
 import { getServiceManager } from '$lib/server/services/service-manager.js';
+import { sqlite } from '$lib/server/db/index.js';
+
+const logger = createChildLogger({ module: 'Shutdown', logDomain: 'system' });
 
 let isShuttingDown = false;
 
@@ -13,22 +16,32 @@ async function gracefulShutdown(signal: string): Promise<void> {
 	isShuttingDown = true;
 	logger.info(`Received ${signal}, starting graceful shutdown...`);
 
-	try {
-		const serviceManager = getServiceManager();
-		const timeout = setTimeout(() => {
-			logger.error('Graceful shutdown timed out after 30s, forcing exit');
-			process.exit(1);
-		}, 30000);
-
-		getImportService().stop();
-		await serviceManager.stopAll();
-		clearTimeout(timeout);
-
-		logger.info('All services stopped successfully');
+	const timeout = setTimeout(() => {
+		logger.error('Graceful shutdown timed out after 30s, forcing exit');
+		closeDb();
 		process.exit(0);
+	}, 30000);
+
+	try {
+		getImportService().stop();
+		await getServiceManager().stopAll();
+		clearTimeout(timeout);
+		logger.info('All services stopped successfully');
 	} catch (error) {
-		logger.error('Error during graceful shutdown', error);
-		process.exit(1);
+		clearTimeout(timeout);
+		logger.error('Error stopping services during shutdown', error);
+	}
+
+	closeDb();
+	process.exit(0);
+}
+
+function closeDb(): void {
+	try {
+		sqlite.pragma('wal_checkpoint(TRUNCATE)');
+		sqlite.close();
+	} catch (err) {
+		logger.error({ err }, 'Error closing database during shutdown');
 	}
 }
 

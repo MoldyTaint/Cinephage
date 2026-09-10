@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { grabDecisionPipeline } from '$lib/server/filters/GrabDecisionPipeline.js';
 import { qualityFilter } from '$lib/server/quality/QualityFilter.js';
 import { db } from '$lib/server/db/index.js';
@@ -7,7 +8,8 @@ import {
 	episodes,
 	movieFiles,
 	episodeFiles,
-	rootFolders
+	rootFolders,
+	rejectedReleases
 } from '$lib/server/db/schema.js';
 import { and, eq, ne } from 'drizzle-orm';
 import type { GrabRequest, GrabResult, ResolvedContext, HandlerResult } from './grab-types.js';
@@ -19,10 +21,35 @@ import { StreamingHandler } from './handlers/StreamingHandler.js';
 import { NzbStreamingHandler } from './handlers/NzbStreamingHandler.js';
 import { DebridHandler } from './handlers/DebridHandler.js';
 import { getDefaultAcquisitionProtocol } from '$lib/server/settings/acquisition.js';
-import { createChildLogger } from '$lib/logging/index.js';
+import { createChildLogger, getRequestId } from '$lib/logging/index.js';
 import { grabRejectionLogLevel } from './grab-rejection-log-level.js';
+import { resolveInfoHash } from '$lib/server/downloadClients/utils/hashUtils.js';
 
 const logger = createChildLogger({ module: 'GrabService', logDomain: 'downloads' });
+
+const grabHashLocks = new Map<string, Promise<void>>();
+
+async function withGrabHashLock<T>(
+	infoHash: string | undefined,
+	operation: () => Promise<T>
+): Promise<T> {
+	if (!infoHash) return operation();
+
+	const previous = grabHashLocks.get(infoHash);
+	let release!: () => void;
+	const current = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	grabHashLocks.set(infoHash, current);
+
+	if (previous) await previous;
+	try {
+		return await operation();
+	} finally {
+		release();
+		if (grabHashLocks.get(infoHash) === current) grabHashLocks.delete(infoHash);
+	}
+}
 
 class GrabServiceImpl {
 	private static instance: GrabServiceImpl;
@@ -34,14 +61,66 @@ class GrabServiceImpl {
 		return GrabServiceImpl.instance;
 	}
 
-	async grab(request: GrabRequest): Promise<GrabResult> {
-		return mediaOccupancyService.runExclusive(request.target, () => this.grabUnlocked(request));
+	async grab(request: GrabRequest, opts?: { forceOverride?: boolean }): Promise<GrabResult> {
+		const infoHash = resolveInfoHash(
+			request.release.infoHash,
+			request.release.magnetUrl,
+			request.release.downloadUrl
+		);
+		return withGrabHashLock(infoHash, () =>
+			mediaOccupancyService.runExclusive(request.target, () =>
+				this.grabUnlocked(request, opts?.forceOverride ?? false)
+			)
+		);
 	}
 
-	private async grabUnlocked(request: GrabRequest): Promise<GrabResult> {
+	private async grabUnlocked(request: GrabRequest, forceOverride = false): Promise<GrabResult> {
 		const { release, target, options } = request;
 
 		const resolved = await this.resolveTarget(request);
+
+		// When force-overriding, skip the decision pipeline entirely
+		if (forceOverride) {
+			const handlerResult = await this.routeByProtocol(request, resolved);
+			if (!handlerResult.success) {
+				logger.error(
+					{ title: release.title, error: handlerResult.error },
+					'[Grab] Override handler failed'
+				);
+				return {
+					success: false,
+					decision: {
+						accepted: false,
+						reason: handlerResult.error ?? 'Handler failed',
+						upgradeStatus: 'rejected',
+						scores: { candidate: 0 },
+						audit: { stages: [], finalResult: { accepted: false }, totalDurationMs: 0 }
+					},
+					error: handlerResult.error
+				};
+			}
+			return {
+				success: true,
+				decision: {
+					accepted: true,
+					reason: 'force_override',
+					upgradeStatus: 'new',
+					scores: { candidate: 0 },
+					audit: { stages: [], finalResult: { accepted: true }, totalDurationMs: 0 }
+				},
+				download: {
+					queueId: handlerResult.queueId!,
+					hash: handlerResult.hash,
+					clientId: handlerResult.clientId!,
+					clientName: handlerResult.clientName!,
+					category: handlerResult.category ?? (resolved.mediaType === 'movie' ? 'movies' : 'tv'),
+					addedToQueue: handlerResult.wasDuplicate !== true,
+					wasDuplicate: handlerResult.wasDuplicate ?? false,
+					isUpgrade: false
+				}
+			};
+		}
+
 		const existingFiles = await this.getExistingFiles(request);
 
 		const ctx: GrabDecisionContext = {
@@ -78,6 +157,12 @@ class GrabServiceImpl {
 			} else {
 				logger.debug(rejectionCtx, '[Grab] Release rejected (automated search)');
 			}
+
+			// Persist rejection for diagnostic reports (fire-and-forget)
+			this.persistRejectedRelease(release, resolved, decision).catch((err) =>
+				logger.warn({ err }, '[Grab] Failed to persist rejected release record')
+			);
+
 			return { success: false, decision };
 		}
 
@@ -115,8 +200,8 @@ class GrabServiceImpl {
 
 	private async resolveTarget(request: GrabRequest): Promise<ResolvedContext> {
 		const { target } = request;
-		let profileId: string | null = null;
-		let rootFolderId: string | null = null;
+		let profileId: string | null;
+		let rootFolderId: string | null;
 		let mediaPath: string | undefined;
 		let movieId: string | undefined;
 		let seriesId: string | undefined;
@@ -132,7 +217,6 @@ class GrabServiceImpl {
 			rootFolderId = movie.rootFolderId;
 			mediaPath = movie.path ?? undefined;
 			movieId = movie.id;
-			mediaType = 'movie';
 			movieDesiredQualities = movie.desiredQualities ?? undefined;
 		} else {
 			seriesId = 'seriesId' in target ? target.seriesId : undefined;
@@ -311,6 +395,83 @@ class GrabServiceImpl {
 					error: `Unknown protocol: ${protocol ?? 'undefined'}`
 				};
 		}
+	}
+
+	private async persistRejectedRelease(
+		release: GrabRequest['release'],
+		resolved: ResolvedContext,
+		decision: import('./grab-types.js').GrabResult['decision']
+	): Promise<void> {
+		// Resolve tmdbId from the linked movie or series
+		let tmdbId: number | undefined;
+		let mediaTitle: string | undefined;
+		if (resolved.movieId) {
+			const movie = await db.query.movies.findFirst({ where: eq(movies.id, resolved.movieId) });
+			tmdbId = movie?.tmdbId ?? undefined;
+			mediaTitle = movie?.title ?? undefined;
+		} else if (resolved.seriesId) {
+			const show = await db.query.series.findFirst({ where: eq(series.id, resolved.seriesId) });
+			tmdbId = show?.tmdbId ?? undefined;
+			mediaTitle = show?.title ?? undefined;
+		}
+
+		const rejectingStage = decision?.audit?.stages?.find(
+			(s) => !s.skipped && s.result && !s.result.accepted
+		);
+
+		// Build structured rejection checks from all evaluated stages
+		const rejectionReasons = decision?.audit?.stages
+			?.filter((s) => !s.skipped && s.result != null)
+			.map((s) => ({
+				type: s.name,
+				rule: s.result?.reason ?? s.name,
+				passed: s.result?.accepted ?? true,
+				detail: s.result?.details ? JSON.stringify(s.result.details) : undefined
+			}));
+
+		// Derive primary_reason category from the rejection type
+		const primaryReason = (() => {
+			switch (decision?.rejectionType) {
+				case 'missing_required_format':
+				case 'banned':
+					return 'required_format_mismatch';
+				case 'below_minimum':
+				case 'not_upgrade':
+				case 'upgrades_disabled':
+				case 'size_rejected':
+					return 'quality_profile_mismatch';
+				case 'pending_delay':
+					return 'delay_profile_pending';
+				default:
+					return decision?.rejectionType ?? 'other';
+			}
+		})();
+
+		await db.insert(rejectedReleases).values({
+			id: randomUUID(),
+			correlationId: getRequestId() ?? randomUUID(),
+			releaseTitle: release.title,
+			indexerName: release.indexerName ?? undefined,
+			protocol: release.protocol ?? undefined,
+			tmdbId: tmdbId ?? null,
+			mediaType: resolved.mediaType,
+			mediaTitle: mediaTitle ?? undefined,
+			rejectionReasons:
+				rejectionReasons && rejectionReasons.length > 0 ? rejectionReasons : undefined,
+			primaryReason,
+			ruleFired: rejectingStage?.result?.reason ?? decision?.reason ?? undefined,
+			qualityProfileName: resolved.profile?.name ?? undefined,
+			releaseSize: release.size ?? undefined,
+			releaseGroup: release.releaseGroup ?? undefined,
+			// Grab fields for future override
+			downloadUrl: release.downloadUrl ?? undefined,
+			magnetUrl: release.magnetUrl ?? undefined,
+			infoHash: release.infoHash ?? undefined,
+			indexerGuid: release.guid ?? undefined,
+			indexerId: release.indexerId ?? undefined,
+			rejectedAt: new Date().toISOString(),
+			status: 'rejected'
+		});
 	}
 }
 

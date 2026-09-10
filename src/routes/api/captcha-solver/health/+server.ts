@@ -1,8 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getCaptchaSolver } from '$lib/server/captcha';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+
+const logger = createChildLogger({ module: 'CaptchaSolverHealthApi', logDomain: 'indexers' });
 
 /**
  * GET /api/captcha-solver/health

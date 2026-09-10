@@ -10,6 +10,7 @@ import { livetvAccounts, livetvChannels, livetvCategories } from '$lib/server/db
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
 import { getStreamingIndexerSettings } from '$lib/server/streaming/settings.js';
+import { getCinephageCore } from '$lib/server/cinephage/core/CinephageCore.js';
 import { randomUUID } from 'node:crypto';
 
 const logger = createChildLogger({ logDomain: 'livetv' as const });
@@ -494,6 +495,10 @@ export class CinephageIptvProvider implements LiveTvProvider {
 
 		if (!response.ok) {
 			if (response.status === 401) {
+				// The gateway rejected our identity (likely stale release
+				// pair). Kick off a self-heal refresh so the next request
+				// authenticates with the latest release.
+				void getCinephageCore().refreshLatestIdentity(true);
 				throw new Error('Cinephage API rejected authentication. Verify version and commit.');
 			}
 			if (response.status === 429) {

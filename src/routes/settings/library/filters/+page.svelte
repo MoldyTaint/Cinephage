@@ -125,6 +125,7 @@
 					class="select-bordered select w-full"
 					bind:value={filtersState.language}
 				>
+					<option value="">{m.settings_filters_anyPreference()}</option>
 					{#each languages as lang (lang.code)}
 						<option value={lang.code}>{lang.name}</option>
 					{/each}
@@ -135,6 +136,7 @@
 					<span class="label-text">{m.settings_filters_preferredRegion()}</span>
 				</label>
 				<select id="region" class="select-bordered select w-full" bind:value={filtersState.region}>
+					<option value="">{m.settings_filters_anyPreference()}</option>
 					{#each regions as region (region.code)}
 						<option value={region.code}>{region.name}</option>
 					{/each}

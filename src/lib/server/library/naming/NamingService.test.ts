@@ -638,6 +638,28 @@ describe('NamingService', () => {
 		});
 	});
 
+	describe('Docs-style patterns (issue #497)', () => {
+		it('renders the docs-advertised first-letter movie folder pattern', () => {
+			const service = new NamingService({
+				movieFolderFormat: '{Movie Title:First}/{Movie Title} ({Release Year})'
+			});
+			const info: MediaNamingInfo = { title: 'The Matrix', year: 1999 };
+			expect(service.generateMovieFolderName(info)).toBe('T/The Matrix (1999)');
+		});
+
+		it('resolves {Quality Full} via alias', () => {
+			const service = new NamingService({ movieFileFormat: '[{Quality Full}]' });
+			const info: MediaNamingInfo = {
+				title: 'The Matrix',
+				year: 1999,
+				source: 'bluray',
+				resolution: '1080p',
+				originalExtension: '.mkv'
+			};
+			expect(service.generateMovieFileName(info)).toBe('[Bluray-1080p].mkv');
+		});
+	});
+
 	describe('Configuration', () => {
 		it('should use default configuration', () => {
 			const service = new NamingService();

@@ -196,6 +196,12 @@ export class StrmService {
 	 * Generate the content of a .strm file
 	 * Points to our resolve endpoint which handles stream extraction on-demand
 	 * Automatically includes Media Streaming API Key for authentication
+	 *
+	 * HTTP URLs deliberately have no `.m3u` suffix: Jellyfin refuses to remux
+	 * any HTTP path containing `.m3u` (MediaSourceManager.SupportsDirectStream),
+	 * forcing a DirectPlay handover. The extension-less route serves the real
+	 * source format (HLS, DASH, MP4, or another direct container), identified
+	 * by its response Content-Type. No source is relabelled or remuxed here.
 	 */
 	async generateStrmContent(options: StrmCreateOptions): Promise<string> {
 		const { mediaType, tmdbId, season, episode, baseUrl, apiKey: providedApiKey } = options;
@@ -211,17 +217,18 @@ export class StrmService {
 			}
 
 			if (mediaType === 'movie') {
-				return `${baseUrl}/api/streaming/session/movie/${tmdbId}/master.m3u8?api_key=${encodeURIComponent(apiKey)}`;
+				return `${baseUrl}/api/streaming/session/movie/${tmdbId}?api_key=${encodeURIComponent(apiKey)}`;
 			} else {
-				return `${baseUrl}/api/streaming/session/tv/${tmdbId}/${season}/${episode}/master.m3u8?api_key=${encodeURIComponent(apiKey)}`;
+				return `${baseUrl}/api/streaming/session/tv/${tmdbId}/${season}/${episode}?api_key=${encodeURIComponent(apiKey)}`;
 			}
 		}
 
-		// For stream:// protocol (internal use), don't add API key
+		// For stream:// protocol (internal use), don't add API key. Keep the path
+		// extension-less so it never advertises a non-HLS source as an .m3u8 file.
 		if (mediaType === 'movie') {
-			return `${baseUrl}/api/streaming/session/movie/${tmdbId}/master.m3u8`;
+			return `${baseUrl}/api/streaming/session/movie/${tmdbId}`;
 		} else {
-			return `${baseUrl}/api/streaming/session/tv/${tmdbId}/${season}/${episode}/master.m3u8`;
+			return `${baseUrl}/api/streaming/session/tv/${tmdbId}/${season}/${episode}`;
 		}
 	}
 
@@ -376,7 +383,7 @@ export class StrmService {
 			}
 
 			// Generate and write .strm content with API key
-			const content = `${baseUrl}/api/streaming/session/tv/${tmdbId}/${seasonNumber}/${episode.episodeNumber}/master.m3u8?api_key=${encodeURIComponent(apiKey)}`;
+			const content = `${baseUrl}/api/streaming/session/tv/${tmdbId}/${seasonNumber}/${episode.episodeNumber}?api_key=${encodeURIComponent(apiKey)}`;
 			writeFileSync(destinationPath, content, 'utf8');
 
 			return { success: true, filePath: destinationPath };
@@ -519,8 +526,10 @@ export class StrmService {
 	 * This is used when bulk-updating .strm files to understand what content they point to.
 	 *
 	 * Supports:
-	 *   - {baseUrl}/api/streaming/session/movie/{tmdbId}/master.m3u8
-	 *   - {baseUrl}/api/streaming/session/tv/{tmdbId}/{season}/{episode}/master.m3u8
+	 *   - {baseUrl}/api/streaming/session/movie/{tmdbId} (current)
+	 *   - {baseUrl}/api/streaming/session/tv/{tmdbId}/{season}/{episode} (current)
+	 *   - {baseUrl}/api/streaming/session/movie/{tmdbId}/master.m3u8 (legacy)
+	 *   - {baseUrl}/api/streaming/session/tv/{tmdbId}/{season}/{episode}/master.m3u8 (legacy)
 	 */
 	parseStrmFileUrl(url: string): {
 		mediaType: 'movie' | 'tv';
@@ -529,8 +538,8 @@ export class StrmService {
 		episode?: number;
 	} | null {
 		const trimmedUrl = url.trim();
-		let pathToParse = trimmedUrl;
 
+		let pathToParse: string;
 		if (/^https?:\/\//i.test(trimmedUrl)) {
 			try {
 				pathToParse = new URL(trimmedUrl).pathname;
@@ -541,8 +550,10 @@ export class StrmService {
 			pathToParse = trimmedUrl.split('?')[0]?.split('#')[0] ?? trimmedUrl;
 		}
 
-		// Match movie URL: {anyBaseUrl}/api/streaming/session/movie/{tmdbId}/master.m3u8
-		const movieMatch = pathToParse.match(
+		// Match movie URL (current bare format): {anyBaseUrl}/api/streaming/session/movie/{tmdbId}
+		const movieMatch = pathToParse.match(/\/api\/streaming\/session\/movie\/(\d+)\/?$/);
+		// Match movie URL (legacy): {anyBaseUrl}/api/streaming/session/movie/{tmdbId}/master.m3u8
+		const movieHlsMatch = pathToParse.match(
 			/\/api\/streaming\/session\/movie\/(\d+)\/master\.m3u8\/?$/
 		);
 		const legacyMovieMatch = pathToParse.match(
@@ -554,6 +565,12 @@ export class StrmService {
 				tmdbId: movieMatch[1]
 			};
 		}
+		if (movieHlsMatch) {
+			return {
+				mediaType: 'movie',
+				tmdbId: movieHlsMatch[1]
+			};
+		}
 		if (legacyMovieMatch) {
 			return {
 				mediaType: 'movie',
@@ -561,8 +578,10 @@ export class StrmService {
 			};
 		}
 
-		// Match TV URL: {anyBaseUrl}/api/streaming/session/tv/{tmdbId}/{season}/{episode}/master.m3u8
-		const tvMatch = pathToParse.match(
+		// Match TV URL (current bare format): {anyBaseUrl}/api/streaming/session/tv/{tmdbId}/{season}/{episode}
+		const tvMatch = pathToParse.match(/\/api\/streaming\/session\/tv\/(\d+)\/(\d+)\/(\d+)\/?$/);
+		// Match TV URL (legacy): {anyBaseUrl}/api/streaming/session/tv/{tmdbId}/{season}/{episode}/master.m3u8
+		const tvHlsMatch = pathToParse.match(
 			/\/api\/streaming\/session\/tv\/(\d+)\/(\d+)\/(\d+)\/master\.m3u8\/?$/
 		);
 		const legacyTvMatch = pathToParse.match(
@@ -574,6 +593,14 @@ export class StrmService {
 				tmdbId: tvMatch[1],
 				season: parseInt(tvMatch[2], 10),
 				episode: parseInt(tvMatch[3], 10)
+			};
+		}
+		if (tvHlsMatch) {
+			return {
+				mediaType: 'tv',
+				tmdbId: tvHlsMatch[1],
+				season: parseInt(tvHlsMatch[2], 10),
+				episode: parseInt(tvHlsMatch[3], 10)
 			};
 		}
 		if (legacyTvMatch) {

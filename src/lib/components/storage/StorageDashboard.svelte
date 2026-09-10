@@ -351,7 +351,7 @@
 		{#each chartSections as section (section.title)}
 			<div class="card bg-base-200 p-3">
 				<div class="mb-2 flex items-center justify-between">
-					<h3 class="text-xs font-semibold uppercase tracking-wide text-base-content/60">
+					<h3 class="text-xs font-semibold tracking-wide text-base-content/60 uppercase">
 						{section.title}
 					</h3>
 					<span class="text-xs text-base-content/40">{section.totalLabel}</span>
@@ -390,7 +390,7 @@
 									{item.playCount} play{item.playCount === 1 ? '' : 's'}
 								</div>
 							</div>
-							<span class="badge badge-sm badge-ghost shrink-0">{heightToRes(item.height)}</span>
+							<span class="badge shrink-0 badge-ghost badge-sm">{heightToRes(item.height)}</span>
 						</div>
 					{/each}
 				</div>
@@ -413,7 +413,7 @@
 							<div class="min-w-0 flex-1">
 								<div class="truncate text-sm font-medium text-base-content">{mediaTitle(item)}</div>
 								<div class="text-xs text-base-content/50">
-									{item.videoCodec?.toUpperCase() ?? '?'} \u00B7 {heightToRes(item.height)}
+									{item.videoCodec?.toUpperCase() ?? '?'} &middot; {heightToRes(item.height)}
 								</div>
 							</div>
 							<span class="shrink-0 text-sm font-medium text-base-content"
@@ -427,7 +427,7 @@
 
 		<!-- Browse media link -->
 		<div class="flex justify-end">
-			<a href={`${baseUrl}/media`} class="btn btn-ghost btn-sm gap-1">
+			<a href={`${baseUrl}/media`} class="btn gap-1 btn-ghost btn-sm">
 				Browse all media
 				<ChevronRight class="h-3.5 w-3.5" />
 			</a>
@@ -472,37 +472,40 @@
 		{#if rootFolderBreakdown.length > 0}
 			<div class="space-y-2">
 				<h3 class="text-sm font-semibold text-base-content/70">Disk Usage</h3>
-				<div class="card bg-base-200 p-3 space-y-3">
+				<div class="card space-y-3 bg-base-200 p-3">
 					{#each rootFolderBreakdown as folder (folder.id)}
+						<!-- usedBytes is a real per-folder SUM(file sizes) (same source
+						RootFolderOverview.svelte uses) - totalSpaceBytes/freeSpaceBytes
+						are disk-level statfs() stats that were never wired up to refresh
+						after folder creation, so using them here as "used" showed stale,
+						identical-across-folders numbers. -->
+						{@const total = folder.usedBytes + (folder.freeSpaceBytes ?? 0)}
 						<div>
 							<div class="mb-1 flex items-center justify-between text-xs">
 								<span class="truncate text-base-content/70">{folder.name}</span>
 								<span class="shrink-0 text-base-content/50">
-									{folder.totalSpaceBytes
-										? `${Math.round(((folder.totalSpaceBytes - (folder.freeSpaceBytes ?? 0)) / folder.totalSpaceBytes) * 100)}%`
-										: '?'}
+									{total > 0 ? `${Math.round((folder.usedBytes / total) * 100)}%` : '?'}
 								</span>
 							</div>
-							{#if folder.totalSpaceBytes && folder.freeSpaceBytes !== null && folder.freeSpaceBytes !== undefined}
-								{@const used = folder.totalSpaceBytes - folder.freeSpaceBytes}
+							{#if folder.freeSpaceBytes !== null && folder.freeSpaceBytes !== undefined && total > 0}
 								<div class="flex h-2 overflow-hidden rounded-full bg-base-300/60">
 									<div
 										class="h-full bg-primary"
-										style="width: {(used / folder.totalSpaceBytes) * 100}%"
-										title={`Used: ${formatBytes(used)}`}
+										style="width: {(folder.usedBytes / total) * 100}%"
+										title={`Used: ${formatBytes(folder.usedBytes)}`}
 										role="img"
-										aria-label={`${folder.name}: ${formatBytes(used)} used of ${formatBytes(folder.totalSpaceBytes)}`}
+										aria-label={`${folder.name}: ${formatBytes(folder.usedBytes)} used of ${formatBytes(total)}`}
 									></div>
 									<div
 										class="h-full bg-success/30"
-										style="width: ${(folder.freeSpaceBytes / folder.totalSpaceBytes) * 100}%"
+										style="width: {(folder.freeSpaceBytes / total) * 100}%"
 										title={`Free: ${formatBytes(folder.freeSpaceBytes)}`}
 										role="img"
 										aria-label={`${formatBytes(folder.freeSpaceBytes)} free`}
 									></div>
 								</div>
 								<div class="mt-0.5 flex justify-between text-xs text-base-content/40">
-									<span>{formatBytes(used)} used</span>
+									<span>{formatBytes(folder.usedBytes)} used</span>
 									<span>{formatBytes(folder.freeSpaceBytes)} free</span>
 								</div>
 							{:else}
@@ -513,7 +516,7 @@
 						</div>
 					{/each}
 				</div>
-				<a href={`${baseUrl}/folders`} class="btn btn-ghost btn-xs gap-1 w-full">
+				<a href={`${baseUrl}/folders`} class="btn w-full gap-1 btn-ghost btn-xs">
 					Manage folders <ChevronRight class="h-3 w-3" />
 				</a>
 			</div>

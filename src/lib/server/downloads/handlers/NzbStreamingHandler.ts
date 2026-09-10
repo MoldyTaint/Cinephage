@@ -46,7 +46,10 @@ async function upsertEpisodeFileByPath(record: EpisodeFileUpsertInput): Promise<
 	}
 
 	const id = requestedId ?? randomUUID();
-	await db.insert(episodeFiles).values({ id, ...values });
+	await db
+		.insert(episodeFiles)
+		.values({ id, ...values })
+		.onConflictDoNothing();
 	return id;
 }
 

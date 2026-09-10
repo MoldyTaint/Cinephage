@@ -884,7 +884,7 @@
 			} catch (error) {
 				if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
 					canManageHistory = false;
-					throw new Error('Admin access is required');
+					throw new Error('Admin access is required', { cause: error });
 				}
 				throw error;
 			}
@@ -1099,7 +1099,7 @@
 			} catch (error) {
 				if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
 					canManageHistory = false;
-					throw new Error('Admin access is required');
+					throw new Error('Admin access is required', { cause: error });
 				}
 				throw error;
 			}
@@ -1158,7 +1158,7 @@
 			} catch (error) {
 				if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
 					canManageHistory = false;
-					throw new Error(m.toast_activity_adminRequired());
+					throw new Error(m.toast_activity_adminRequired(), { cause: error });
 				}
 				throw error;
 			}
@@ -1425,7 +1425,7 @@
 					: error instanceof Error
 						? error.message
 						: `Failed to ${action}`;
-			throw new Error(message);
+			throw new Error(message, { cause: error });
 		}
 	}
 
@@ -1675,7 +1675,7 @@
 							: m.activity_history_selectAllCount({ count: selectableHistoryIds.length })}
 					</button>
 					<button
-						class="btn btn-xs btn-error"
+						class="btn btn-error btn-xs"
 						onclick={() => openHistoryConfirm('delete_selected')}
 						disabled={deleteSelectedLoading || selectedHistoryIds.size === 0}
 					>
@@ -1687,14 +1687,14 @@
 					{#if selectedHistoryFailedQueueIds.length > 0}
 						<div class="divider m-0 divider-horizontal h-6"></div>
 						<button
-							class="btn btn-xs btn-warning"
+							class="btn btn-warning btn-xs"
 							onclick={() => openActiveConfirm('retry_failed')}
 							disabled={activeBulkLoading}
 						>
 							{m.activity_queue_retryFailedCount({ count: selectedHistoryFailedQueueIds.length })}
 						</button>
 						<button
-							class="btn btn-xs btn-error"
+							class="btn btn-error btn-xs"
 							onclick={() => openActiveConfirm('remove_failed')}
 							disabled={activeBulkLoading}
 						>
@@ -1704,7 +1704,7 @@
 				{/if}
 				<div class="ml-auto"></div>
 				<button
-					class="btn btn-xs btn-error"
+					class="btn btn-error btn-xs"
 					onclick={() => openHistoryConfirm('purge_all')}
 					disabled={settingsLoading || purgeAllLoading}
 				>
@@ -1774,7 +1774,7 @@
 		<label class="mt-2 flex cursor-pointer items-start gap-2 text-sm">
 			<input
 				type="checkbox"
-				class="checkbox checkbox-sm mt-0.5"
+				class="checkbox mt-0.5 checkbox-sm"
 				bind:checked={historyConfirmRemoveFromClient}
 				disabled={historyConfirmLoading}
 			/>

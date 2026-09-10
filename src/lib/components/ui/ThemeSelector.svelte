@@ -53,7 +53,7 @@
 		{/if}
 	</button>
 	<ul
-		class="dropdown-content menu z-1 h-96 w-40 flex-col flex-nowrap overflow-x-hidden overflow-y-auto rounded-box bg-base-200 p-2 shadow"
+		class="menu dropdown-content z-1 h-96 w-40 flex-col flex-nowrap overflow-x-hidden overflow-y-auto rounded-box bg-base-200 p-2 shadow"
 		class:hidden={!isOpen}
 		role="menu"
 	>

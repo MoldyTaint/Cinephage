@@ -134,7 +134,7 @@
 						<input
 							id="m3u-url"
 							type="url"
-							class="input-bordered input input-sm w-full pr-8"
+							class="input-bordered input w-full pr-8 input-sm"
 							class:input-error={url.length > 0 && !isUrlValid()}
 							value={url}
 							oninput={(e) => onUrlChange(e.currentTarget.value)}
@@ -197,7 +197,7 @@
 						<input
 							id="epg-url"
 							type="url"
-							class="input-bordered input input-sm w-full pr-8"
+							class="input-bordered input w-full pr-8 input-sm"
 							class:input-error={epgUrl.length > 0 && !isEpgUrlValid()}
 							value={epgUrl}
 							oninput={(e) => onEpgUrlChange(e.currentTarget.value)}
@@ -236,7 +236,7 @@
 						<input
 							id="epg-url"
 							type="url"
-							class="input-bordered input input-sm w-full pr-8"
+							class="input-bordered input w-full pr-8 input-sm"
 							class:input-error={epgUrl.length > 0 && !isEpgUrlValid()}
 							value={epgUrl}
 							oninput={(e) => onEpgUrlChange(e.currentTarget.value)}

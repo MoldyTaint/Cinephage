@@ -80,7 +80,7 @@
 			</div>
 			<div class="flex gap-2">
 				{#if onAutoSearch}
-					<button class="btn flex-1 gap-1 btn-xs btn-primary" onclick={onAutoSearch}>
+					<button class="btn flex-1 gap-1 btn-primary btn-xs" onclick={onAutoSearch}>
 						<Captions size={12} />
 						Auto-download
 					</button>
@@ -141,7 +141,7 @@
 							{#if onDelete}
 								{#if confirmDeleteId === sub.id}
 									<button
-										class="btn btn-xs btn-error"
+										class="btn btn-error btn-xs"
 										onclick={() => handleDelete(sub.id)}
 										disabled={deletingId === sub.id}
 									>
@@ -153,7 +153,7 @@
 									</button>
 								{:else}
 									<button
-										class="btn text-error/60 btn-ghost btn-xs hover:text-error"
+										class="btn btn-ghost text-error/60 btn-xs hover:text-error"
 										onclick={() => handleDelete(sub.id)}
 										title="Delete subtitle"
 									>

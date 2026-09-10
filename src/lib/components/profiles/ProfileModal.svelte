@@ -334,7 +334,7 @@
 
 	<!-- Tab Navigation (only show if formats tab is available) -->
 	{#if showFormatsTab}
-		<div class="tabs-bordered mb-6 tabs w-full">
+		<div class="tabs-bordered tabs mb-6 w-full">
 			<button
 				type="button"
 				class="tab-lg tab flex-1 gap-2"
@@ -388,8 +388,7 @@
 						bind:value={description}
 						disabled={isCoreReadonly}
 						maxlength={maxDescriptionLength}
-						placeholder="Describe what this profile is for..."
-					></textarea>
+						placeholder="Describe what this profile is for..."></textarea>
 					{#if !isCoreReadonly}
 						<div class="label py-1">
 							<span class="label-text-alt text-xs {descriptionTooLong ? 'text-error' : ''}">
@@ -628,10 +627,10 @@
 				<Layers class="h-4 w-4 text-base-content/50" />
 				<span class="flex-1 text-left text-base-content/70">Format configuration</span>
 				{#if scoredFormatCount > 0}
-					<span class="badge badge-primary badge-sm">{scoredFormatCount} scored</span>
+					<span class="badge badge-sm badge-primary">{scoredFormatCount} scored</span>
 				{/if}
 				{#if requiredFormatCount > 0}
-					<span class="badge badge-warning badge-sm">{requiredFormatCount} required</span>
+					<span class="badge badge-sm badge-warning">{requiredFormatCount} required</span>
 				{/if}
 			</button>
 		{/if}
@@ -765,7 +764,7 @@
 	<div class="modal-action mt-6 border-t border-base-300 pt-4">
 		{#if profile?.isBuiltIn && mode !== 'view' && onReset}
 			<button
-				class="btn text-error btn-ghost"
+				class="btn btn-ghost text-error"
 				onclick={() => onReset(profile.id)}
 				disabled={saving}
 			>

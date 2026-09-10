@@ -63,7 +63,7 @@ export default {
 				for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
 					const line = lines[lineIndex];
 					// ESLint columns are 0-based and counted in UTF-16 code units.
-					for (let column = 0; column < line.length; ) {
+					for (let column = 0; column < line.length;) {
 						const cp = line.codePointAt(column);
 						if (isBannedEmoji(cp)) {
 							context.report({

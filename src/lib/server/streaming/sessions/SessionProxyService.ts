@@ -10,6 +10,7 @@ import { isPngWrappedSegment, stripPngWrapper } from '../utils/png-wrapper';
 import type { PlaybackSession } from '../types';
 import { getPlaybackSessionStore } from './session-store';
 import { rewriteSessionPlaylist } from './playlist-rewriter';
+import { rewriteDashManifest } from './dash-rewriter';
 
 const streamLog = { logDomain: 'streams' as const };
 const DEFAULT_USER_AGENT =
@@ -69,7 +70,7 @@ function buildUpstreamHeaders(session: PlaybackSession, request?: Request): Reco
 function buildStreamingResponseHeaders(
 	response: Response,
 	fallbackContentType: string,
-	overrideContentType?: boolean
+	options: { overrideContentType?: boolean; bodyLengthChanged?: boolean } = {}
 ): Headers {
 	const headers = new Headers();
 
@@ -80,17 +81,28 @@ function buildStreamingResponseHeaders(
 		headers.set(name, value);
 	}
 
-	if (!headers.has('Content-Type') || overrideContentType) {
+	if (!headers.has('Content-Type') || options.overrideContentType) {
 		headers.set('Content-Type', fallbackContentType);
 	}
+	if (options.overrideContentType) {
+		headers.delete('content-disposition');
+		headers.delete('x-content-type-options');
+	}
 
-	if (overrideContentType) {
+	if (options.bodyLengthChanged) {
 		headers.delete('content-length');
 	}
 
 	headers.set('Access-Control-Allow-Origin', '*');
-	headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-	headers.set('Access-Control-Allow-Headers', 'Range, Content-Type');
+	headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+	headers.set(
+		'Access-Control-Allow-Headers',
+		'Range, If-Range, If-None-Match, If-Modified-Since, Content-Type'
+	);
+	headers.set(
+		'Access-Control-Expose-Headers',
+		'Accept-Ranges, Content-Length, Content-Range, Content-Type, ETag, Last-Modified'
+	);
 	return headers;
 }
 
@@ -107,6 +119,92 @@ function detectBinaryContentType(url: string, contentType: string | null): strin
 		return 'image/jpeg';
 	}
 	return 'application/octet-stream';
+}
+
+function isSuspiciousDirectContentType(contentType: string | null): boolean {
+	if (!contentType) return true;
+	const normalized = contentType.split(';', 1)[0].trim().toLowerCase();
+	return normalized.startsWith('image/') || normalized === 'application/octet-stream';
+}
+
+function sniffVideoContentType(bytes: Uint8Array): string | null {
+	if (bytes.length >= 12) {
+		const ascii = new TextDecoder('ascii').decode(bytes.subarray(0, Math.min(bytes.length, 512)));
+		if (ascii.slice(4, 8) === 'ftyp') {
+			return ascii.slice(8, 12) === 'qt  ' ? 'video/quicktime' : 'video/mp4';
+		}
+		if (ascii.slice(0, 4) === 'RIFF' && ascii.slice(8, 12) === 'AVI ') return 'video/x-msvideo';
+		if (ascii.slice(0, 4) === 'OggS') return 'video/ogg';
+		if (ascii.slice(0, 3) === 'FLV') return 'video/x-flv';
+	}
+	if (
+		bytes.length >= 4 &&
+		bytes[0] === 0x1a &&
+		bytes[1] === 0x45 &&
+		bytes[2] === 0xdf &&
+		bytes[3] === 0xa3
+	) {
+		const header = new TextDecoder('ascii').decode(bytes.subarray(0, Math.min(bytes.length, 512)));
+		return header.toLowerCase().includes('webm') ? 'video/webm' : 'video/x-matroska';
+	}
+	if (bytes.length >= 376 && bytes[0] === 0x47 && bytes[188] === 0x47) return 'video/mp2t';
+	if (
+		bytes.length >= 4 &&
+		bytes[0] === 0x00 &&
+		bytes[1] === 0x00 &&
+		bytes[2] === 0x01 &&
+		(bytes[3] === 0xba || bytes[3] === 0xb3)
+	) {
+		return 'video/mpeg';
+	}
+	return null;
+}
+
+async function peekStream(body: ReadableStream<Uint8Array<ArrayBuffer>>): Promise<{
+	prefix: Uint8Array<ArrayBuffer>;
+	body: ReadableStream<Uint8Array<ArrayBuffer>>;
+}> {
+	const reader = body.getReader();
+	const initialChunks: Uint8Array<ArrayBuffer>[] = [];
+	let prefixLength = 0;
+	while (prefixLength < 512) {
+		const next = await reader.read();
+		if (next.done || !next.value) break;
+		initialChunks.push(next.value);
+		prefixLength += next.value.byteLength;
+	}
+	if (initialChunks.length === 0) {
+		return { prefix: new Uint8Array(), body: new ReadableStream({ start: (c) => c.close() }) };
+	}
+
+	const prefix = new Uint8Array(prefixLength);
+	let offset = 0;
+	for (const chunk of initialChunks) {
+		prefix.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	let pendingChunk = 0;
+	return {
+		prefix,
+		body: new ReadableStream<Uint8Array<ArrayBuffer>>({
+			async pull(controller) {
+				if (pendingChunk < initialChunks.length) {
+					controller.enqueue(initialChunks[pendingChunk++]);
+					return;
+				}
+				const next = await reader.read();
+				if (next.done) controller.close();
+				else controller.enqueue(next.value);
+			},
+			cancel(reason) {
+				return reader.cancel(reason);
+			}
+		})
+	};
+}
+
+function responseMayHaveBody(status: number): boolean {
+	return status !== 204 && status !== 205 && status !== 304;
 }
 
 async function readBodyWithLimit(response: Response, maxBytes: number): Promise<string> {
@@ -136,7 +234,11 @@ async function readBodyWithLimit(response: Response, maxBytes: number): Promise<
 	return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
 }
 
-async function fetchUpstream(url: string, headers: Record<string, string>): Promise<Response> {
+async function fetchUpstream(
+	url: string,
+	headers: Record<string, string>,
+	method: 'GET' | 'HEAD' = 'GET'
+): Promise<Response> {
 	let currentUrl = url;
 	let redirectCount = 0;
 	const visitedUrls = new Set<string>();
@@ -156,6 +258,7 @@ async function fetchUpstream(url: string, headers: Record<string, string>): Prom
 			currentUrl,
 			{
 				headers,
+				method,
 				redirect: 'manual'
 			},
 			30_000
@@ -183,83 +286,91 @@ async function fetchUpstream(url: string, headers: Record<string, string>): Prom
 export class SessionProxyService {
 	private readonly store = getPlaybackSessionStore();
 
-	async renderLaunchResponse(
+	/**
+	 * Serve a session launch for .strm consumers (media servers) at a path
+	 * without a `.m3u` suffix. Jellyfin refuses to remux any HTTP source whose
+	 * path contains `.m3u` (MediaSourceManager.SupportsDirectStream), so the
+	 * entry URL must be extension-less or progressive.
+	 *
+	 * Source-aware: HLS and DASH stay manifests (rewritten only for authenticated
+	 * proxy URLs), while MP4 and other direct containers keep their original
+	 * byte stream, Range semantics, and media type.
+	 */
+	async renderLaunchMedia(
 		session: PlaybackSession,
 		baseUrl: string,
 		apiKey: string | undefined,
-		_request: Request
+		request: Request
 	): Promise<Response> {
-		if (session.sourceType === 'mp4') {
-			return this.renderMp4AsHlsPlaylist(session, baseUrl, apiKey);
+		if (session.sourceType === 'dash') {
+			return this.renderDashManifestResponse(session, baseUrl, apiKey);
+		}
+
+		if (session.sourceType === 'mp4' || session.sourceType === 'file') {
+			return this.renderDirectResponse(session, request);
 		}
 
 		return this.renderPlaylistResponse(session, session.entryUrl, baseUrl, apiKey, true);
 	}
 
-	private async renderMp4AsHlsPlaylist(
+	/**
+	 * Serve a DASH source's MPD, rewritten through the session so segments are
+	 * fetched via our proxy (which attaches the signed session headers, e.g.
+	 * CloudFront cookies). Served as application/dash+xml — the content type
+	 * identifies the manifest, no .m3u path involved.
+	 */
+	private async renderDashManifestResponse(
 		session: PlaybackSession,
 		baseUrl: string,
 		apiKey: string | undefined
 	): Promise<Response> {
-		const reachable = await this.probeMp4Reachable(session);
-		if (!reachable) {
-			return new Response(
-				JSON.stringify({ error: 'Upstream stream unavailable', code: 'PLAYBACK_UNAVAILABLE' }),
-				{
-					status: 503,
-					headers: { 'Content-Type': 'application/json' }
+		const response = await fetchUpstream(session.entryUrl, buildUpstreamHeaders(session));
+		if (!response.ok) {
+			return new Response(JSON.stringify({ error: `Upstream error: ${response.status}` }), {
+				status: response.status,
+				headers: { 'Content-Type': 'application/json' }
+			});
+		}
+
+		const mpd = await readBodyWithLimit(response, MAX_TEXT_RESPONSE_BYTES);
+		const rewritten = rewriteDashManifest({
+			mpd,
+			mpdUrl: session.entryUrl,
+			baseUrl,
+			session,
+			apiKey,
+			registerResource: (url, kind, extension) => {
+				const resource = this.store.registerResource(session.token, url, kind, extension);
+				if (!resource) {
+					throw new Error('Unable to register playback resource');
 				}
-			);
-		}
+				return resource.id;
+			}
+		});
 
-		const segmentUrl = new URL(`/api/streaming/session/${session.token}/direct.mp4`, baseUrl);
-		if (apiKey) {
-			segmentUrl.searchParams.set('api_key', apiKey);
-		}
-
-		const playlist = `#EXTM3U
-#EXT-X-VERSION:3
-#EXT-X-PLAYLIST-TYPE:VOD
-#EXT-X-TARGETDURATION:86400
-#EXTINF:86400.0,
-${segmentUrl.toString()}
-#EXT-X-ENDLIST
-`;
-
-		return new Response(playlist, {
+		return new Response(rewritten, {
 			status: 200,
 			headers: {
-				'Content-Type': 'application/vnd.apple.mpegurl',
+				'Content-Type': 'application/dash+xml',
 				'Access-Control-Allow-Origin': '*',
-				'Access-Control-Allow-Methods': 'GET, OPTIONS',
-				'Access-Control-Allow-Headers': 'Range, Content-Type',
+				'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+				'Access-Control-Allow-Headers':
+					'Range, If-Range, If-None-Match, If-Modified-Since, Content-Type',
 				'Cache-Control': 'no-cache'
 			}
 		});
 	}
 
-	private async probeMp4Reachable(session: PlaybackSession): Promise<boolean> {
-		try {
-			const headers = buildUpstreamHeaders(session);
-			headers.Range = 'bytes=0-1';
-			const response = await fetchUpstream(session.entryUrl, headers);
-			if (response.body) {
-				await response.body.cancel();
-			}
-			return response.ok || response.status === 206;
-		} catch (error) {
-			logger.warn(
-				{
-					sessionToken: session.token,
-					provider: session.provider,
-					entryUrl: session.entryUrl,
-					err: error,
-					...streamLog
-				},
-				'mp4 reachability probe failed'
-			);
-			return false;
-		}
+	/**
+	 * Stream a DASH segment/init resource reconstructed from the session's
+	 * MPD-relative path. Session headers (CloudFront cookies) are attached.
+	 */
+	async renderDashResource(
+		session: PlaybackSession,
+		upstreamUrl: string,
+		request: Request
+	): Promise<Response> {
+		return this.renderBinaryResponse(session, upstreamUrl, request);
 	}
 
 	async renderRegisteredResource(
@@ -281,11 +392,65 @@ ${segmentUrl.toString()}
 			return this.renderPlaylistResponse(session, resource.url, baseUrl, apiKey, false);
 		}
 
-		return this.renderBinaryResponse(session, resource.url, request);
+		let resourceUrl = resource.url;
+		if (resourceUrl.includes('$')) {
+			const requestUrl = new URL(request.url);
+			resourceUrl = resourceUrl.replace(
+				/\$([A-Za-z][A-Za-z0-9]*)(?:%0\d+d)?\$/g,
+				(match, name: string) => requestUrl.searchParams.get(`dash_${name}`) ?? match
+			);
+			if (/\$[A-Za-z][A-Za-z0-9]*(?:%0\d+d)?\$/.test(resourceUrl)) {
+				return new Response(JSON.stringify({ error: 'Missing DASH template parameter' }), {
+					status: 400,
+					headers: { 'Content-Type': 'application/json' }
+				});
+			}
+		}
+
+		return this.renderBinaryResponse(session, resourceUrl, request, {
+			unwrapPngSegment: resource.kind === 'segment'
+		});
 	}
 
 	async renderDirectResponse(session: PlaybackSession, request: Request): Promise<Response> {
-		return this.renderBinaryResponse(session, session.entryUrl, request, 'video/mp4');
+		return this.renderBinaryResponse(session, session.entryUrl, request, {
+			fallbackContentType: session.sourceContentType,
+			overrideUpstreamContentType: Boolean(session.sourceContentType),
+			sniffDirectContainer: true
+		});
+	}
+
+	/**
+	 * Answer a HEAD probe from a media server without streaming the body.
+	 * Probes the upstream entry URL with a HEAD request and forwards its
+	 * status and the relevant headers (Content-Length, Content-Type, CORS).
+	 */
+	async renderHeadResponse(session: PlaybackSession, request: Request): Promise<Response> {
+		const response = await fetchUpstream(
+			session.entryUrl,
+			buildUpstreamHeaders(session, request),
+			'HEAD'
+		);
+		const contentType =
+			session.sourceType === 'dash'
+				? 'application/dash+xml'
+				: session.sourceType === 'mp4'
+					? 'video/mp4'
+					: session.sourceType === 'hls' || session.sourceType === 'm3u8'
+						? 'application/vnd.apple.mpegurl'
+						: (session.sourceContentType ??
+							(isSuspiciousDirectContentType(response.headers.get('content-type'))
+								? 'application/octet-stream'
+								: detectBinaryContentType(session.entryUrl, response.headers.get('content-type'))));
+
+		return new Response(null, {
+			status: response.status,
+			headers: buildStreamingResponseHeaders(response, contentType, {
+				overrideContentType:
+					Boolean(session.sourceContentType) ||
+					isSuspiciousDirectContentType(response.headers.get('content-type'))
+			})
+		});
 	}
 
 	async renderSubtitlePlaylist(
@@ -408,8 +573,9 @@ ${fileUrl.toString()}
 			headers: {
 				'Content-Type': 'application/vnd.apple.mpegurl',
 				'Access-Control-Allow-Origin': '*',
-				'Access-Control-Allow-Methods': 'GET, OPTIONS',
-				'Access-Control-Allow-Headers': 'Range, Content-Type',
+				'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+				'Access-Control-Allow-Headers':
+					'Range, If-Range, If-None-Match, If-Modified-Since, Content-Type',
 				'Cache-Control': 'public, max-age=300'
 			}
 		});
@@ -419,21 +585,37 @@ ${fileUrl.toString()}
 		session: PlaybackSession,
 		url: string,
 		request: Request,
-		fallbackContentType?: string
+		options: {
+			fallbackContentType?: string;
+			overrideUpstreamContentType?: boolean;
+			sniffDirectContainer?: boolean;
+			unwrapPngSegment?: boolean;
+		} = {}
 	): Promise<Response> {
-		const response = await fetchUpstream(url, buildUpstreamHeaders(session, request));
+		const response = await fetchUpstream(
+			url,
+			buildUpstreamHeaders(session, request),
+			request.method === 'HEAD' ? 'HEAD' : 'GET'
+		);
 		if (!response.ok) {
-			return new Response(JSON.stringify({ error: `Upstream error: ${response.status}` }), {
+			return new Response(responseMayHaveBody(response.status) ? response.body : null, {
 				status: response.status,
-				headers: { 'Content-Type': 'application/json' }
+				statusText: response.statusText,
+				headers: buildStreamingResponseHeaders(
+					response,
+					response.headers.get('content-type') ?? 'application/octet-stream'
+				)
 			});
 		}
 
 		const upstreamContentType = response.headers.get('content-type');
 		let body = response.body;
-		let contentType = detectBinaryContentType(url, upstreamContentType);
+		let contentType =
+			options.fallbackContentType ?? detectBinaryContentType(url, upstreamContentType);
+		let overrideContentType = Boolean(options.overrideUpstreamContentType);
+		let bodyLengthChanged = false;
 
-		if (upstreamContentType?.includes('image/png') && body) {
+		if (options.unwrapPngSegment && upstreamContentType?.includes('image/png') && body) {
 			const arrayBuffer = await new Response(body).arrayBuffer();
 			const bytes = new Uint8Array(arrayBuffer);
 			let bodyReplaced = false;
@@ -459,6 +641,8 @@ ${fileUrl.toString()}
 					});
 					contentType = 'video/mp2t';
 					bodyReplaced = true;
+					overrideContentType = true;
+					bodyLengthChanged = true;
 				}
 			}
 			if (!bodyReplaced) {
@@ -469,6 +653,28 @@ ${fileUrl.toString()}
 					}
 				});
 			}
+		}
+
+		const range = request.headers.get('range');
+		const maySniff = !range || /^bytes=0-/i.test(range);
+		if (
+			options.sniffDirectContainer &&
+			body &&
+			maySniff &&
+			!options.fallbackContentType &&
+			isSuspiciousDirectContentType(upstreamContentType)
+		) {
+			const peeked = await peekStream(body);
+			body = peeked.body;
+			contentType = sniffVideoContentType(peeked.prefix) ?? 'application/octet-stream';
+			overrideContentType = true;
+		} else if (
+			options.sniffDirectContainer &&
+			!options.fallbackContentType &&
+			isSuspiciousDirectContentType(upstreamContentType)
+		) {
+			contentType = 'application/octet-stream';
+			overrideContentType = true;
 		}
 
 		logger.debug(
@@ -482,15 +688,12 @@ ${fileUrl.toString()}
 			'Proxying playback session resource'
 		);
 
-		const strippedPng = upstreamContentType?.includes('image/png') && contentType === 'video/mp2t';
-
 		return new Response(body, {
 			status: response.status,
-			headers: buildStreamingResponseHeaders(
-				response,
-				fallbackContentType ?? contentType,
-				strippedPng
-			)
+			headers: buildStreamingResponseHeaders(response, contentType, {
+				overrideContentType,
+				bodyLengthChanged
+			})
 		});
 	}
 }

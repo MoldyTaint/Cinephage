@@ -55,4 +55,25 @@ describe('path-guard', () => {
 		await expect(isManagedRootPath('/series-link')).resolves.toBe(true);
 		await expect(isPathInsideManagedRoot('/series-link/Show/file.mkv')).resolves.toBe(true);
 	});
+
+	it('resolves root folders once across multiple calls within the TTL (bug #495)', async () => {
+		const { isPathAllowed, isManagedRootPath } = await import('./path-guard.js');
+
+		await isPathAllowed('/downloads');
+		await isPathAllowed('/downloads');
+		await isManagedRootPath('/downloads');
+		await isManagedRootPath('/downloads');
+
+		expect(mockGetFolders).toHaveBeenCalledTimes(1);
+	});
+
+	it('re-resolves root folders after cache invalidation', async () => {
+		const { isPathAllowed, invalidateRootFolderPathCache } = await import('./path-guard.js');
+
+		await isPathAllowed('/downloads');
+		invalidateRootFolderPathCache();
+		await isPathAllowed('/downloads');
+
+		expect(mockGetFolders).toHaveBeenCalledTimes(2);
+	});
 });

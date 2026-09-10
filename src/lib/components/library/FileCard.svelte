@@ -106,7 +106,7 @@
 			{/if}
 			{#if onDelete}
 				<button
-					class="btn text-error btn-ghost btn-xs"
+					class="btn btn-ghost text-error btn-xs"
 					onclick={() => onDelete(file.id)}
 					title={m.library_fileCard_deleteFile()}
 				>

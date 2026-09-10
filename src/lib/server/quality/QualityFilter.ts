@@ -211,6 +211,7 @@ export class QualityFilter {
 						description: profile.description ?? null,
 						tags: profile.tags ?? [],
 						upgradesAllowed: profile.upgradesAllowed ?? true,
+						preventDowngrades: profile.preventDowngrades ?? false,
 						minScore: profile.minScore ?? 0,
 						upgradeUntilScore: profile.upgradeUntilScore ?? -1,
 						minScoreIncrement: profile.minScoreIncrement ?? 0,
@@ -232,6 +233,7 @@ export class QualityFilter {
 					description: profile.description ?? null,
 					tags: profile.tags ?? [],
 					upgradesAllowed: profile.upgradesAllowed ?? true,
+					preventDowngrades: profile.preventDowngrades ?? false,
 					minScore: profile.minScore ?? 0,
 					upgradeUntilScore: profile.upgradeUntilScore ?? -1,
 					minScoreIncrement: profile.minScoreIncrement ?? 0,
@@ -322,7 +324,8 @@ export class QualityFilter {
 		profile: ScoringProfile,
 		fileSizeBytes?: number,
 		sizeContext?: SizeValidationContext,
-		indexerName?: string
+		indexerName?: string,
+		protocol?: 'torrent' | 'usenet' | 'streaming'
 	): EnhancedQualityResult {
 		// First, check profile requirements (pass/fail filter)
 		const minCheck = this.meetsMinimum(parsed, profile);
@@ -358,7 +361,8 @@ export class QualityFilter {
 			profile,
 			attributes,
 			fileSizeBytes,
-			sizeContext
+			sizeContext,
+			protocol
 		);
 
 		// Check for scoring engine bans, size rejections, and minimum score

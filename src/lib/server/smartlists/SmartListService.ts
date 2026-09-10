@@ -198,12 +198,10 @@ export class SmartListService {
 			presetId: updates.presetId ?? existing.presetId ?? undefined,
 			presetSettings:
 				((updates.presetSettings ?? existing.presetSettings) as
-					| Record<string, unknown>
-					| undefined) ?? undefined,
+					Record<string, unknown> | undefined) ?? undefined,
 			externalSourceConfig:
 				((updates.externalSourceConfig ?? existing.externalSourceConfig) as
-					| SmartListExternalSourceConfig
-					| undefined) ?? undefined
+					SmartListExternalSourceConfig | undefined) ?? undefined
 		});
 
 		const [result] = await db
@@ -798,8 +796,13 @@ export class SmartListService {
 			const monitored = list.autoAddMonitored ?? true;
 			const wantsSubtitles = list.wantsSubtitles ?? true;
 			const shouldSearch = _searchOnAdd && monitored;
+			const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
+				list.rootFolderId,
+				item.mediaType === 'movie' ? 'movie' : 'tv'
+			);
 			const scoringProfileId = await getEffectiveScoringProfileId(
-				list.scoringProfileId ?? undefined
+				list.scoringProfileId ?? undefined,
+				owningLibrary
 			);
 
 			if (item.mediaType === 'movie') {
@@ -826,6 +829,7 @@ export class SmartListService {
 				}
 
 				// Fetch movie details from TMDB
+				await validateRootFolder(list.rootFolderId, 'movie', { requireWritable: true });
 				const movieDetails = await fetchMovieDetails(item.tmdbId);
 				const year = movieDetails.release_date
 					? new Date(movieDetails.release_date).getFullYear()
@@ -850,7 +854,7 @@ export class SmartListService {
 					'movie'
 				);
 
-				const [newMovie] = await db
+				const [insertedMovie] = await db
 					.insert(movies)
 					.values({
 						tmdbId: item.tmdbId,
@@ -873,7 +877,15 @@ export class SmartListService {
 						wantsSubtitles,
 						languageProfileId
 					})
+					.onConflictDoNothing()
 					.returning();
+				const newMovie =
+					insertedMovie ??
+					(await db
+						.select()
+						.from(movies)
+						.where(eq(movies.tmdbId, item.tmdbId))
+						.then((rows) => rows[0]));
 
 				await db
 					.update(smartListItems)
@@ -922,6 +934,7 @@ export class SmartListService {
 				}
 
 				// Fetch series details from TMDB
+				await validateRootFolder(list.rootFolderId, 'tv', { requireWritable: true });
 				const seriesDetails = await fetchSeriesDetails(item.tmdbId);
 				const year = seriesDetails.first_air_date
 					? new Date(seriesDetails.first_air_date).getFullYear()
@@ -946,7 +959,7 @@ export class SmartListService {
 					'tv'
 				);
 
-				const [newSeries] = await db
+				const [insertedSeries] = await db
 					.insert(series)
 					.values({
 						tmdbId: item.tmdbId,
@@ -978,7 +991,15 @@ export class SmartListService {
 						wantsSubtitles,
 						languageProfileId
 					})
+					.onConflictDoNothing()
 					.returning();
+				const newSeries =
+					insertedSeries ??
+					(await db
+						.select()
+						.from(series)
+						.where(eq(series.tmdbId, item.tmdbId))
+						.then((rows) => rows[0]));
 
 				await this.createSeasonsAndEpisodes(newSeries.id, item.tmdbId, monitored);
 
@@ -1359,8 +1380,13 @@ export class SmartListService {
 		);
 
 		// Get effective scoring profile
+		const autoAddOwningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
+			list.rootFolderId,
+			mediaType
+		);
 		const effectiveProfileId = await getEffectiveScoringProfileId(
-			list.scoringProfileId ?? undefined
+			list.scoringProfileId ?? undefined,
+			autoAddOwningLibrary
 		);
 		const shouldSearch = list.autoAddBehavior === 'add_and_search';
 		const monitored = list.autoAddMonitored ?? true;
@@ -1430,6 +1456,9 @@ export class SmartListService {
 
 		// Process only new items
 		const newItems = items.filter((i) => !existingMovieIds.has(i.tmdbId));
+		if (newItems.length > 0) {
+			await validateRootFolder(list.rootFolderId!, 'movie', { requireWritable: true });
+		}
 
 		for (const item of newItems) {
 			try {
@@ -1462,7 +1491,7 @@ export class SmartListService {
 				);
 
 				// Insert movie into database
-				const [newMovie] = await db
+				const [insertedMovie] = await db
 					.insert(movies)
 					.values({
 						tmdbId: item.tmdbId,
@@ -1485,7 +1514,15 @@ export class SmartListService {
 						wantsSubtitles,
 						languageProfileId
 					})
+					.onConflictDoNothing()
 					.returning();
+				const newMovie =
+					insertedMovie ??
+					(await db
+						.select()
+						.from(movies)
+						.where(eq(movies.tmdbId, item.tmdbId))
+						.then((rows) => rows[0]));
 
 				// Update smart list item
 				await db
@@ -1579,6 +1616,9 @@ export class SmartListService {
 
 		// Process only new items
 		const newItems = items.filter((i) => !existingSeriesIds.has(i.tmdbId));
+		if (newItems.length > 0) {
+			await validateRootFolder(list.rootFolderId!, 'tv', { requireWritable: true });
+		}
 
 		for (const item of newItems) {
 			try {
@@ -1612,7 +1652,7 @@ export class SmartListService {
 				);
 
 				// Insert series into database
-				const [newSeries] = await db
+				const [insertedSeries] = await db
 					.insert(series)
 					.values({
 						tmdbId: item.tmdbId,
@@ -1644,7 +1684,15 @@ export class SmartListService {
 						wantsSubtitles,
 						languageProfileId
 					})
+					.onConflictDoNothing()
 					.returning();
+				const newSeries =
+					insertedSeries ??
+					(await db
+						.select()
+						.from(series)
+						.where(eq(series.tmdbId, item.tmdbId))
+						.then((rows) => rows[0]));
 
 				// Create seasons and episodes
 				await this.createSeasonsAndEpisodes(newSeries.id, item.tmdbId, monitored);
@@ -1714,7 +1762,7 @@ export class SmartListService {
 				const seasonMonitored = monitored && !isSpecials;
 
 				// Create season (episodeCount will be recalculated after episodes are inserted)
-				const [newSeason] = await db
+				const [insertedSeason] = await db
 					.insert(seasons)
 					.values({
 						seriesId,
@@ -1726,7 +1774,20 @@ export class SmartListService {
 						episodeCount: 0, // Will be recalculated to only aired episodes
 						monitored: seasonMonitored
 					})
+					.onConflictDoNothing()
 					.returning();
+				const newSeason =
+					insertedSeason ??
+					(await db
+						.select()
+						.from(seasons)
+						.where(
+							and(
+								eq(seasons.seriesId, seriesId),
+								eq(seasons.seasonNumber, seasonInfo.season_number)
+							)
+						)
+						.then((rows) => rows[0]));
 
 				// Fetch season details for episodes
 				try {
@@ -1747,7 +1808,7 @@ export class SmartListService {
 						}));
 
 						if (episodesToInsert.length > 0) {
-							await db.insert(episodes).values(episodesToInsert);
+							await db.insert(episodes).values(episodesToInsert).onConflictDoNothing();
 							// Only count aired episodes (exclude specials and unaired)
 							const today = todayDateString();
 							const airedCount = episodesToInsert.filter(

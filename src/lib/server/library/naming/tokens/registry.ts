@@ -12,6 +12,15 @@ import type {
 } from './types';
 
 /**
+ * Normalize a token name/alias for lookup: case-insensitive and
+ * whitespace-insensitive, so docs-style names like 'Movie Title'
+ * resolve to the same key as 'MovieTitle'.
+ */
+function normalizeTokenName(name: string): string {
+	return name.toLowerCase().replace(/\s+/g, '');
+}
+
+/**
  * Central registry for all naming tokens
  */
 export class TokenRegistry {
@@ -22,12 +31,12 @@ export class TokenRegistry {
 	 * Register a token definition
 	 */
 	register(token: TokenDefinition): void {
-		const normalizedName = token.name.toLowerCase();
+		const normalizedName = normalizeTokenName(token.name);
 		this.tokens.set(normalizedName, token);
 
 		if (token.aliases) {
 			for (const alias of token.aliases) {
-				this.aliasMap.set(alias.toLowerCase(), normalizedName);
+				this.aliasMap.set(normalizeTokenName(alias), normalizedName);
 			}
 		}
 	}
@@ -42,10 +51,10 @@ export class TokenRegistry {
 	}
 
 	/**
-	 * Get a token by name (case-insensitive)
+	 * Get a token by name (case-insensitive, whitespace-insensitive)
 	 */
 	get(name: string): TokenDefinition | undefined {
-		const normalized = name.toLowerCase();
+		const normalized = normalizeTokenName(name);
 
 		// Check direct match first
 		const direct = this.tokens.get(normalized);
@@ -97,7 +106,7 @@ export class TokenRegistry {
 		}
 
 		// Find similar tokens for suggestions
-		const normalized = name.toLowerCase();
+		const normalized = normalizeTokenName(name);
 		const allNames = this.getAllNames();
 
 		// Simple Levenshtein-like matching for suggestions
@@ -105,7 +114,7 @@ export class TokenRegistry {
 		let bestScore = Infinity;
 
 		for (const tokenName of allNames) {
-			const score = this.levenshteinDistance(normalized, tokenName);
+			const score = this.levenshteinDistance(normalized, normalizeTokenName(tokenName));
 			if (score < bestScore && score <= 3) {
 				bestScore = score;
 				bestMatch = tokenName;
@@ -130,14 +139,15 @@ export class TokenRegistry {
 	}
 
 	/**
-	 * Get all token names including aliases
+	 * Get all token names including aliases (in registered/display form,
+	 * used for user-facing suggestions)
 	 */
 	private getAllNames(): string[] {
 		const names: string[] = [];
 		for (const token of this.tokens.values()) {
-			names.push(token.name.toLowerCase());
+			names.push(token.name);
 			if (token.aliases) {
-				names.push(...token.aliases.map((a) => a.toLowerCase()));
+				names.push(...token.aliases);
 			}
 		}
 		return names;

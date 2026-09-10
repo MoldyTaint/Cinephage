@@ -11,10 +11,12 @@
 import type { BackgroundService, ServiceStatus } from './background-service.js';
 import { db } from '$lib/server/db/index.js';
 import { settings, series, seasons, episodes, episodeFiles } from '$lib/server/db/schema.js';
-import { eq, like } from 'drizzle-orm';
+import { eq, like, and } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
 import { todayDateString } from '$lib/utils/format.js';
+
+const logger = createChildLogger({ module: 'DataRepairService', logDomain: 'system' });
 
 interface RepairSeriesData {
 	tmdbId: number;
@@ -217,7 +219,7 @@ export class DataRepairService implements BackgroundService {
 					const isSpecials = seasonInfo.season_number === 0;
 
 					// Create season record
-					const [newSeason] = await db
+					const [insertedSeason] = await db
 						.insert(seasons)
 						.values({
 							seriesId,
@@ -230,26 +232,42 @@ export class DataRepairService implements BackgroundService {
 							episodeFileCount: 0,
 							monitored: !isSpecials
 						})
+						.onConflictDoNothing()
 						.returning();
+					const newSeason =
+						insertedSeason ??
+						(await db
+							.select()
+							.from(seasons)
+							.where(
+								and(
+									eq(seasons.seriesId, seriesId),
+									eq(seasons.seasonNumber, seasonInfo.season_number)
+								)
+							)
+							.then((rows) => rows[0]));
 
-					result.seasonsCreated++;
+					if (insertedSeason) result.seasonsCreated++;
 
 					// Create episode records
 					if (fullSeason.episodes) {
 						for (const ep of fullSeason.episodes) {
-							await db.insert(episodes).values({
-								seriesId,
-								seasonId: newSeason.id,
-								seasonNumber: ep.season_number,
-								episodeNumber: ep.episode_number,
-								tmdbId: ep.id,
-								title: ep.name,
-								overview: ep.overview,
-								airDate: ep.air_date,
-								runtime: ep.runtime,
-								monitored: !isSpecials,
-								hasFile: false
-							});
+							await db
+								.insert(episodes)
+								.values({
+									seriesId,
+									seasonId: newSeason.id,
+									seasonNumber: ep.season_number,
+									episodeNumber: ep.episode_number,
+									tmdbId: ep.id,
+									title: ep.name,
+									overview: ep.overview,
+									airDate: ep.air_date,
+									runtime: ep.runtime,
+									monitored: !isSpecials,
+									hasFile: false
+								})
+								.onConflictDoNothing();
 							result.episodesCreated++;
 						}
 					}

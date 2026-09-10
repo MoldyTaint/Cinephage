@@ -2,7 +2,6 @@
  * Search On Add — missing episodes search
  */
 
-import { logger } from '$lib/logging/index.js';
 import { todayDateString } from '$lib/utils/format.js';
 import { db } from '$lib/server/db/index.js';
 import { series, episodes } from '$lib/server/db/schema.js';
@@ -20,6 +19,9 @@ import type { SearchProgressUpdate } from '$lib/server/downloads/MultiSeasonSear
 import { resolveAutoMissingSearchStrategy } from './search-utils.js';
 import { searchForEpisode as searchForEpisodeImpl } from './search-episode.js';
 import { searchForSeason as searchForSeasonImpl } from './search-season.js';
+import { createChildLogger } from '$lib/logging/index.js';
+
+const logger = createChildLogger({ module: 'SearchMissing', logDomain: 'scans' });
 
 export async function searchForMissingEpisodes(
 	seriesId: string,

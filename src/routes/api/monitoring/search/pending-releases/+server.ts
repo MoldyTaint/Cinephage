@@ -1,8 +1,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+
+const logger = createChildLogger({
+	module: 'MonitoringSearchPendingReleasesApi',
+	logDomain: 'monitoring'
+});
 
 /**
  * POST /api/monitoring/search/pending-releases

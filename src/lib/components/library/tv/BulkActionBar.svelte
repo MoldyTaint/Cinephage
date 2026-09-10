@@ -37,7 +37,7 @@
 			</span>
 
 			<div class="flex items-center gap-2">
-				<button class="btn gap-2 btn-sm btn-primary" onclick={onSearch} disabled={searching}>
+				<button class="btn gap-2 btn-primary btn-sm" onclick={onSearch} disabled={searching}>
 					{#if searching}
 						<Loader2 size={16} class="animate-spin" />
 						{m.common_searching()}
@@ -49,7 +49,7 @@
 
 				{#if onSubtitleAutoSearch}
 					<button
-						class="btn gap-2 btn-sm btn-secondary"
+						class="btn gap-2 btn-secondary btn-sm"
 						onclick={onSubtitleAutoSearch}
 						disabled={subtitleAutoSearching}
 						title={m.library_bulkActionBar_autoDownloadTitle()}

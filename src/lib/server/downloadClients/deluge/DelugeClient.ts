@@ -380,7 +380,7 @@ export class DelugeClient implements IDownloadClient {
 			}
 		}
 
-		let hash: string | null = null;
+		let hash: string | null;
 
 		if (options.torrentFile) {
 			hash = await this.call<string | null>('core.add_torrent_file', [

@@ -281,6 +281,31 @@ describe('ReleaseParser', () => {
 			expect(result.episode?.isSeasonPack).toBe(false);
 		});
 
+		it('should not fabricate a multi-episode range from an unrelated bare number in the title', () => {
+			const result = parseRelease(
+				'Die Legende von Korra (2012) ger - S02E08 - 020 - Wie alles begann, Teil 2 [WEBRip-1080p][8bit][x265][DD+ 2.0]-WOTT'
+			);
+
+			expect(result.episode?.season).toBe(2);
+			expect(result.episode?.episodes).toEqual([8]);
+			expect(result.episode?.isSeasonPack).toBe(false);
+		});
+
+		it('should not treat a spaced standalone number after SxxExx as a range end', () => {
+			const result = parseRelease('Show Name S01E05 - 12 - Episode Title [1080p]');
+
+			expect(result.episode?.episodes).toEqual([5]);
+			expect(result.episode?.isSeasonPack).toBe(false);
+		});
+
+		it('should still parse spaced ranges when the second number is explicitly marked with E', () => {
+			const result = parseRelease('Show Name S01E05 - E08 [1080p]');
+
+			expect(result.episode?.season).toBe(1);
+			expect(result.episode?.episodes).toContain(5);
+			expect(result.episode?.episodes).toContain(8);
+		});
+
 		it('should parse complete series packs', () => {
 			const result = parseRelease('Friends.Complete.Series.S01-S10.1080p.BluRay.x264-GROUP');
 
@@ -483,6 +508,33 @@ describe('ReleaseParser', () => {
 
 			expect(result.languages).toContain('en');
 		});
+
+		it('should detect a bare ISO 639-1 code in the fan-release name slot', () => {
+			const result = parseRelease(
+				'Love, Death & Robots (2019) de - S01E05 - SUCKER OF SOULS [WEB-DL-1080p][DV][x265]-WACHi'
+			);
+
+			expect(result.languages).toContain('de');
+		});
+
+		it('should detect multiple bare space-delimited codes', () => {
+			const result = parseRelease('Die Legende von Korra (2012) de en - S02E05 - Title');
+
+			expect(result.languages).toContain('de');
+			expect(result.languages).toContain('en');
+		});
+
+		it('should not treat dotted scene-title words as bare language codes', () => {
+			const result = parseRelease('Le.Chateau.de.Ma.Mere.2023.1080p.BluRay.x264-GROUP');
+
+			expect(result.languages).not.toContain('de');
+		});
+
+		it('should not detect codes embedded inside larger words', () => {
+			const result = parseRelease('Death.Watch.2023.1080p.BluRay.x264-GROUP');
+
+			expect(result.languages).toEqual(['en']);
+		});
 	});
 
 	describe('Quality Detection', () => {
@@ -601,6 +653,87 @@ describe('ReleaseParser', () => {
 		it('should not treat Chinese site prefix as a fansub group', () => {
 			const result = extractReleaseGroup('[www.mkvhome.com] Movie.Title.2023.1080p.mkv');
 			expect(result?.group).not.toBe('wwwmkvhomecom');
+		});
+
+		it('should not treat the episode-title tail as a release group', () => {
+			// Stream sources expose titles like "Show - S01E01 - Episode Title";
+			// the trailing word belongs to the episode title, not a scene group.
+			const result = parseRelease('Supernatural (2005) - S02E01 - In My Time of Dying');
+			expect(result.releaseGroup).toBeUndefined();
+		});
+
+		it('should not treat the episode-title tail as a release group with an extension', () => {
+			// File paths hit the space-separated extension form: normalizeTitle
+			// turns dots into spaces, so ".mkv" arrives as " mkv" here and must
+			// be stripped the same way extractReleaseGroup strips it.
+			const result = parseRelease('Show.S01E01.In.My.Time.of.Dying.mkv');
+			expect(result.releaseGroup).toBeUndefined();
+		});
+
+		it('should not treat a capitalized episode-title tail word as a group with an extension', () => {
+			const result = parseRelease('Show.S01E01.Pale.Fire.mkv');
+			expect(result.releaseGroup).toBeUndefined();
+		});
+
+		it('should not treat the episode-title tail as a group when bracketed quality is unrecognized', () => {
+			// Cinephage-generated names wrap audio in brackets; normalizeTitle
+			// turns "2.0" into "2 0" so no audio matcher registers, and the
+			// span must ignore the bracket block to still see the title tail.
+			const result = parseRelease(
+				'Supernatural (2005) - S02E01 - In My Time of Dying [AAC 2.0]-Dying.strm'
+			);
+			expect(result.releaseGroup).toBeUndefined();
+		});
+
+		it('should keep a real group after unrecognized bracketed quality', () => {
+			const result = parseRelease(
+				'Blue Mountain State (2010) - S03E10 - One Week [AAC 2.0]-RARBG.strm'
+			);
+			expect(result.releaseGroup).toBe('RARBG');
+		});
+
+		it('should not treat capitalized episode-title tail words as release groups', () => {
+			const result = parseRelease('The Boys - S00E35 - An Important Update on Homelander');
+			expect(result.releaseGroup).toBeUndefined();
+		});
+
+		it('should keep the release group for movie titles with dash groups', () => {
+			const result = parseRelease('Movie.2024.1080p.WEB-DL.DDP5.1.H.264-GROUP');
+			expect(result.releaseGroup).toBe('GROUP');
+		});
+
+		it('should keep the release group for bracketed movie titles', () => {
+			const result = parseRelease('Movie (2020) [1080p][x265]-GRP');
+			expect(result.releaseGroup).toBe('GRP');
+		});
+
+		it('should keep the release group for extension-suffixed TV titles', () => {
+			// Quality tokens after the SxxEyy marker still bound the title span
+			// even when a file extension trails the group.
+			const result = parseRelease('Show.S01E01.Title.1080p.AMZN.WEB-DL.DDP5.1.H.264-GROUP.mkv');
+			expect(result.releaseGroup).toBe('GROUP');
+		});
+
+		it('should keep a group that follows quality tokens after the episode title', () => {
+			// Quality tokens intervene between the title tail and the candidate,
+			// so the group is unambiguous and must be kept.
+			const result = parseRelease('Show - S01E01 - Title 1080p x265 BONE');
+			expect(result.releaseGroup).toBe('BONE');
+		});
+
+		it('should keep YTS normalization for TV titles', () => {
+			// YTS_PATTERNS only fire when the indexer-suffix strip hasn't already
+			// consumed the token, e.g. the tight "-YTS" form.
+			const result = parseRelease('Show - S01E01 - Title 1080p x264 -YTS');
+			expect(result.releaseGroup).toBe('YTS');
+		});
+
+		it('should not extract a junk group when a spaced YTS suffix is stripped', () => {
+			// INDEXER_SUFFIXES consumes " YTS", leaving a trailing space that
+			// defeats the trailing-separator cleanup, so extractReleaseGroup
+			// returns null for this form; the guard never even runs.
+			const result = parseRelease('Show - S01E01 - Title - YTS');
+			expect(result.releaseGroup).toBeUndefined();
 		});
 
 		it('should extract dot-separated, dash-less group via parseRelease', () => {
@@ -989,5 +1122,78 @@ describe('ReleaseParser', () => {
 				expect(result.tmdbId).toBe(424);
 			});
 		});
+	});
+});
+
+describe('parseRelease movie mode (context-aware parsing)', () => {
+	it('does not strip Season N from movie titles in movie mode', () => {
+		const p = parseRelease('Open Season 3 (2010) 1080p bluray x264', { mode: 'movie' });
+		expect(p.cleanTitle).toBe('Open Season 3');
+		expect(p.year).toBe(2010);
+		expect(p.episode).toBeUndefined();
+	});
+
+	it('still detects SxxExx as TV evidence in movie mode', () => {
+		const p = parseRelease('Some Movie S01E03 1080p WEBRip', { mode: 'movie' });
+		expect(p.episode?.season).toBe(1);
+		expect(p.episode?.episodes).toContain(3);
+	});
+
+	it('default (auto) mode keeps existing season-pack behavior', () => {
+		const p = parseRelease('Open Season 3 (2010) 1080p bluray x264');
+		expect(p.cleanTitle).toBe('Open');
+		expect(p.episode?.season).toBe(3);
+		expect(p.episode?.isSeasonPack).toBe(true);
+	});
+});
+
+describe('parseRelease year extraction (number-titled movies)', () => {
+	it('takes the release year, not the title number: "1917 2019"', () => {
+		expect(parseRelease('1917 2019 1080p BluRay x264').year).toBe(2019);
+	});
+	it('prefers the parenthesized year: "2001 A Space Odyssey (1968)"', () => {
+		const p = parseRelease('2001 A Space Odyssey (1968) 1080p BluRay');
+		expect(p.year).toBe(1968);
+		expect(p.cleanTitle).toContain('Space Odyssey');
+	});
+	it('extracts year for "Blade Runner 2049 (2017)"', () => {
+		expect(parseRelease('Blade Runner 2049 (2017) 1080p BluRay').year).toBe(2017);
+	});
+	it('plain releases still work: "Open Season 3 (2010)"', () => {
+		expect(parseRelease('Open Season 3 (2010) 1080p bluray x264').year).toBe(2010);
+	});
+});
+
+describe('parseRelease movie mode skips ambiguous absolute-episode patterns', () => {
+	it('does not treat "Movie - 2010" as anime episode 2010', () => {
+		const p = parseRelease('Blade Runner - 2049 2017 1080p BluRay x264', { mode: 'movie' });
+		expect(p.episode).toBeUndefined();
+		expect(p.year).toBe(2017);
+	});
+	it('does not treat "[2019]" as an absolute episode', () => {
+		const p = parseRelease('Movie Name [2019] BDRip 1080p', { mode: 'movie' });
+		expect(p.episode).toBeUndefined();
+	});
+	it('does not treat "Episode 4" as TV in movie mode (Star Wars)', () => {
+		const p = parseRelease('Star Wars Episode 4 A New Hope 1977 1080p BluRay', { mode: 'movie' });
+		expect(p.episode).toBeUndefined();
+		expect(p.year).toBe(1977);
+	});
+	it('does not treat "2024.01.15" as a daily show in movie mode', () => {
+		const p = parseRelease('Some.Concert.2024.01.15.1080p.BluRay.x264', { mode: 'movie' });
+		expect(p.episode?.isDaily).toBeFalsy();
+	});
+});
+
+describe('parseRelease Cyrillic season patterns', () => {
+	it('parses a Russian single-season pack: "Сезон 2"', () => {
+		const p = parseRelease('Ирония судьбы Сезон 2 1080p WEB-DL');
+		expect(p.episode?.season).toBe(2);
+		expect(p.episode?.isSeasonPack).toBe(true);
+	});
+	it('parses Russian season+episode: "Сезон 1 Серия 5"', () => {
+		const p = parseRelease('Кухня Сезон 1 Серия 5 1080p WEB-DL');
+		expect(p.episode?.season).toBe(1);
+		expect(p.episode?.episodes).toContain(5);
 	});
 });

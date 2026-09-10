@@ -9,8 +9,10 @@ import type { RequestHandler } from '@sveltejs/kit';
 import type { LibraryMovie, MovieFile } from '$lib/types/library';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import { tmdb } from '$lib/server/tmdb';
-import { logger } from '$lib/logging';
 import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryMovieStreamApi', logDomain: 'scans' });
 
 interface QueueItem {
 	id: string;

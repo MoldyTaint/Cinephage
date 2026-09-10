@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import { SvelteSet } from 'svelte/reactivity';
 	import * as m from '$lib/paraglide/messages.js';
-	import { getRenamePreview, executeRename, reorganizeFolderBatch } from '$lib/api/settings.js';
+	import { executeRename, reorganizeFolderBatch } from '$lib/api/settings.js';
 	import {
 		RefreshCw,
 		CheckCircle,
@@ -20,17 +20,25 @@
 		FileEdit,
 		FolderSync
 	} from 'lucide-svelte';
-	import type { RenamePreviewResult, RenameExecuteResult } from '$lib/library/naming/types.js';
+	import type {
+		RenamePreviewResult,
+		RenameExecuteResult,
+		RenameStreamEvent
+	} from '$lib/library/naming/types.js';
+	import { chunkFileIds } from '$lib/library/naming/batch-rename';
 
 	// State
 	let loading = $state(true);
+	let computing = $state(false); // true while streaming items after counts arrived
+	let computingTotal = $state(0); // estimated total from "start" event for progress
 	let executing = $state(false);
+	let confirmPending = $state(false);
 	let reorganizing = $state(false);
+	let scanInProgress = $state(false);
 	let error = $state<string | null>(null);
 	let success = $state<string | null>(null);
 	let renameWarnings = $state<string[]>([]);
 	let preview = $state<RenamePreviewResult | null>(null);
-	let executeResult = $state<RenameExecuteResult | null>(null);
 
 	// Selected items
 	const selectedIds = new SvelteSet<string>();
@@ -52,31 +60,121 @@
 
 	async function loadPreview() {
 		loading = true;
-		executeResult = null;
+		computing = false;
+		computingTotal = 0;
+		error = null;
+		preview = {
+			willChange: [],
+			alreadyCorrect: [],
+			collisions: [],
+			errors: [],
+			totalFiles: 0,
+			totalWillChange: 0,
+			totalAlreadyCorrect: 0,
+			totalCollisions: 0,
+			totalErrors: 0
+		};
+		selectedIds.clear();
+		confirmPending = false;
+
+		// Kick off scan-status check in parallel with the stream.
+		fetch('/api/library/scan/status')
+			.then((r) => r.json())
+			.then((s) => {
+				scanInProgress = Boolean(s?.scanning);
+			})
+			.catch(() => {});
 
 		try {
-			const result = await getRenamePreview(mediaTypeFilter);
+			const params = new URLSearchParams({ mediaType: mediaTypeFilter });
+			const res = await fetch(`/api/rename/preview?${params}`);
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-			if (!result.success) {
-				throw new Error(result.error || 'Failed to load preview');
+			const body = res.body;
+			if (!body) throw new Error('Empty response');
+
+			const reader = body.getReader();
+			const decoder = new TextDecoder();
+			let buf = '';
+
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				buf += decoder.decode(value, { stream: true });
+				const lines = buf.split('\n');
+				buf = lines.pop() ?? '';
+				for (const line of lines) {
+					if (line.trim()) handleStreamEvent(JSON.parse(line) as RenameStreamEvent);
+				}
 			}
-
-			preview = result as unknown as RenamePreviewResult;
-
-			// Auto-select all "will change" items
-			selectedIds.clear();
-			for (const item of preview?.willChange || []) {
-				selectedIds.add(item.fileId);
-			}
+			if (buf.trim()) handleStreamEvent(JSON.parse(buf) as RenameStreamEvent);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load preview';
 		} finally {
 			loading = false;
+			computing = false;
+		}
+	}
+
+	function handleStreamEvent(msg: RenameStreamEvent) {
+		if (!preview) return;
+
+		if (msg.type === 'start') {
+			computingTotal = msg.totalFiles;
+			computing = msg.computing;
+			loading = false;
+		} else if (msg.type === 'items') {
+			if (msg.category === 'willChange') {
+				preview.willChange.push(...msg.data);
+				preview.totalWillChange = preview.willChange.length;
+				for (const item of msg.data) selectedIds.add(item.fileId);
+			} else if (msg.category === 'alreadyCorrect') {
+				preview.alreadyCorrect.push(...msg.data);
+				preview.totalAlreadyCorrect = preview.alreadyCorrect.length;
+			} else if (msg.category === 'collisions') {
+				// Items sent here may have been tentatively added to willChange during
+				// a cold-cache stream; remove them from willChange before adding to collisions.
+				const collisionIds = new Set(msg.data.map((i) => i.fileId));
+				preview.willChange = preview.willChange.filter((i) => !collisionIds.has(i.fileId));
+				for (const id of collisionIds) selectedIds.delete(id);
+				preview.collisions.push(...msg.data);
+				preview.totalWillChange = preview.willChange.length;
+				preview.totalCollisions = preview.collisions.length;
+			} else if (msg.category === 'errors') {
+				preview.errors.push(...msg.data);
+				preview.totalErrors = preview.errors.length;
+			}
+			preview.totalFiles =
+				preview.totalWillChange +
+				preview.totalAlreadyCorrect +
+				preview.totalCollisions +
+				preview.totalErrors;
+		} else if (msg.type === 'done') {
+			// Finalize with accurate server-computed counts.
+			preview.totalFiles = msg.totalFiles;
+			preview.totalWillChange = msg.totalWillChange;
+			preview.totalAlreadyCorrect = msg.totalAlreadyCorrect;
+			preview.totalCollisions = msg.totalCollisions;
+			preview.totalErrors = msg.totalErrors;
+			loading = false;
+			computing = false;
+		} else if (msg.type === 'error') {
+			error = msg.message;
+			loading = false;
+			computing = false;
 		}
 	}
 
 	async function executeRenames() {
-		if (selectedIds.size === 0) return;
+		if (selectedIds.size === 0) {
+			confirmPending = false;
+			return;
+		}
+		if (!confirmPending) {
+			confirmPending = true;
+			return;
+		}
+		confirmPending = false;
 
 		executing = true;
 		error = null;
@@ -84,38 +182,52 @@
 		renameWarnings = [];
 
 		try {
-			const response = await executeRename(
-				Array.from(selectedIds),
-				mediaTypeFilter === 'all' ? 'mixed' : mediaTypeFilter === 'movie' ? 'movie' : 'episode'
-			);
+			const chunks = chunkFileIds(Array.from(selectedIds));
+			let totalSucceeded = 0;
+			let totalFailed = 0;
+			const collectedWarnings: string[] = [];
+			const failedErrorMessages: string[] = [];
 
-			if (!response.success) {
-				throw new Error(response.error || 'Failed to execute renames');
-			}
+			for (const chunk of chunks) {
+				const response = await executeRename(
+					chunk,
+					mediaTypeFilter === 'all' ? 'mixed' : mediaTypeFilter === 'movie' ? 'movie' : 'episode'
+				);
 
-			executeResult = response as unknown as RenameExecuteResult;
+				if (!response.success) {
+					throw new Error(response.error || 'Failed to execute renames');
+				}
 
-			if (executeResult?.warnings?.length) {
-				renameWarnings = executeResult.warnings;
-			}
+				const result = response as unknown as RenameExecuteResult;
+				totalSucceeded += result.succeeded ?? 0;
+				totalFailed += result.failed ?? 0;
 
-			if (executeResult && executeResult.succeeded > 0) {
-				success = m.settings_naming_rename_successCount({ count: executeResult.succeeded });
-			}
+				if (result.warnings?.length) {
+					collectedWarnings.push(...result.warnings);
+				}
 
-			if (executeResult && executeResult.failed > 0) {
 				// Get specific error messages from failed results
-				const failedResults =
-					executeResult.results?.filter((r: { success: boolean }) => !r.success) || [];
-				const errorMessages = failedResults.map((r: { error?: string }) => r.error).filter(Boolean);
+				const failedResults = result.results?.filter((r: { success: boolean }) => !r.success) || [];
+				const errorMessages = failedResults
+					.map((r: { error?: string }) => r.error)
+					.filter((e): e is string => Boolean(e));
+				failedErrorMessages.push(...errorMessages);
+			}
 
-				if (errorMessages.length > 0) {
+			renameWarnings = collectedWarnings;
+
+			if (totalSucceeded > 0) {
+				success = m.settings_naming_rename_successCount({ count: totalSucceeded });
+			}
+
+			if (totalFailed > 0) {
+				if (failedErrorMessages.length > 0) {
 					error = m.settings_naming_rename_failCountWithErrors({
-						count: executeResult.failed,
-						errors: errorMessages.join(', ')
+						count: totalFailed,
+						errors: failedErrorMessages.join(', ')
 					});
 				} else {
-					error = m.settings_naming_rename_failCount({ count: executeResult.failed });
+					error = m.settings_naming_rename_failCount({ count: totalFailed });
 				}
 			}
 
@@ -125,7 +237,17 @@
 			await loadPreview();
 			error = executeError;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to execute renames';
+			const executeError = e instanceof Error ? e.message : 'Failed to execute renames';
+			error = executeError;
+			// Chunks before the failure already renamed files on disk — refresh so
+			// the preview reflects reality instead of the pre-batch state.
+			try {
+				await loadPreview();
+			} catch {
+				// preview refresh is best-effort; the original error stands
+			}
+			// loadPreview's catch path assigns its own `error` — restore the mid-batch error
+			error = executeError;
 		} finally {
 			executing = false;
 		}
@@ -153,8 +275,8 @@
 			mediaType
 		}));
 
-		let organized = 0;
-		let failed = 0;
+		let organized: number;
+		let failed: number;
 
 		try {
 			const result = await reorganizeFolderBatch(items);
@@ -258,19 +380,56 @@
 					<RefreshCw class="h-4 w-4 {loading ? 'animate-spin' : ''}" />
 					{m.action_refresh()}
 				</button>
-				<button
-					class="btn gap-2 btn-sm btn-primary"
-					onclick={executeRenames}
-					disabled={executing || selectedIds.size === 0}
-				>
-					{#if executing}
-						<RefreshCw class="h-4 w-4 animate-spin" />
-						{m.settings_naming_rename_renaming()}
-					{:else}
-						<CheckCircle class="h-4 w-4" />
-						{m.settings_naming_rename_renameSelected({ count: selectedIds.size })}
-					{/if}
-				</button>
+				{#if confirmPending}
+					<div
+						class="flex flex-col gap-2 rounded-xl border border-warning bg-warning/10 p-3 sm:w-96"
+					>
+						<p class="text-sm font-medium">
+							{m.settings_naming_rename_confirmTitle({ count: selectedIds.size })}
+						</p>
+						<p class="text-xs opacity-80">
+							{m.settings_naming_rename_confirmWarning()}
+						</p>
+						<div class="flex gap-2">
+							<button
+								class="btn flex-1 btn-error btn-sm"
+								onclick={executeRenames}
+								disabled={executing}
+							>
+								{m.settings_naming_rename_confirmAction()}
+							</button>
+							<button
+								class="btn btn-ghost btn-sm"
+								onclick={() => (confirmPending = false)}
+								disabled={executing}
+							>
+								{m.settings_naming_rename_cancelAction()}
+							</button>
+						</div>
+					</div>
+				{:else}
+					<div class="flex flex-col items-end gap-1">
+						<button
+							class="btn gap-2 btn-primary btn-sm"
+							onclick={executeRenames}
+							disabled={executing || selectedIds.size === 0 || scanInProgress}
+						>
+							{#if executing}
+								<RefreshCw class="h-4 w-4 animate-spin" />
+								{m.settings_naming_rename_renaming()}
+							{:else}
+								<CheckCircle class="h-4 w-4" />
+								{m.settings_naming_rename_renameSelected({ count: selectedIds.size })}
+							{/if}
+						</button>
+						{#if scanInProgress}
+							<p class="flex items-center gap-1 text-xs text-warning">
+								<AlertTriangle class="h-3 w-3" />
+								{m.settings_naming_rename_scanInProgress()}
+							</p>
+						{/if}
+					</div>
+				{/if}
 			</div>
 		</div>
 	</div>
@@ -331,6 +490,22 @@
 			</div>
 		</div>
 	{:else if preview}
+		{#if computing}
+			<!-- Computing banner: counts visible but items still streaming -->
+			<div
+				class="mb-4 flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3"
+			>
+				<RefreshCw class="h-4 w-4 shrink-0 animate-spin text-primary" />
+				<div class="min-w-0 flex-1">
+					<p class="text-sm font-medium">Computing rename preview…</p>
+					{#if computingTotal > 0}
+						<p class="text-xs text-base-content/60">
+							{preview.totalFiles.toLocaleString()} / {computingTotal.toLocaleString()} files processed
+						</p>
+					{/if}
+				</div>
+			</div>
+		{/if}
 		<!-- Media Type Filter & Summary -->
 		<div class="mb-6 space-y-4">
 			<!-- Media Type Pills -->
@@ -393,7 +568,7 @@
 		</div>
 
 		<!-- Tabs -->
-		<div role="tablist" class="tabs-boxed mb-4 tabs flex w-full flex-wrap gap-1">
+		<div role="tablist" class="tabs-boxed tabs mb-4 flex w-full flex-wrap gap-1">
 			<button
 				type="button"
 				role="tab"
@@ -443,7 +618,7 @@
 				>
 			</button>
 			<button
-				class="btn gap-2 btn-sm btn-ghost"
+				class="btn gap-2 btn-ghost btn-sm"
 				onclick={reorganizeFolders}
 				disabled={reorganizing || selectedIds.size === 0 || !preview}
 			>
@@ -629,7 +804,7 @@
 				{/if}
 			{:else}
 				<!-- Empty State -->
-				<div class="text-center py-16 text-base-content/60">
+				<div class="py-16 text-center text-base-content/60">
 					{#if activeTab === 'willChange'}
 						<div class="flex flex-col items-center gap-3">
 							<CheckCircle class="h-12 w-12 text-success" />

@@ -12,10 +12,9 @@ import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createSSEOperationStream } from '$lib/server/sse';
 import { db } from '$lib/server/db/index.js';
-import { series, seasons, episodes } from '$lib/server/db/schema.js';
-import { eq } from 'drizzle-orm';
+import { series, seasons, episodes, episodeFiles } from '$lib/server/db/schema.js';
+import { eq, inArray } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
-import { logger } from '$lib/logging';
 import { todayDateString } from '$lib/utils/format.js';
 import { enrichAnimeMetadata } from '$lib/server/metadata/provider-resolution.js';
 import {
@@ -24,12 +23,16 @@ import {
 	deleteAllSeasonsAndEpisodes
 } from '$lib/server/metadata/EpisodeGroupService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+import { resolveLanguage } from '$lib/server/metadata/metadata-refresh.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import { createChildLogger } from '$lib/logging';
 import {
 	startRefresh,
 	stopRefresh,
 	isSeriesRefreshing
 } from '$lib/server/library/ActiveSearchTracker.js';
+
+const logger = createChildLogger({ module: 'LibrarySeriesRefreshApi', logDomain: 'scans' });
 
 interface ProgressEvent {
 	type: 'progress';
@@ -80,9 +83,18 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			};
 
 			try {
+				// Honor the per-series metadata language so a manual full rebuild
+				// produces the same localized titles/overviews the background
+				// metadata refresh writes. Null keeps the global TMDB default.
+				const fetchLanguage = await resolveLanguage(
+					seriesData.metadataLanguage ?? null,
+					seriesData.tmdbId,
+					`/tv/${seriesData.tmdbId}`
+				);
+
 				// Fetch fresh data from TMDB (canonical identity/overview/genres)
 				const [tmdbSeries, externalIds] = await Promise.all([
-					tmdb.getTVShow(seriesData.tmdbId),
+					tmdb.getTVShow(seriesData.tmdbId, fetchLanguage),
 					tmdb.getTvExternalIds(seriesData.tmdbId).catch(() => null)
 				]);
 
@@ -170,6 +182,35 @@ export const POST: RequestHandler = async ({ params, request }) => {
 						.where(eq(series.id, id));
 				}
 
+				// Capture (fileId -> episode numbers) before wiping episodes so we can
+				// restore episodeFiles links after the rebuild assigns new UUIDs.
+				const existingEpFiles = await db
+					.select({ id: episodeFiles.id, episodeIds: episodeFiles.episodeIds })
+					.from(episodeFiles)
+					.where(eq(episodeFiles.seriesId, id));
+
+				const existingEpisodeRows = await db
+					.select({
+						id: episodes.id,
+						seasonNumber: episodes.seasonNumber,
+						episodeNumber: episodes.episodeNumber
+					})
+					.from(episodes)
+					.where(eq(episodes.seriesId, id));
+
+				const epNumByOldId = new Map(
+					existingEpisodeRows.map((e) => [e.id, { s: e.seasonNumber, e: e.episodeNumber }])
+				);
+				const fileEpNumbers = new Map(
+					existingEpFiles.map((f) => [
+						f.id,
+						(f.episodeIds ?? []).flatMap((eid) => {
+							const ep = epNumByOldId.get(eid);
+							return ep ? [ep] : [];
+						})
+					])
+				);
+
 				// Delete existing seasons/episodes and rebuild
 				await deleteAllSeasonsAndEpisodes(id);
 
@@ -216,7 +257,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 							try {
 								const tmdbSeason = await tmdb.getSeason(
 									seriesData.tmdbId,
-									tmdbSeasonInfo.season_number
+									tmdbSeasonInfo.season_number,
+									fetchLanguage
 								);
 
 								const isSpecials = tmdbSeasonInfo.season_number === 0;
@@ -266,6 +308,45 @@ export const POST: RequestHandler = async ({ params, request }) => {
 								);
 							}
 						}
+					}
+				}
+
+				// Re-link episodeFiles to new episode UUIDs by matching season/episode number.
+				// deleteAllSeasonsAndEpisodes wiped the old UUIDs so episodeFiles.episodeIds
+				// would otherwise point at non-existent rows, making every file appear missing.
+				if (fileEpNumbers.size > 0) {
+					const newEpisodeRows = await db
+						.select({
+							id: episodes.id,
+							seasonNumber: episodes.seasonNumber,
+							episodeNumber: episodes.episodeNumber
+						})
+						.from(episodes)
+						.where(eq(episodes.seriesId, id));
+
+					const newIdByKey = new Map(
+						newEpisodeRows.map((e) => [`${e.seasonNumber}-${e.episodeNumber}`, e.id])
+					);
+
+					const linkedEpisodeIds = new Set<string>();
+					for (const [fileId, epNums] of fileEpNumbers) {
+						const newIds = epNums
+							.map(({ s, e }) => newIdByKey.get(`${s}-${e}`))
+							.filter((eid): eid is string => eid !== undefined);
+
+						await db
+							.update(episodeFiles)
+							.set({ episodeIds: newIds.length > 0 ? newIds : null })
+							.where(eq(episodeFiles.id, fileId));
+
+						newIds.forEach((eid) => linkedEpisodeIds.add(eid));
+					}
+
+					if (linkedEpisodeIds.size > 0) {
+						await db
+							.update(episodes)
+							.set({ hasFile: true })
+							.where(inArray(episodes.id, [...linkedEpisodeIds]));
 					}
 				}
 

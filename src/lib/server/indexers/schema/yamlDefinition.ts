@@ -623,8 +623,7 @@ export type YamlDefinition = z.infer<typeof yamlDefinitionSchema>;
 // ============================================================================
 
 export type SafeParseResult =
-	| { success: true; data: YamlDefinition }
-	| { success: false; error: z.ZodError };
+	{ success: true; data: YamlDefinition } | { success: false; error: z.ZodError };
 
 export function validateYamlDefinition(data: unknown): YamlDefinition {
 	return yamlDefinitionSchema.parse(data);

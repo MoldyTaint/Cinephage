@@ -8,14 +8,7 @@ import type { MediaNamingInfo, NamingConfig } from '../NamingService';
  * Categories for organizing tokens in the UI
  */
 export type TokenCategory =
-	| 'core'
-	| 'quality'
-	| 'video'
-	| 'audio'
-	| 'release'
-	| 'mediaId'
-	| 'episode'
-	| 'collection';
+	'core' | 'quality' | 'video' | 'audio' | 'release' | 'mediaId' | 'episode' | 'collection';
 
 /**
  * Media types a token can apply to

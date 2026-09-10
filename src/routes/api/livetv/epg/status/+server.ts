@@ -11,7 +11,9 @@ import { getEpgSyncState } from '$lib/server/livetv/epg/EpgSyncState';
 import { db } from '$lib/server/db';
 import { livetvAccounts } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LiveTvEpgStatus', logDomain: 'livetv' });
 
 export const GET: RequestHandler = async () => {
 	try {

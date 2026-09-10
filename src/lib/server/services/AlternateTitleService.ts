@@ -15,7 +15,9 @@ import { db } from '$lib/server/db/index.js';
 import { alternateTitles, movies, series } from '$lib/server/db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
+
+const logger = createChildLogger({ module: 'AlternateTitleService', logDomain: 'system' });
 
 /**
  * Maps ISO 639-1 language codes to the ISO 3166-1 country codes where that
@@ -158,6 +160,42 @@ function sortTitlesByScript(titles: string[]): string[] {
 }
 
 /**
+ * Whether a title uses a non-Latin script (Cyrillic, CJK, Hangul, Greek…).
+ * These are the scripts regional trackers (RuTracker, Kinozal, Nyaa…) search in,
+ * so at least one such title must be available as a search/match candidate.
+ */
+export function containsNonLatinScript(text: string): boolean {
+	// Cyrillic, Cyrillic Supplement, Hiragana, Katakana, CJK ideographs,
+	// CJK extension A, Hangul, Greek
+	return /[\u0400-\u052F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\u0370-\u03FF]/u.test(
+		text
+	);
+}
+
+/**
+ * Cap the search-title list while guaranteeing at least one non-Latin
+ * (native-script) title survives. The language-preference ordering can otherwise
+ * push every Cyrillic/CJK alternate past the cap, leaving regional trackers
+ * without a title they can search for or match against.
+ */
+export function selectSearchTitles(
+	displayTitle: string,
+	remaining: string[],
+	maxTitles = 5
+): string[] {
+	const titles = [displayTitle, ...remaining];
+	const capped = titles.slice(0, maxTitles);
+	if (capped.length < titles.length) {
+		const uncapped = titles.slice(maxTitles);
+		const firstNonLatin = uncapped.find((t) => containsNonLatinScript(t));
+		if (firstNonLatin && !capped.some((t) => containsNonLatinScript(t))) {
+			capped[capped.length - 1] = firstNonLatin;
+		}
+	}
+	return capped;
+}
+
+/**
  * Get all search titles for a movie (primary + original + alternates).
  *
  * Order of precedence:
@@ -221,8 +259,7 @@ export async function getMovieSearchTitles(
 	}
 
 	const sorted = sortTitlesByScript(remaining);
-	const titles = [displayTitle, ...sorted];
-	return titles.slice(0, 5);
+	return selectSearchTitles(displayTitle, sorted);
 }
 
 /**
@@ -279,8 +316,7 @@ export async function getSeriesSearchTitles(
 	}
 
 	const sorted = sortTitlesByScript(remaining);
-	const titles = [displayTitle, ...sorted];
-	return titles.slice(0, 5);
+	return selectSearchTitles(displayTitle, sorted);
 }
 
 /**

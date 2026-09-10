@@ -298,7 +298,7 @@
 						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 						<ul
 							tabindex="0"
-							class="dropdown-content menu z-50 w-52 rounded-box bg-base-200 p-2 shadow-lg"
+							class="menu dropdown-content z-50 w-52 rounded-box bg-base-200 p-2 shadow-lg"
 						>
 							<li class="menu-title">
 								<span>{m.library_episodeRow_mediaMenuTitle()}</span>
@@ -493,7 +493,7 @@
 					<div
 						tabindex="0"
 						role="button"
-						class="btn max-w-full justify-start gap-1 px-1 btn-ghost btn-xs {missingSubtitles
+						class="btn max-w-full justify-start gap-1 btn-ghost px-1 btn-xs {missingSubtitles
 							? 'text-warning'
 							: ''}"
 						title={missingSubtitles
@@ -614,7 +614,7 @@
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 				<ul
 					tabindex="0"
-					class="dropdown-content menu z-50 w-52 rounded-box bg-base-200 p-2 shadow-lg"
+					class="menu dropdown-content z-50 w-52 rounded-box bg-base-200 p-2 shadow-lg"
 				>
 					<li class="menu-title">
 						<span>{m.library_episodeRow_mediaMenuTitle()}</span>

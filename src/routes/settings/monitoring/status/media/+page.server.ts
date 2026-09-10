@@ -311,7 +311,7 @@ export const load: PageServerLoad = async ({ url, parent }) => {
 	const mult = sortDir === 'desc' ? -1 : 1;
 
 	filtered.sort((a, b) => {
-		let cmp = 0;
+		let cmp: number;
 		switch (sortField) {
 			case 'title':
 				cmp = a.title.localeCompare(b.title);

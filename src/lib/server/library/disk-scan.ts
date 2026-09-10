@@ -6,7 +6,7 @@
  */
 
 import { readdir, stat } from 'fs/promises';
-import { join, dirname, relative } from 'path';
+import { join, dirname, relative, basename } from 'path';
 import { db } from '$lib/server/db/index.js';
 import { todayDateString } from '$lib/utils/format.js';
 import {
@@ -18,9 +18,10 @@ import {
 	episodes,
 	episodeFiles,
 	unmatchedFiles,
-	libraryScanHistory
+	libraryScanHistory,
+	renameHistory
 } from '$lib/server/db/schema.js';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, gte } from 'drizzle-orm';
 import { isVideoFile, mediaInfoService } from './media-info.js';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
 import { EventEmitter } from 'events';
@@ -31,12 +32,10 @@ import {
 	getRootFolderOverlapMessage
 } from '$lib/server/filesystem/root-folder-overlap.js';
 import { libraryMediaEvents } from './LibraryMediaEvents.js';
-import {
-	getMediaParseStem,
-	matchEpisodesByIdentifier,
-	resolveTvEpisodeIdentifier
-} from './tv-episode-resolver.js';
+import { getMediaParseStem } from './media-utils.js';
+import { matchEpisodesByIdentifier, resolveTvEpisodeIdentifier } from './tv-episode-resolver.js';
 import { StreamingDiskScanner } from './jobs/StreamingDiskScanner.js';
+import { libraryOperationLock } from './library-operation-lock.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 
@@ -70,6 +69,75 @@ const EXCLUDED_PATTERNS = {
  * SQLite has a practical limit on bound parameters; keep IN queries chunked.
  */
 const DB_CHUNK_SIZE = 400;
+
+/** How long after a rename its old→new transition remains eligible for scan-diff healing. */
+const RENAME_TRANSITION_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * If a DB-tracked path is missing on disk but a recent successful rename
+ * moved it to a path that IS present, return the new path so the row can be
+ * healed instead of deleted. Returns null when the file should be removed.
+ */
+export function findRenameHealTarget(
+	missingPath: string,
+	transitions: Map<string, string>,
+	seenPaths: Set<string>
+): string | null {
+	const target = transitions.get(missingPath);
+	return target && seenPaths.has(target) ? target : null;
+}
+
+/**
+ * Correlate missing tracked paths with newly-seen on-disk paths that share
+ * the same file basename and size — the signature of a folder rename made
+ * outside Cinephage (user, Sonarr, file manager). Returns a map
+ * oldFullPath → newFullPath for confident matches only: same basename, same
+ * size (when the DB row has a size), unambiguous (exactly one candidate),
+ * and one-to-one (each new path is claimed by at most one missing row).
+ *
+ * Heuristic limits: a false positive requires an identical filename AND an
+ * identical byte size within a single root scan — e.g. two copies of the
+ * same release kept under different folders (one tracked at the old path,
+ * one newly discovered) would heal the tracked row onto the copy. Duplicate
+ * basenames with equal sizes are treated as ambiguous and never matched,
+ * and a new path can only ever claim a single missing row.
+ */
+export function findExternalRenameMatches(
+	missingFiles: Array<{
+		id: string;
+		path: string;
+		size: number | null;
+		allowStrmProbe: boolean;
+		source: 'tracked' | 'unmatched';
+	}>,
+	newDiskFiles: Array<{ path: string; size: number }>
+): Map<string, string> {
+	const byBasename = new Map<string, Array<{ path: string; size: number }>>();
+	for (const file of newDiskFiles) {
+		const list = byBasename.get(basename(file.path));
+		if (list) {
+			list.push(file);
+		} else {
+			byBasename.set(basename(file.path), [file]);
+		}
+	}
+
+	const matches = new Map<string, string>();
+	const claimed = new Set<string>();
+	for (const missing of missingFiles) {
+		const candidates = (byBasename.get(basename(missing.path)) ?? []).filter(
+			(candidate) => missing.size == null || candidate.size === missing.size
+		);
+		if (candidates.length !== 1) continue;
+
+		const candidate = candidates[0];
+		if (claimed.has(candidate.path)) continue;
+
+		claimed.add(candidate.path);
+		matches.set(missing.path, candidate.path);
+	}
+	return matches;
+}
 
 /**
  * Discovered file information
@@ -310,6 +378,12 @@ export class DiskScanService extends EventEmitter {
 			throw new Error('A scan is already in progress');
 		}
 
+		if (libraryOperationLock.isLocked) {
+			throw new Error(
+				`Scan deferred: a rename/reorganize operation (${libraryOperationLock.holder}) is in progress`
+			);
+		}
+
 		const startTime = Date.now();
 		this.isScanning = true;
 		this.scanAborted = false;
@@ -373,8 +447,20 @@ export class DiskScanService extends EventEmitter {
 			let filesFound = 0;
 			const existingFiles = await this.getExistingFiles(rootFolderId, rootFolder.mediaType);
 			const seenPaths = new Set<string>();
+			// New on-disk files (not tracked in existingFiles by construction) that
+			// may be the relocated copy of a missing tracked file whose folder was
+			// renamed outside Cinephage. Auto-linked files are subtracted before
+			// external-rename correlation because they already own a tracked row.
+			const newDiskFiles: Array<{ path: string; size: number }> = [];
+			const autoLinkedPaths = new Set<string>();
+			// Unmatched insertions are deferred until after the removal loop: a
+			// pending file may turn out to be the heal target of an
+			// externally-renamed tracked row, in which case inserting an
+			// unmatchedFiles row would duplicate it.
+			const pendingUnmatched: DiscoveredFile[] = [];
 
 			for await (const batch of scanner.scan(rootFolder.path)) {
+				let fileIndex = 0;
 				for (const file of batch) {
 					progress.currentFile = file.relativePath;
 
@@ -382,15 +468,18 @@ export class DiskScanService extends EventEmitter {
 					const existingFile = existingFiles.get(file.path);
 
 					if (!existingFile) {
+						newDiskFiles.push({ path: file.path, size: file.size });
+
 						let wasLinked = false;
 
 						if (rootFolder.mediaType === 'tv') {
 							wasLinked = await this.tryAutoLinkTvFile(file, rootFolderId, rootFolder.path);
 						}
 
-						if (!wasLinked) {
-							await this.addUnmatchedFile(file, rootFolderId, rootFolder.mediaType);
-							progress.unmatchedCount++;
+						if (wasLinked) {
+							autoLinkedPaths.add(file.path);
+						} else {
+							pendingUnmatched.push(file);
 						}
 
 						progress.filesAdded++;
@@ -406,6 +495,14 @@ export class DiskScanService extends EventEmitter {
 
 					filesFound++;
 					progress.filesProcessed = filesFound;
+
+					// Yield every 10 files so HTTP requests (health checks, API calls)
+					// can be served even during large initial scans on slow filesystems.
+					// Without this, 500 synchronous SQLite inserts run as microtasks and
+					// starve the event loop on ZFS/NFS mounts for 10+ seconds.
+					if (++fileIndex % 10 === 0) {
+						await new Promise<void>((resolve) => setImmediate(resolve));
+					}
 				}
 
 				progress.filesFound = filesFound;
@@ -416,23 +513,106 @@ export class DiskScanService extends EventEmitter {
 					throw new Error('Scan was cancelled');
 				}
 
-				// Yield to the event loop between batches so HTTP requests and
-				// logging can be served even when scanning a large library.
 				await new Promise<void>((resolve) => setImmediate(resolve));
 			}
 
 			progress.filesFound = filesFound;
 			this.emit('progress', progress);
 
+			// Data-safety guard: a scan that saw zero files while the database
+			// still tracks files for this folder almost always means the folder
+			// was unreadable or unmounted mid-scan, not that the user deleted
+			// their library. Refuse to wipe records on an empty result.
+			if (filesFound === 0 && existingFiles.size > 0) {
+				throw new Error(
+					`Root folder ${rootFolder.path} scanned as empty but ${existingFiles.size} tracked file(s) exist; refusing to remove records. Verify the folder is mounted and readable, then rescan.`
+				);
+			}
+
+			const transitions = await this.getRecentRenameTransitions();
+
+			// External-rename correlation: match missing tracked rows against
+			// newly-seen files that share basename+size and did not auto-link.
+			// Candidates never include already-tracked paths because newDiskFiles
+			// only collects files that were absent from existingFiles.
+			const missingFiles = [...existingFiles.values()].filter((file) => !seenPaths.has(file.path));
+			const externalCandidates = newDiskFiles.filter((file) => !autoLinkedPaths.has(file.path));
+			const externalMatches = findExternalRenameMatches(missingFiles, externalCandidates);
+			// New paths claimed by any heal must not also get an unmatchedFiles row.
+			const claimedHealTargets = new Set<string>(externalMatches.values());
+
 			for (const [path, existingFile] of existingFiles) {
-				if (!seenPaths.has(path)) {
-					await this.removeFile(existingFile.id, rootFolder.mediaType);
-					progress.filesRemoved++;
+				if (seenPaths.has(path)) continue;
+
+				const healTarget = findRenameHealTarget(path, transitions, seenPaths);
+				if (healTarget) {
+					try {
+						const healResult = await this.healRenamedFile(
+							existingFile,
+							healTarget,
+							rootFolder.path,
+							rootFolder.mediaType
+						);
+						if (healResult === 'healed') {
+							progress.filesUpdated++;
+							claimedHealTargets.add(healTarget);
+							logger.info(
+								{ from: path, to: healTarget, fileId: existingFile.id },
+								'[DiskScan] Healed renamed file row instead of delete+recreate'
+							);
+						}
+						continue;
+					} catch (healError) {
+						logger.warn(
+							{ err: healError, from: path, to: healTarget, fileId: existingFile.id },
+							'[DiskScan] Rename heal failed; falling back to row removal'
+						);
+					}
 				}
+
+				const externalTarget = externalMatches.get(path);
+				if (externalTarget) {
+					try {
+						const healResult = await this.healRenamedFile(
+							existingFile,
+							externalTarget,
+							rootFolder.path,
+							rootFolder.mediaType
+						);
+						if (healResult === 'healed') {
+							progress.filesUpdated++;
+							logger.info(
+								{ from: path, to: externalTarget, fileId: existingFile.id },
+								'[DiskScan] Healed externally-renamed file row (no rename_history entry)'
+							);
+							continue;
+						}
+					} catch (healError) {
+						logger.warn(
+							{ err: healError, from: path, to: externalTarget, fileId: existingFile.id },
+							'[DiskScan] External rename heal failed; falling back to row removal'
+						);
+					}
+				}
+
+				await this.removeFile(existingFile.id, rootFolder.mediaType);
+				progress.filesRemoved++;
+			}
+
+			// Insert unmatched rows for new files that neither auto-linked nor
+			// served as a heal target.
+			for (const file of pendingUnmatched) {
+				if (claimedHealTargets.has(file.path)) continue;
+				await this.addUnmatchedFile(file, rootFolderId, rootFolder.mediaType);
+				progress.unmatchedCount++;
 			}
 
 			if (this.shouldCancel && (await this.shouldCancel())) {
 				throw new Error('Scan cancelled by job controller');
+			}
+
+			if (rootFolder.mediaType === 'tv') {
+				await this.retryUnmatchedTvFiles(rootFolderId, rootFolder.path);
 			}
 
 			await this.reconcileMediaPresence(rootFolderId, rootFolder.mediaType);
@@ -533,7 +713,119 @@ export class DiskScanService extends EventEmitter {
 		}
 
 		if (mediaType === 'tv') {
+			await this.repairOrphanedEpisodeFiles(rootFolderId);
 			await this.reconcileEpisodePresence(rootFolderId);
+		}
+	}
+
+	/**
+	 * Finds episodeFiles whose episodeIds contain UUIDs that no longer exist
+	 * (e.g. after a series refresh wipes and recreates episode rows) and
+	 * re-resolves them from the filename so the file appears linked again.
+	 */
+	private async repairOrphanedEpisodeFiles(rootFolderId: string): Promise<void> {
+		const seriesInFolder = await db
+			.select({ id: series.id, path: series.path, seriesType: series.seriesType })
+			.from(series)
+			.where(eq(series.rootFolderId, rootFolderId));
+
+		if (seriesInFolder.length === 0) return;
+
+		const seriesIds = seriesInFolder.map((s) => s.id);
+
+		// Build a set of all valid episode UUIDs and a lookup by (seriesId, season, episode).
+		const currentEpisodeRows: Array<{
+			id: string;
+			seriesId: string;
+			seasonNumber: number;
+			episodeNumber: number;
+			absoluteEpisodeNumber: number | null;
+			airDate: string | null;
+		}> = [];
+		for (const chunk of this.chunkArray(seriesIds)) {
+			const rows = await db
+				.select({
+					id: episodes.id,
+					seriesId: episodes.seriesId,
+					seasonNumber: episodes.seasonNumber,
+					episodeNumber: episodes.episodeNumber,
+					absoluteEpisodeNumber: episodes.absoluteEpisodeNumber,
+					airDate: episodes.airDate
+				})
+				.from(episodes)
+				.where(inArray(episodes.seriesId, chunk));
+			currentEpisodeRows.push(...rows);
+		}
+
+		const validEpisodeIds = new Set(currentEpisodeRows.map((e) => e.id));
+
+		const allEpisodeFiles: Array<{
+			id: string;
+			seriesId: string;
+			seasonNumber: number;
+			relativePath: string;
+			episodeIds: string[] | null;
+		}> = [];
+		for (const chunk of this.chunkArray(seriesIds)) {
+			const rows = await db
+				.select({
+					id: episodeFiles.id,
+					seriesId: episodeFiles.seriesId,
+					seasonNumber: episodeFiles.seasonNumber,
+					relativePath: episodeFiles.relativePath,
+					episodeIds: episodeFiles.episodeIds
+				})
+				.from(episodeFiles)
+				.where(inArray(episodeFiles.seriesId, chunk));
+			allEpisodeFiles.push(...rows);
+		}
+
+		// Identify files where any episodeId is no longer valid.
+		const orphaned = allEpisodeFiles.filter((ef) => {
+			const ids = ef.episodeIds ?? [];
+			return ids.length === 0 || ids.some((id) => !validEpisodeIds.has(id));
+		});
+
+		if (orphaned.length === 0) return;
+
+		// For each orphaned file, re-resolve episode mapping from the filename
+		// (same logic as tryAutoLinkTvFile) and update episodeIds.
+		const seriesEpisodesCache = new Map<string, typeof currentEpisodeRows>();
+		for (const s of seriesInFolder) {
+			seriesEpisodesCache.set(
+				s.id,
+				currentEpisodeRows.filter((e) => e.seriesId === s.id)
+			);
+		}
+
+		let repaired = 0;
+		for (const ef of orphaned) {
+			const s = seriesInFolder.find((x) => x.id === ef.seriesId);
+			if (!s) continue;
+
+			const fileName = getMediaParseStem(ef.relativePath);
+			const parsed = this.parser.parse(fileName);
+			const identifier = resolveTvEpisodeIdentifier({
+				filePath: ef.relativePath,
+				parsed,
+				seriesType: s.seriesType === 'anime' || s.seriesType === 'daily' ? s.seriesType : 'standard'
+			});
+
+			if (!identifier) continue;
+
+			const seriesEps = seriesEpisodesCache.get(s.id) ?? [];
+			const matched = matchEpisodesByIdentifier(seriesEps, identifier);
+			const newIds = matched.map((e) => e.id);
+
+			if (newIds.length === 0) continue;
+
+			await db.update(episodeFiles).set({ episodeIds: newIds }).where(eq(episodeFiles.id, ef.id));
+			repaired++;
+			await new Promise<void>((resolve) => setImmediate(resolve));
+		}
+
+		if (repaired > 0) {
+			logger.info({ rootFolderId, repaired }, '[DiskScan] Re-linked orphaned episode file records');
 		}
 	}
 
@@ -561,23 +853,34 @@ export class DiskScanService extends EventEmitter {
 			}
 		}
 
+		const gained: string[] = [];
+		const lost: string[] = [];
 		const changedMovieIds: string[] = [];
+
 		for (const movie of moviesInFolder) {
 			const shouldHaveFile = moviesWithFiles.has(movie.id);
 			const currentlyHasFile = movie.hasFile ?? false;
-			if (shouldHaveFile === currentlyHasFile) {
-				continue;
-			}
-
-			const lostFile = currentlyHasFile && !shouldHaveFile;
-			await db
-				.update(movies)
-				.set({
-					hasFile: shouldHaveFile,
-					...(lostFile ? { lastSearchTime: null } : {})
-				})
-				.where(eq(movies.id, movie.id));
+			if (shouldHaveFile === currentlyHasFile) continue;
 			changedMovieIds.push(movie.id);
+			if (shouldHaveFile) gained.push(movie.id);
+			else lost.push(movie.id);
+		}
+
+		for (const chunk of this.chunkArray(gained)) {
+			await db.transaction((tx) => {
+				tx.update(movies).set({ hasFile: true }).where(inArray(movies.id, chunk)).run();
+			});
+			await new Promise<void>((resolve) => setImmediate(resolve));
+		}
+
+		for (const chunk of this.chunkArray(lost)) {
+			await db.transaction((tx) => {
+				tx.update(movies)
+					.set({ hasFile: false, lastSearchTime: null })
+					.where(inArray(movies.id, chunk))
+					.run();
+			});
+			await new Promise<void>((resolve) => setImmediate(resolve));
 		}
 
 		if (changedMovieIds.length > 0) {
@@ -653,18 +956,25 @@ export class DiskScanService extends EventEmitter {
 		}
 
 		for (const idChunk of this.chunkArray(episodeIdsToSetTrue)) {
-			await db.update(episodes).set({ hasFile: true }).where(inArray(episodes.id, idChunk));
+			await db.transaction((tx) => {
+				tx.update(episodes).set({ hasFile: true }).where(inArray(episodes.id, idChunk)).run();
+			});
+			await new Promise<void>((resolve) => setImmediate(resolve));
 		}
 
 		for (const idChunk of this.chunkArray(episodeIdsToSetFalse)) {
-			await db
-				.update(episodes)
-				.set({ hasFile: false, lastSearchTime: null })
-				.where(inArray(episodes.id, idChunk));
+			await db.transaction((tx) => {
+				tx.update(episodes)
+					.set({ hasFile: false, lastSearchTime: null })
+					.where(inArray(episodes.id, idChunk))
+					.run();
+			});
+			await new Promise<void>((resolve) => setImmediate(resolve));
 		}
 
 		for (const seriesId of seriesIds) {
 			await this.updateSeriesAndSeasonStats(seriesId);
+			await new Promise<void>((resolve) => setImmediate(resolve));
 		}
 
 		if (episodeIdsToSetTrue.length > 0 || episodeIdsToSetFalse.length > 0) {
@@ -702,15 +1012,79 @@ export class DiskScanService extends EventEmitter {
 		return results;
 	}
 
+	/**
+	 * Re-attempt linking unmatched TV files that fall under a known series directory.
+	 * Files are added to unmatchedFiles when no series exists for them at scan time.
+	 * When a series is later added (or re-added), subsequent scans skip those files
+	 * because they are already in the existingFiles map. This method runs after the
+	 * main scan walk to give those files a second chance at being linked.
+	 */
+	private async retryUnmatchedTvFiles(rootFolderId: string, rootFolderPath: string): Promise<void> {
+		const seriesInFolder = await db
+			.select({ id: series.id, path: series.path })
+			.from(series)
+			.where(eq(series.rootFolderId, rootFolderId));
+
+		if (seriesInFolder.length === 0) return;
+
+		const unmatched = await db
+			.select({ id: unmatchedFiles.id, path: unmatchedFiles.path, size: unmatchedFiles.size })
+			.from(unmatchedFiles)
+			.where(eq(unmatchedFiles.rootFolderId, rootFolderId));
+
+		let linked = 0;
+		for (const uf of unmatched) {
+			const underSeries = seriesInFolder.some((s) => {
+				const seriesDir = join(rootFolderPath, s.path);
+				return uf.path.startsWith(seriesDir + '/') || uf.path.startsWith(seriesDir + '\\');
+			});
+			if (!underSeries) continue;
+
+			const relPath = relative(rootFolderPath, uf.path);
+			const file: DiscoveredFile = {
+				path: uf.path,
+				relativePath: relPath,
+				size: uf.size ?? 0,
+				modifiedAt: new Date(),
+				parentFolder: dirname(uf.path)
+			};
+			const wasLinked = await this.tryAutoLinkTvFile(file, rootFolderId, rootFolderPath);
+			if (wasLinked) {
+				await db.delete(unmatchedFiles).where(eq(unmatchedFiles.id, uf.id));
+				linked++;
+			}
+			await new Promise<void>((resolve) => setImmediate(resolve));
+		}
+
+		if (linked > 0) {
+			logger.info({ rootFolderId, linked }, '[DiskScan] Re-linked previously unmatched TV files');
+		}
+	}
+
 	private async getExistingFiles(
 		rootFolderId: string,
 		mediaType: string
 	): Promise<
-		Map<string, { id: string; path: string; size: number | null; allowStrmProbe: boolean }>
+		Map<
+			string,
+			{
+				id: string;
+				path: string;
+				size: number | null;
+				allowStrmProbe: boolean;
+				source: 'tracked' | 'unmatched';
+			}
+		>
 	> {
 		const existingMap = new Map<
 			string,
-			{ id: string; path: string; size: number | null; allowStrmProbe: boolean }
+			{
+				id: string;
+				path: string;
+				size: number | null;
+				allowStrmProbe: boolean;
+				source: 'tracked' | 'unmatched';
+			}
 		>();
 
 		if (mediaType === 'movie') {
@@ -745,7 +1119,8 @@ export class DiskScanService extends EventEmitter {
 								id: file.id,
 								path: fullPath,
 								size: file.size,
-								allowStrmProbe: movie.scoringProfileId !== 'streamer'
+								allowStrmProbe: movie.scoringProfileId !== 'streamer',
+								source: 'tracked'
 							});
 						}
 					}
@@ -783,7 +1158,8 @@ export class DiskScanService extends EventEmitter {
 								id: file.id,
 								path: fullPath,
 								size: file.size,
-								allowStrmProbe: seriesItem.scoringProfileId !== 'streamer'
+								allowStrmProbe: seriesItem.scoringProfileId !== 'streamer',
+								source: 'tracked'
 							});
 						}
 					}
@@ -801,7 +1177,8 @@ export class DiskScanService extends EventEmitter {
 				id: file.id,
 				path: file.path,
 				size: file.size,
-				allowStrmProbe: true
+				allowStrmProbe: true,
+				source: 'unmatched'
 			});
 		}
 
@@ -878,21 +1255,26 @@ export class DiskScanService extends EventEmitter {
 					hdr: parsed.hdr ?? undefined
 				};
 
-				await db.insert(episodeFiles).values({
-					seriesId: s.id,
-					seasonNumber: seasonNum,
-					episodeIds,
-					relativePath,
-					size: file.size,
-					dateAdded: new Date().toISOString(),
-					releaseGroup: parsed.releaseGroup ?? undefined,
-					releaseType: episodeNums.length > 1 ? 'multiEpisode' : 'singleEpisode',
-					quality
-				});
+				await db.transaction((tx) => {
+					tx.insert(episodeFiles)
+						.values({
+							seriesId: s.id,
+							seasonNumber: seasonNum,
+							episodeIds,
+							relativePath,
+							size: file.size,
+							dateAdded: new Date().toISOString(),
+							releaseGroup: parsed.releaseGroup ?? undefined,
+							releaseType: episodeNums.length > 1 ? 'multiEpisode' : 'singleEpisode',
+							quality
+						})
+						.onConflictDoNothing()
+						.run();
 
-				for (const epId of episodeIds) {
-					await db.update(episodes).set({ hasFile: true }).where(eq(episodes.id, epId));
-				}
+					for (const epId of episodeIds) {
+						tx.update(episodes).set({ hasFile: true }).where(eq(episodes.id, epId)).run();
+					}
+				});
 
 				await this.updateSeriesAndSeasonStats(s.id);
 
@@ -929,14 +1311,6 @@ export class DiskScanService extends EventEmitter {
 		);
 		const episodesWithFiles = episodesForStats.filter((episode) => episode.hasFile);
 
-		await db
-			.update(series)
-			.set({
-				episodeFileCount: episodesWithFiles.length,
-				episodeCount: episodesForStats.length
-			})
-			.where(eq(series.id, seriesId));
-
 		const seasonMap = new Map<number, { total: number; withFiles: number }>();
 		for (const episode of allEpisodes) {
 			if (!isAired(episode)) continue;
@@ -946,15 +1320,25 @@ export class DiskScanService extends EventEmitter {
 			seasonMap.set(episode.seasonNumber, stats);
 		}
 
-		for (const [seasonNumber, stats] of seasonMap) {
-			await db
-				.update(seasons)
+		await db.transaction((tx) => {
+			tx.update(series)
 				.set({
-					episodeFileCount: stats.withFiles,
-					episodeCount: stats.total
+					episodeFileCount: episodesWithFiles.length,
+					episodeCount: episodesForStats.length
 				})
-				.where(and(eq(seasons.seriesId, seriesId), eq(seasons.seasonNumber, seasonNumber)));
-		}
+				.where(eq(series.id, seriesId))
+				.run();
+
+			for (const [seasonNumber, stats] of seasonMap) {
+				tx.update(seasons)
+					.set({
+						episodeFileCount: stats.withFiles,
+						episodeCount: stats.total
+					})
+					.where(and(eq(seasons.seriesId, seriesId), eq(seasons.seasonNumber, seasonNumber)))
+					.run();
+			}
+		});
 	}
 
 	private async addUnmatchedFile(
@@ -1012,6 +1396,173 @@ export class DiskScanService extends EventEmitter {
 				})
 				.where(eq(episodeFiles.id, fileId));
 		}
+	}
+
+	/**
+	 * Recent successful file/folder renames and reorganize moves (old full
+	 * path → new full path), most recent winning on duplicates. Consumes the
+	 * rename_history audit table written by executeRenames (operation
+	 * 'rename') and reorganizeFolderLocked (operation 'reorganize').
+	 */
+	private async getRecentRenameTransitions(): Promise<Map<string, string>> {
+		const cutoff = new Date(Date.now() - RENAME_TRANSITION_WINDOW_MS).toISOString();
+		const rows = await db
+			.select({
+				oldPath: renameHistory.oldPath,
+				newPath: renameHistory.newPath
+			})
+			.from(renameHistory)
+			.where(
+				and(
+					eq(renameHistory.success, 1),
+					inArray(renameHistory.operation, ['rename', 'reorganize']),
+					gte(renameHistory.createdAt, cutoff)
+				)
+			)
+			// Oldest first so the most recent rename wins when old paths collide.
+			.orderBy(renameHistory.createdAt);
+
+		const map = new Map<string, string>();
+		for (const row of rows) {
+			map.set(row.oldPath, row.newPath);
+		}
+		return map;
+	}
+
+	/**
+	 * A tracked file row's path disappeared but a recent rename moved it to a
+	 * path that now exists on disk: update the DB rows to the new location
+	 * instead of delete+recreate, preserving mediaInfo, linkage, and stats.
+	 *
+	 * Returns 'healed' when the DB rows were updated, or 'skipped-stale' when
+	 * nothing was healed (the row was already consistent or could not be
+	 * resolved) — the caller leaves such rows alone so they self-heal on the
+	 * next scan.
+	 *
+	 * Public (not private) so tests can exercise the healing logic directly
+	 * without running a full scan.
+	 */
+	async healRenamedFile(
+		existingFile: {
+			id: string;
+			path: string;
+			size: number | null;
+			allowStrmProbe: boolean;
+			source: 'tracked' | 'unmatched';
+		},
+		newFullPath: string,
+		rootFolderPath: string,
+		mediaType: string
+	): Promise<'healed' | 'skipped-stale'> {
+		if (existingFile.source === 'unmatched') {
+			await db
+				.update(unmatchedFiles)
+				.set({ path: newFullPath })
+				.where(eq(unmatchedFiles.id, existingFile.id));
+			return 'healed';
+		}
+
+		if (mediaType === 'movie') {
+			const [row] = await db
+				.select({ movieId: movieFiles.movieId, relativePath: movieFiles.relativePath })
+				.from(movieFiles)
+				.where(eq(movieFiles.id, existingFile.id));
+			if (!row) return 'skipped-stale';
+			const [movie] = await db
+				.select({ path: movies.path })
+				.from(movies)
+				.where(eq(movies.id, row.movieId));
+			if (!movie) return 'skipped-stale';
+
+			// Staleness guard: the scan diff built existingFile.path once at scan
+			// start. When several files of the same externally-renamed folder
+			// heal, the first heal already updated the parent path (movies.path),
+			// so exact reconstruction against the CURRENT parent would fail for
+			// every later file and those rows would fall through to deletion.
+			// A suffix check on the row's relativePath (posix separators, the
+			// same format getExistingFiles uses to join paths) still confirms
+			// this map entry belongs to this row while tolerating a parent that
+			// moved since the map was built.
+			if (!existingFile.path.endsWith(row.relativePath)) {
+				return 'skipped-stale';
+			}
+
+			const { newParentRel, newRelative } = this.splitRenamedPath(
+				newFullPath,
+				rootFolderPath,
+				row.relativePath
+			);
+
+			if (movie.path !== newParentRel) {
+				await db.update(movies).set({ path: newParentRel }).where(eq(movies.id, row.movieId));
+			}
+			await db
+				.update(movieFiles)
+				.set({ relativePath: newRelative })
+				.where(eq(movieFiles.id, existingFile.id));
+			return 'healed';
+		} else {
+			const [row] = await db
+				.select({ seriesId: episodeFiles.seriesId, relativePath: episodeFiles.relativePath })
+				.from(episodeFiles)
+				.where(eq(episodeFiles.id, existingFile.id));
+			if (!row) return 'skipped-stale';
+			const [seriesItem] = await db
+				.select({ path: series.path })
+				.from(series)
+				.where(eq(series.id, row.seriesId));
+			if (!seriesItem) return 'skipped-stale';
+
+			// Staleness guard, relaxed to a suffix check for the same reason as
+			// the movie branch above: after the first file of an
+			// externally-renamed series folder heals and updates series.path,
+			// later files of the same folder must still pass this guard so they
+			// heal in the same scan instead of being deleted. splitRenamedPath
+			// still keys off this row's old relativePath depth, which the
+			// relaxation leaves untouched.
+			if (!existingFile.path.endsWith(row.relativePath)) {
+				return 'skipped-stale';
+			}
+
+			const { newParentRel, newRelative } = this.splitRenamedPath(
+				newFullPath,
+				rootFolderPath,
+				row.relativePath
+			);
+
+			if (seriesItem.path !== newParentRel) {
+				await db.update(series).set({ path: newParentRel }).where(eq(series.id, row.seriesId));
+			}
+			await db
+				.update(episodeFiles)
+				.set({ relativePath: newRelative })
+				.where(eq(episodeFiles.id, existingFile.id));
+			return 'healed';
+		}
+	}
+
+	/**
+	 * Split a renamed file's new full path into (parent path relative to the
+	 * root folder, path relative to that parent), preserving the old relative
+	 * path's segment depth so structure like season folders stays inside
+	 * relativePath instead of leaking into the media folder path.
+	 */
+	private splitRenamedPath(
+		newFullPath: string,
+		rootFolderPath: string,
+		oldRelativePath: string
+	): { newParentRel: string; newRelative: string } {
+		const segments = newFullPath.split(/[\\/]+/).filter(Boolean);
+		const rootDepth = rootFolderPath.split(/[\\/]+/).filter(Boolean).length;
+		const oldDepth = oldRelativePath.split(/[\\/]+/).filter(Boolean).length;
+
+		const available = Math.max(segments.length - rootDepth, 1);
+		const depth = Math.min(Math.max(oldDepth, 1), available);
+
+		const newRelative = segments.slice(-depth).join('/');
+		const newParentRel = segments.slice(rootDepth, segments.length - depth).join('/');
+
+		return { newParentRel, newRelative };
 	}
 
 	private async removeFile(fileId: string, mediaType: string): Promise<void> {

@@ -155,7 +155,7 @@
 						<Search class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/50" />
 						<input
 							type="text"
-							class="input-bordered input input-sm w-full pl-9"
+							class="input-bordered input w-full pl-9 input-sm"
 							placeholder="Search countries..."
 							bind:value={searchQuery}
 						/>

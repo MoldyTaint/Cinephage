@@ -7,6 +7,7 @@
  */
 
 import { Camoufox, type LaunchOptions } from 'camoufox-js';
+import { VirtualDisplay } from 'camoufox-js/dist/virtdisplay.js';
 import type { Browser, BrowserContext, Page, Cookie } from 'playwright-core';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +16,46 @@ import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
 import type { ProxyConfig } from '../types';
+
+/**
+ * Camoufox's `virtual` headless mode spawns Xvfb with a 1x1 screen by default.
+ * A 1x1 viewport/screen is a well-known Cloudflare bot signal: the fingerprint
+ * reports a real device screen while the actual window is clamped to 1x1, so
+ * client-side challenge scoring flags the browser and the challenge never
+ * clears (camoufox-js issues #311 / #574: "works locally, stuck in challenge
+ * loop in Docker"). Patch the Xvfb screen to a realistic resolution.
+ */
+let xvfbPatched = false;
+function patchVirtualDisplayResolution(): void {
+	if (xvfbPatched) return;
+	xvfbPatched = true;
+	try {
+		const descriptor = Object.getOwnPropertyDescriptor(VirtualDisplay.prototype, 'xvfb_args');
+		const origGet = descriptor?.get;
+		if (typeof origGet !== 'function') return;
+		Object.defineProperty(VirtualDisplay.prototype, 'xvfb_args', {
+			configurable: true,
+			enumerable: descriptor?.enumerable,
+			get(this: VirtualDisplay) {
+				const args = origGet.call(this);
+				const idx = args.indexOf('1x1x24');
+				if (idx !== -1) args[idx] = '1920x1080x24';
+				return args;
+			}
+		});
+		logger.info(
+			'[CamoufoxManager] Patched virtual Xvfb screen to 1920x1080 (Cloudflare bot-signal fix)'
+		);
+	} catch (error) {
+		logger.warn(
+			{
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'[CamoufoxManager] Failed to patch virtual Xvfb resolution'
+		);
+	}
+}
+patchVirtualDisplayResolution();
 
 /**
  * Resolve the filesystem path to the shadow-unlock Camoufox addon.
@@ -213,6 +254,15 @@ export class CamoufoxManager {
 		headless: boolean;
 		proxy?: ProxyConfig;
 		acquireTimeoutMs?: number;
+		/**
+		 * Load the shadow-unlock addon (default true).
+		 *
+		 * The addon patches Element.prototype.attachShadow in the page MAIN world,
+		 * which Cloudflare's Turnstile can detect as DOM tampering and respond to
+		 * with an unwinnable managed-challenge loop. Callers should solve passively
+		 * without it first and only opt in for genuinely interactive challenges.
+		 */
+		shadowUnlockAddon?: boolean;
 	}): Promise<ManagedBrowser> {
 		// Wait for availability check to complete before checking isAvailable
 		await this.waitForAvailabilityCheck();
@@ -255,10 +305,13 @@ export class CamoufoxManager {
 			};
 
 			// Load the shadow-unlock addon so interactive Turnstile checkboxes
-			// (in closed shadow DOM) are reachable and clickable.
-			const addonPath = resolveAddonPath();
-			if (addonPath) {
-				camoufoxOptions.addons = [addonPath];
+			// (in closed shadow DOM) are reachable and clickable. Opt-out when the
+			// caller is making a clean passive attempt (see option docs).
+			if (options.shadowUnlockAddon !== false) {
+				const addonPath = resolveAddonPath();
+				if (addonPath) {
+					camoufoxOptions.addons = [addonPath];
+				}
 			}
 
 			// Add proxy if provided
@@ -295,6 +348,14 @@ export class CamoufoxManager {
 
 			// Create page
 			const page = await context.newPage();
+
+			// Pin a realistic viewport. Camoufox defaults to `viewport: null`
+			// (window-measured), which was clamped to the old 1x1 Xvfb surface;
+			// with the patched real-resolution display this guarantees the window
+			// is a normal size consistent with the spoofed screen fingerprint.
+			if (typeof page.setViewportSize === 'function') {
+				await page.setViewportSize({ width: 1366, height: 768 }).catch(() => {});
+			}
 
 			const managed: ManagedBrowser = {
 				id,
@@ -361,7 +422,12 @@ export class CamoufoxManager {
 	 */
 	async createBrowserForDomain(
 		_domain: string,
-		options: { headless: boolean; proxy?: ProxyConfig; acquireTimeoutMs?: number }
+		options: {
+			headless: boolean;
+			proxy?: ProxyConfig;
+			acquireTimeoutMs?: number;
+			shadowUnlockAddon?: boolean;
+		}
 	): Promise<ManagedBrowser> {
 		return this.createBrowser(options);
 	}

@@ -249,7 +249,10 @@ describe('PatternRecognitionService default pattern sanity', () => {
 	it('DEFAULT_BONUS_FOLDER_NAMES includes standard extras folders', () => {
 		expect(DEFAULT_BONUS_FOLDER_NAMES).toContain('Behind the Scenes');
 		expect(DEFAULT_BONUS_FOLDER_NAMES).toContain('Extras');
-		expect(DEFAULT_BONUS_FOLDER_NAMES).toContain('Specials');
+		// 'Specials' and 'Season 00' are TV season folders, not movie extras;
+		// they must NOT be classified as bonus content.
+		expect(DEFAULT_BONUS_FOLDER_NAMES).not.toContain('Specials');
+		expect(DEFAULT_BONUS_FOLDER_NAMES).not.toContain('Season 00');
 	});
 
 	it('DEFAULT_BONUS_FILE_PATTERNS catches trailer/teaser/promo/bonus filenames', () => {

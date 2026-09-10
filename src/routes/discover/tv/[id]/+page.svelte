@@ -37,7 +37,7 @@
 			<a href="/settings/blocklist/blocked-keywords" class="btn btn-outline btn-sm">
 				Manage blocked keywords
 			</a>
-			<a href="/discover" class="btn btn-sm btn-primary"> Back to discover </a>
+			<a href="/discover" class="btn btn-primary btn-sm"> Back to discover </a>
 		</div>
 	</div>
 {:else}

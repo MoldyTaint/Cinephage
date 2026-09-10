@@ -28,7 +28,7 @@ import {
 	parseEpisodePointerFromTitle
 } from '$lib/server/downloads/episode-pointer.js';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
 import type { SearchCriteria, EnhancedReleaseResult } from '$lib/server/indexers/types';
 import { scoreRelease, isUpgrade } from '$lib/server/scoring/scorer.js';
 import type { ScoringProfile } from '$lib/server/scoring/types.js';
@@ -63,6 +63,8 @@ import {
 	type EpisodeContext,
 	type ReleaseCandidate
 } from '../specifications/index.js';
+
+const logger = createChildLogger({ module: 'MonitoringSearchService', logDomain: 'monitoring' });
 
 const parser = new ReleaseParser();
 
@@ -1594,6 +1596,26 @@ export class MonitoringSearchService {
 	}
 
 	/**
+	 * Resolve the scoring profile to use for a media item's upgrade/cutoff
+	 * evaluation. Explicit profiles are loaded via the quality filter; when no
+	 * profile is assigned (or the assigned one no longer exists) the default
+	 * profile is used. Without this, contexts for items with a NULL
+	 * scoringProfileId would carry no profile and every release would be
+	 * rejected with NO_PROFILE (issue #492).
+	 */
+	private async resolveScoringProfileForContext(
+		profileId: string | null,
+		relation: typeof scoringProfiles.$inferSelect | null | undefined
+	): Promise<typeof scoringProfiles.$inferSelect | undefined> {
+		if (relation) return relation;
+		if (profileId) {
+			const profile = await qualityFilter.getProfile(profileId);
+			if (profile) return profile as unknown as typeof scoringProfiles.$inferSelect;
+		}
+		return (await qualityFilter.getDefaultScoringProfile()) as unknown as typeof scoringProfiles.$inferSelect;
+	}
+
+	/**
 	 * Search for movie upgrades
 	 * @param cutoffUnmetOnly - If true, only search items below cutoff. If false, search all items with files.
 	 * @param signal - Optional AbortSignal for cancellation support
@@ -1686,7 +1708,10 @@ export class MonitoringSearchService {
 				const context: MovieContext = {
 					movie,
 					existingFile,
-					profile: movie.scoringProfile ?? undefined
+					profile: await this.resolveScoringProfileForContext(
+						movie.scoringProfileId,
+						movie.scoringProfile
+					)
 				};
 
 				// Check monitored
@@ -1875,7 +1900,10 @@ export class MonitoringSearchService {
 					series: episode.series,
 					episode,
 					existingFile,
-					profile: episode.series.scoringProfile ?? undefined
+					profile: await this.resolveScoringProfileForContext(
+						episode.series.scoringProfileId,
+						episode.series.scoringProfile
+					)
 				};
 
 				// Check monitored
@@ -1955,8 +1983,11 @@ export class MonitoringSearchService {
 
 		// Load scoring profile for scoring
 		let profile: ScoringProfile | undefined;
-		if (movie.scoringProfile) {
-			profile = (await qualityFilter.getProfile(movie.scoringProfile.id)) ?? undefined;
+		if (movie.scoringProfileId) {
+			profile = (await qualityFilter.getProfile(movie.scoringProfileId)) ?? undefined;
+		}
+		if (!profile) {
+			profile = await qualityFilter.getDefaultScoringProfile();
 		}
 
 		// Score the existing file upfront for dry-run reporting
@@ -2036,7 +2067,7 @@ export class MonitoringSearchService {
 			const context: MovieContext = {
 				movie,
 				existingFile,
-				profile: movie.scoringProfile ?? undefined
+				profile: (profile ?? movie.scoringProfile ?? undefined) as MovieContext['profile']
 			};
 
 			// Track best candidate for dry-run reporting
@@ -2406,7 +2437,7 @@ export class MonitoringSearchService {
 				series: seriesData,
 				episode,
 				existingFile,
-				profile: seriesData.scoringProfile ?? undefined
+				profile: (profile ?? seriesData.scoringProfile ?? undefined) as EpisodeContext['profile']
 			};
 
 			// Track best candidate for dry-run reporting
@@ -2657,12 +2688,19 @@ export class MonitoringSearchService {
 			cutoffDate.setHours(cutoffDate.getHours() - intervalHours);
 
 			// Query recently aired episodes without files
+			// airDate is stored date-only ("YYYY-MM-DD") while the cutoff is a full
+			// ISO datetime — a lexicographic gte() against the datetime excludes
+			// episodes aired ON the cutoff date (e.g. everything today after 01:00
+			// UTC for an hourly interval). Compare against the cutoff's DATE so the
+			// full lookback window is covered; slight over-inclusion is safe (the
+			// per-episode flow filters already-grabbed/failed episodes downstream).
+			const cutoffDateOnly = cutoffDate.toISOString().slice(0, 10);
 			const recentEpisodes = await db.query.episodes.findMany({
 				where: and(
 					eq(episodes.monitored, true),
 					eq(episodes.hasFile, false),
-					lte(episodes.airDate, new Date().toISOString()),
-					gte(episodes.airDate, cutoffDate.toISOString())
+					lte(episodes.airDate, new Date().toISOString().slice(0, 10)),
+					gte(episodes.airDate, cutoffDateOnly)
 				),
 				with: {
 					series: {

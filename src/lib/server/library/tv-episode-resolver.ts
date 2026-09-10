@@ -1,4 +1,5 @@
-import { basename, dirname, extname, resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
+import { getMediaParseStem } from './media-utils.js';
 import { parseRelease } from '$lib/server/indexers/parser/ReleaseParser.js';
 import type { ParsedRelease } from '$lib/server/indexers/parser/types.js';
 
@@ -34,38 +35,13 @@ interface EpisodeRecordLike {
 	airDate?: string | null;
 }
 
-const TRANSPORT_AND_MEDIA_EXTENSIONS = new Set([
-	'.strm',
-	'.mkv',
-	'.mp4',
-	'.avi',
-	'.mov',
-	'.m4v',
-	'.wmv',
-	'.flv',
-	'.webm',
-	'.mpg',
-	'.mpeg',
-	'.ts',
-	'.m2ts',
-	'.mts'
-]);
-
-export function getMediaParseStem(pathValue: string): string {
-	let fileName = basename(pathValue);
-
-	while (true) {
-		const extension = extname(fileName).toLowerCase();
-		if (!extension || !TRANSPORT_AND_MEDIA_EXTENSIONS.has(extension)) {
-			return fileName;
-		}
-
-		fileName = basename(fileName, extension);
-	}
-}
-
 export function extractSeasonFromPath(pathValue: string): number | undefined {
 	const normalizedPath = resolve(pathValue).replace(/\\/g, '/');
+
+	// "Specials" folder name is treated as season 0.
+	if (/(?:^|\/)specials?(?:\/|$)/i.test(normalizedPath)) {
+		return 0;
+	}
 
 	// First pass: match season as a complete path segment boundary
 	// e.g. /Season 1/, /s01/, /Season.1/

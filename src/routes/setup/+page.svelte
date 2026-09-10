@@ -391,7 +391,7 @@
 					href={DISCORD_URL}
 					target="_blank"
 					rel="noopener noreferrer"
-					class="flex items-center gap-1 hover:text-base-content/70 transition-colors"
+					class="flex items-center gap-1 transition-colors hover:text-base-content/70"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -411,7 +411,7 @@
 					href={GITHUB_URL}
 					target="_blank"
 					rel="noopener noreferrer"
-					class="flex items-center gap-1 hover:text-base-content/70 transition-colors"
+					class="flex items-center gap-1 transition-colors hover:text-base-content/70"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"

@@ -242,7 +242,7 @@
 					</td>
 					<td>
 						<button
-							class="btn text-error btn-ghost btn-xs"
+							class="btn btn-ghost text-error btn-xs"
 							onclick={() => onDelete(entry)}
 							aria-label={m.blocklist_tableRemoveEntry({ title: entry.title })}
 						>

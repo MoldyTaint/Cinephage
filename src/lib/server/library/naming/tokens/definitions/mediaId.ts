@@ -27,6 +27,7 @@ function formatMediaId(
 export const mediaIdTokens: TokenDefinition[] = [
 	{
 		name: 'TmdbId',
+		aliases: ['TMDB Id', 'TMDb Id'],
 		category: 'mediaId',
 		description: 'TMDB ID number',
 		applicability: ['movie', 'series'],
@@ -34,6 +35,7 @@ export const mediaIdTokens: TokenDefinition[] = [
 	},
 	{
 		name: 'TvdbId',
+		aliases: ['TVDb Id', 'TVMDb Id'],
 		category: 'mediaId',
 		description: 'TVDB ID number',
 		applicability: ['series'],
@@ -41,6 +43,7 @@ export const mediaIdTokens: TokenDefinition[] = [
 	},
 	{
 		name: 'ImdbId',
+		aliases: ['IMDb Id'],
 		category: 'mediaId',
 		description: 'IMDB ID (e.g., tt1234567)',
 		applicability: ['movie', 'series'],

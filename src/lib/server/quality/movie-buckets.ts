@@ -24,8 +24,8 @@ export async function resolveMovieMultiQuality(
 ): Promise<MovieMultiQualityContext> {
 	if (!desiredQualities || desiredQualities.length < 2) return EMPTY;
 
-	let minResolution: string | null = null;
-	let maxResolution: string | null = null;
+	let minResolution: string | null;
+	let maxResolution: string | null;
 	if (scoringProfileId) {
 		const [profile] = await db
 			.select({
@@ -37,6 +37,21 @@ export async function resolveMovieMultiQuality(
 			.limit(1);
 		minResolution = profile?.minResolution ?? null;
 		maxResolution = profile?.maxResolution ?? null;
+	} else {
+		// No explicit profile means "use the default scoring profile" — apply
+		// its resolution bounds so null-profile movies get the same bucket
+		// clamping as movies with an explicitly assigned profile. A missing
+		// default row degrades gracefully to unconstrained buckets.
+		const [defaultProfile] = await db
+			.select({
+				minResolution: scoringProfiles.minResolution,
+				maxResolution: scoringProfiles.maxResolution
+			})
+			.from(scoringProfiles)
+			.where(eq(scoringProfiles.isDefault, true))
+			.limit(1);
+		minResolution = defaultProfile?.minResolution ?? null;
+		maxResolution = defaultProfile?.maxResolution ?? null;
 	}
 
 	const effective = effectiveBuckets(desiredQualities, minResolution, maxResolution);

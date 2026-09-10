@@ -20,7 +20,6 @@ import { monitoringSearchService } from '$lib/server/monitoring/search/Monitorin
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager.js';
 import { deleteAllAlternateTitles } from '$lib/server/services/index.js';
 import { deleteDirectoryWithinRoot } from '$lib/server/filesystem/delete-helpers.js';
-import { logger } from '$lib/logging';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import { tmdb } from '$lib/server/tmdb.js';
 import { movieUpdateSchema } from '$lib/validation/schemas';
@@ -288,6 +287,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				);
 			}
 
+			const shouldMoveFiles =
+				moveFilesOnRootChange === true &&
+				hasExistingFiles &&
+				Boolean(currentMovie?.path) &&
+				canMoveFromCurrentRoot;
+
 			const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
 			let isAnimeMedia = false;
 			if (enforceAnimeSubtype && currentMovie) {
@@ -303,16 +308,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			}
 
 			await validateRootFolder(nextRootFolderId, 'movie', {
+				requireWritable: shouldMoveFiles,
 				enforceAnimeSubtype,
 				isAnimeMedia,
 				mediaTitle: currentMovie?.title
 			});
 
-			const shouldMoveFiles =
-				moveFilesOnRootChange === true &&
-				currentMovie?.hasFile === true &&
-				currentMovie?.path &&
-				canMoveFromCurrentRoot;
 			if (shouldMoveFiles && currentRootFolderId && currentMovie?.path) {
 				moveRequest = {
 					mediaId: params.id,
@@ -722,3 +723,6 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 
 // Import for static method access
 import { MediaInfoService } from '$lib/server/library/index.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryMovieByIdApi', logDomain: 'scans' });

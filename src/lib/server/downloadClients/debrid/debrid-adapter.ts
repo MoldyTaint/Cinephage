@@ -1,8 +1,7 @@
 export type DebridProvider = 'realdebrid' | 'torbox';
 export type DebridReadiness = 'awaiting_selection' | 'pending' | 'ready' | 'terminal';
 export type SubmissionInput =
-	| { kind: 'magnet'; magnet: string }
-	| { kind: 'torrent'; bytes: Uint8Array; filename: string };
+	{ kind: 'magnet'; magnet: string } | { kind: 'torrent'; bytes: Uint8Array; filename: string };
 export type DebridErrorKind =
 	| 'authentication'
 	| 'permission'

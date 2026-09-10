@@ -193,7 +193,7 @@
 											{#if resultErrorItems.length > 0}
 												<button
 													type="button"
-													class="btn mt-1 h-6 min-h-0 gap-1 px-1.5 btn-ghost btn-xs"
+													class="btn mt-1 h-6 min-h-0 gap-1 btn-ghost px-1.5 btn-xs"
 													onclick={() => toggleResultErrors(entry.id)}
 												>
 													{#if showResultErrors}

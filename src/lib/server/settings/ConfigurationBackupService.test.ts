@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb } from '../../../test/db-helper';
-import { downloadClients } from '$lib/server/db/schema';
+import { downloadClients, namingPresets } from '$lib/server/db/schema';
 
 const testDb = createTestDb();
 const DEFAULT_SECRET = process.env.BETTER_AUTH_SECRET ?? 'test-secret';
@@ -93,5 +93,85 @@ describe('ConfigurationBackupService debrid safety', () => {
 		await expect(
 			getConfigurationBackupService().exportConfig('passphrase-12345')
 		).rejects.toThrow();
+	});
+});
+
+describe('ConfigurationBackupService timestamp round-trip', () => {
+	afterEach(() => {
+		testDb.db.delete(namingPresets).run();
+		process.env.BETTER_AUTH_SECRET = DEFAULT_SECRET;
+	});
+
+	it('restores a system-section backup whose rows contain serialized Date columns', async () => {
+		const { getConfigurationBackupService } = await import('./ConfigurationBackupService');
+
+		process.env.BETTER_AUTH_SECRET = 'backup-timestamp-secret';
+		const preset = {
+			id: 'preset-1',
+			name: 'My Preset',
+			description: null,
+			config: { movie: '{title}' },
+			isBuiltIn: false
+		};
+		testDb.db.insert(namingPresets).values(preset).run();
+		const savedAt = testDb.sqlite
+			.prepare(`SELECT "created_at" FROM "naming_presets" WHERE "id" = ?`)
+			.get(preset.id) as { created_at: number };
+
+		const backup = await getConfigurationBackupService().exportConfig('passphrase-12345');
+		testDb.db.delete(namingPresets).run();
+
+		// A real backup round-trips through JSON (download → upload), which
+		// serializes Date columns to ISO strings. Reproduce that exactly.
+		const serialized = JSON.parse(JSON.stringify(backup)) as typeof backup;
+
+		await getConfigurationBackupService().restoreConfig(serialized, {
+			passphrase: 'passphrase-12345',
+			sections: ['system']
+		});
+
+		const restored = testDb.sqlite
+			.prepare(`SELECT "id", "created_at" FROM "naming_presets" WHERE "id" = ?`)
+			.get(preset.id) as { id: string; created_at: number };
+		expect(restored.id).toBe(preset.id);
+		expect(restored.created_at).toBe(savedAt.created_at);
+	});
+
+	it('restores legacy backups whose Date columns were exported as empty objects', async () => {
+		const { getConfigurationBackupService } = await import('./ConfigurationBackupService');
+		const { encryptBackupPayload } = await import('$lib/server/crypto/backupCrypto');
+
+		process.env.BETTER_AUTH_SECRET = 'backup-legacy-secret';
+		const backup = {
+			format: 'cinephage-config-backup' as const,
+			version: 1 as const,
+			createdAt: new Date().toISOString(),
+			manifest: undefined,
+			options: {},
+			data: {
+				namingPresets: [
+					{
+						id: 'legacy-preset',
+						name: 'Legacy Preset',
+						description: null,
+						config: { movie: '{title}' },
+						isBuiltIn: false,
+						createdAt: {} as Record<string, never>
+					}
+				]
+			},
+			secrets: encryptBackupPayload({ tables: {} }, 'passphrase-12345')
+		};
+
+		await getConfigurationBackupService().restoreConfig(backup, {
+			passphrase: 'passphrase-12345',
+			sections: ['system']
+		});
+
+		const restored = testDb.sqlite
+			.prepare(`SELECT "id", "created_at" FROM "naming_presets" WHERE "id" = ?`)
+			.get('legacy-preset') as { id: string; created_at: number | null };
+		expect(restored.id).toBe('legacy-preset');
+		expect(restored.created_at).not.toBeNull();
 	});
 });

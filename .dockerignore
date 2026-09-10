@@ -1,6 +1,7 @@
 node_modules
 build
 dist
+src/lib/paraglide
 .git
 .gitignore
 .gitattributes

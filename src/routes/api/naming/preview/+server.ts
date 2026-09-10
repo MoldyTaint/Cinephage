@@ -6,9 +6,11 @@ import {
 	type NamingConfig
 } from '$lib/server/library/naming/NamingService';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService';
-import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { namingPreviewSchema } from '$lib/validation/schemas.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'NamingPreviewApi', logDomain: 'scans' });
 
 /**
  * Sample data for previews

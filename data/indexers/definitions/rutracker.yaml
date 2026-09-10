@@ -414,6 +414,52 @@ search:
         - name: re_replace
           args: ["\\[\\s*(\\d+)\\s*из\\s*(\\d+)\\s*\\]", ' E$1 of $2']
 
+        # PHASE 1.5: Normalize dub-studio names and Cyrillic dub tokens to latin
+        # (kinozal.yaml parity). Keeps audio-track info parseable by the release
+        # parser and lets it survive the conditional Cyrillic strip in PHASE 5.
+        # Abbreviation tokens use Cyrillic-boundary lookarounds so ordinary words
+        # containing those letters (СТРИМ, ПОРТАЛ, ...) are never corrupted.
+        - name: replace
+          args: ['Кураж-Бамбей', 'kurazh']
+        - name: replace
+          args: ['Кубик в Кубе', 'Kubik']
+        - name: replace
+          args: ['Кравец', 'Kravec']
+        - name: replace
+          args: ['Пифагор', 'Pifagor']
+        - name: replace
+          args: ['Невафильм', 'Nevafilm']
+        - name: re_replace
+          args: ['(?i)(?<![А-Яа-яЁё])(?:Дублированный|Дубляж)(?![А-Яа-яЁё])', 'DUB']
+        - name: re_replace
+          args: ['(?i)(?<![А-Яа-яЁё])Многоголос(?:ый|ая)(?![А-Яа-яЁё])', 'MVO']
+        - name: re_replace
+          args: ['(?i)(?<![А-Яа-яЁё])Двухголос(?:ый|ая)(?![А-Яа-яЁё])', 'DVO']
+        - name: re_replace
+          args: ['(?i)(?<![А-Яа-яЁё])Одноголос(?:ый|ая)(?![А-Яа-яЁё])', 'VO']
+        - name: re_replace
+          args: ['(?i)(?<![А-Яа-яЁё])Авторск(?:ий|ая)(?![А-Яа-яЁё])', 'AVO']
+        - name: re_replace
+          args: ['(?i)(?<![А-Яа-яЁё])Субтитр[ыи](?![А-Яа-яЁё])', 'Sub']
+        - name: re_replace
+          args: ['(?<![А-Яа-яЁё])АП(?![А-Яа-яЁё])', 'AVO']
+        - name: re_replace
+          args: ['(?<![А-Яа-яЁё])ЛО(?![А-Яа-яЁё])', 'VO']
+        - name: re_replace
+          args: ['(?<![А-Яа-яЁё])ЛД(?![А-Яа-яЁё])', 'DVO']
+        - name: re_replace
+          args: ['(?<![А-Яа-яЁё])ЛМ(?![А-Яа-яЁё])', 'MVO']
+        - name: re_replace
+          args: ['(?<![А-Яа-яЁё])ПО(?![А-Яа-яЁё])', 'VO']
+        - name: re_replace
+          args: ['(?<![А-Яа-яЁё])ПД(?![А-Яа-яЁё])', 'DVO']
+        - name: re_replace
+          args: ['(?<![А-Яа-яЁё])ПМ(?![А-Яа-яЁё])', 'MVO']
+        - name: re_replace
+          args: ['(?<![А-Яа-яЁё])ДБ(?![А-Яа-яЁё])', 'DUB']
+        - name: re_replace
+          args: ['(?<![А-Яа-яЁё])СТ(?![А-Яа-яЁё])', 'Sub']
+
         # PHASE 2: Strip metadata parentheses (NON-GREEDY - max 150 chars total)
         # Only strips parens containing quality/format keywords
         - name: re_replace

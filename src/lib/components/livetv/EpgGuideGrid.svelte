@@ -305,7 +305,7 @@
 	<!-- Navigation header -->
 	<div class="flex flex-col items-center gap-2">
 		<div class="flex w-full items-center justify-between">
-			<button class="btn gap-1 px-3 btn-outline btn-sm" onclick={navigatePrev}>
+			<button class="btn gap-1 btn-outline px-3 btn-sm" onclick={navigatePrev}>
 				<ChevronLeft class="h-4 w-4" />
 				<span class="hidden sm:inline">{m.livetv_epgGuide_previous()}</span>
 				<span class="sm:hidden">{m.livetv_epgGuide_prev()}</span>
@@ -313,12 +313,12 @@
 			<div class="text-center text-sm font-semibold text-base-content/80">
 				{formatLongDate(windowStart)}
 			</div>
-			<button class="btn gap-1 px-3 btn-outline btn-sm" onclick={navigateNext}>
+			<button class="btn gap-1 btn-outline px-3 btn-sm" onclick={navigateNext}>
 				<span>{m.livetv_epgGuide_next()}</span>
 				<ChevronRight class="h-4 w-4" />
 			</button>
 		</div>
-		<button class="btn gap-1 px-4 btn-sm btn-primary" onclick={jumpToNow}>
+		<button class="btn gap-1 px-4 btn-primary btn-sm" onclick={jumpToNow}>
 			{#if isViewingToday}
 				<Clock class="h-4 w-4" />
 			{:else}
@@ -336,7 +336,7 @@
 			<input
 				type="text"
 				placeholder={m.livetv_epgGuide_searchPlaceholder()}
-				class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+				class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
 				bind:value={channelSearch}
 			/>
 		</div>
@@ -507,7 +507,7 @@
 
 <!-- Program details modal -->
 {#if selectedProgram}
-	<div class="modal-open modal">
+	<div class="modal modal-open">
 		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] wrap-break-word">
 			<div class="mb-4 flex items-start justify-between">
 				<div>

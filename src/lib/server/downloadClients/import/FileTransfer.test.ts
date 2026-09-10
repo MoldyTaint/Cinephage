@@ -133,6 +133,22 @@ describe('moveFile safety guards', () => {
 			expect(s.size).toBe(11);
 		});
 
+		it('creates deep missing destination parents (letter-bucket targets) and succeeds', async () => {
+			const source = await createFile('movie.mkv', 'nested content');
+			// Letter-bucket naming: T/Title (2026) [tmdbid-x]/movie.mkv —
+			// neither T nor the title folder exists yet.
+			const dest = join(tmpDir, 'T', 'Title (2026) [tmdbid-1]', 'movie.mkv');
+
+			const result = await moveFile(source, dest);
+
+			expect(result.success).toBe(true);
+			expect(result.mode).toBe('move');
+			expect(await fileExists(dest)).toBe(true);
+			expect(await fileExists(source)).toBe(false);
+			const s = await stat(dest);
+			expect(s.size).toBe(14);
+		});
+
 		it('overwrites an existing destination when moving', async () => {
 			const source = await createFile('source.mkv', 'new content');
 			const dest = await createFile('dest.mkv', 'old content');

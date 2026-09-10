@@ -13,9 +13,11 @@
  */
 
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
+
+const logger = createChildLogger({ module: 'LibraryReconcileTask', logDomain: 'monitoring' });
 
 export async function executeLibraryReconcileTask(
 	ctx: TaskExecutionContext | null
@@ -23,7 +25,7 @@ export async function executeLibraryReconcileTask(
 	const executedAt = new Date();
 	logger.info('[LibraryReconcileTask] Starting library reconciliation');
 
-	let reconciled = 0;
+	let reconciled: number;
 
 	try {
 		ctx?.checkCancelled();

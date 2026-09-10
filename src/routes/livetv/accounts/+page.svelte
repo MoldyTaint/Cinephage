@@ -467,7 +467,7 @@
 					<RefreshCw class="h-4 w-4" />
 				{/if}
 			</button>
-			<button class="btn flex-1 btn-sm btn-primary sm:flex-none" onclick={openAddModal}>
+			<button class="btn flex-1 btn-primary btn-sm sm:flex-none" onclick={openAddModal}>
 				<Plus class="h-4 w-4" />
 				{m.livetv_accounts_addAccount()}
 			</button>

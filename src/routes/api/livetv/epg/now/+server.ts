@@ -11,8 +11,10 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getEpgService } from '$lib/server/livetv/epg';
 import { channelLineupService } from '$lib/server/livetv/lineup';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { EpgProgram, EpgProgramWithProgress } from '$lib/types/livetv';
+
+const logger = createChildLogger({ module: 'LiveTvEpgNow', logDomain: 'livetv' });
 
 interface NowNextEntry {
 	now: EpgProgramWithProgress | null;

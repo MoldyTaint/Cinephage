@@ -57,11 +57,7 @@ export default defineConfig({
 	},
 	test: {
 		expect: { requireAssertions: true },
-		environment: 'node',
-		include: ['src/**/*.{test,spec}.{js,ts}'],
-		exclude: ['src/**/*.svelte.{test,spec}.{js,ts}'],
 		setupFiles: ['src/test/setup.ts'],
-		fileParallelism: true,
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'text-summary', 'lcov'],
@@ -78,6 +74,37 @@ export default defineConfig({
 				functions: 23,
 				lines: 23
 			}
-		}
+		},
+		projects: [
+			{
+				extends: true,
+				test: {
+					name: 'node',
+					environment: 'node',
+					include: ['src/**/*.{test,spec}.{js,ts}'],
+					exclude: ['src/lib/components/**/*.test.ts', 'src/**/*.svelte.{test,spec}.{js,ts}'],
+					fileParallelism: true,
+					// First test in each file bears the full module + DB cold-start cost;
+					// under concurrent load this can exceed the 5s default.
+					testTimeout: 15000
+				}
+			},
+			{
+				extends: true,
+				resolve: {
+					// Component tests run against the client-side Svelte bundle; without the
+					// browser condition, `svelte` resolves to the server entry and `mount()`
+					// is unavailable.
+					conditions: ['browser']
+				},
+				test: {
+					name: 'component',
+					environment: 'jsdom',
+					include: ['src/lib/components/**/*.test.ts'],
+					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}'],
+					fileParallelism: true
+				}
+			}
+		]
 	}
 });

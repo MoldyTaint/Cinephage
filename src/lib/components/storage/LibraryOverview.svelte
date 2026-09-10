@@ -31,20 +31,20 @@
 						<div class="flex items-center gap-2">
 							<span class="font-medium text-base-content">{lib.name}</span>
 							{#if lib.isDefault}
-								<span class="badge badge-xs badge-ghost">default</span>
+								<span class="badge badge-ghost badge-xs">default</span>
 							{/if}
 							{#if !lib.hasRootFolder}
-								<span class="badge badge-xs border-error/30 bg-error/10 text-error">
+								<span class="badge border-error/30 bg-error/10 badge-xs text-error">
 									no folder
 								</span>
 							{/if}
 							{#if lib.needsScan}
-								<span class="badge badge-xs border-warning/30 bg-warning/10 text-warning">
+								<span class="badge border-warning/30 bg-warning/10 badge-xs text-warning">
 									needs scan
 								</span>
 							{/if}
 							{#if lib.scanMode}
-								<span class="badge badge-xs badge-outline text-base-content/60">
+								<span class="badge badge-outline badge-xs text-base-content/60">
 									{lib.scanMode === 'watch'
 										? 'watching'
 										: lib.scanMode === 'scheduled_daily'

@@ -101,9 +101,7 @@ export interface StreamingProtocolSettings {
  * Union type for all protocol-specific settings
  */
 export type ProtocolSettings =
-	| TorrentProtocolSettings
-	| UsenetProtocolSettings
-	| StreamingProtocolSettings;
+	TorrentProtocolSettings | UsenetProtocolSettings | StreamingProtocolSettings;
 
 // =============================================================================
 // PROTOCOL-SPECIFIC RESULT FIELDS

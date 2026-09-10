@@ -123,6 +123,16 @@ import { migration_v123 } from './123-add-movies-desired-qualities.js';
 import { migration_v124 } from './124-add-subtitles-movie-file-id.js';
 import { migration_v125 } from './125-add-debrid-client-columns.js';
 import { migration_v126 } from './126-add-metadata-language-overrides.js';
+import { migration_v127 } from './127-add-cinephage-api-identity-auto-sync.js';
+import { migration_v128 } from './128-add-diagnostic-report-tables.js';
+import { migration_v129 } from './129-add-rejected-releases-reason-columns.js';
+import { migration_v130 } from './130-add-rejected-releases-grab-fields.js';
+import { migration_v131 } from './131-purge-orphaned-unmatched-files.js';
+import { migration_v132 } from './132-add-qbittorrent-sequential-download.js';
+import { migration_v133 } from './133-backfill-download-queue-info-hashes.js';
+import { migration_v134 } from './134-add-download-history-info-hash.js';
+import { migration_v135 } from './135-dedupe-active-download-queue.js';
+import { migration_v136 } from './136-add-storage-items-file-id-indexes.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -248,5 +258,15 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v123,
 	migration_v124,
 	migration_v125,
-	migration_v126
+	migration_v126,
+	migration_v127,
+	migration_v128,
+	migration_v129,
+	migration_v130,
+	migration_v131,
+	migration_v132,
+	migration_v133,
+	migration_v134,
+	migration_v135,
+	migration_v136
 ];

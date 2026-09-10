@@ -137,7 +137,7 @@
 		<p class="mt-1 text-sm text-base-content/60">
 			{m.settings_quality_delay_emptyHint()}
 		</p>
-		<button class="btn btn-primary btn-sm mt-4" onclick={openAddDelay}>
+		<button class="btn mt-4 btn-primary btn-sm" onclick={openAddDelay}>
 			<Plus class="h-4 w-4" />
 			{m.settings_quality_delay_addProfile()}
 		</button>
@@ -192,7 +192,7 @@
 						<Pencil class="h-4 w-4" />
 					</button>
 					<button
-						class="btn btn-ghost btn-sm text-error"
+						class="btn btn-ghost text-error btn-sm"
 						onclick={() => {
 							dpDeleteTarget = profile;
 							dpDeleteOpen = true;
@@ -222,7 +222,7 @@
 			<input
 				id="dp-name"
 				type="text"
-				class="input input-bordered w-full"
+				class="input-bordered input w-full"
 				bind:value={dpName}
 				placeholder={m.settings_quality_delay_field_namePlaceholder()}
 			/>
@@ -241,7 +241,7 @@
 				<input
 					id="dp-torrent"
 					type="number"
-					class="input input-bordered w-full"
+					class="input-bordered input w-full"
 					bind:value={dpTorrentDelay}
 					min="0"
 				/>
@@ -254,7 +254,7 @@
 				<input
 					id="dp-usenet"
 					type="number"
-					class="input input-bordered w-full"
+					class="input-bordered input w-full"
 					bind:value={dpUsenetDelay}
 					min="0"
 				/>
@@ -267,7 +267,7 @@
 			</label>
 			<select
 				id="dp-preferred"
-				class="select select-bordered w-full"
+				class="select-bordered select w-full"
 				bind:value={dpPreferredProtocol}
 			>
 				<option value="">{m.settings_quality_delay_option_none()}</option>
@@ -292,7 +292,7 @@
 			<input
 				id="dp-score"
 				type="number"
-				class="input input-bordered w-full"
+				class="input-bordered input w-full"
 				value={dpBypassIfAboveScore ?? ''}
 				oninput={(e) => {
 					const v = (e.currentTarget as HTMLInputElement).value;
