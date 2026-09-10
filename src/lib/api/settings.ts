@@ -259,8 +259,8 @@ export async function getLogSettings() {
 	return apiGet('/api/settings/logs/settings');
 }
 
-export async function updateLogSettings(retentionDays: number) {
-	return apiPut('/api/settings/logs/settings', { retentionDays });
+export async function updateLogSettings(update: { retentionDays?: number; minLevel?: string }) {
+	return apiPut('/api/settings/logs/settings', update);
 }
 
 export async function downloadLogs(params?: Record<string, string>) {

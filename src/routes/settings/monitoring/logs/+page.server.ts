@@ -1,7 +1,11 @@
 import { error } from '@sveltejs/kit';
 import type { RequestEvent } from '@sveltejs/kit';
 
-import { CAPTURED_LOG_DOMAINS, CAPTURED_LOG_LEVELS } from '$lib/logging/log-capture';
+import {
+	CAPTURED_LOG_DOMAINS,
+	CAPTURED_LOG_LEVELS,
+	DEFAULT_CAPTURED_LOG_LEVEL
+} from '$lib/logging/log-capture';
 import {
 	DEFAULT_LOG_RETENTION_DAYS,
 	MAX_LOG_RETENTION_DAYS,
@@ -37,6 +41,8 @@ export const load = async ({ locals }: RequestEvent) => {
 		availableDomains: [...CAPTURED_LOG_DOMAINS],
 		retentionDays: await logHistoryService.getRetentionDays(),
 		defaultRetentionDays: DEFAULT_LOG_RETENTION_DAYS,
-		maxRetentionDays: MAX_LOG_RETENTION_DAYS
+		maxRetentionDays: MAX_LOG_RETENTION_DAYS,
+		minLevel: await logHistoryService.getMinCaptureLevel(),
+		defaultMinLevel: DEFAULT_CAPTURED_LOG_LEVEL
 	};
 };
