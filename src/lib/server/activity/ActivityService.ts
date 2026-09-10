@@ -12,7 +12,7 @@ import {
 import { and, desc, gte, inArray, eq, lte, lt, sql, count, or } from 'drizzle-orm';
 import { upsertQueueTombstoneFromQueueItem } from '$lib/server/downloadClients/monitoring/QueueTombstoneService';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { SQL } from 'drizzle-orm';
 import {
 	ActivityDeduplicationService,
@@ -58,6 +58,8 @@ import {
 	buildActivitySummary,
 	parseRetentionDays
 } from './activity-filters.js';
+
+const logger = createChildLogger({ module: 'ActivityService', logDomain: 'monitoring' });
 
 interface PaginationOptions {
 	limit: number;

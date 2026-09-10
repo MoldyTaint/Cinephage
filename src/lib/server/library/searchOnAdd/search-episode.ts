@@ -3,7 +3,6 @@
  */
 
 import { eq } from 'drizzle-orm';
-import { logger } from '$lib/logging/index.js';
 import { db } from '$lib/server/db/index.js';
 import { series, episodes, episodeFiles } from '$lib/server/db/schema.js';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
@@ -13,6 +12,9 @@ import type { SearchCriteria } from '$lib/server/indexers/types';
 import type { SearchForEpisodeParams, GrabResult } from './types.js';
 import type { AltTitleRefresher } from './alt-titles.js';
 import { AUTO_GRAB_MIN_SCORE } from './search-utils.js';
+import { createChildLogger } from '$lib/logging/index.js';
+
+const logger = createChildLogger({ module: 'SearchEpisode', logDomain: 'scans' });
 
 export async function searchForEpisode(
 	params: SearchForEpisodeParams,

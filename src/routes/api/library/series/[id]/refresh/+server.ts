@@ -15,7 +15,6 @@ import { db } from '$lib/server/db/index.js';
 import { series, seasons, episodes, episodeFiles } from '$lib/server/db/schema.js';
 import { eq, inArray } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
-import { logger } from '$lib/logging';
 import { todayDateString } from '$lib/utils/format.js';
 import { enrichAnimeMetadata } from '$lib/server/metadata/provider-resolution.js';
 import {
@@ -26,11 +25,14 @@ import {
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { resolveLanguage } from '$lib/server/metadata/metadata-refresh.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import { createChildLogger } from '$lib/logging';
 import {
 	startRefresh,
 	stopRefresh,
 	isSeriesRefreshing
 } from '$lib/server/library/ActiveSearchTracker.js';
+
+const logger = createChildLogger({ module: 'LibrarySeriesRefreshApi', logDomain: 'scans' });
 
 interface ProgressEvent {
 	type: 'progress';

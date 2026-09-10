@@ -5,8 +5,10 @@ import { manualImportSchema } from '$lib/validation/schemas.js';
 import { manualImportQueueService } from '$lib/server/library/ManualImportQueueService.js';
 import { isPathAllowed, isPathInsideManagedRoot } from '$lib/server/filesystem/path-guard.js';
 import { MAX_BULK_IMPORT_JOBS } from '$lib/shared/bulk-import.js';
-import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryImportBulkApi', logDomain: 'scans' });
 
 const bulkSchema = z.object({
 	jobs: z

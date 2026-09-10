@@ -6,7 +6,9 @@
  */
 
 import iconv from 'iconv-lite';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
+
+const logger = createChildLogger({ module: 'EncodingUtils', logDomain: 'indexers' });
 
 // Encoding name normalization mapping
 const ENCODING_ALIASES: Record<string, string> = {

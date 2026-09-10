@@ -606,7 +606,7 @@ export class ConfigurationBackupService {
 						{
 							table: config.name,
 							component: 'ConfigurationBackupService',
-							logDomain: 'settings'
+							logDomain: 'system'
 						},
 						'Configuration backup failed while reading required table'
 					);
@@ -619,7 +619,7 @@ export class ConfigurationBackupService {
 						err: error,
 						table: config.name,
 						component: 'ConfigurationBackupService',
-						logDomain: 'settings'
+						logDomain: 'system'
 					},
 					'Skipping table during backup export (table may not exist)'
 				);
@@ -743,7 +743,7 @@ export class ConfigurationBackupService {
 			) as unknown as BackupSecretPayload;
 		} catch (error) {
 			logger.error(
-				{ err: error, component: 'ConfigurationBackupService', logDomain: 'settings' },
+				{ err: error, component: 'ConfigurationBackupService', logDomain: 'system' },
 				'Failed to decrypt configuration backup'
 			);
 			throw new ValidationError('Invalid backup passphrase or corrupted secret payload');

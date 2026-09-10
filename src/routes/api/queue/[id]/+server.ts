@@ -12,7 +12,9 @@ import { and, desc, eq } from 'drizzle-orm';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring';
 import { upsertQueueTombstoneFromQueueItem } from '$lib/server/downloadClients/monitoring/QueueTombstoneService';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'QueueItemApi', logDomain: 'downloads' });
 
 const DEFAULT_QUEUE_REMOVE_CLIENT_TIMEOUT_MS = 3000;
 

@@ -1,10 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { logHistoryService } from '$lib/server/logging/log-history.js';
 import { logHistoryQuerySchema } from '$lib/validation/schemas.js';
+
+const logger = createChildLogger({ module: 'LogHistoryApi', logDomain: 'system' });
 
 export const GET: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);

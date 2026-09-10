@@ -20,7 +20,6 @@ import { monitoringSearchService } from '$lib/server/monitoring/search/Monitorin
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager.js';
 import { deleteAllAlternateTitles } from '$lib/server/services/index.js';
 import { deleteDirectoryWithinRoot } from '$lib/server/filesystem/delete-helpers.js';
-import { logger } from '$lib/logging';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import { tmdb } from '$lib/server/tmdb.js';
 import { movieUpdateSchema } from '$lib/validation/schemas';
@@ -724,3 +723,6 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 
 // Import for static method access
 import { MediaInfoService } from '$lib/server/library/index.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryMovieByIdApi', logDomain: 'scans' });

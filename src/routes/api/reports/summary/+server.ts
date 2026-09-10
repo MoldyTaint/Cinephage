@@ -8,7 +8,10 @@ import {
 	unmatchedFiles
 } from '$lib/server/db/schema.js';
 import { count, ne } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+// Cross-cutting summary across all four report types - not tied to one pipeline stage.
+const logger = createChildLogger({ module: 'ReportsSummary', logDomain: 'system' });
 
 /**
  * GET /api/reports/summary

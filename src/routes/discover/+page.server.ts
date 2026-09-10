@@ -3,7 +3,8 @@ import { getDiscoverResults } from '$lib/server/discover';
 import { contentFilterPipeline } from '$lib/server/filters/ContentFilterPipeline.js';
 import type { WatchProvider } from '$lib/types/tmdb';
 import type { TmdbCertificationsResponse } from '$lib/server/tmdb';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
 import {
 	parseDiscoverParams,
 	isDefaultView as checkDefaultView,
@@ -16,6 +17,8 @@ import { settings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 
 import type { PageServerLoad } from './$types';
+
+const logger = createChildLogger({ module: 'DiscoverPage', logDomain: 'system' });
 
 export const load: PageServerLoad = async ({ url }) => {
 	const params = parseDiscoverParams(url.searchParams);

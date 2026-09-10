@@ -22,8 +22,10 @@ import {
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { ValidationError } from '$lib/errors';
-import { logger } from '$lib/logging';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryMoviesBulkApi', logDomain: 'scans' });
 
 interface BulkAddResult {
 	added: number;

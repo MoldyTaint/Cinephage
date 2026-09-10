@@ -9,8 +9,10 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getStalkerPortalManager } from '$lib/server/livetv/stalker';
 import { stalkerPortalCreateSchema } from '$lib/validation/schemas';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { ValidationError, isAppError } from '$lib/errors';
+
+const logger = createChildLogger({ module: 'LiveTvPortals', logDomain: 'livetv' });
 
 /**
  * List all portals

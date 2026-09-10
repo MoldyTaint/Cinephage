@@ -1,4 +1,4 @@
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { ServiceStatus } from '$lib/server/services/background-service.js';
 import type { CinephageSettingsService } from './settings/CinephageSettingsService.js';
 import { getCinephageSettingsService } from './settings/CinephageSettingsService.js';
@@ -23,6 +23,8 @@ import { registerBuiltinModules } from './modules/index.js';
  * Modules (library-streaming, remote-streaming) land in subsequent phases
  * and register themselves via static imports at module load time.
  */
+const logger = createChildLogger({ module: 'CinephageApiService', logDomain: 'system' });
+
 export class CinephageApiService {
 	readonly name = 'cinephage-api';
 	private _status: ServiceStatus = 'pending';

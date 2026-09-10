@@ -5,7 +5,9 @@ import { rejectedReleases, movies, series } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { grabService } from '$lib/server/downloads/GrabService.js';
 import { requireAuth } from '$lib/server/auth/authorization.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'ReportsRejectedOverride', logDomain: 'downloads' });
 
 /**
  * POST /api/reports/rejected-releases/[id]/override

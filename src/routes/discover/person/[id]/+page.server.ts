@@ -1,7 +1,9 @@
 import { tmdb } from '$lib/server/tmdb';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'DiscoverPersonPage', logDomain: 'system' });
 
 export const load: PageServerLoad = async ({ params }) => {
 	const id = parseInt(params.id);

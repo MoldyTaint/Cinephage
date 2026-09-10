@@ -1,6 +1,11 @@
 import { json } from '@sveltejs/kit';
-import { logger } from '$lib/logging';
 import { backfillReleaseMetadata } from '$lib/server/library/release-metadata-backfill.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({
+	module: 'LibraryBackfillReleaseMetadataApi',
+	logDomain: 'scans'
+});
 
 export async function POST({ request }: { request: Request }) {
 	try {

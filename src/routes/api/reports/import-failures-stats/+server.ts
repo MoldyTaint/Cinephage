@@ -3,7 +3,9 @@ import type { RequestHandler } from './$types.js';
 import { db } from '$lib/server/db/index.js';
 import { importFailures } from '$lib/server/db/schema.js';
 import { count, eq, ne, and, gt } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'ReportsImportFailuresStats', logDomain: 'imports' });
 
 export const GET: RequestHandler = async () => {
 	try {

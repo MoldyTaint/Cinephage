@@ -1,7 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
 import { regenerateRecoverableApiKey } from '$lib/server/auth/index.js';
+
+const logger = createChildLogger({ module: 'ApiKeysRegenerateApi', logDomain: 'auth' });
 
 // POST /api/settings/system/api-keys/[id]/regenerate - Regenerate an API key
 export const POST: RequestHandler = async ({ params, request, locals }) => {

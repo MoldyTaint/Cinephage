@@ -11,10 +11,12 @@ import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 import { db } from '$lib/server/db/index.js';
 import { series } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { logger } from '$lib/logging';
 import type { SearchProgressUpdate } from '$lib/server/downloads/MultiSeasonSearchStrategy.js';
 import { collectAutoSearchIssues } from '$lib/server/library/autoSearchIssues.js';
 import { getAutoSearchPreflightIssue } from '$lib/server/library/autoSearchPreflight.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibrarySeriesAutoSearchApi', logDomain: 'scans' });
 
 /**
  * Auto-Search Request Types

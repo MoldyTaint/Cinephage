@@ -12,7 +12,9 @@
 import { db } from '$lib/server/db/index.js';
 import { movies, episodes } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
+
+const logger = createChildLogger({ module: 'AdaptiveSubtitleSearching', logDomain: 'subtitles' });
 
 /**
  * After this many days of failed searches, switch to extended (weekly) searching.

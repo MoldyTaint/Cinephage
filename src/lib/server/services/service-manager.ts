@@ -6,7 +6,9 @@
  */
 
 import type { BackgroundService, ServiceStatusInfo } from './background-service.js';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
+
+const logger = createChildLogger({ module: 'ServiceManager', logDomain: 'system' });
 
 class ServiceManager {
 	private services: Map<string, BackgroundService> = new Map();

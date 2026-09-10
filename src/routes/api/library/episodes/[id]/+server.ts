@@ -5,10 +5,12 @@ import { episodes, episodeFiles, series, seasons, rootFolders } from '$lib/serve
 import { eq } from 'drizzle-orm';
 import { unlink, rmdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
-import { logger } from '$lib/logging';
 import { searchOnAdd } from '$lib/server/library/searchOnAdd.js';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryEpisodeByIdApi', logDomain: 'scans' });
 
 /**
  * PATCH /api/library/episodes/[id]

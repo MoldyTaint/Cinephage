@@ -15,8 +15,10 @@ import {
 import { eq, asc, inArray, and } from 'drizzle-orm';
 import type { RequestHandler } from '@sveltejs/kit';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
-import { logger } from '$lib/logging';
 import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibrarySeriesStreamApi', logDomain: 'scans' });
 
 // Local type definitions
 interface EpisodeFileInfo {

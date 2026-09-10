@@ -7,8 +7,13 @@ import { inArray, and, eq } from 'drizzle-orm';
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
 import { searchSubtitlesForMediaBatch } from '$lib/server/subtitles/services/SubtitleImportService';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { parseBody, assertFound } from '$lib/server/api/validate.js';
+
+const logger = createChildLogger({
+	module: 'SubtitleLanguageProfileBulkAssignApi',
+	logDomain: 'subtitles'
+});
 
 /**
  * Schema for bulk profile assignment request

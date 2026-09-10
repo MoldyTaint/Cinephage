@@ -17,7 +17,9 @@ import { db } from '$lib/server/db/index.js';
 import { movies, series } from '$lib/server/db/schema.js';
 import { isNull, or } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
+
+const logger = createChildLogger({ module: 'ExternalIdService', logDomain: 'system' });
 
 /**
  * Configuration for the external ID service

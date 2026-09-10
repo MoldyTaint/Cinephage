@@ -9,10 +9,15 @@ import type { RequestHandler } from './$types';
 import { providerRegistry } from '$lib/server/smartlists/providers/ProviderRegistry.js';
 import { externalIdResolver } from '$lib/server/smartlists/ExternalIdResolver.js';
 import { presetService } from '$lib/server/smartlists/presets/PresetService.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { z } from 'zod';
 import { smartListExternalPreviewSchema } from '$lib/validation/schemas.js';
 import { contentFilterPipeline } from '$lib/server/filters/ContentFilterPipeline.js';
+
+const logger = createChildLogger({
+	module: 'SmartListsExternalPreviewApi',
+	logDomain: 'monitoring'
+});
 
 export const POST: RequestHandler = async ({ request, url }) => {
 	const isTest = url.pathname.endsWith('/test');

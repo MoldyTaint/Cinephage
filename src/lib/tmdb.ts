@@ -7,7 +7,9 @@ import type {
 	PersonDetails
 } from './types/tmdb';
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'tmdb', logDomain: 'system' });
 
 // Cache both the result AND the pending promise to prevent duplicate requests
 let configCache: TmdbConfiguration | null = null;

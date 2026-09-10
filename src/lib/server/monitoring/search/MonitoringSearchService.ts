@@ -28,7 +28,7 @@ import {
 	parseEpisodePointerFromTitle
 } from '$lib/server/downloads/episode-pointer.js';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
 import type { SearchCriteria, EnhancedReleaseResult } from '$lib/server/indexers/types';
 import { scoreRelease, isUpgrade } from '$lib/server/scoring/scorer.js';
 import type { ScoringProfile } from '$lib/server/scoring/types.js';
@@ -63,6 +63,8 @@ import {
 	type EpisodeContext,
 	type ReleaseCandidate
 } from '../specifications/index.js';
+
+const logger = createChildLogger({ module: 'MonitoringSearchService', logDomain: 'monitoring' });
 
 const parser = new ReleaseParser();
 

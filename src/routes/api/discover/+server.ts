@@ -5,7 +5,9 @@ import { tmdb } from '$lib/server/tmdb';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'DiscoverApi', logDomain: 'system' });
 
 /**
  * Query parameter validation schema for discover endpoint.

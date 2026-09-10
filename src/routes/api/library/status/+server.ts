@@ -1,11 +1,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
+import { createChildLogger } from '$lib/logging';
 import {
 	getLibraryStatus,
 	type LibraryStatusMap,
 	type LibraryStatus
 } from '$lib/server/library/status.js';
-import { logger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryStatusApi', logDomain: 'scans' });
 
 /**
  * POST /api/library/status

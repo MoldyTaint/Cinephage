@@ -1,7 +1,9 @@
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { getImportService } from '$lib/server/downloadClients/import/ImportService.js';
 import { getServiceManager } from '$lib/server/services/service-manager.js';
 import { sqlite } from '$lib/server/db/index.js';
+
+const logger = createChildLogger({ module: 'Shutdown', logDomain: 'system' });
 
 let isShuttingDown = false;
 

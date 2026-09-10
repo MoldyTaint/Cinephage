@@ -8,8 +8,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { RenamePreviewService } from '$lib/server/library/naming/RenamePreviewService';
-import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'RenamePreviewSeriesApi', logDomain: 'scans' });
 
 /**
  * GET /api/rename/preview/series/:id

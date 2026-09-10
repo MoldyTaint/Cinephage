@@ -10,9 +10,11 @@ import {
 	type NamingPreset
 } from '$lib/server/library/naming/presets';
 import { eq } from 'drizzle-orm';
-import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { namingPresetCreateSchema } from '$lib/validation/schemas.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'NamingPresetsApi', logDomain: 'scans' });
 
 /**
  * GET /api/naming/presets

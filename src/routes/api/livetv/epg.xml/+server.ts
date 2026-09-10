@@ -15,8 +15,10 @@ import {
 	buildResolvedPlanForLineup,
 	mapGuideDataToRequestedChannels
 } from '$lib/server/livetv/epg/epg-utils';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { ChannelLineupItemWithDetails, EpgProgram } from '$lib/types/livetv';
+
+const logger = createChildLogger({ module: 'LiveTvEpgXml', logDomain: 'livetv' });
 
 /**
  * Format a Date as XMLTV timestamp (YYYYMMDDHHmmss +ZZZZ)

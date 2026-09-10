@@ -15,7 +15,9 @@ import { db } from '$lib/server/db/index.js';
 import { alternateTitles, movies, series } from '$lib/server/db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
+
+const logger = createChildLogger({ module: 'AlternateTitleService', logDomain: 'system' });
 
 /**
  * Maps ISO 639-1 language codes to the ISO 3166-1 country codes where that

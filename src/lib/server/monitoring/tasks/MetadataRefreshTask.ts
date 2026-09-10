@@ -2,11 +2,13 @@ import { db } from '$lib/server/db/index.js';
 import { movies, series } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
 import { TaskCancelledException } from '$lib/server/tasks/TaskCancelledException.js';
 import { extractReleaseDates, type ExtractedReleaseDates } from '$lib/utils/extractReleaseDates.js';
+
+const logger = createChildLogger({ module: 'MetadataRefreshTask', logDomain: 'monitoring' });
 
 type HomeMedium = 'digital' | 'physical' | 'tv';
 

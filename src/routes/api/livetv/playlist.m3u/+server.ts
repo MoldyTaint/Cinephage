@@ -21,8 +21,10 @@
 import type { RequestHandler } from './$types';
 import { channelLineupService } from '$lib/server/livetv/lineup/ChannelLineupService';
 import { getBaseUrlAsync } from '$lib/server/streaming/url';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { ChannelLineupItemWithDetails } from '$lib/types/livetv';
+
+const logger = createChildLogger({ module: 'LiveTvPlaylistM3u', logDomain: 'livetv' });
 
 /**
  * Build an M3U playlist from lineup items

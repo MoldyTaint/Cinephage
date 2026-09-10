@@ -1,8 +1,11 @@
 import type { RequestHandler } from './$types';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
 import { LOGOS_DIR } from '$lib/server/logos/constants.js';
+
+const logger = createChildLogger({ module: 'LogosFileApi', logDomain: 'system' });
 
 /**
  * GET /api/logos/file/[country]/[filename]

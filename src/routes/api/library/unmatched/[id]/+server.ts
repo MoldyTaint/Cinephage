@@ -1,8 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { unmatchedFileService } from '$lib/server/library/unmatched-file-service.js';
-import { logger } from '$lib/logging';
 import type { MatchRequest } from '$lib/types/unmatched.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryUnmatchedByIdApi', logDomain: 'scans' });
 
 /**
  * GET /api/library/unmatched/[id]

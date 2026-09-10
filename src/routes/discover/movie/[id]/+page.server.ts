@@ -1,7 +1,8 @@
 import { tmdb } from '$lib/server/tmdb';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
 import {
 	enrichWithLibraryStatus,
 	getLibraryStatus,
@@ -9,6 +10,8 @@ import {
 } from '$lib/server/library/status';
 import { keywordBlocklistService } from '$lib/server/settings/KeywordBlocklistService.js';
 import { enrichWithReleaseDates } from '$lib/server/release-enrichment.js';
+
+const logger = createChildLogger({ module: 'DiscoverMoviePage', logDomain: 'system' });
 
 export const load: PageServerLoad = async ({ params }) => {
 	const id = parseInt(params.id);

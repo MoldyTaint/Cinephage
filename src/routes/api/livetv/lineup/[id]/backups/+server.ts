@@ -7,9 +7,11 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { channelLineupService } from '$lib/server/livetv/lineup/ChannelLineupService';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { ValidationError } from '$lib/errors';
 import { addBackupLinkSchema } from '$lib/validation/schemas.js';
+
+const logger = createChildLogger({ module: 'LiveTvLineupBackups', logDomain: 'livetv' });
 
 /**
  * Get all backup links for a lineup item

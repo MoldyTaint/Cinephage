@@ -7,12 +7,14 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getProvider } from '$lib/server/livetv/providers';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { toFriendlyLiveTvTestError } from '$lib/livetv/errorMessages';
 import { probeStalkerEndpoint } from '$lib/server/livetv/stalker/StalkerPortalClient';
 import { z } from 'zod';
 import { ValidationError } from '$lib/errors';
 import type { LiveTvAccount } from '$lib/types/livetv';
+
+const logger = createChildLogger({ module: 'LiveTvAccountsTest', logDomain: 'livetv' });
 
 // Validation schema for testing Live TV accounts
 const liveTvAccountTestSchema = z.object({

@@ -18,7 +18,7 @@ import { getSubtitleSearchService } from '$lib/server/subtitles/services/Subtitl
 import { getSubtitleDownloadService } from '$lib/server/subtitles/services/SubtitleDownloadService.js';
 import { getSubtitleProviderManager } from '$lib/server/subtitles/services/SubtitleProviderManager.js';
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
 import { normalizeLanguageCode } from '$lib/shared/languages';
 import type { TaskResult } from '../MonitoringScheduler.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
@@ -31,6 +31,8 @@ import {
 	recordEpisodeSearchFailure,
 	resetEpisodeSearchFailures
 } from '$lib/server/subtitles/adaptive-searching.js';
+
+const logger = createChildLogger({ module: 'MissingSubtitlesTask', logDomain: 'monitoring' });
 
 /**
  * Default minimum score for auto-download (used if profile doesn't specify)

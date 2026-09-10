@@ -1,12 +1,15 @@
 import type { LayoutServerLoad } from './$types';
 import { getManagedApiKeysForRequest } from '$lib/server/auth/index.js';
 import { error } from '@sveltejs/kit';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
 import { getSystemSettingsService } from '$lib/server/settings/SystemSettingsService.js';
 import { db } from '$lib/server/db';
 import { settings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
+
+const logger = createChildLogger({ module: 'SystemSettingsLayout', logDomain: 'system' });
 
 export const load: LayoutServerLoad = async ({ request, locals }) => {
 	// Require authentication

@@ -4,7 +4,9 @@ import { db } from '$lib/server/db/index.js';
 import { importFailures, downloadQueue } from '$lib/server/db/schema.js';
 import { eq, or, and } from 'drizzle-orm';
 import { getImportService } from '$lib/server/downloadClients/import';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'ReportsImportFailuresRetry', logDomain: 'imports' });
 
 /**
  * POST /api/reports/import-failures/[id]/retry

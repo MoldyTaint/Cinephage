@@ -19,9 +19,11 @@ import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 import type { QualityProfileSummary } from '$lib/types/library';
 import type { TVShowDetails } from '$lib/types/tmdb';
 import { tmdb } from '$lib/server/tmdb.js';
-import { logger } from '$lib/logging';
 import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryTvPage', logDomain: 'scans' });
 
 export interface SeasonWithEpisodes {
 	id: string;

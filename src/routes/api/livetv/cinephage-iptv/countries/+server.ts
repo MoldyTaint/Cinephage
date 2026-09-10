@@ -6,9 +6,11 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { getStreamingIndexerSettings } from '$lib/server/streaming/settings.js';
 import { getCinephageCore } from '$lib/server/cinephage/core/CinephageCore.js';
+
+const logger = createChildLogger({ module: 'LiveTvCinephageIptvCountries', logDomain: 'livetv' });
 
 const CINEPHAGE_API_BASE = 'https://api.cinephage.net';
 const CACHE_TTL = 24 * 60 * 60 * 1000;

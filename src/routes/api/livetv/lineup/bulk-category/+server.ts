@@ -8,7 +8,9 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { channelLineupService } from '$lib/server/livetv/lineup';
 import { ValidationError } from '$lib/errors';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LiveTvLineupBulkCategory', logDomain: 'livetv' });
 
 interface BulkSetCategoryRequest {
 	itemIds: string[];

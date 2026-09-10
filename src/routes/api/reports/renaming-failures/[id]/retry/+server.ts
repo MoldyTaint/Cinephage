@@ -5,7 +5,9 @@ import { renamingFailures, movieFiles, episodeFiles } from '$lib/server/db/schem
 import { eq } from 'drizzle-orm';
 import { rename, mkdir, access } from 'fs/promises';
 import { dirname, basename } from 'path';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'ReportsRenamingFailuresRetry', logDomain: 'scans' });
 
 const NON_RETRYABLE = new Set(['source_not_found', 'path_too_long', 'invalid_chars']);
 

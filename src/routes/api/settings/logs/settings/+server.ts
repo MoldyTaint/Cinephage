@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { DEFAULT_CAPTURED_LOG_LEVEL } from '$lib/logging/log-capture';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import {
@@ -10,6 +10,8 @@ import {
 	MAX_LOG_RETENTION_DAYS,
 	logHistoryService
 } from '$lib/server/logging/log-history.js';
+
+const logger = createChildLogger({ module: 'LogSettingsApi', logDomain: 'system' });
 
 const updateSettingsSchema = z.object({
 	retentionDays: z.coerce.number().int().min(1).max(MAX_LOG_RETENTION_DAYS).optional(),

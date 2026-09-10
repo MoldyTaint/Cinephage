@@ -79,7 +79,13 @@ vi.mock('$lib/logging/index.js', () => ({
 		warn: vi.fn(),
 		error: vi.fn(),
 		debug: vi.fn()
-	}
+	},
+	createChildLogger: vi.fn(() => ({
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
+		debug: vi.fn()
+	}))
 }));
 
 // Mock all specifications using class syntax so they survive clearAllMocks.

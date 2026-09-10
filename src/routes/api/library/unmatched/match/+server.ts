@@ -1,10 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { unmatchedFileService } from '$lib/server/library/unmatched-file-service.js';
-import { logger } from '$lib/logging';
 import { parseBody } from '$lib/server/api/validate.js';
 import { unmatchedMatchSchema } from '$lib/validation/schemas.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryUnmatchedMatchApi', logDomain: 'scans' });
 
 export const POST: RequestHandler = async ({ request }: { request: Request }) => {
 	try {

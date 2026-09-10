@@ -9,7 +9,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'QueueRefreshApi', logDomain: 'downloads' });
 
 export const POST: RequestHandler = async () => {
 	logger.info('Manual queue refresh requested');
