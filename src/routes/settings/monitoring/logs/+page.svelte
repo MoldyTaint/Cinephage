@@ -7,10 +7,11 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { SettingsPage } from '$lib/components/ui/settings';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
-	import type {
-		CapturedLogDomain,
-		CapturedLogEntry,
-		CapturedLogLevel
+	import {
+		DOMAIN_LABELS,
+		type CapturedLogDomain,
+		type CapturedLogEntry,
+		type CapturedLogLevel
 	} from '$lib/logging/log-capture';
 	import { createDynamicSSE } from '$lib/sse';
 	import { toasts } from '$lib/stores/toast.svelte';
@@ -32,6 +33,8 @@
 		retentionDays: number;
 		defaultRetentionDays: number;
 		maxRetentionDays: number;
+		minLevel: CapturedLogLevel;
+		defaultMinLevel: CapturedLogLevel;
 	}
 
 	interface LogHistoryResponse {
@@ -45,13 +48,43 @@
 	}
 
 	const LIVE_BUFFER_LIMIT = 300;
+	const MAX_LIVE_ENTRIES = 500;
+	const MAX_TOTAL_ENTRIES = 5000;
 	const DEFAULT_LEVELS: CapturedLogLevel[] = ['debug', 'info', 'warn', 'error'];
+	const VIEW_FILTER_STORAGE_KEY = 'cinephage.logs.viewFilter';
+
+	interface StoredViewFilter {
+		levels?: CapturedLogLevel[];
+		domain?: CapturedLogDomain | 'all';
+	}
+
+	function loadStoredViewFilter(): StoredViewFilter | null {
+		if (typeof window === 'undefined') return null;
+		try {
+			const raw = window.localStorage.getItem(VIEW_FILTER_STORAGE_KEY);
+			if (!raw) return null;
+			return JSON.parse(raw) as StoredViewFilter;
+		} catch {
+			return null;
+		}
+	}
+
+	function saveViewFilter(): void {
+		if (typeof window === 'undefined') return;
+		try {
+			const stored: StoredViewFilter = { levels: [...levels], domain: selectedDomain };
+			window.localStorage.setItem(VIEW_FILTER_STORAGE_KEY, JSON.stringify(stored));
+		} catch {
+			/* localStorage unavailable (private mode, quota, etc.) - view filter just won't persist */
+		}
+	}
 
 	let { data }: { data: PageData } = $props();
 	const availableLevels = $derived(data.availableLevels);
 	const availableDomains = $derived(data.availableDomains);
 	const defaultRetentionDays = $derived(data.defaultRetentionDays);
 	const maxRetentionDays = $derived(data.maxRetentionDays);
+	const defaultMinLevel = $derived(data.defaultMinLevel);
 
 	let entries = $state<CapturedLogEntry[]>([]);
 	let historyLoading = $state(false);
@@ -73,7 +106,10 @@
 	let to = $state('');
 
 	let retentionDays = $state(7);
-	let retentionSaving = $state(false);
+	let minLevel = $state<CapturedLogLevel>('info');
+	let logSettingsSaving = $state(false);
+	let logSettingsOpen = $state(false);
+	let logSettingsContainer = $state<HTMLDivElement | null>(null);
 
 	let livePaused = $state(false);
 	let autoFollowEnabled = $state(true);
@@ -111,17 +147,31 @@
 			historyPagesLoaded.add(data.initialPage);
 		}
 		retentionDays = data.retentionDays;
+		minLevel = data.minLevel;
 		selectedEntryId = null;
+
+		const storedFilter = loadStoredViewFilter();
+		let restoredNonDefaultFilter = false;
+		if (storedFilter?.levels && storedFilter.levels.length > 0) {
+			levels.clear();
+			for (const level of storedFilter.levels) levels.add(level);
+			if (storedFilter.levels.length !== DEFAULT_LEVELS.length) restoredNonDefaultFilter = true;
+		}
+		if (storedFilter?.domain && storedFilter.domain !== 'all') {
+			selectedDomain = storedFilter.domain;
+			restoredNonDefaultFilter = true;
+		}
+
 		lastLoadedFilterKey = buildFilterKey();
 
-		// If a correlationId was provided, immediately load filtered history
-		if (search) void loadHistoryPage(1, 'replace');
+		// If a correlationId was provided, or a non-default view filter was
+		// restored, immediately load history matching that filter.
+		if (search || restoredNonDefaultFilter) void loadHistoryPage(1, 'replace');
 	});
 
 	$effect(() => {
 		if (!initialized) return;
-		if (retentionSaving) return;
-		retentionDays = data.retentionDays;
+		saveViewFilter();
 	});
 
 	const selectedEntry = $derived.by(
@@ -223,6 +273,12 @@
 		mobileInspectorOpen = false;
 	}
 
+	function handleWindowClick(event: MouseEvent): void {
+		if (!logSettingsOpen || !logSettingsContainer) return;
+		if (event.target instanceof Node && logSettingsContainer.contains(event.target)) return;
+		logSettingsOpen = false;
+	}
+
 	function handleListScroll(): void {
 		if (!listViewport) return;
 		isNearTop = listViewport.scrollTop < 24;
@@ -269,7 +325,7 @@
 	}
 
 	function replaceEntries(nextEntries: CapturedLogEntry[]): void {
-		entries = dedupeAndSort(nextEntries);
+		entries = dedupeAndSort(nextEntries, MAX_LIVE_ENTRIES);
 	}
 
 	function queueLiveEntry(entry: CapturedLogEntry): void {
@@ -339,8 +395,8 @@
 			const nextEntries = payload.entries ?? [];
 			entries =
 				mode === 'append'
-					? dedupeAndSort([...entries, ...nextEntries])
-					: dedupeAndSort(nextEntries);
+					? dedupeAndSort([...entries, ...nextEntries], MAX_TOTAL_ENTRIES)
+					: dedupeAndSort(nextEntries, MAX_LIVE_ENTRIES);
 
 			historyTotal = payload.total ?? 0;
 			historyPage = payload.page ?? page;
@@ -445,16 +501,18 @@
 		}
 	}
 
-	async function saveRetentionDays(): Promise<void> {
-		retentionSaving = true;
+	async function saveLogSettings(): Promise<void> {
+		logSettingsSaving = true;
 		try {
-			const payload = await updateLogSettings(retentionDays);
+			const payload = await updateLogSettings({ retentionDays, minLevel });
 			retentionDays = payload.retentionDays ?? retentionDays;
-			toasts.success(`Log retention updated to ${retentionDays} days`);
+			minLevel = payload.minLevel ?? minLevel;
+			toasts.success('Log settings saved');
+			logSettingsOpen = false;
 		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Failed to save log retention');
+			toasts.error(error instanceof Error ? error.message : 'Failed to save log settings');
 		} finally {
-			retentionSaving = false;
+			logSettingsSaving = false;
 		}
 	}
 
@@ -479,6 +537,10 @@
 			fractionalSecondDigits: 3,
 			hour12: false
 		}).format(new Date(value));
+	}
+
+	function capitalize(value: string): string {
+		return value.charAt(0).toUpperCase() + value.slice(1);
 	}
 
 	function levelBadgeClass(level: CapturedLogLevel, active: boolean): string {
@@ -507,7 +569,8 @@
 	}
 
 	function getSource(entry: CapturedLogEntry): string {
-		const parts = [entry.logDomain, entry.component, entry.service, entry.module].filter(
+		const domainLabel = entry.logDomain ? DOMAIN_LABELS[entry.logDomain] : undefined;
+		const parts = [domainLabel, entry.component, entry.service, entry.module].filter(
 			(v): v is string => typeof v === 'string' && v.length > 0
 		);
 		const deduped = parts.filter((v, i) => i === 0 || v !== parts[i - 1]);
@@ -549,6 +612,7 @@
 	onkeydown={(e) => {
 		if (e.key === 'Escape' && selectedEntryId) closeInspector();
 	}}
+	onclick={handleWindowClick}
 />
 
 {#snippet inspectorBody(entry: CapturedLogEntry)}
@@ -661,7 +725,7 @@
 					>
 						<option value="all">All domains</option>
 						{#each availableDomains as domain (domain)}
-							<option value={domain}>{domain}</option>
+							<option value={domain}>{DOMAIN_LABELS[domain]}</option>
 						{/each}
 					</select>
 				</div>
@@ -743,8 +807,16 @@
 				<span class="h-5 w-px shrink-0 bg-base-300"></span>
 
 				<!-- Retention dropdown -->
-				<div class="dropdown">
-					<button class="btn gap-1.5 btn-ghost text-xs btn-sm" aria-label="Log retention settings">
+				<div
+					class="dropdown"
+					class:dropdown-open={logSettingsOpen}
+					bind:this={logSettingsContainer}
+				>
+					<button
+						class="btn gap-1.5 btn-ghost text-xs btn-sm"
+						aria-label="Log retention settings"
+						onclick={() => (logSettingsOpen = !logSettingsOpen)}
+					>
 						<CalendarSync class="h-3.5 w-3.5" />
 						<span class="font-mono">{retentionDays}d</span>
 					</button>
@@ -772,17 +844,48 @@
 								<button
 									class="btn ml-auto btn-ghost btn-xs"
 									onclick={() => (retentionDays = defaultRetentionDays)}
-									disabled={retentionSaving}
+									disabled={logSettingsSaving}
 								>
 									Default
 								</button>
 							</div>
+
+							<div class="my-3 h-px bg-base-300"></div>
+
+							<p
+								class="mb-3 text-[10px] font-medium tracking-widest text-base-content/50 uppercase"
+							>
+								Minimum Level Captured
+							</p>
+							<p class="mb-3 text-xs text-base-content/50">
+								Entries below this level are not written to disk.
+							</p>
+							<div class="mb-3 flex items-center gap-2">
+								<select
+									id="min-level"
+									class="select flex-1 select-xs"
+									bind:value={minLevel}
+									disabled={logSettingsSaving}
+								>
+									{#each availableLevels as level (level)}
+										<option value={level}>{capitalize(level)}</option>
+									{/each}
+								</select>
+								<button
+									class="btn btn-ghost btn-xs"
+									onclick={() => (minLevel = defaultMinLevel)}
+									disabled={logSettingsSaving}
+								>
+									Default
+								</button>
+							</div>
+
 							<button
 								class="btn w-full btn-primary btn-xs"
-								onclick={saveRetentionDays}
-								disabled={retentionSaving}
+								onclick={saveLogSettings}
+								disabled={logSettingsSaving}
 							>
-								{#if retentionSaving}
+								{#if logSettingsSaving}
 									<Loader2 class="h-3 w-3 animate-spin" />
 								{/if}
 								Save

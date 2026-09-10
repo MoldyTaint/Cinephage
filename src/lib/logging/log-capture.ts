@@ -35,6 +35,23 @@ export const CAPTURED_LOG_DOMAINS = [
 	'downloads'
 ] as const;
 
+/** Friendly display labels for CAPTURED_LOG_DOMAINS - used wherever a domain is shown to a user. */
+export const DOMAIN_LABELS: Record<CapturedLogDomain, string> = {
+	system: 'System',
+	http: 'HTTP',
+	client: 'Client',
+	auth: 'Auth',
+	main: 'Main',
+	streams: 'Streams',
+	imports: 'Imports',
+	monitoring: 'Monitoring',
+	scans: 'Scans',
+	indexers: 'Indexers',
+	subtitles: 'Subtitles',
+	livetv: 'Live TV',
+	downloads: 'Downloads'
+};
+
 export interface CapturedLogEntry {
 	id: string;
 	timestamp: string;
