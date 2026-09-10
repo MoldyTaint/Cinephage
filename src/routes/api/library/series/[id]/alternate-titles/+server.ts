@@ -10,7 +10,9 @@ import {
 	removeAlternateTitle
 } from '$lib/server/services/AlternateTitleService.js';
 import { ValidationError } from '$lib/errors';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibrarySeriesAlternateTitlesApi', logDomain: 'scans' });
 
 const addTitleSchema = z.object({
 	title: z.string().min(1).max(500)

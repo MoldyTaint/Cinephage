@@ -1,7 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getLogoDownloadService } from '$lib/server/logos/LogoDownloadService.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LogosStatusApi', logDomain: 'system' });
 
 /**
  * GET /api/logos/status

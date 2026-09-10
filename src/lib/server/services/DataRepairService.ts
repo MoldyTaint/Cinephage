@@ -13,8 +13,10 @@ import { db } from '$lib/server/db/index.js';
 import { settings, series, seasons, episodes, episodeFiles } from '$lib/server/db/schema.js';
 import { eq, like, and } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
 import { todayDateString } from '$lib/utils/format.js';
+
+const logger = createChildLogger({ module: 'DataRepairService', logDomain: 'system' });
 
 interface RepairSeriesData {
 	tmdbId: number;

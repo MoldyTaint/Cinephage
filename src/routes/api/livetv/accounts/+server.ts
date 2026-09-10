@@ -8,9 +8,11 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { liveTvAccountCreateSchema } from '$lib/validation/schemas.js';
 import { isAppError } from '$lib/errors';
+
+const logger = createChildLogger({ module: 'LiveTvAccounts', logDomain: 'livetv' });
 
 /**
  * List all Live TV accounts

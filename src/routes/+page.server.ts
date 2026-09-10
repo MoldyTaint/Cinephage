@@ -1,5 +1,6 @@
 import type { PageServerLoad } from './$types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
 import { activityService } from '$lib/server/activity';
 import {
 	getDashboardStats,
@@ -9,6 +10,8 @@ import {
 import { getUpcomingItems } from '$lib/server/calendar/queries.js';
 import { getCalendarPreferences } from '$lib/server/settings/calendar-preferences.js';
 import type { DashboardStats } from '$lib/types/dashboard.js';
+
+const logger = createChildLogger({ module: 'HomePage', logDomain: 'system' });
 
 export const load: PageServerLoad = async () => {
 	try {

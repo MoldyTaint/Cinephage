@@ -7,9 +7,11 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getPortalScannerService } from '$lib/server/livetv/stalker';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { ValidationError } from '$lib/errors';
 import { z } from 'zod';
+
+const logger = createChildLogger({ module: 'LiveTvPortalScanResultsIgnore', logDomain: 'livetv' });
 
 const ignoreSchema = z.object({
 	resultIds: z.array(z.string()).min(1)

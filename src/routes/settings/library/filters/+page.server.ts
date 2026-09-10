@@ -4,8 +4,11 @@ import { tmdb } from '$lib/server/tmdb';
 import { eq } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import type { GlobalTmdbFilters } from '$lib/types/tmdb';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { TMDB } from '$lib/config/constants.js';
+
+// TMDB content-filter settings (genre exclusions etc.), not disk scanning - 'system' fits better than 'scans'.
+const logger = createChildLogger({ module: 'LibraryFiltersSettingsPage', logDomain: 'system' });
 
 export const load: PageServerLoad = async () => {
 	// Fetch current settings

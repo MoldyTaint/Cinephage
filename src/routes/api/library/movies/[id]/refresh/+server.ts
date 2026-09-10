@@ -11,14 +11,16 @@ import { db } from '$lib/server/db/index.js';
 import { movies } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
-import { logger } from '$lib/logging';
 import { enrichAnimeMetadata } from '$lib/server/metadata/provider-resolution.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+import { createChildLogger } from '$lib/logging';
 import {
 	startRefresh,
 	stopRefresh,
 	isMovieRefreshing
 } from '$lib/server/library/ActiveSearchTracker.js';
+
+const logger = createChildLogger({ module: 'LibraryMovieRefreshApi', logDomain: 'scans' });
 
 export const POST: RequestHandler = async ({ params }) => {
 	const { id } = params;

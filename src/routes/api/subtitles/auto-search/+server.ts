@@ -7,8 +7,10 @@ import { db } from '$lib/server/db';
 import { movies, episodes, series } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { parseBody, assertFound } from '$lib/server/api/validate.js';
+
+const logger = createChildLogger({ module: 'SubtitleAutoSearchApi', logDomain: 'subtitles' });
 
 const autoSearchSchema = z
 	.object({

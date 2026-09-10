@@ -19,11 +19,13 @@ import { getSubtitleSearchService } from '$lib/server/subtitles/services/Subtitl
 import { getSubtitleDownloadService } from '$lib/server/subtitles/services/SubtitleDownloadService.js';
 import { getSubtitleProviderManager } from '$lib/server/subtitles/services/SubtitleProviderManager.js';
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
 import { normalizeLanguageCode } from '$lib/shared/languages';
 import type { TaskResult } from '../MonitoringScheduler.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
 import { isMovieMonitored } from '$lib/server/monitoring/specifications/MonitoredSpecification.js';
+
+const logger = createChildLogger({ module: 'SubtitleUpgradeTask', logDomain: 'monitoring' });
 
 /**
  * Maximum subtitles to process per run to prevent overwhelming providers

@@ -7,7 +7,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getLiveTvChannelService } from '$lib/server/livetv/LiveTvChannelService';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LiveTvChannelsSyncStatus', logDomain: 'livetv' });
 
 export const GET: RequestHandler = async () => {
 	const channelService = getLiveTvChannelService();

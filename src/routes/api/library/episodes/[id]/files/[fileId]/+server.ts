@@ -5,8 +5,10 @@ import { episodes, episodeFiles, series, rootFolders } from '$lib/server/db/sche
 import { eq } from 'drizzle-orm';
 import { unlink, rmdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
-import { logger } from '$lib/logging';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryEpisodeFilesApi', logDomain: 'scans' });
 
 /**
  * DELETE /api/library/episodes/[id]/files/[fileId]

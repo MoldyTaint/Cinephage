@@ -1,9 +1,11 @@
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type {
 	CinephageModule,
 	CinephageModuleCapabilities,
 	CinephageModuleContext
 } from '../modules/types.js';
+
+const logger = createChildLogger({ module: 'CinephageModuleRegistry', logDomain: 'system' });
 
 type CapabilityKey = keyof CinephageModuleCapabilities;
 

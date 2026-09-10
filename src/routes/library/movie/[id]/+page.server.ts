@@ -15,11 +15,13 @@ import type { PageServerLoad } from './$types';
 import type { LibraryMovie, MovieFile, QualityProfileSummary } from '$lib/types/library';
 import type { MovieDetails } from '$lib/types/tmdb';
 import { tmdb } from '$lib/server/tmdb.js';
-import { logger } from '$lib/logging';
 import { isMovieSearching } from '$lib/server/library/ActiveSearchTracker.js';
 import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryMoviePage', logDomain: 'scans' });
 
 export interface QueueItemInfo {
 	id: string;

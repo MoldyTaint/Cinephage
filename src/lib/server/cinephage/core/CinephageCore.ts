@@ -1,6 +1,6 @@
 import { createIndexerHttp } from '$lib/server/indexers/http';
 import type { IndexerHttp } from '$lib/server/indexers/http';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { CinephageSettingsService } from '../settings/CinephageSettingsService.js';
 import { getCinephageSettingsService } from '../settings/CinephageSettingsService.js';
 import { getServerIdentity, type CinephageServerIdentity } from './version.js';
@@ -21,6 +21,8 @@ import { getServerIdentity, type CinephageServerIdentity } from './version.js';
  * fetcher). All api.cinephage.net traffic in the codebase should route
  * through this object.
  */
+const logger = createChildLogger({ module: 'CinephageCore', logDomain: 'system' });
+
 export class CinephageCore {
 	private readonly http: IndexerHttp;
 	private readonly settings: CinephageSettingsService;

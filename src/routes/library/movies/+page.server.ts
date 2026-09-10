@@ -10,10 +10,12 @@ import {
 import { eq, and, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 import type { LibraryMovie, MovieFile, QualityProfileSummary } from '$lib/types/library';
-import { logger } from '$lib/logging';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryMoviesListPage', logDomain: 'scans' });
 
 export const load: PageServerLoad = async ({ url }) => {
 	// Parse URL params for sorting and filtering

@@ -6,7 +6,6 @@ import { movies } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { requireAuth } from '$lib/server/auth/authorization.js';
-import { logger } from '$lib/logging';
 import { buildMovieFolderName } from '$lib/server/library/naming/naming-helpers.js';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 import {
@@ -26,6 +25,9 @@ import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { fetchAndStoreMovieAlternateTitles } from '$lib/server/services/AlternateTitleService.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryCollectionsTrackApi', logDomain: 'scans' });
 
 const trackSchema = z.object({
 	rootFolderId: z.string().min(1),

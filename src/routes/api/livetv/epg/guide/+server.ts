@@ -17,9 +17,11 @@ import {
 	mapGuideDataToRequestedChannels
 } from '$lib/server/livetv/epg/epg-utils';
 import { channelLineupService } from '$lib/server/livetv/lineup';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { ValidationError } from '$lib/errors';
 import { z } from 'zod';
+
+const logger = createChildLogger({ module: 'LiveTvEpgGuide', logDomain: 'livetv' });
 
 const DEFAULT_HOURS = 6;
 

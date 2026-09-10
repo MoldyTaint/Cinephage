@@ -12,12 +12,14 @@ import {
 import { eq, and, inArray, ne, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 import type { LibrarySeries, EpisodeFile, QualityProfileSummary } from '$lib/types/library';
-import { logger } from '$lib/logging';
 import { todayDateString } from '$lib/utils/format.js';
 import { matchesSeriesStatusFilter } from '$lib/utils/format-status.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryTvListPage', logDomain: 'scans' });
 
 export const load: PageServerLoad = async ({ url }) => {
 	// Parse URL params for sorting and filtering

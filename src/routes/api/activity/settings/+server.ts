@@ -7,8 +7,10 @@ import {
 	MAX_ACTIVITY_RETENTION_DAYS
 } from '$lib/server/activity';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { z } from 'zod';
+
+const logger = createChildLogger({ module: 'ActivitySettingsApi', logDomain: 'monitoring' });
 
 const updateRetentionSchema = z.object({
 	retentionDays: z.coerce.number().int().min(1).max(MAX_ACTIVITY_RETENTION_DAYS)

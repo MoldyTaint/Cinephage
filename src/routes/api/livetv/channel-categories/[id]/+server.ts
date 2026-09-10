@@ -10,8 +10,10 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { channelCategoryService } from '$lib/server/livetv/categories';
 import { ValidationError } from '$lib/errors';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { ChannelCategoryFormData } from '$lib/types/livetv';
+
+const logger = createChildLogger({ module: 'LiveTvChannelCategoryById', logDomain: 'livetv' });
 
 export const GET: RequestHandler = async ({ params }) => {
 	try {

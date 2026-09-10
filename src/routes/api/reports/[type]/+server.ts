@@ -20,6 +20,23 @@ const VALID_TYPES = [
 
 type ReportType = (typeof VALID_TYPES)[number];
 
+// This handler serves all four report types through one shared route, so the
+// log domain is picked per-request from the type param rather than fixed at
+// the module level - matches the domain each type's underlying pipeline
+// stage already logs under elsewhere (grab decisions vs. post-download
+// import vs. library scan/rename).
+function reportTypeDomain(type: ReportType): 'downloads' | 'imports' | 'scans' {
+	switch (type) {
+		case 'rejected-releases':
+			return 'downloads';
+		case 'import-failures':
+			return 'imports';
+		case 'renaming-failures':
+		case 'unmatched-imports':
+			return 'scans';
+	}
+}
+
 /**
  * GET /api/reports/[type]
  * List diagnostic report records for a given type with pagination.
@@ -308,7 +325,10 @@ export const GET: RequestHandler = async ({ params, url }) => {
 			}
 		});
 	} catch (err) {
-		logger.error({ err, type }, '[Reports] Failed to load report records');
+		logger.error(
+			{ err, type, logDomain: reportTypeDomain(type) },
+			'[Reports] Failed to load report records'
+		);
 		return json({ success: false, error: 'Failed to load report records' }, { status: 500 });
 	}
 };
@@ -432,7 +452,10 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 		return json({ success: true, data: { updated } });
 	} catch (err) {
-		logger.error({ err, type }, '[Reports] Failed to update record status');
+		logger.error(
+			{ err, type, logDomain: reportTypeDomain(type) },
+			'[Reports] Failed to update record status'
+		);
 		return json({ success: false, error: 'Failed to update records' }, { status: 500 });
 	}
 };

@@ -9,8 +9,10 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { channelLineupService } from '$lib/server/livetv/lineup';
 import { ValidationError } from '$lib/errors';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { AddToLineupRequest } from '$lib/types/livetv';
+
+const logger = createChildLogger({ module: 'LiveTvLineup', logDomain: 'livetv' });
 
 export const GET: RequestHandler = async () => {
 	try {

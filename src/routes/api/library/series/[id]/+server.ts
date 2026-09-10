@@ -15,7 +15,6 @@ import {
 } from '$lib/server/db/schema.js';
 import { eq, inArray, and } from 'drizzle-orm';
 import { deleteDirectoryWithinRoot } from '$lib/server/filesystem/delete-helpers.js';
-import { logger } from '$lib/logging';
 import { todayDateString } from '$lib/utils/format.js';
 import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { searchSubtitlesForMediaBatch } from '$lib/server/subtitles/services/SubtitleImportService.js';
@@ -43,6 +42,9 @@ import { tmdb } from '$lib/server/tmdb.js';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
 import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
 import { refreshSeriesMetadata } from '$lib/server/metadata/metadata-refresh.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibrarySeriesByIdApi', logDomain: 'scans' });
 
 /**
  * GET /api/library/series/[id]

@@ -9,8 +9,10 @@ import { subtitleBatchAutoSearchSchema } from '$lib/validation/schemas.js';
 import type { SubtitleBatchAutoSearchRequest } from '$lib/validation/schemas.js';
 import { parseBody } from '$lib/server/api/validate.js';
 import { createSSEOperationStream } from '$lib/server/sse.js';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
 import type { SubtitleSearchResult } from '$lib/server/subtitles/types.js';
+
+const logger = createChildLogger({ module: 'SubtitleAutoSearchBatchApi', logDomain: 'subtitles' });
 
 interface BatchProgressEvent {
 	current: number;

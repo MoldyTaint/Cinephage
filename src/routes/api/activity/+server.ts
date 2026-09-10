@@ -1,10 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { activityService, activityStreamEvents } from '$lib/server/activity';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { ActivityFilters, ActivitySortOptions, ActivityScope } from '$lib/types/activity';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { z } from 'zod';
+
+const logger = createChildLogger({ module: 'ActivityApi', logDomain: 'monitoring' });
 
 const deleteHistorySchema = z.object({
 	activityIds: z.array(z.string().min(1)).min(1).max(500)

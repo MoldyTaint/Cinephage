@@ -24,8 +24,10 @@ import { fetchAndStoreMovieAlternateTitles } from '$lib/server/services/Alternat
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { ValidationError, isAppError } from '$lib/errors';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
-import { logger } from '$lib/logging';
 import { requireAuth } from '$lib/server/auth/authorization.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryMoviesApi', logDomain: 'scans' });
 
 /**
  * GET /api/library/movies

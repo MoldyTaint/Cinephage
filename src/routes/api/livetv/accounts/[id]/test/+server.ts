@@ -7,8 +7,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { toFriendlyLiveTvTestError } from '$lib/livetv/errorMessages';
+
+const logger = createChildLogger({ module: 'LiveTvAccountTest', logDomain: 'livetv' });
 
 /**
  * Test an existing Live TV account by ID

@@ -8,7 +8,8 @@ import {
 } from '$lib/server/indexers/types';
 import { searchQuerySchema } from '$lib/validation/schemas';
 import { qualityFilter, type EnrichmentOptions } from '$lib/server/quality';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
 import { redactUrl } from '$lib/server/utils/urlSecurity';
 import { db } from '$lib/server/db';
 import { movies, series, settings } from '$lib/server/db/schema';
@@ -20,6 +21,8 @@ import {
 	fetchAndStoreMovieAlternateTitles,
 	fetchAndStoreSeriesAlternateTitles
 } from '$lib/server/services/AlternateTitleService';
+
+const logger = createChildLogger({ module: 'SearchApi', logDomain: 'system' });
 
 /**
  * Per-indexer search timeout for interactive searches.

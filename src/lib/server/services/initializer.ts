@@ -1,5 +1,5 @@
 import { building } from '$app/environment';
-import { logger, registerServerLogSinks } from '$lib/logging';
+import { createChildLogger, registerServerLogSinks } from '$lib/logging';
 import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
 import { libraryJobWorker } from '$lib/server/library/jobs/LibraryJobWorker.js';
 import { isFFprobeAvailable, getFFprobeVersion } from '$lib/server/library/ffprobe.js';
@@ -32,6 +32,8 @@ import { logCaptureStore } from '$lib/server/logging/log-capture-store.js';
 import { logHistoryService } from '$lib/server/logging/log-history.js';
 import { getCinephageApiService } from '$lib/server/cinephage/CinephageApiService.js';
 import { getDebridPollService } from '$lib/server/downloadClients/debrid/DebridPollService.js';
+
+const logger = createChildLogger({ module: 'Initializer', logDomain: 'system' });
 
 let initializationPromise: Promise<void> | null = null;
 let initializationStarted = false;

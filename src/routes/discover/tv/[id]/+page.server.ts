@@ -1,13 +1,16 @@
 import { tmdb } from '$lib/server/tmdb';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
 import {
 	enrichWithLibraryStatus,
 	getLibraryStatus,
 	filterBlockedMedia
 } from '$lib/server/library/status';
 import { keywordBlocklistService } from '$lib/server/settings/KeywordBlocklistService.js';
+
+const logger = createChildLogger({ module: 'DiscoverTvPage', logDomain: 'system' });
 
 export const load: PageServerLoad = async ({ params }) => {
 	const id = parseInt(params.id);

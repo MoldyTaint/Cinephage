@@ -23,8 +23,10 @@ import { renamePreviewCache } from '$lib/server/library/naming/RenamePreviewCach
 import { db } from '$lib/server/db';
 import { movieFiles, episodeFiles } from '$lib/server/db/schema';
 import { count } from 'drizzle-orm';
-import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'RenamePreviewApi', logDomain: 'scans' });
 
 const STREAM_BATCH_SIZE = 500;
 

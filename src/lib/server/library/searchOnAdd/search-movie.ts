@@ -1,5 +1,4 @@
 import { eq } from 'drizzle-orm';
-import { logger } from '$lib/logging/index.js';
 import { db } from '$lib/server/db/index.js';
 import { movieFiles, movies, scoringProfiles } from '$lib/server/db/schema.js';
 import { grabService } from '$lib/server/downloads/GrabService.js';
@@ -16,6 +15,9 @@ import type { SearchCriteria, EnhancedReleaseResult } from '$lib/server/indexers
 import { AUTO_GRAB_MIN_SCORE } from './search-utils.js';
 import type { AltTitleRefresher } from './alt-titles.js';
 import type { SearchForMovieParams, GrabResult } from './types.js';
+import { createChildLogger } from '$lib/logging/index.js';
+
+const logger = createChildLogger({ module: 'SearchMovie', logDomain: 'scans' });
 
 /**
  * Build and send a grab request for a single movie release. Shared by the

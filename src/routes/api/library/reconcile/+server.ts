@@ -2,7 +2,9 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { logger } from '$lib/logging/index.js';
+import { createChildLogger } from '$lib/logging/index.js';
+
+const logger = createChildLogger({ module: 'LibraryReconcileApi', logDomain: 'scans' });
 
 /**
  * POST /api/library/reconcile

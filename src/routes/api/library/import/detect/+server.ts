@@ -4,8 +4,10 @@ import { z } from 'zod';
 import { stat } from 'node:fs/promises';
 import { manualImportService } from '$lib/server/library/manual-import-service.js';
 import { isPathAllowed, isPathInsideManagedRoot } from '$lib/server/filesystem/path-guard.js';
-import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LibraryImportDetectApi', logDomain: 'scans' });
 
 const detectSchema = z.object({
 	sourcePath: z.string().min(1),

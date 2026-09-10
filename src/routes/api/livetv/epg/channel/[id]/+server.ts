@@ -11,9 +11,11 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getEpgService } from '$lib/server/livetv/epg';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { ValidationError } from '$lib/errors';
 import { z } from 'zod';
+
+const logger = createChildLogger({ module: 'LiveTvEpgChannelById', logDomain: 'livetv' });
 
 const DEFAULT_HOURS = 6;
 

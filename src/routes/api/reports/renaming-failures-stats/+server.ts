@@ -3,7 +3,9 @@ import type { RequestHandler } from './$types.js';
 import { db } from '$lib/server/db/index.js';
 import { renamingFailures } from '$lib/server/db/schema.js';
 import { count, eq, ne, and, gt, or } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'ReportsRenamingFailuresStats', logDomain: 'scans' });
 
 export const GET: RequestHandler = async () => {
 	try {

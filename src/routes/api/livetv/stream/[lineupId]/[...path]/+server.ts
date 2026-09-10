@@ -19,7 +19,9 @@ import {
 } from '$lib/server/livetv/streaming/StreamUrlCache.js';
 import { rewriteHlsPlaylistUrls } from '$lib/server/streaming/utils/hls-rewrite.js';
 import { STB_USER_AGENT } from '$lib/server/livetv/stalker/StalkerPortalClient.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ module: 'LiveTvStreamProxy', logDomain: 'livetv' });
 
 // Streaming constants
 const LIVETV_SEGMENT_FETCH_TIMEOUT_MS = 15000; // Fail faster for quicker retry/failover

@@ -2,13 +2,15 @@
  * Alternate title refresh helpers — shared caching logic for searchOnAdd
  */
 
-import { logger } from '$lib/logging/index.js';
 import {
 	getMovieSearchTitles,
 	getSeriesSearchTitles,
 	fetchAndStoreMovieAlternateTitles,
 	fetchAndStoreSeriesAlternateTitles
 } from '$lib/server/services/AlternateTitleService.js';
+import { createChildLogger } from '$lib/logging/index.js';
+
+const logger = createChildLogger({ module: 'AltTitlesSearch', logDomain: 'scans' });
 
 export const ALT_TITLE_REFRESH_COOLDOWN_MS = 60 * 60 * 1000;
 export const ALT_TITLE_REFRESH_CACHE_MAX_ENTRIES = 2000;

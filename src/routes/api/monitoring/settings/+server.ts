@@ -2,8 +2,10 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { monitoringSettingsUpdateSchema } from '$lib/validation/schemas.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+
+const logger = createChildLogger({ module: 'MonitoringSettingsApi', logDomain: 'monitoring' });
 
 /**
  * GET /api/monitoring/settings
