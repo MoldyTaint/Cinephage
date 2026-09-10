@@ -25,6 +25,12 @@ const serviceLogger = {
 const DATA_DIR = process.env.DATA_DIR || 'data';
 const LOGS_DIR = join(DATA_DIR, 'logs');
 
+const LINE_YIELD_INTERVAL = 500;
+
+function yieldToEventLoop(): Promise<void> {
+	return new Promise((resolve) => setImmediate(resolve));
+}
+
 const LOG_RETENTION_SETTINGS_KEY = 'logs_retention_days';
 export const DEFAULT_LOG_RETENTION_DAYS = 7;
 export const MIN_LOG_RETENTION_DAYS = 1;
@@ -119,6 +125,7 @@ async function readLinesReverse(filePath: string, visitor: ReverseLineVisitor): 
 		const chunkSize = 1024 * 1024;
 		let position = size;
 		let remainder = '';
+		let linesSinceYield = 0;
 
 		while (position > 0) {
 			const readSize = Math.min(chunkSize, position);
@@ -134,6 +141,10 @@ async function readLinesReverse(filePath: string, visitor: ReverseLineVisitor): 
 				const shouldContinue = await visitor(lines[index]);
 				if (shouldContinue === false) {
 					return;
+				}
+				if (++linesSinceYield >= LINE_YIELD_INTERVAL) {
+					linesSinceYield = 0;
+					await yieldToEventLoop();
 				}
 			}
 		}

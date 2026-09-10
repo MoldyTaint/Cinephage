@@ -144,8 +144,12 @@ export async function loadStorageLayoutData() {
 				completedAt: libraryScanHistory.completedAt
 			})
 			.from(libraryScanHistory)
-			.where(sql`${libraryScanHistory.rootFolderId} IS NOT NULL`)
-			.orderBy(sql`${libraryScanHistory.startedAt} DESC`),
+			.where(
+				sql`${libraryScanHistory.rootFolderId} IS NOT NULL AND ${libraryScanHistory.startedAt} = (
+					SELECT MAX(started_at) FROM library_scan_history h2
+					WHERE h2.root_folder_id = ${libraryScanHistory.rootFolderId}
+				)`
+			),
 		db
 			.select({
 				status: libraryScanHistory.status,
