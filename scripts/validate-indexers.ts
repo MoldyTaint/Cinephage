@@ -16,7 +16,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as yaml from 'yaml';
+import * as yaml from 'js-yaml';
 import { createIndexerHttp } from '../src/lib/server/indexers/http/IndexerHttp';
 
 // ANSI color codes for terminal output
@@ -112,7 +112,7 @@ interface TestResult {
 function loadDefinition(filePath: string): { data: unknown; error?: string } {
 	try {
 		const content = fs.readFileSync(filePath, 'utf-8');
-		const data = yaml.parse(content);
+		const data = yaml.load(content);
 		return { data };
 	} catch (error) {
 		return {
