@@ -9,7 +9,8 @@ import {
 	movieFiles,
 	episodeFiles,
 	rootFolders,
-	rejectedReleases
+	rejectedReleases,
+	downloadHistory
 } from '$lib/server/db/schema.js';
 import { and, eq, ne } from 'drizzle-orm';
 import type { GrabRequest, GrabResult, ResolvedContext, HandlerResult } from './grab-types.js';
@@ -179,6 +180,10 @@ class GrabServiceImpl {
 				},
 				'[Grab] Handler failed to add release to download client'
 			);
+			this.persistFailedGrab(release, resolved, handlerResult.error).catch((err) =>
+				logger.warn({ err }, '[Grab] Failed to persist failed grab history record')
+			);
+
 			return { success: false, decision, error: handlerResult.error };
 		}
 
@@ -471,6 +476,39 @@ class GrabServiceImpl {
 			indexerId: release.indexerId ?? undefined,
 			rejectedAt: new Date().toISOString(),
 			status: 'rejected'
+		});
+	}
+
+	/**
+	 * Records a grab attempt that reached routeByProtocol but failed there
+	 * (e.g. "No enabled torrent download client configured") as a real
+	 * download_history row.
+	 */
+	private async persistFailedGrab(
+		release: GrabRequest['release'],
+		resolved: ResolvedContext,
+		errorMessage: string | undefined
+	): Promise<void> {
+		const now = new Date().toISOString();
+		await db.insert(downloadHistory).values({
+			// No real download ID exists - the attempt never reached a client,
+			// so there's nothing to assign one from.
+			downloadId: null,
+			infoHash: release.infoHash,
+			title: release.title,
+			indexerId: release.indexerId,
+			indexerName: release.indexerName,
+			protocol: release.protocol,
+			movieId: resolved.movieId,
+			seriesId: resolved.seriesId,
+			episodeIds: resolved.episodeIds,
+			seasonNumber: resolved.seasonNumber,
+			status: 'failed',
+			statusReason: errorMessage ?? 'Grab failed',
+			size: release.size,
+			releaseGroup: release.releaseGroup,
+			grabbedAt: now,
+			completedAt: now
 		});
 	}
 }
