@@ -1,10 +1,10 @@
 ---
 # SceneTime Private Torrent Tracker
-# Scene/0Day releases for Movies and Shows
+# Scene/0Day releases for Movies and TV Shows
 # Cookie-based authentication - requires browser session cookies
 id: scenetime
 name: SceneTime
-description: Private Scene/0Day torrent tracker for movies and Shows
+description: Private Scene/0Day torrent tracker for movies and TV Shows
 type: private
 protocol: torrent
 language: en-US
