@@ -1,7 +1,7 @@
 ---
 id: prowlarr
 name: Prowlarr
-description: Direct integration with Prowlarr's native search API
+description: Direct integration with the native search API
 type: semi-private
 language: en-US
 encoding: UTF-8

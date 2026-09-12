@@ -11,7 +11,7 @@
 # Filter chains are guarded by definitions/torrentgalaxyclone.test.ts.
 id: torrentgalaxyclone
 name: TorrentGalaxy Clone
-description: TorrentGalaxy Clone is a public torrent index covering Movies, TV, Anime, Music, Books, Games, Apps, Documentaries and Other content.
+description: A public torrent index covering Movies, TV Shows, Anime, Music, Books, Games, Apps, Documentaries and Other content
 language: en-US
 type: public
 encoding: UTF-8

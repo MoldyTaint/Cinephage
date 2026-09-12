@@ -2,8 +2,8 @@
 id: noname-club
 replaces:
   - nnm-club
-name: NoNaMe Club
-description: 'NoNaMe Club (NNM-Club) is a RUSSIAN Public Tracker for MOVIES / TV / MUSIC'
+name: NoNaMe Club (NNM)
+description: 'A Russian public tracker for Movies / TV Shows / Music'
 language: ru-RU
 type: public
 encoding: windows-1251

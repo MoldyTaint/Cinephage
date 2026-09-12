@@ -1,7 +1,7 @@
 ---
 id: ncore
 name: nCore
-description: 'nCore is a HUNGARIAN Private Torrent Tracker for MOVIES / TV / GENERAL'
+description: 'A Hungarian private torrent tracker for Movies / TV Shows / General'
 language: hu-HU
 type: private
 encoding: UTF-8
