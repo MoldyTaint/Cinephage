@@ -8,6 +8,7 @@
 import { XMLParser } from 'fast-xml-parser';
 import path from 'node:path';
 import { createChildLogger } from '$lib/logging';
+import { resolveAppVersion } from '$lib/server/version.js';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 import type {
@@ -310,7 +311,14 @@ export class MediaBrowserClient {
 		const url = `${this.host}${path}`;
 
 		const headers = new Headers(options.headers);
-		headers.set('X-MediaBrowser-Token', this.apiKey);
+		// Newer Jellyfin (12.x+) rejects the bare X-MediaBrowser-Token/
+		// X-Emby-Token shortcuts outright (401, regardless of key validity) and
+		// requires the full composite Authorization header instead.
+		// Older Jellyfin/Emby accept this composite form too.
+		headers.set(
+			'Authorization',
+			`MediaBrowser Client="Cinephage", Device="Cinephage", DeviceId="cinephage-server", Version="${resolveAppVersion()}", Token="${this.apiKey}"`
+		);
 		headers.set('Accept', 'application/json');
 
 		if (options.body) {
