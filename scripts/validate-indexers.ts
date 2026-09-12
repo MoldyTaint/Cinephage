@@ -16,7 +16,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as yaml from 'yaml';
+import * as yaml from 'js-yaml';
 import { createIndexerHttp } from '../src/lib/server/indexers/http/IndexerHttp';
 
 // ANSI color codes for terminal output
@@ -112,7 +112,7 @@ interface TestResult {
 function loadDefinition(filePath: string): { data: unknown; error?: string } {
 	try {
 		const content = fs.readFileSync(filePath, 'utf-8');
-		const data = yaml.parse(content);
+		const data = yaml.load(content);
 		return { data };
 	} catch (error) {
 		return {
@@ -210,8 +210,109 @@ function validateDefinition(data: unknown, fileName: string): ValidationResult {
 		result.warnings.push(`${obj.type} indexer has no login configuration`);
 	}
 
+	// Check name/description style conventions (keeps the picker UI tidy)
+	checkNameDescriptionStyle(obj, result);
+
 	result.valid = result.errors.length === 0;
 	return result;
+}
+
+/**
+ * Words that are legitimately ALL CAPS and must not be flagged as shouting.
+ * Everything else with 2+ consecutive capitals (HUNGARIAN, MOVIES, ...) is an error.
+ */
+const ALLOWED_SHOUTED_WORDS = new Set([
+	'HD',
+	'API',
+	'JSON',
+	'UNIT3D',
+	'IMDB',
+	'DHT',
+	'XML',
+	'RSS',
+	'XXX',
+	'4K',
+	'0DAY',
+	// Proper nouns that are legitimately all caps (compared UPPERCASED)
+	'YIFY',
+	'NZBGEEK' // NZBgeek
+]);
+
+/** Max definition name length before the Add dialog instance-name field flags it. */
+const MAX_DEFINITION_NAME_LENGTH = 20;
+
+/** Escape a string for use in a RegExp (tracker names contain dots). */
+function escapeRegExp(s: string): string {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Enforce name/description style conventions:
+ * - Errors: description contains the tracker name; shouted ALL-CAPS words.
+ * - Warnings: standalone TV; trailing periods; acronym missing from name; long names.
+ */
+function checkNameDescriptionStyle(obj: Record<string, unknown>, result: ValidationResult): void {
+	const name = typeof obj.name === 'string' ? obj.name : '';
+	const description = typeof obj.description === 'string' ? obj.description : '';
+	if (!name && !description) {
+		return;
+	}
+
+	// Error: description repeats the tracker name (names render as titles already).
+	// "<name>-compatible" is exempt: it denotes a protocol (Torznab/Newznab),
+	// not a redundant name-drop.
+	if (name && description) {
+		const withoutProtocolUse = description.replace(
+			new RegExp(`${escapeRegExp(name)}-compatible`, 'gi'),
+			''
+		);
+		if (withoutProtocolUse.toLowerCase().includes(name.toLowerCase())) {
+			result.errors.push(
+				`Description contains the tracker name "${name}" (names are shown as titles already)`
+			);
+		}
+	}
+
+	if (description) {
+		// Error: shouted ALL-CAPS words outside the allowlist
+		const shouted = new Set<string>();
+		for (const token of description.match(/[A-Za-z0-9]+/g) ?? []) {
+			const upper = token.toUpperCase();
+			if (/[A-Z]{2,}/.test(token) && !ALLOWED_SHOUTED_WORDS.has(upper) && upper !== 'TV') {
+				shouted.add(token);
+			}
+		}
+		for (const word of shouted) {
+			result.errors.push(`Description shouts "${word}" in ALL CAPS (use normal capitalization)`);
+		}
+		// Warning: use "TV Shows" — bare "TV" or "Shows" is ambiguous
+		// (shows could mean podcasts or stage performances)
+		if (/\bTV\b(?! Shows)/.test(description)) {
+			result.warnings.push('Description uses bare "TV" (prefer "TV Shows")');
+		}
+		if (/(?<!\bTV )Shows\b/.test(description)) {
+			result.warnings.push('Description uses bare "Shows" (prefer "TV Shows")');
+		}
+		// Warning: trailing period
+		if (description.endsWith('.')) {
+			result.warnings.push('Description ends with a period');
+		}
+		// Warning: ACRONYM in description that the name does not carry
+		for (const match of description.matchAll(/\(([A-Z0-9][A-Z0-9\- ]{1,})\)/g)) {
+			if (!name.toUpperCase().includes(match[1])) {
+				result.warnings.push(
+					`Description mentions acronym "${match[1]}" that is missing from the name`
+				);
+			}
+		}
+	}
+
+	// Warning: names over the instance-name field limit get flagged in the UI
+	if (name.length > MAX_DEFINITION_NAME_LENGTH) {
+		result.warnings.push(
+			`Name is ${name.length} chars (Add dialog flags names over ${MAX_DEFINITION_NAME_LENGTH})`
+		);
+	}
 }
 
 /**
