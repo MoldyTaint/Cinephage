@@ -1,0 +1,173 @@
+---
+# PassThePopcorn (PTP) — private movie tracker, custom JSON API
+# No Prowlarr/Jackett bridge needed. Auth via ApiUser/ApiKey HTTP headers
+# (query-param auth gets a login redirect — headers are required).
+# API port of Prowlarr's Definitions/PassThePopcorn + FlexGet's plugin:
+#   GET torrents.php?action=advanced&json=noredirect&searchstr={q}
+#     headers ApiUser/ApiKey, response {TotalResults, Movies[]}
+# Downloads are plain torrents.php?action=download&id={Id}; the engine
+# attaches the search headers automatically (see Prowlarr GetDownloadRequest).
+# NOTE: searchstr is embedded in the path template (like seedpool.yaml) because
+# `searchstr` is not in Cinephage's known-search-param list.
+# NOTE: no tv-search mode — PTP rejects TV searches (HTTP 429).
+id: passthepopcorn
+name: PassThePopcorn (PTP)
+description: A private torrent tracker for movies (direct API)
+type: private
+language: en-US
+encoding: UTF-8
+protocol: torrent
+# Prowlarr rate-limits PTP to 1 request per 4 seconds
+requestdelay: 4
+
+links:
+  - https://passthepopcorn.me/
+
+caps:
+  modes:
+    search: [q]
+    movie-search: [q, imdbid]
+  categories:
+    '2000': Movies
+    '2010': Movies/Foreign
+    '2020': Movies/Other
+    '2030': Movies/SD
+    '2040': Movies/HD
+    '2045': Movies/UHD
+    '2050': Movies/BluRay
+    '2060': Movies/3D
+    '2070': Movies/DVD
+    '2080': Movies/WEB-DL
+  categorymappings:
+    - { id: 1, cat: '2000', desc: Feature Film }
+    - { id: 2, cat: '2000', desc: Short Film }
+    - { id: 3, cat: '2000', desc: Miniseries }
+    - { id: 4, cat: '2000', desc: Stand-up Comedy }
+    - { id: 5, cat: '2000', desc: Live Performance }
+    - { id: 6, cat: '2000', desc: Movie Collection }
+    - { id: 1, cat: Movies }
+    - { id: 2, cat: Movies }
+    - { id: 3, cat: Movies }
+    - { id: 4, cat: Movies }
+    - { id: 5, cat: Movies }
+    - { id: 6, cat: Movies }
+    # Static `category: {text: Movies}` fields resolve through this entry
+    - { id: Movies, cat: '2000', desc: Movies }
+
+settings:
+  - name: apiuser
+    type: text
+    label: API User
+    required: true
+  - name: apikey
+    type: password
+    label: API Key
+    required: true
+  - name: info_keys
+    type: info
+    label: About API credentials
+    default: 'Find your API User and API Key in your PTP account settings.'
+
+search:
+  paths:
+    # Movie search — full-IMDb-ID when available, else keywords
+    - path: 'torrents.php?action=advanced&json=noredirect&searchstr={{ if .Query.IMDBID }}{{ .Query.IMDBID }}{{ else }}{{ .Keywords }}{{ end }}'
+      method: get
+      categories: [Movies]
+      response:
+        type: json
+      inputs:
+        order_by: timeadded
+        order_way: desc
+        grouping: '0'
+
+    # General keyword search fallback
+    - path: 'torrents.php?action=advanced&json=noredirect&searchstr={{ .Keywords }}'
+      method: get
+      response:
+        type: json
+      inputs:
+        order_by: timeadded
+        order_way: desc
+        grouping: '0'
+
+  headers:
+    ApiUser:
+      - '{{ .Config.apiuser }}'
+    ApiKey:
+      - '{{ .Config.apikey }}'
+
+  keywordsfilters:
+    - name: re_replace
+      args: ['\\.', ' ']
+
+  rows:
+    selector: Movies
+    # Each movie group contains a nested Torrents array — one release per torrent
+    multiple: Torrents
+
+  fields:
+    title:
+      selector: ReleaseName
+    details:
+      # Edition-scoped details link (Prowlarr GetInfoUrl shape)
+      text: 'torrents.php?id={{ .Result.GroupId }}&torrentid={{ .Result.Id }}'
+    guid:
+      text: 'PassThePopcorn-{{ .Result.Id }}'
+    download:
+      # Plain id URL; ApiUser/ApiKey headers auth it (Prowlarr GetDownloadRequest)
+      text: 'torrents.php?action=download&id={{ .Result.Id }}'
+    infohash:
+      selector: InfoHash
+      optional: true
+    size:
+      selector: Size
+    seeders:
+      selector: Seeders
+      optional: true
+    leechers:
+      selector: Leechers
+      optional: true
+    grabs:
+      selector: Snatched
+      optional: true
+    date:
+      selector: UploadTime
+      optional: true
+      filters:
+        - name: dateparse
+          args: 'YYYY-MM-DD HH:mm:ss'
+    category:
+      text: Movies
+    imdbid:
+      selector: ImdbId
+      optional: true
+      filters:
+        - name: prepend
+          args: 'tt'
+    poster:
+      selector: Cover
+      optional: true
+    downloadvolumefactor:
+      selector: FreeleechType
+      optional: true
+      case:
+        'FREELEECH': '0'
+        'Freeleech': '0'
+        'NEUTRAL LEECH': '0'
+        'Neutral Leech': '0'
+        'HALF LEECH': '0.5'
+        'Half Leech': '0.5'
+        '*': '1'
+    uploadvolumefactor:
+      selector: FreeleechType
+      optional: true
+      case:
+        'NEUTRAL LEECH': '0'
+        'Neutral Leech': '0'
+        '*': '1'
+    minimumratio:
+      text: '1'
+    minimumseedtime:
+      # Prowlarr parity: 96 hours
+      text: '345600'
