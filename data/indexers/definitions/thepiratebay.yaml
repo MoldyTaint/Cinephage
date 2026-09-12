@@ -5,7 +5,7 @@
 
 id: thepiratebay
 name: The Pirate Bay
-description: The Pirate Bay - The galaxy's most resilient public BitTorrent site
+description: The galaxy's most resilient public BitTorrent site
 type: public
 protocol: torrent
 language: en-US

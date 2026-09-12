@@ -5,7 +5,7 @@
 
 id: nyaasi
 name: Nyaa.si
-description: Nyaa is a public torrent site for anime, manga, and East Asian media
+description: A public torrent site for anime, manga, and East Asian media
 type: public
 protocol: torrent
 language: en-US

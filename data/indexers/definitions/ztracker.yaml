@@ -1,7 +1,7 @@
 ---
 id: ztracker
 name: Ztracker
-description: 'Ztracker is a HUNGARIAN Semi-Private Torrent Tracker for 0DAY / GENERAL'
+description: 'A Hungarian semi-private torrent tracker for 0Day / General'
 language: hu-HU
 type: semi-private
 protocol: torrent

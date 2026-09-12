@@ -1,7 +1,7 @@
 ---
 id: jackett
 name: Jackett
-description: Direct integration with Jackett's native JSON search API
+description: Direct integration with the native JSON search API
 type: semi-private
 language: en-US
 encoding: UTF-8

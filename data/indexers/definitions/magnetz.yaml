@@ -5,7 +5,7 @@
 
 id: magnetz
 name: Magnetz
-description: 'Magnetz is a public magnet/torrent metadata search engine with a JSON API'
+description: 'A public magnet/torrent metadata search engine with a JSON API'
 language: en-US
 type: public
 protocol: torrent

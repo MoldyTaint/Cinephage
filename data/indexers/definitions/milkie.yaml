@@ -1,7 +1,7 @@
 ---
 id: milkie
-name: milkie.cc
-description: 'Milkie.cc (ME) is a private torrent tracker for 0day / general.'
+name: milkie.cc (ME)
+description: 'A private torrent tracker for 0day / general'
 type: private
 language: en-US
 encoding: UTF-8

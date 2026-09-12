@@ -6,7 +6,7 @@
 # searchText exclusively.
 id: digitalcore
 name: DigitalCore
-description: DigitalCore is a private torrent tracker for 0-day / general content (JSON API)
+description: A private torrent tracker for 0-day / general content (JSON API)
 language: en-US
 type: private
 encoding: UTF-8
