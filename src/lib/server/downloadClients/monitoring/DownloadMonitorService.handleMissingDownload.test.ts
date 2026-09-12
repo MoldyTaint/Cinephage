@@ -268,3 +268,35 @@ describe('handleMissingDownload — completed grace period (addedAt fallback)', 
 		expect(after.status).toBe('removed');
 	});
 });
+
+describe('handleMissingDownload — permanently failed import (importFailed guard)', () => {
+	/**
+	 * Regression test for a real report: an item whose import attempts were
+	 * already exhausted (status 'failed', importFailed true) kept getting
+	 * flipped back to 'completed' and re-queued for import every monitor
+	 * poll, because the "usenet download missing from client but output
+	 * path still exists" recovery branch never checked importFailed before
+	 * this fix - creating a tight, indefinite retry loop that made the app
+	 * unresponsive.
+	 */
+	it('does not re-queue a usenet item for import once importFailed is set, even if the output path still exists', async () => {
+		const outputPath = join(baseDir, `still-here-${randomUUID()}.mkv`);
+		await writeFile(outputPath, 'x');
+
+		const row = await insertQueueRow({
+			status: 'failed',
+			importFailed: true,
+			protocol: 'usenet',
+			outputPath,
+			completedAt: new Date(Date.now() - 60 * 60_000).toISOString()
+		});
+
+		requestImport.mockClear();
+		await callHandleMissing(row, makeClient());
+
+		expect(requestImport).not.toHaveBeenCalled();
+
+		const after = await getRow(row.id);
+		expect(after.status).toBe('failed');
+	});
+});

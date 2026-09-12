@@ -1714,6 +1714,9 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		if (isImportedQueueStatus(queueItem.status)) {
 			return;
 		}
+		if (queueItem.importFailed && queueItem.status === 'failed') {
+			return;
+		}
 
 		// Awaiting items: exponential backoff retry for vanished downloads
 		if (queueItem.status === 'awaiting') {
