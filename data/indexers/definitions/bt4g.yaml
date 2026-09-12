@@ -7,7 +7,7 @@
 # RSS provides no seed/leech data, so seeders/leechers are static placeholders.
 id: bt4g
 name: BT4G
-description: BT4G is a public DHT search engine (XML/RSS endpoint)
+description: A public DHT search engine (XML/RSS endpoint)
 language: en-US
 type: public
 encoding: UTF-8

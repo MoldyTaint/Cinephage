@@ -4,7 +4,7 @@
 # Cloudflare-protected: relies on Cinephage's built-in Camoufox captcha solver.
 id: 1337x
 name: 1337x
-description: 1337x is a Public torrent site that offers verified torrent downloads
+description: A public torrent site that offers verified torrent downloads
 language: en-US
 type: public
 protocol: torrent

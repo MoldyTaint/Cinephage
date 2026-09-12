@@ -1,7 +1,7 @@
 ---
 id: kinozal-magnet
 name: 'Kinozal (Magnet)'
-description: 'Kinozal is a RUSSIAN Semi-Private Torrent Tracker for MOVIES / TV / MUSIC. This indexer uses magnet links to bypass daily download limits.'
+description: 'A Russian semi-private torrent tracker for Movies / Shows / Music, using magnet links to bypass daily download limits'
 language: ru-RU
 type: semi-private
 encoding: windows-1251

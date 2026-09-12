@@ -5,7 +5,7 @@
 
 id: eztv
 name: EZTV
-description: EZTV is a public torrent site for TV shows with IMDB lookup support
+description: A public torrent site for Shows with IMDB lookup support
 type: public
 protocol: torrent
 language: en-US
