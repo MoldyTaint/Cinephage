@@ -307,6 +307,23 @@ export async function updateArrCompatEnabled(enabled: boolean) {
 	return apiPut('/api/settings/arr-compat', { enabled });
 }
 
+export interface SidecarSettingsPayload {
+	enabled: boolean;
+	overwriteExisting: boolean;
+	includeArtwork: boolean;
+	tvSeriesLevel: boolean;
+	tvSeasonLevel: boolean;
+	tvEpisodeLevel: boolean;
+}
+
+export async function getSidecarSettings() {
+	return apiGet('/api/settings/sidecar');
+}
+
+export async function updateSidecarSettings(update: Partial<SidecarSettingsPayload>) {
+	return apiPut('/api/settings/sidecar', update);
+}
+
 export async function getSystemStatus() {
 	return apiGet('/api/system/status');
 }

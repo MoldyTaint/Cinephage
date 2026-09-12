@@ -5,7 +5,7 @@
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
 	import * as m from '$lib/paraglide/messages.js';
 	import { toasts } from '$lib/stores/toast.svelte';
-	import { updateFileManagementSettings } from '$lib/api/settings.js';
+	import { updateFileManagementSettings, updateSidecarSettings } from '$lib/api/settings.js';
 	import { invalidateAll } from '$app/navigation';
 	import type { PageData } from './$types';
 	import type { ImportMethod } from '$lib/validation/schemas.js';
@@ -35,6 +35,34 @@
 	// svelte-ignore state_referenced_locally
 	let defaultImportFolder = $state<string>(data.settings.defaultImportFolder ?? '');
 	let showFolderBrowser = $state(false);
+
+	// Sidecar files (.nfo + artwork)
+	// svelte-ignore state_referenced_locally
+	let sidecar = $state({ ...data.sidecarSettings });
+	// Keyed per-field so toggling one checkbox doesn't disable/flash all the others.
+	let sidecarSaving = $state<Partial<Record<keyof typeof sidecar, boolean>>>({});
+
+	async function saveSidecar(update: Partial<typeof sidecar>) {
+		const keys = Object.keys(update) as (keyof typeof sidecar)[];
+		const previous = { ...sidecar };
+		sidecar = { ...sidecar, ...update };
+		for (const key of keys) sidecarSaving[key] = true;
+		try {
+			await updateSidecarSettings(update);
+			if (update.enabled !== undefined) {
+				toasts.success(
+					update.enabled
+						? m.settings_fileManagement_sidecarEnabled()
+						: m.settings_fileManagement_sidecarDisabled()
+				);
+			}
+		} catch (err) {
+			sidecar = previous;
+			toasts.error(err instanceof Error ? err.message : m.common_failedToSave());
+		} finally {
+			for (const key of keys) sidecarSaving[key] = false;
+		}
+	}
 
 	// Permissions
 	type PermissionsMode = 'default' | 'preserve' | 'custom';
@@ -293,6 +321,115 @@
 				return t.startsWith('.') ? t : `.${t}`;
 			}}
 		/>
+	</SettingsSection>
+
+	<SettingsSection
+		title={m.settings_fileManagement_sidecarSectionTitle()}
+		description={m.settings_fileManagement_sidecarSectionDescription()}
+	>
+		{#snippet actions()}
+			<input
+				type="checkbox"
+				class="toggle toggle-primary"
+				checked={sidecar.enabled}
+				disabled={sidecarSaving.enabled}
+				onchange={(e) => saveSidecar({ enabled: e.currentTarget.checked })}
+				aria-label={m.settings_fileManagement_sidecarSectionTitle()}
+			/>
+		{/snippet}
+
+		{#if sidecar.enabled}
+			<div class="mt-4 flex flex-col gap-3">
+				<label class="flex cursor-pointer items-start gap-3">
+					<input
+						type="checkbox"
+						class="checkbox mt-0.5 checkbox-primary"
+						checked={sidecar.overwriteExisting}
+						disabled={sidecarSaving.overwriteExisting}
+						onchange={(e) => saveSidecar({ overwriteExisting: e.currentTarget.checked })}
+					/>
+					<span>
+						<span class="block text-sm">{m.settings_fileManagement_sidecarOverwriteLabel()}</span>
+						<span class="block text-xs text-base-content/60">
+							{sidecar.overwriteExisting
+								? m.settings_fileManagement_sidecarOverwriteHintOn()
+								: m.settings_fileManagement_sidecarOverwriteHintOff()}
+						</span>
+					</span>
+				</label>
+
+				<label class="flex cursor-pointer items-start gap-3">
+					<input
+						type="checkbox"
+						class="checkbox mt-0.5 checkbox-primary"
+						checked={sidecar.includeArtwork}
+						disabled={sidecarSaving.includeArtwork}
+						onchange={(e) => saveSidecar({ includeArtwork: e.currentTarget.checked })}
+					/>
+					<span>
+						<span class="block text-sm">{m.settings_fileManagement_sidecarArtworkLabel()}</span>
+						<span class="block text-xs text-base-content/60"
+							>{m.settings_fileManagement_sidecarArtworkHint()}</span
+						>
+					</span>
+				</label>
+
+				<p class="text-xs text-base-content/60">
+					{sidecar.includeArtwork
+						? m.settings_fileManagement_sidecarMovieNoteWithArtwork()
+						: m.settings_fileManagement_sidecarMovieNoteNfoOnly()}
+				</p>
+
+				<div class="mt-2">
+					<span class="block text-sm font-medium"
+						>{m.settings_fileManagement_sidecarTvLevelsLabel()}</span
+					>
+					<span class="mb-2 block text-xs text-base-content/60"
+						>{m.settings_fileManagement_sidecarTvLevelsHint()}</span
+					>
+					<div class="flex flex-col gap-2 sm:flex-row sm:gap-6">
+						<label class="flex cursor-pointer items-center gap-2">
+							<input
+								type="checkbox"
+								class="checkbox checkbox-sm checkbox-primary"
+								checked={sidecar.tvSeriesLevel}
+								disabled={sidecarSaving.tvSeriesLevel}
+								onchange={(e) => saveSidecar({ tvSeriesLevel: e.currentTarget.checked })}
+							/>
+							<span class="text-sm">
+								{sidecar.includeArtwork
+									? m.settings_fileManagement_sidecarTvSeriesLabelWithArtwork()
+									: m.settings_fileManagement_sidecarTvSeriesLabelNfoOnly()}
+							</span>
+						</label>
+						<label class="flex cursor-pointer items-center gap-2">
+							<input
+								type="checkbox"
+								class="checkbox checkbox-sm checkbox-primary"
+								checked={sidecar.tvSeasonLevel}
+								disabled={sidecarSaving.tvSeasonLevel}
+								onchange={(e) => saveSidecar({ tvSeasonLevel: e.currentTarget.checked })}
+							/>
+							<span class="text-sm">
+								{sidecar.includeArtwork
+									? m.settings_fileManagement_sidecarTvSeasonLabelWithArtwork()
+									: m.settings_fileManagement_sidecarTvSeasonLabelNfoOnly()}
+							</span>
+						</label>
+						<label class="flex cursor-pointer items-center gap-2">
+							<input
+								type="checkbox"
+								class="checkbox checkbox-sm checkbox-primary"
+								checked={sidecar.tvEpisodeLevel}
+								disabled={sidecarSaving.tvEpisodeLevel}
+								onchange={(e) => saveSidecar({ tvEpisodeLevel: e.currentTarget.checked })}
+							/>
+							<span class="text-sm">{m.settings_fileManagement_sidecarTvEpisodeLabel()}</span>
+						</label>
+					</div>
+				</div>
+			</div>
+		{/if}
 	</SettingsSection>
 
 	<SettingsSection

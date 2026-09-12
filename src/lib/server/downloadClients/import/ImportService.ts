@@ -47,7 +47,7 @@ import {
 	ImportMode
 } from './FileTransfer';
 import { getDownloadClientManager } from '../DownloadClientManager';
-import { unlink, rm } from 'fs/promises';
+import { unlink, rm, writeFile } from 'fs/promises';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
 import { mediaInfoService, MediaInfoService } from '$lib/server/library/media-info';
 import {
@@ -70,6 +70,23 @@ import { getFileManagementSettings } from '$lib/server/settings/file-management.
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import { getMediaBrowserNotifier } from '$lib/server/notifications/mediabrowser';
+import { getSidecarSettings } from '$lib/server/library/sidecar/sidecarSettings.js';
+import {
+	buildMovieNfo,
+	buildSeriesNfo,
+	buildSeasonNfo,
+	buildEpisodeNfo,
+	nfoPathFor
+} from '$lib/server/library/sidecar/NfoGenerator.js';
+import {
+	downloadSidecarImage,
+	shouldWriteSidecar,
+	tmdbImageUrl,
+	movieArtworkPaths,
+	seriesArtworkPaths,
+	seasonArtworkPath,
+	folderOf
+} from '$lib/server/library/sidecar/SidecarImageService.js';
 import { getMediaParseStem } from '$lib/server/library/media-utils.js';
 import {
 	matchEpisodesByIdentifier,
@@ -1237,6 +1254,47 @@ export class ImportService extends EventEmitter {
 		// Tell connected media servers (Jellyfin/Plex/Emby) about the new file.
 		getMediaBrowserNotifier().queueUpdate(destPath, isUpgrade ? 'Modified' : 'Created', 'import');
 
+		// Optional sidecar files (.nfo + poster/fanart) - see NfoGenerator.ts /
+		// SidecarImageService.ts for why this exists (Jellyfin never probes
+		// .strm files during a scan, so a movie can otherwise sit with no
+		// known resolution/duration indefinitely). Never let a write failure
+		// here fail an otherwise-successful import.
+		const sidecarSettings = getSidecarSettings();
+		if (sidecarSettings.enabled) {
+			try {
+				const nfoPath = nfoPathFor(destPath);
+				if (await shouldWriteSidecar(nfoPath, sidecarSettings.overwriteExisting)) {
+					await writeFile(
+						nfoPath,
+						buildMovieNfo(movie, fileData, sidecarSettings.includeArtwork),
+						'utf-8'
+					);
+				}
+
+				if (sidecarSettings.includeArtwork) {
+					const movieFolder = folderOf(destPath);
+					const { poster, fanart } = movieArtworkPaths(movieFolder);
+					await Promise.all([
+						downloadSidecarImage(
+							tmdbImageUrl(movie.posterPath),
+							poster,
+							sidecarSettings.overwriteExisting
+						),
+						downloadSidecarImage(
+							tmdbImageUrl(movie.backdropPath),
+							fanart,
+							sidecarSettings.overwriteExisting
+						)
+					]);
+				}
+			} catch (err) {
+				logger.warn(
+					{ movieId: movie.id, err: err instanceof Error ? err.message : String(err) },
+					'Failed to write sidecar files'
+				);
+			}
+		}
+
 		// Trigger subtitle search asynchronously (don't await to avoid blocking)
 		this.triggerSubtitleSearch('movie', movie.id).catch((err) => {
 			logger.warn(
@@ -1846,6 +1904,100 @@ export class ImportService extends EventEmitter {
 
 		// See the movie import path above for why this exists.
 		getMediaBrowserNotifier().queueUpdate(destPath, isUpgrade ? 'Modified' : 'Created', 'import');
+
+		// Optional sidecar files - see NfoGenerator.ts / SidecarImageService.ts
+		// / the movie import path above. TV has three independent levels
+		// (episode .nfo, show-level tvshow.nfo + artwork, season poster) since
+		// a single episode import shouldn't force rewriting all three every
+		// time - most of a show's metadata only needs writing once.
+		const sidecarSettings = getSidecarSettings();
+		if (sidecarSettings.enabled) {
+			if (sidecarSettings.tvEpisodeLevel) {
+				try {
+					const nfoPath = nfoPathFor(destPath);
+					if (await shouldWriteSidecar(nfoPath, sidecarSettings.overwriteExisting)) {
+						await writeFile(
+							nfoPath,
+							buildEpisodeNfo(seriesData, matchingEpisodes, fileData),
+							'utf-8'
+						);
+					}
+				} catch (err) {
+					logger.warn(
+						{ seriesId: seriesData.id, err: err instanceof Error ? err.message : String(err) },
+						'Failed to write episode NFO sidecar'
+					);
+				}
+			}
+
+			if (sidecarSettings.tvSeriesLevel) {
+				try {
+					const tvshowNfoPath = join(seriesFolder, 'tvshow.nfo');
+					if (await shouldWriteSidecar(tvshowNfoPath, sidecarSettings.overwriteExisting)) {
+						await writeFile(
+							tvshowNfoPath,
+							buildSeriesNfo(seriesData, sidecarSettings.includeArtwork),
+							'utf-8'
+						);
+					}
+
+					if (sidecarSettings.includeArtwork) {
+						const { poster, fanart } = seriesArtworkPaths(seriesFolder);
+						await Promise.all([
+							downloadSidecarImage(
+								tmdbImageUrl(seriesData.posterPath),
+								poster,
+								sidecarSettings.overwriteExisting
+							),
+							downloadSidecarImage(
+								tmdbImageUrl(seriesData.backdropPath),
+								fanart,
+								sidecarSettings.overwriteExisting
+							)
+						]);
+					}
+				} catch (err) {
+					logger.warn(
+						{ seriesId: seriesData.id, err: err instanceof Error ? err.message : String(err) },
+						'Failed to write series-level sidecar files'
+					);
+				}
+			}
+
+			if (sidecarSettings.tvSeasonLevel) {
+				try {
+					const [seasonRow] = await db
+						.select()
+						.from(seasons)
+						.where(and(eq(seasons.seriesId, seriesData.id), eq(seasons.seasonNumber, seasonNum)))
+						.limit(1);
+
+					if (seasonRow) {
+						const seasonNfoPath = join(folderOf(destPath), 'season.nfo');
+						if (await shouldWriteSidecar(seasonNfoPath, sidecarSettings.overwriteExisting)) {
+							await writeFile(seasonNfoPath, buildSeasonNfo(seasonRow), 'utf-8');
+						}
+
+						if (sidecarSettings.includeArtwork && seasonRow.posterPath) {
+							await downloadSidecarImage(
+								tmdbImageUrl(seasonRow.posterPath),
+								seasonArtworkPath(seriesFolder, seasonNum),
+								sidecarSettings.overwriteExisting
+							);
+						}
+					}
+				} catch (err) {
+					logger.warn(
+						{
+							seriesId: seriesData.id,
+							seasonNumber: seasonNum,
+							err: err instanceof Error ? err.message : String(err)
+						},
+						'Failed to write season-level sidecar files'
+					);
+				}
+			}
+		}
 
 		// Delete old files if this was an upgrade
 		if (filesToReplace.length > 0) {

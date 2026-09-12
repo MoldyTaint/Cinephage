@@ -201,6 +201,14 @@ const MAINTENANCE_TASKS: UnifiedTaskDefinition[] = [
 			'Refresh metadata for all movies and series from TMDB. Updates titles, overviews, posters, collection data, and other metadata that may be missing or outdated.',
 		category: 'maintenance',
 		runEndpoint: '/api/monitoring/search/metadata-refresh'
+	},
+	{
+		id: 'regenerate-sidecars',
+		name: 'Regenerate Sidecar Files',
+		description:
+			'Regenerate .nfo and poster/fanart sidecar files for the whole library, overwriting existing ones. Useful for backfilling older imports.',
+		category: 'maintenance',
+		runEndpoint: '/api/library/regenerate-sidecars'
 	}
 ];
 
