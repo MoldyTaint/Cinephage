@@ -4,6 +4,7 @@ import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { requireArrCompatEnabled } from '$lib/server/arr/requireArrCompatEnabled.js';
 import { buildSeries } from '$lib/server/arr/series.js';
 import { addSeriesFromArr } from '$lib/server/arr/libraryWrite.js';
+import { withForwardedApiKey } from '$lib/server/arr/internalFetch.js';
 
 /** GET /api/sonarr/api/v3/series */
 export const GET: RequestHandler = async (event) => {
@@ -29,6 +30,6 @@ export const POST: RequestHandler = async (event) => {
 	if (authError) return authError;
 
 	const body = await event.request.json().catch(() => ({}));
-	const result = await addSeriesFromArr(event.fetch, body);
+	const result = await addSeriesFromArr(withForwardedApiKey(event), body);
 	return json(result.body, { status: result.status });
 };

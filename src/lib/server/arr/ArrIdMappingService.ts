@@ -31,7 +31,8 @@ export type ArrEntityType =
 	| 'release'
 	| 'rename'
 	| 'language'
-	| 'languageProfile';
+	| 'languageProfile'
+	| 'downloadClient';
 
 /**
  * Get (or assign, on first use) the surrogate integer ID for a single entity.

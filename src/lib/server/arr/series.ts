@@ -19,7 +19,7 @@ import {
 	alternateTitles,
 	rootFolders
 } from '$lib/server/db/schema.js';
-import { getOrAssignArrIds } from './ArrIdMappingService.js';
+import { getOrAssignArrId, getOrAssignArrIds } from './ArrIdMappingService.js';
 import {
 	cleanTitleFor,
 	titleSlugFor,
@@ -29,6 +29,9 @@ import {
 } from './movieShape.js';
 import { deriveSeriesStatus } from './seriesShape.js';
 import { tmdb } from '$lib/server/tmdb.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'system' as const });
 
 type SeriesRow = typeof series.$inferSelect;
 type SeasonRow = typeof seasons.$inferSelect;
@@ -224,7 +227,30 @@ export async function buildSeriesByArrId(
 	return all.find((s) => s.id === seriesArrId) ?? null;
 }
 
+/**
+ * Real Sonarr's `term` also accepts `tmdb:<id>` and `imdb:<id>` as a
+ * direct-ID lookup instead of a free-text search - see movies.ts
+ * buildMovieLookup for why this matters: arr clients check for an
+ * existing library entry via exactly this syntax on every add, and Sonarr
+ * (unlike Radarr) has no separate `/series/lookup/tmdb` endpoint at all,
+ * so this prefix is the *only* way a client can look up by ID here.
+ */
 export async function buildSeriesLookup(term: string): Promise<Record<string, unknown>[]> {
+	const tmdbMatch = /^tmdb:(\d+)$/i.exec(term);
+	if (tmdbMatch) {
+		const show = await buildSeriesLookupByTmdbId(Number(tmdbMatch[1]));
+		return show ? [show] : [];
+	}
+
+	const imdbMatch = /^imdb:(tt\d+)$/i.exec(term);
+	if (imdbMatch) {
+		const found = await tmdb.findByExternalId(imdbMatch[1], 'imdb_id');
+		const tmdbId = found.tv_results?.[0]?.id;
+		if (!tmdbId) return [];
+		const show = await buildSeriesLookupByTmdbId(tmdbId);
+		return show ? [show] : [];
+	}
+
 	const result = await tmdb.searchTv(term);
 	return result.results.map((show) => {
 		const year = show.first_air_date ? Number.parseInt(show.first_air_date.slice(0, 4), 10) : 0;
@@ -252,6 +278,19 @@ export async function buildSeriesLookup(term: string): Promise<Record<string, un
 export async function buildSeriesLookupByTmdbId(
 	tmdbId: number
 ): Promise<Record<string, unknown> | null> {
+	// See movies.ts buildMovieLookupByTmdbId - real Sonarr returns the real
+	// library entry here when one already exists, not always a "not yet
+	// added" template.
+	const [existing] = await db
+		.select({ id: series.id })
+		.from(series)
+		.where(eq(series.tmdbId, tmdbId))
+		.limit(1);
+	if (existing) {
+		const arrId = await getOrAssignArrId('series', existing.id);
+		return buildSeriesByArrId(arrId);
+	}
+
 	try {
 		const details = await tmdb.getTVShow(tmdbId);
 		return {
@@ -274,7 +313,15 @@ export async function buildSeriesLookupByTmdbId(
 			monitored: false,
 			added: null
 		};
-	} catch {
-		return null;
+	} catch (err) {
+		// See movies.ts buildMovieLookupByTmdbId for why this distinguishes a
+		// genuine TMDB 404 from every other failure instead of swallowing
+		// both into the same misleading "Series not found".
+		const message = err instanceof Error ? err.message : String(err);
+		if (/TMDB Error: 404/.test(message)) {
+			return null;
+		}
+		logger.error({ tmdbId, err: message }, '[arr-compat] series lookup by tmdbId failed');
+		throw err;
 	}
 }

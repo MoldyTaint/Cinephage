@@ -4,6 +4,7 @@ import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { requireArrCompatEnabled } from '$lib/server/arr/requireArrCompatEnabled.js';
 import { buildSeriesByArrId } from '$lib/server/arr/series.js';
 import { updateSeriesFromArr, deleteSeriesFromArr } from '$lib/server/arr/libraryWrite.js';
+import { withForwardedApiKey } from '$lib/server/arr/internalFetch.js';
 
 /** GET /api/sonarr/api/v3/series/{id} */
 export const GET: RequestHandler = async (event) => {
@@ -34,7 +35,7 @@ export const PUT: RequestHandler = async (event) => {
 	if (Number.isNaN(id)) error(400, 'Invalid series id');
 
 	const body = await event.request.json().catch(() => ({}));
-	const result = await updateSeriesFromArr(event.fetch, id, body);
+	const result = await updateSeriesFromArr(withForwardedApiKey(event), id, body);
 	return json(result.body, { status: result.status });
 };
 
@@ -50,6 +51,6 @@ export const DELETE: RequestHandler = async (event) => {
 	if (Number.isNaN(id)) error(400, 'Invalid series id');
 
 	const deleteFiles = event.url.searchParams.get('deleteFiles') === 'true';
-	const result = await deleteSeriesFromArr(event.fetch, id, { deleteFiles });
+	const result = await deleteSeriesFromArr(withForwardedApiKey(event), id, { deleteFiles });
 	return json(result.body, { status: result.status });
 };

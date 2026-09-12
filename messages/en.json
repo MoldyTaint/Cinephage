@@ -2466,6 +2466,8 @@
 	"reports_renaming_stat_total": "Renaming Failures",
 	"reports_resolve": "Resolve",
 	"reports_resolveAll": "Resolve All ({count})",
+	"reports_confirmResolveAllTitle": "Resolve all records?",
+	"reports_confirmResolveAllMessage": "This will resolve all {count} records in this tab.",
 	"reports_resolveSelected": "Resolve ({count})",
 	"reports_resolvedAt": "Resolved {date}",
 	"reports_search_fileOrTitle": "Search file or title…",

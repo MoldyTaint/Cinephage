@@ -4,6 +4,7 @@ import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { requireArrCompatEnabled } from '$lib/server/arr/requireArrCompatEnabled.js';
 import { buildMovieByArrId } from '$lib/server/arr/movies.js';
 import { updateMovieFromArr, deleteMovieFromArr } from '$lib/server/arr/libraryWrite.js';
+import { withForwardedApiKey } from '$lib/server/arr/internalFetch.js';
 
 /** GET /api/radarr/api/v3/movie/{id} */
 export const GET: RequestHandler = async (event) => {
@@ -34,7 +35,7 @@ export const PUT: RequestHandler = async (event) => {
 	if (Number.isNaN(id)) error(400, 'Invalid movie id');
 
 	const body = await event.request.json().catch(() => ({}));
-	const result = await updateMovieFromArr(event.fetch, id, body);
+	const result = await updateMovieFromArr(withForwardedApiKey(event), id, body);
 	return json(result.body, { status: result.status });
 };
 
@@ -50,6 +51,6 @@ export const DELETE: RequestHandler = async (event) => {
 	if (Number.isNaN(id)) error(400, 'Invalid movie id');
 
 	const deleteFiles = event.url.searchParams.get('deleteFiles') === 'true';
-	const result = await deleteMovieFromArr(event.fetch, id, { deleteFiles });
+	const result = await deleteMovieFromArr(withForwardedApiKey(event), id, { deleteFiles });
 	return json(result.body, { status: result.status });
 };

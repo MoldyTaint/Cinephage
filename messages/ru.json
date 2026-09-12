@@ -2466,6 +2466,8 @@
 	"reports_renaming_stat_total": "Ошибки переименования",
 	"reports_resolve": "Устранить",
 	"reports_resolveAll": "Устранить все ({count})",
+	"reports_confirmResolveAllTitle": "Устранить все записи?",
+	"reports_confirmResolveAllMessage": "Это устранит все записи ({count}) на этой вкладке.",
 	"reports_resolveSelected": "Решить ({count})",
 	"reports_resolvedAt": "Устранено {date}",
 	"reports_search_fileOrTitle": "Поиск по файлу или названию…",

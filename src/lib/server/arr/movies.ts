@@ -23,6 +23,9 @@ import {
 	tmdbPosterUrl
 } from './movieShape.js';
 import { tmdb } from '$lib/server/tmdb.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'system' as const });
 
 type MovieRow = typeof movies.$inferSelect;
 type MovieFileRow = typeof movieFiles.$inferSelect;
@@ -216,8 +219,32 @@ export async function buildMovieByArrId(
  * Radarr returns sparse MovieResource objects for these (id: 0 - no
  * library entry exists yet - and no path/qualityProfileId/monitored/
  * hasFile, since those only make sense once added).
+ *
+ * Real Radarr's `term` also accepts `tmdb:<id>` and `imdb:<id>` as a
+ * direct-ID lookup instead of a free-text search - arr clients (Seerr's
+ * getMovieByTmdbId, used on every add to check for an existing library
+ * entry) rely on exactly this syntax, calling `/movie/lookup?term=tmdb:X`
+ * rather than the separate `/movie/lookup/tmdb` endpoint. Without this, a
+ * client asking "does tmdb:X already exist?" gets an empty array (the
+ * literal string "tmdb:X" matches no title) and concludes the id doesn't
+ * exist at all - which is exactly what broke real add-to-library requests.
  */
 export async function buildMovieLookup(term: string): Promise<Record<string, unknown>[]> {
+	const tmdbMatch = /^tmdb:(\d+)$/i.exec(term);
+	if (tmdbMatch) {
+		const movie = await buildMovieLookupByTmdbId(Number(tmdbMatch[1]));
+		return movie ? [movie] : [];
+	}
+
+	const imdbMatch = /^imdb:(tt\d+)$/i.exec(term);
+	if (imdbMatch) {
+		const found = await tmdb.findByExternalId(imdbMatch[1], 'imdb_id');
+		const tmdbId = found.movie_results?.[0]?.id;
+		if (!tmdbId) return [];
+		const movie = await buildMovieLookupByTmdbId(tmdbId);
+		return movie ? [movie] : [];
+	}
+
 	const result = await tmdb.searchMovies(term);
 	return result.results.map((movie) => {
 		const year = movie.release_date ? Number.parseInt(movie.release_date.slice(0, 4), 10) : 0;
@@ -246,6 +273,23 @@ export async function buildMovieLookup(term: string): Promise<Record<string, unk
 export async function buildMovieLookupByTmdbId(
 	tmdbId: number
 ): Promise<Record<string, unknown> | null> {
+	// Real Radarr's lookup checks the local library first and returns the
+	// real entry (real id/monitored/hasFile/rootFolderPath/qualityProfileId)
+	// when it already exists, instead of always describing a not-yet-added
+	// title - arr clients (Seerr's addMovie) branch on `movie.id` /
+	// `movie.monitored` to decide whether to POST (add) or PUT (update) a
+	// title, so always returning id: 0 here would make every re-request of
+	// an already-added movie look like a brand new add.
+	const [existing] = await db
+		.select({ id: movies.id })
+		.from(movies)
+		.where(eq(movies.tmdbId, tmdbId))
+		.limit(1);
+	if (existing) {
+		const arrId = await getOrAssignArrId('movie', existing.id);
+		return buildMovieByArrId(arrId);
+	}
+
 	try {
 		const details = await tmdb.getMovie(tmdbId);
 		return {
@@ -269,7 +313,18 @@ export async function buildMovieLookupByTmdbId(
 			hasFile: false,
 			added: null
 		};
-	} catch {
-		return null;
+	} catch (err) {
+		// Real TMDB 404s ("no such movie") are a genuine not-found and should
+		// map to the arr-compat 404 the caller already returns for a null
+		// result. Anything else (TMDB API key not configured, rate limit,
+		// network error) is a real failure that was previously swallowed
+		// into the same misleading "Movie not found" - surface it instead so
+		// it isn't mistaken for a bad tmdbId.
+		const message = err instanceof Error ? err.message : String(err);
+		if (/TMDB Error: 404/.test(message)) {
+			return null;
+		}
+		logger.error({ tmdbId, err: message }, '[arr-compat] movie lookup by tmdbId failed');
+		throw err;
 	}
 }

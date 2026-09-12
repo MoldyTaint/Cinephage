@@ -2466,6 +2466,8 @@
 	"reports_renaming_stat_total": "Fallos de renombrado",
 	"reports_resolve": "Resolver",
 	"reports_resolveAll": "Resolver todo ({count})",
+	"reports_confirmResolveAllTitle": "¿Resolver todos los registros?",
+	"reports_confirmResolveAllMessage": "Esto resolverá los {count} registros de esta pestaña.",
 	"reports_resolveSelected": "Resolver ({count})",
 	"reports_resolvedAt": "Resuelto {date}",
 	"reports_search_fileOrTitle": "Buscar archivo o título…",

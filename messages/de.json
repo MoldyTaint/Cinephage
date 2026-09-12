@@ -2466,6 +2466,8 @@
 	"reports_renaming_stat_total": "Umbenennungsfehler",
 	"reports_resolve": "Beheben",
 	"reports_resolveAll": "Alle beheben ({count})",
+	"reports_confirmResolveAllTitle": "Alle Datensätze auflösen?",
+	"reports_confirmResolveAllMessage": "Dadurch werden alle {count} Datensätze in diesem Tab aufgelöst.",
 	"reports_resolveSelected": "Auflösen ({count})",
 	"reports_resolvedAt": "Behoben {date}",
 	"reports_search_fileOrTitle": "Datei oder Titel suchen…",
