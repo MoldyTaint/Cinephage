@@ -1,5 +1,5 @@
 ---
-# Nebulance (NBL) — ratioless private TV tracker, custom JSON API
+# Nebulance (NBL) — ratioless private Shows tracker, custom JSON API
 # No Prowlarr/Jackett bridge needed. Auth via personal API key.
 # API port of Prowlarr's Nebulance.cs (v2 API, PR #2615):
 # GET {base}api.php?action=search&age=>0&api_key={key}&per_page=100
@@ -10,7 +10,7 @@
 # trick as seedpool.yaml) to survive request filtering.
 id: nebulance
 name: Nebulance (NBL)
-description: A ratioless private torrent tracker for TV (direct API)
+description: A ratioless private torrent tracker for Shows (direct API)
 type: private
 language: en-US
 encoding: UTF-8
