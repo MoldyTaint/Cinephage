@@ -69,6 +69,7 @@ import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.
 import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import { getMediaBrowserNotifier } from '$lib/server/notifications/mediabrowser';
 import { getMediaParseStem } from '$lib/server/library/media-utils.js';
 import {
 	matchEpisodesByIdentifier,
@@ -1233,6 +1234,9 @@ export class ImportService extends EventEmitter {
 		eventBuffer.add(movieEvent);
 		libraryMediaEvents.emitMovieUpdated(movie.id);
 
+		// Tell connected media servers (Jellyfin/Plex/Emby) about the new file.
+		getMediaBrowserNotifier().queueUpdate(destPath, isUpgrade ? 'Modified' : 'Created', 'import');
+
 		// Trigger subtitle search asynchronously (don't await to avoid blocking)
 		this.triggerSubtitleSearch('movie', movie.id).catch((err) => {
 			logger.warn(
@@ -1839,6 +1843,9 @@ export class ImportService extends EventEmitter {
 		this.emit('file:imported', episodeEvent);
 		eventBuffer.add(episodeEvent);
 		libraryMediaEvents.emitSeriesUpdated(seriesData.id);
+
+		// See the movie import path above for why this exists.
+		getMediaBrowserNotifier().queueUpdate(destPath, isUpgrade ? 'Modified' : 'Created', 'import');
 
 		// Delete old files if this was an upgrade
 		if (filesToReplace.length > 0) {
