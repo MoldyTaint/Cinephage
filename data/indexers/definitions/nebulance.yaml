@@ -1,0 +1,138 @@
+---
+# Nebulance (NBL) — ratioless private TV Shows tracker, custom JSON API
+# No Prowlarr/Jackett bridge needed. Auth via personal API key.
+# API port of Prowlarr's Nebulance.cs (v2 API, PR #2615):
+# GET {base}api.php?action=search&age=>0&api_key={key}&per_page=100
+# Optional: tvmaze, imdb (full tt id), release (keywords or yyyy.MM.dd),
+#           name, season, episode, page
+# NOTE: the keyword param is named `release`, which is not in Cinephage's
+# known-search-param list, so it is embedded in the path template (same
+# trick as seedpool.yaml) to survive request filtering.
+id: nebulance
+name: Nebulance (NBL)
+description: A ratioless private torrent tracker for TV Shows (direct API)
+type: private
+language: en-US
+encoding: UTF-8
+protocol: torrent
+requestdelay: 2
+
+links:
+  - https://nebulance.io/
+
+caps:
+  modes:
+    search: [q]
+    tv-search: [q, season, ep, imdbid, tvmazeid]
+  categories:
+    '5000': TV
+    '5030': TV/SD
+    '5040': TV/HD
+    '5045': TV/UHD
+  categorymappings:
+    - { id: 1, cat: '5000', desc: TV }
+    - { id: 2, cat: '5030', desc: TV/SD }
+    - { id: 3, cat: '5040', desc: TV/HD }
+    - { id: 4, cat: '5045', desc: TV/UHD }
+    - { id: 1, cat: TV }
+    - { id: 2, cat: TV }
+    - { id: 3, cat: TV }
+    - { id: 4, cat: TV }
+
+settings:
+  - name: apikey
+    type: password
+    label: API Key
+    required: true
+  - name: info_key
+    type: info
+    label: About your API key
+    default: 'Find your API key in your Nebulance account settings.'
+
+search:
+  paths:
+    # TV search — keywords plus season/episode/IDs when available.
+    # Mirrors Prowlarr: release=keywords, season/episode, full-tt imdb, tvmaze.
+    - path: 'api.php?action=search{{ if .Keywords }}&release={{ .Keywords }}{{ end }}'
+      method: get
+      categories: [TV]
+      response:
+        type: json
+      inputs:
+        age: '>0'
+        api_key: '{{ .Config.apikey }}'
+        per_page: '100'
+        season: '{{ .Query.Season }}'
+        episode: '{{ .Query.Ep }}'
+        imdb: '{{ .Query.IMDBID }}'
+        tvmaze: '{{ .Query.TVMazeID }}'
+
+    # General keyword search fallback (Prowlarr BasicSearch: release=keywords)
+    - path: 'api.php?action=search{{ if .Keywords }}&release={{ .Keywords }}{{ end }}'
+      method: get
+      response:
+        type: json
+      inputs:
+        age: '>0'
+        api_key: '{{ .Config.apikey }}'
+        per_page: '100'
+
+  keywordsfilters:
+    - name: re_replace
+      args: ['\\.', ' ']
+
+  rows:
+    selector: items
+
+  fields:
+    title:
+      selector: rls_name
+    details:
+      selector: group_id
+      filters:
+        - name: prepend
+          args: 'torrents.php?id='
+    guid:
+      selector: group_id
+      filters:
+        - name: prepend
+          args: 'torrents.php?id='
+    download:
+      selector: download
+    size:
+      selector: size
+    seeders:
+      selector: seed
+      optional: true
+    leechers:
+      selector: leech
+      optional: true
+    grabs:
+      selector: snatch
+      optional: true
+    date:
+      selector: rls_utc
+      filters:
+        - name: dateparse
+          args: 'YYYY-MM-DD HH:mm:ss'
+    category:
+      selector: cat
+      optional: true
+    imdbid:
+      selector: imdb_id
+      optional: true
+    downloadvolumefactor:
+      # Ratioless tracker
+      text: '0'
+    uploadvolumefactor:
+      text: '1'
+    minimumratio:
+      text: '0'
+    minimumseedtime:
+      # 120h for season packs, 24h for episodes (per Prowlarr)
+      selector: cat
+      case:
+        'SEASON': '432000'
+        'Season': '432000'
+        'season': '432000'
+        '*': '86400'
