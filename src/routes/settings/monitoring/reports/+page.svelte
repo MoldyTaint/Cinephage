@@ -22,6 +22,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import MatchFileModal from '$lib/components/library/MatchFileModal.svelte';
+	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { copyToClipboard } from '$lib/utils/clipboard';
 
 	let { data } = $props();
@@ -621,10 +622,17 @@
 		}
 	}
 
-	async function resolveAll() {
+	let confirmResolveAllOpen = $state(false);
+	let resolvingAll = $state(false);
+
+	function resolveAll() {
+		if (activeTab === 'unmatched-imports' || total === 0) return;
+		confirmResolveAllOpen = true;
+	}
+
+	async function confirmResolveAll() {
 		const tab = activeTab;
-		if (tab === 'unmatched-imports' || total === 0) return;
-		if (!confirm(`Resolve all ${total} records in this tab?`)) return;
+		resolvingAll = true;
 		try {
 			const res = await fetch(`/api/reports/${tab}`, {
 				method: 'PATCH',
@@ -646,6 +654,9 @@
 			}
 		} catch {
 			toasts.error('Failed to resolve all');
+		} finally {
+			resolvingAll = false;
+			confirmResolveAllOpen = false;
 		}
 	}
 
@@ -1144,6 +1155,7 @@
 				<div class="relative">
 					<button
 						class="btn gap-1 btn-neutral btn-sm"
+						disabled={records.length === 0}
 						onclick={(e) => {
 							e.stopPropagation();
 							showExportMenu = !showExportMenu;
@@ -1159,11 +1171,11 @@
 							class="absolute top-full right-0 z-20 mt-1 w-40 rounded-lg border border-base-300 bg-base-100 shadow-xl"
 						>
 							<button
-								class="block w-full rounded-t-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
+								class="block w-full cursor-pointer rounded-t-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
 								onclick={() => exportRecords('csv')}>{m.reports_exportCsv()}</button
 							>
 							<button
-								class="block w-full rounded-b-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
+								class="block w-full cursor-pointer rounded-b-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
 								onclick={() => exportRecords('json')}>{m.reports_exportJson()}</button
 							>
 						</div>
@@ -1760,6 +1772,7 @@
 					<div class="relative">
 						<button
 							class="btn gap-1.5 btn-neutral btn-sm"
+							disabled={records.length === 0}
 							onclick={(e) => {
 								e.stopPropagation();
 								showExportMenu = !showExportMenu;
@@ -1775,7 +1788,7 @@
 								class="absolute top-full right-0 z-20 mt-1 w-44 rounded-lg border border-base-300 bg-base-100 shadow-xl"
 							>
 								<button
-									class="block w-full rounded-t-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
+									class="block w-full cursor-pointer rounded-t-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
 									onclick={() => {
 										showExportMenu = false;
 										const blob = new Blob(
@@ -1809,7 +1822,7 @@
 									}}>{m.reports_exportCsv()}</button
 								>
 								<button
-									class="block w-full rounded-b-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
+									class="block w-full cursor-pointer rounded-b-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
 									onclick={() => {
 										showExportMenu = false;
 										const blob = new Blob([JSON.stringify(records, null, 2)], {
@@ -2366,6 +2379,7 @@
 					<div class="relative">
 						<button
 							class="btn gap-1.5 btn-neutral btn-sm"
+							disabled={records.length === 0}
 							onclick={(e) => {
 								e.stopPropagation();
 								showExportMenu = !showExportMenu;
@@ -2381,7 +2395,7 @@
 								class="absolute top-full right-0 z-20 mt-1 w-44 rounded-lg border border-base-300 bg-base-100 shadow-xl"
 							>
 								<button
-									class="block w-full rounded-t-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
+									class="block w-full cursor-pointer rounded-t-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
 									onclick={() => {
 										showExportMenu = false;
 										const blob = new Blob(
@@ -2414,7 +2428,7 @@
 									}}>{m.reports_exportCsv()}</button
 								>
 								<button
-									class="block w-full rounded-b-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
+									class="block w-full cursor-pointer rounded-b-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
 									onclick={() => {
 										showExportMenu = false;
 										const blob = new Blob([JSON.stringify(records, null, 2)], {
@@ -2949,6 +2963,7 @@
 					<div class="relative">
 						<button
 							class="btn gap-1.5 btn-neutral btn-sm"
+							disabled={records.length === 0}
 							onclick={(e) => {
 								e.stopPropagation();
 								showExportMenu = !showExportMenu;
@@ -2964,7 +2979,7 @@
 								class="absolute top-full right-0 z-20 mt-1 w-44 rounded-lg border border-base-300 bg-base-100 shadow-xl"
 							>
 								<button
-									class="block w-full rounded-t-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
+									class="block w-full cursor-pointer rounded-t-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
 									onclick={() => {
 										showExportMenu = false;
 										const blob = new Blob(
@@ -2997,7 +3012,7 @@
 									}}>{m.reports_exportCsv()}</button
 								>
 								<button
-									class="block w-full rounded-b-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
+									class="block w-full cursor-pointer rounded-b-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-base-200"
 									onclick={() => {
 										showExportMenu = false;
 										const blob = new Blob([JSON.stringify(records, null, 2)], {
@@ -3634,3 +3649,14 @@
 		{/if}
 	{/if}
 </div>
+
+<ConfirmationModal
+	open={confirmResolveAllOpen}
+	title={m.reports_confirmResolveAllTitle()}
+	message={m.reports_confirmResolveAllMessage({ count: total })}
+	confirmLabel={m.reports_resolveAll({ count: total })}
+	confirmVariant="error"
+	loading={resolvingAll}
+	onConfirm={confirmResolveAll}
+	onCancel={() => (confirmResolveAllOpen = false)}
+/>
