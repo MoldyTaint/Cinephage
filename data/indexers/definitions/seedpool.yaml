@@ -5,7 +5,7 @@
 # Same UNIT3D API shape as oldtoonsworld.yaml.
 id: seedpool
 name: seedpool
-description: A private torrent tracker for 0-day movies, Shows and general content
+description: A private torrent tracker for 0-day movies, TV Shows and general content
 language: en-US
 type: private
 encoding: UTF-8

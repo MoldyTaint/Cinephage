@@ -1,7 +1,7 @@
 ---
 id: majomparade
 name: Majomparádé
-description: 'A Hungarian private torrent tracker for Movies / Shows / General (TurkDepo)'
+description: 'A Hungarian private torrent tracker for Movies / TV Shows / General (TurkDepo)'
 language: hu-HU
 type: private
 protocol: torrent

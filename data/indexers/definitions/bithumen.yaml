@@ -1,7 +1,7 @@
 ---
 id: bithumen
 name: BitHUmen
-description: 'A Hungarian private torrent tracker for Movies / Shows / General'
+description: 'A Hungarian private torrent tracker for Movies / TV Shows / General'
 language: hu-HU
 type: private
 protocol: torrent
