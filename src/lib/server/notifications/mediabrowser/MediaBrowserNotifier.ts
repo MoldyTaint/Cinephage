@@ -311,16 +311,27 @@ class MediaBrowserNotifier extends EventEmitter implements BackgroundService {
 						serverType: server.serverType as 'jellyfin' | 'emby' | 'plex'
 					});
 
-					await client.notifyLibraryUpdate(payload);
+					const succeeded = await client.notifyLibraryUpdate(payload);
 
-					logger.debug(
-						{
-							serverId: server.id,
-							serverName: server.name,
-							updateCount: mappedUpdates.length
-						},
-						'[MediaBrowserNotifier] Updates sent to server'
-					);
+					if (succeeded) {
+						logger.debug(
+							{
+								serverId: server.id,
+								serverName: server.name,
+								updateCount: mappedUpdates.length
+							},
+							'[MediaBrowserNotifier] Updates sent to server'
+						);
+					} else {
+						logger.warn(
+							{
+								serverId: server.id,
+								serverName: server.name,
+								updateCount: mappedUpdates.length
+							},
+							'[MediaBrowserNotifier] Server rejected the update - see the warning/error logged just above for why'
+						);
+					}
 				} catch (error) {
 					logger.error(
 						{

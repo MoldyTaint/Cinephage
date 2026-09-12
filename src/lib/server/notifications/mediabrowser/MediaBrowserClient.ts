@@ -120,12 +120,14 @@ export class MediaBrowserClient {
 	}
 
 	/**
-	 * Notify the server about library updates
+	 * Notify the server about library updates.
+	 *
+	 * Returns whether the notification actually succeeded.
 	 */
-	async notifyLibraryUpdate(payload: LibraryUpdatePayload): Promise<void> {
+	async notifyLibraryUpdate(payload: LibraryUpdatePayload): Promise<boolean> {
 		if (this.serverType === 'plex') {
 			await this.notifyPlexLibraryUpdate(payload);
-			return;
+			return true;
 		}
 
 		try {
@@ -143,15 +145,17 @@ export class MediaBrowserClient {
 					},
 					'MediaBrowser library update failed'
 				);
-			} else {
-				logger.debug(
-					{
-						serverType: this.serverType,
-						updates: payload.Updates.length
-					},
-					'MediaBrowser library update sent'
-				);
+				return false;
 			}
+
+			logger.debug(
+				{
+					serverType: this.serverType,
+					updates: payload.Updates.length
+				},
+				'MediaBrowser library update sent'
+			);
+			return true;
 		} catch (error) {
 			logger.error(
 				{
@@ -160,6 +164,7 @@ export class MediaBrowserClient {
 				},
 				'MediaBrowser library update error'
 			);
+			return false;
 		}
 	}
 
