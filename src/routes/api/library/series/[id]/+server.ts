@@ -41,7 +41,11 @@ import { seriesUpdateSchema } from '$lib/validation/schemas.js';
 import { tmdb } from '$lib/server/tmdb.js';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
 import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
-import { refreshSeriesMetadata } from '$lib/server/metadata/metadata-refresh.js';
+import {
+	refreshSeriesMetadata,
+	metadataLanguageToLegacy,
+	warnLegacyMetadataLanguage
+} from '$lib/server/metadata/metadata-refresh.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ module: 'LibrarySeriesByIdApi', logDomain: 'scans' });
@@ -81,7 +85,8 @@ export const GET: RequestHandler = async ({ params }) => {
 				episodeFileCount: series.episodeFileCount,
 				wantsSubtitles: series.wantsSubtitles,
 				episodeGroupId: series.episodeGroupId,
-				metadataLanguage: series.metadataLanguage,
+				metadataLanguageMode: series.metadataLanguageMode,
+				metadataLanguageValue: series.metadataLanguageValue,
 				preferOriginalTitle: series.preferOriginalTitle
 			})
 			.from(series)
@@ -186,11 +191,16 @@ export const GET: RequestHandler = async ({ params }) => {
 		const profileService = getLanguageProfileService();
 		const episodesMissingSubs = await profileService.getSeriesEpisodesMissingSubtitles(params.id);
 
-		return json({
-			success: true,
-			series: {
-				...seriesItem,
-				providerRefs: enrichedProviderRefs,
+			return json({
+				success: true,
+				series: {
+					...seriesItem,
+					// Legacy view derived from the v2 pair (kept one release).
+					metadataLanguage: metadataLanguageToLegacy(
+						seriesItem.metadataLanguageMode,
+						seriesItem.metadataLanguageValue
+					),
+					providerRefs: enrichedProviderRefs,
 				percentComplete:
 					seriesItem.episodeCount && seriesItem.episodeCount > 0
 						? Math.round(((seriesItem.episodeFileCount || 0) / seriesItem.episodeCount) * 100)
@@ -239,6 +249,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			delayProfileId,
 			folderPath,
 			episodeGroupId,
+			metadataLanguageMode,
+			metadataLanguageValue,
 			metadataLanguage,
 			preferOriginalTitle
 		} = body;
@@ -259,7 +271,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				languageProfileId: series.languageProfileId,
 				episodeGroupId: series.episodeGroupId,
 				monitorSpecials: series.monitorSpecials,
-				metadataLanguage: series.metadataLanguage
+				metadataLanguageMode: series.metadataLanguageMode,
+				metadataLanguageValue: series.metadataLanguageValue
 			})
 			.from(series)
 			.where(eq(series.id, params.id));
@@ -409,8 +422,23 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			updateData.path = trimmed;
 		}
 
-		if (metadataLanguage !== undefined) {
-			updateData.metadataLanguage = metadataLanguage;
+		// Metadata language override (v2 pair). The update schema maps the
+		// deprecated single-string form onto metadataLanguageMode/Value.
+		const metadataLanguageProvided =
+			metadataLanguageMode !== undefined ||
+			metadataLanguageValue !== undefined ||
+			metadataLanguage !== undefined;
+		const nextMetadataLanguageMode = metadataLanguageProvided
+			? (metadataLanguageMode ?? 'inherit')
+			: null;
+		const nextMetadataLanguageValue =
+			nextMetadataLanguageMode === 'explicit' ? (metadataLanguageValue ?? null) : null;
+		if (metadataLanguageProvided) {
+			if (metadataLanguage !== undefined) {
+				warnLegacyMetadataLanguage('PATCH /api/library/series/[id]');
+			}
+			updateData.metadataLanguageMode = nextMetadataLanguageMode;
+			updateData.metadataLanguageValue = nextMetadataLanguageValue;
 		}
 		if (typeof preferOriginalTitle === 'boolean') {
 			updateData.preferOriginalTitle = preferOriginalTitle;
@@ -426,8 +454,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 		// Refresh metadata from TMDB when language override changes
 		const languageChanged =
-			metadataLanguage !== undefined &&
-			metadataLanguage !== (currentSeries?.metadataLanguage ?? null);
+			metadataLanguageProvided &&
+			(nextMetadataLanguageMode !== (currentSeries?.metadataLanguageMode ?? null) ||
+				nextMetadataLanguageValue !== (currentSeries?.metadataLanguageValue ?? null));
 		if (languageChanged) {
 			refreshSeriesMetadata(params.id).catch((err) => {
 				logger.error(

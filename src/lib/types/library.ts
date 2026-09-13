@@ -108,6 +108,11 @@ export interface LibraryMovie {
 	hasFile: boolean | null;
 	tmdbCollectionId?: number | null;
 	collectionName?: string | null;
+	/** Per-item metadata language override mode ('inherit' | 'original' | 'explicit') */
+	metadataLanguageMode?: 'inherit' | 'original' | 'explicit' | null;
+	/** Explicit TMDB locale when metadataLanguageMode is 'explicit' */
+	metadataLanguageValue?: string | null;
+	/** @deprecated Legacy single-string view derived from the pair (kept one release) */
 	metadataLanguage?: string | null;
 	preferOriginalTitle?: boolean | null;
 	files: MovieFile[];
@@ -143,6 +148,11 @@ export interface LibrarySeries {
 	episodeFileCount: number | null;
 	percentComplete: number;
 	totalSize?: number;
+	/** Per-item metadata language override mode ('inherit' | 'original' | 'explicit') */
+	metadataLanguageMode?: 'inherit' | 'original' | 'explicit' | null;
+	/** Explicit TMDB locale when metadataLanguageMode is 'explicit' */
+	metadataLanguageValue?: string | null;
+	/** @deprecated Legacy single-string view derived from the pair (kept one release) */
 	metadataLanguage?: string | null;
 	preferOriginalTitle?: boolean | null;
 }

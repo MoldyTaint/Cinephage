@@ -1779,19 +1779,6 @@ export interface LanguageProfileRow {
 }
 
 /**
- * @deprecated Legacy v1 preference shape. Kept only so pre-v2 consumers
- * (LanguageProfileService, language-profile API routes) keep compiling until
- * Phase 2 rewrites them on the v2 types above — remove once they land.
- */
-export interface LanguagePreference {
-	code: string; // ISO 639-1 code (e.g., 'en', 'es', 'fr')
-	forced: boolean; // Look for forced subtitles
-	hearingImpaired: boolean; // SDH/HI preference (include HI if true)
-	excludeHi: boolean; // Explicitly exclude HI if true
-	isCutoff: boolean; // If satisfied, stop searching for more languages
-}
-
-/**
  * Language Profiles (v2) - Audio preferences + ordered subtitle requirements.
  * Each movie/series/library can be assigned a profile; the default profile is
  * the single authority in language_settings.default_profile_id (no is_default).

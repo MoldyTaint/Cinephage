@@ -1,8 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
-import { languageProfileUpdateSchema } from '$lib/validation/schemas';
-import type { LanguagePreference } from '$lib/server/db/schema';
+import { languageProfileV2UpdateSchema } from '$lib/validation/schemas';
 import { parseBody, assertFound } from '$lib/server/api/validate.js';
 
 /**
@@ -20,20 +19,14 @@ export const GET: RequestHandler = async ({ params }) => {
 
 /**
  * PUT /api/subtitles/language-profiles/:id
- * Update a language profile.
+ * Update a language profile (v2 shape). The parsed schema output is forwarded
+ * directly; the service re-validates.
  */
 export const PUT: RequestHandler = async ({ params, request }) => {
-	const validated = await parseBody(request, languageProfileUpdateSchema);
+	const validated = await parseBody(request, languageProfileV2UpdateSchema);
 	const service = LanguageProfileService.getInstance();
 
-	const updated = await service.updateProfile(params.id, {
-		name: validated.name,
-		languages: validated.languages as LanguagePreference[] | undefined,
-		upgradesAllowed: validated.upgradesAllowed,
-		isDefault: validated.isDefault,
-		cutoffIndex: validated.cutoffIndex,
-		minimumScore: validated.minimumScore
-	});
+	const updated = await service.updateProfile(params.id, validated);
 
 	return json({ success: true, profile: updated });
 };

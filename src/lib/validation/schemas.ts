@@ -1122,12 +1122,12 @@ export const subtitleBlacklistSchema = z.object({
  * Schema for updating subtitle settings.
  *
  * NOTE: Scheduling-related settings (searchOnImport, searchTrigger, intervals)
- * have been consolidated into MonitoringScheduler settings.
+ * have been consolidated into MonitoringScheduler settings. The language
+ * defaults (defaultLanguageProfileId / defaultFallbackLanguage) moved to the
+ * language_settings singleton (PUT /api/subtitles/language-settings); this
+ * schema intentionally has no fields so legacy payloads are silently stripped.
  */
-export const subtitleSettingsUpdateSchema = z.object({
-	defaultLanguageProfileId: z.string().uuid().nullable().optional(),
-	defaultFallbackLanguage: z.string().min(2).max(5).optional()
-});
+export const subtitleSettingsUpdateSchema = z.object({});
 
 // Subtitle Type Exports
 export type SubtitleProviderImplementation = z.infer<typeof subtitleProviderImplementationSchema>;
@@ -1749,73 +1749,194 @@ export const episodeUpdateSchema = z
 	});
 
 /**
+ * Per-item TMDB metadata language override mode:
+ * - inherit: use the global language_settings.metadataLocale
+ * - original: use the item's TMDB original_language
+ * - explicit: use metadataLanguageValue (a canonical TMDB locale)
+ */
+export const metadataLanguageModeSchema = z.enum(['inherit', 'original', 'explicit']);
+export type MetadataLanguageMode = z.infer<typeof metadataLanguageModeSchema>;
+
+/** Canonicalize a TMDB locale via Intl, returning null when invalid. */
+function canonicalMetadataLocale(value: string): string | null {
+	try {
+		return Intl.getCanonicalLocales(value.trim())[0] ?? null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Map a legacy single-string `metadataLanguage` override onto the v2 pair.
+ * Valid locales become 'explicit' (canonicalized); 'original' maps to the
+ * original mode; null/empty/invalid degrades to 'inherit' so old payloads
+ * never hard-fail.
+ */
+export function normalizeLegacyMetadataLanguage(value: string | null | undefined): {
+	mode: MetadataLanguageMode;
+	value: string | null;
+} {
+	if (value == null || value.trim() === '') return { mode: 'inherit', value: null };
+	if (value.trim().toLowerCase() === 'original') return { mode: 'original', value: null };
+	const canonical = canonicalMetadataLocale(value);
+	return canonical
+		? { mode: 'explicit', value: canonical }
+		: { mode: 'inherit', value: null };
+}
+
+/**
+ * The three metadata-language fields shared by the movie/series update schemas.
+ * `metadataLanguage` is the deprecated single-string form kept for one release.
+ */
+const metadataLanguageFields = {
+	metadataLanguageMode: metadataLanguageModeSchema.optional(),
+	metadataLanguageValue: z.string().nullable().optional(),
+	/** @deprecated Use metadataLanguageMode + metadataLanguageValue. */
+	metadataLanguage: z.string().nullable().optional()
+};
+
+interface MetadataLanguageOverride {
+	metadataLanguageMode?: MetadataLanguageMode;
+	metadataLanguageValue?: string | null;
+	metadataLanguage?: string | null;
+}
+
+/**
+ * Validate the metadata-language pair: 'explicit' requires a valid canonical
+ * locale; legacy and explicit cannot be combined. Validation only — forcing
+ * value null for inherit/original and canonicalizing happen in the normalizer.
+ */
+function validateMetadataLanguageOverride(
+	data: MetadataLanguageOverride,
+	ctx: z.RefinementCtx
+): void {
+	const hasLegacy = data.metadataLanguage !== undefined;
+	const hasMode = data.metadataLanguageMode !== undefined;
+	const hasValue = data.metadataLanguageValue !== undefined;
+	if (!hasLegacy && !hasMode && !hasValue) return;
+
+	if (hasLegacy && (hasMode || hasValue)) {
+		ctx.addIssue({
+			code: 'custom',
+			path: ['metadataLanguage'],
+			message:
+				'Provide either metadataLanguage (deprecated) or metadataLanguageMode/metadataLanguageValue, not both'
+		});
+		return;
+	}
+
+	if (!hasLegacy && data.metadataLanguageMode === 'explicit') {
+		const candidate = data.metadataLanguageValue;
+		if (candidate == null || canonicalMetadataLocale(candidate) === null) {
+			ctx.addIssue({
+				code: 'custom',
+				path: ['metadataLanguageValue'],
+				message: "metadataLanguageValue must be a valid TMDB locale when mode is 'explicit'"
+			});
+		}
+	}
+}
+
+/**
+ * Normalize the metadata-language override in place: map legacy strings onto
+ * the pair, canonicalize explicit locales, and force the value null for
+ * inherit/original (and when only a value was supplied without a mode).
+ */
+function normalizeMetadataLanguageOverride<T extends MetadataLanguageOverride>(data: T): T {
+	const hasLegacy = data.metadataLanguage !== undefined;
+	const hasMode = data.metadataLanguageMode !== undefined;
+	const hasValue = data.metadataLanguageValue !== undefined;
+	if (!hasLegacy && !hasMode && !hasValue) return data;
+
+	if (hasLegacy) {
+		const mapped = normalizeLegacyMetadataLanguage(data.metadataLanguage);
+		data.metadataLanguageMode = mapped.mode;
+		data.metadataLanguageValue = mapped.value;
+		return data;
+	}
+
+	if (data.metadataLanguageMode === 'explicit') {
+		data.metadataLanguageValue = canonicalMetadataLocale(data.metadataLanguageValue ?? '');
+	} else {
+		// inherit / original (or no mode supplied) never carry a value.
+		data.metadataLanguageValue = null;
+		if (data.metadataLanguageMode === undefined) data.metadataLanguageMode = 'inherit';
+	}
+	return data;
+}
+
+/**
  * Schema for updating a movie
  */
-export const movieUpdateSchema = z.object({
-	monitored: z.boolean().optional(),
-	scoringProfileId: z.string().nullable().optional(),
-	/** Desired qualities for multi-quality mode (null/empty = single-quality). */
-	desiredQualities: z
-		.array(z.enum(['2160p', '1080p', '720p', '480p']))
-		.nullable()
-		.optional(),
-	minimumAvailability: z.string().min(1).optional(),
-	availabilityDelay: z.number().int().min(0).max(365).optional(),
-	providerRefs: z.partialRecord(z.enum(['tmdb', 'anilist', 'mal']), z.string().min(1)).optional(),
-	rootFolderId: z.string().optional(),
-	moveFilesOnRootChange: z.boolean().optional(),
-	wantsSubtitles: z.boolean().optional(),
-	languageProfileId: z.string().nullable().optional(),
-	delayProfileId: z.string().nullable().optional(),
-	/** Edit-only: opt-in removal of files for resolutions no longer in
-	 *  desiredQualities. Server recomputes the redundant set authoritatively. */
-	removeUnwantedFiles: z.boolean().optional(),
-	/** Relative folder name within the root folder (e.g. "Brokenwood Mysteries"). Used to
-	 *  correct a drifted DB path without touching files on disk. */
-	folderPath: z
-		.string()
-		.min(1)
-		.refine((v) => !v.includes('..') && !v.startsWith('/'), {
-			message: 'Folder path must be a relative name with no path traversal'
-		})
-		.optional(),
-	/** Override the TMDB collection assignment for this movie. */
-	tmdbCollectionId: z.number().int().positive().nullable().optional(),
-	collectionName: z.string().min(1).nullable().optional(),
-	/** Per-item TMDB language override (null = inherit global, 'original' = use original_language) */
-	metadataLanguage: z.string().nullable().optional(),
-	/** Display originalTitle instead of localized title in the UI */
-	preferOriginalTitle: z.boolean().optional()
-});
+export const movieUpdateSchema = z
+	.object({
+		monitored: z.boolean().optional(),
+		scoringProfileId: z.string().nullable().optional(),
+		/** Desired qualities for multi-quality mode (null/empty = single-quality). */
+		desiredQualities: z
+			.array(z.enum(['2160p', '1080p', '720p', '480p']))
+			.nullable()
+			.optional(),
+		minimumAvailability: z.string().min(1).optional(),
+		availabilityDelay: z.number().int().min(0).max(365).optional(),
+		providerRefs: z.partialRecord(z.enum(['tmdb', 'anilist', 'mal']), z.string().min(1)).optional(),
+		rootFolderId: z.string().optional(),
+		moveFilesOnRootChange: z.boolean().optional(),
+		wantsSubtitles: z.boolean().optional(),
+		languageProfileId: z.string().nullable().optional(),
+		delayProfileId: z.string().nullable().optional(),
+		/** Edit-only: opt-in removal of files for resolutions no longer in
+		 *  desiredQualities. Server recomputes the redundant set authoritatively. */
+		removeUnwantedFiles: z.boolean().optional(),
+		/** Relative folder name within the root folder (e.g. "Brokenwood Mysteries"). Used to
+		 *  correct a drifted DB path without touching files on disk. */
+		folderPath: z
+			.string()
+			.min(1)
+			.refine((v) => !v.includes('..') && !v.startsWith('/'), {
+				message: 'Folder path must be a relative name with no path traversal'
+			})
+			.optional(),
+		/** Override the TMDB collection assignment for this movie. */
+		tmdbCollectionId: z.number().int().positive().nullable().optional(),
+		collectionName: z.string().min(1).nullable().optional(),
+		...metadataLanguageFields,
+		/** Display originalTitle instead of localized title in the UI */
+		preferOriginalTitle: z.boolean().optional()
+	})
+	.superRefine((data, ctx) => validateMetadataLanguageOverride(data, ctx))
+	.transform((data) => normalizeMetadataLanguageOverride(data));
 
 /**
  * Schema for updating a series
  */
-export const seriesUpdateSchema = z.object({
-	monitored: z.boolean().optional(),
-	scoringProfileId: z.string().nullable().optional(),
-	seasonFolder: z.boolean().optional(),
-	seriesType: z.enum(['standard', 'anime', 'daily']).optional(),
-	providerRefs: z.partialRecord(z.enum(['tmdb', 'anilist', 'mal']), z.string().min(1)).optional(),
-	rootFolderId: z.string().optional(),
-	wantsSubtitles: z.boolean().optional(),
-	languageProfileId: z.string().nullable().optional(),
-	delayProfileId: z.string().nullable().optional(),
-	/** Relative folder name within the root folder. Used to correct a drifted DB path. */
-	folderPath: z
-		.string()
-		.min(1)
-		.refine((v) => !v.includes('..') && !v.startsWith('/'), {
-			message: 'Folder path must be a relative name with no path traversal'
-		})
-		.optional(),
-	/** TMDB episode group ID for alternate season ordering (null = default TMDB ordering) */
-	episodeGroupId: z.string().nullable().optional(),
-	/** Per-item TMDB language override (null = inherit global, 'original' = use original_language) */
-	metadataLanguage: z.string().nullable().optional(),
-	/** Display originalTitle instead of localized title in the UI */
-	preferOriginalTitle: z.boolean().optional()
-});
+export const seriesUpdateSchema = z
+	.object({
+		monitored: z.boolean().optional(),
+		scoringProfileId: z.string().nullable().optional(),
+		seasonFolder: z.boolean().optional(),
+		seriesType: z.enum(['standard', 'anime', 'daily']).optional(),
+		providerRefs: z.partialRecord(z.enum(['tmdb', 'anilist', 'mal']), z.string().min(1)).optional(),
+		rootFolderId: z.string().optional(),
+		wantsSubtitles: z.boolean().optional(),
+		languageProfileId: z.string().nullable().optional(),
+		delayProfileId: z.string().nullable().optional(),
+		/** Relative folder name within the root folder. Used to correct a drifted DB path. */
+		folderPath: z
+			.string()
+			.min(1)
+			.refine((v) => !v.includes('..') && !v.startsWith('/'), {
+				message: 'Folder path must be a relative name with no path traversal'
+			})
+			.optional(),
+		/** TMDB episode group ID for alternate season ordering (null = default TMDB ordering) */
+		episodeGroupId: z.string().nullable().optional(),
+		...metadataLanguageFields,
+		/** Display originalTitle instead of localized title in the UI */
+		preferOriginalTitle: z.boolean().optional()
+	})
+	.superRefine((data, ctx) => validateMetadataLanguageOverride(data, ctx))
+	.transform((data) => normalizeMetadataLanguageOverride(data));
 
 /**
  * Schema for auto-search request

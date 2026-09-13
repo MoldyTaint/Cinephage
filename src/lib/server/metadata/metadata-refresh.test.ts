@@ -38,7 +38,9 @@ vi.mock('$lib/server/tmdb.js', () => ({
 	}
 }));
 
-const { refreshSeriesMetadata } = await import('./metadata-refresh.js');
+const { refreshSeriesMetadata, resolveLanguageForFetch, metadataLanguageToLegacy } = await import(
+	'./metadata-refresh.js'
+);
 const { series, episodes } = await import('$lib/server/db/schema.js');
 
 testDb.db
@@ -48,7 +50,8 @@ testDb.db
 		tmdbId: 4242,
 		title: 'Test Series',
 		path: 'Test Series',
-		metadataLanguage: 'de'
+		metadataLanguageMode: 'explicit',
+		metadataLanguageValue: 'de'
 	})
 	.run();
 
@@ -120,5 +123,28 @@ describe('refreshSeriesMetadata placeholder protection', () => {
 		const row = await getEpisode('episode-2');
 		expect(row.title).toBe('Die echte Übersetzung');
 		expect(row.overview).toBe('Echte Beschreibung.');
+	});
+});
+
+describe('metadata language pair resolution', () => {
+	it('resolveLanguageForFetch uses the explicit value', () => {
+		expect(resolveLanguageForFetch('explicit', 'de', 'ja')).toBe('de');
+	});
+
+	it('resolveLanguageForFetch falls back to the original language', () => {
+		expect(resolveLanguageForFetch('original', null, 'ja')).toBe('ja');
+	});
+
+	it('resolveLanguageForFetch returns null for inherit/null', () => {
+		expect(resolveLanguageForFetch('inherit', 'de', 'ja')).toBeNull();
+		expect(resolveLanguageForFetch(null, 'de', 'ja')).toBeNull();
+		expect(resolveLanguageForFetch(undefined, undefined, 'ja')).toBeNull();
+	});
+
+	it('metadataLanguageToLegacy derives the legacy view from the pair', () => {
+		expect(metadataLanguageToLegacy('explicit', 'de')).toBe('de');
+		expect(metadataLanguageToLegacy('original', null)).toBe('original');
+		expect(metadataLanguageToLegacy('inherit', null)).toBeNull();
+		expect(metadataLanguageToLegacy(null, null)).toBeNull();
 	});
 });

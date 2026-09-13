@@ -7,21 +7,39 @@ import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 
+/** Per-item metadata language override mode (mirrors the DB column). */
+export type MetadataLanguageMode = 'inherit' | 'original' | 'explicit';
+
+/**
+ * Resolve the TMDB request language from the v2 mode/value pair when the
+ * original language is already known (row already loaded).
+ * - 'explicit' → the stored locale
+ * - 'original' → the item's original_language
+ * - 'inherit'/null → null (global default)
+ */
 export function resolveLanguageForFetch(
-	metadataLanguage: string | null,
+	mode: string | null | undefined,
+	value: string | null | undefined,
 	originalLanguage: string | null
 ): string | null {
-	if (metadataLanguage === null) return null;
-	if (metadataLanguage === 'original') return originalLanguage || null;
-	return metadataLanguage || null;
+	if (mode === 'explicit') return value || null;
+	if (mode === 'original') return originalLanguage || null;
+	return null;
 }
 
+/**
+ * Resolve the TMDB request language from the v2 mode/value pair, fetching the
+ * item's original_language from TMDB when the mode is 'original'. 'explicit'
+ * uses the stored value; 'inherit'/null returns null (global default).
+ */
 export async function resolveLanguage(
-	metaLanguage: string | null,
+	mode: string | null | undefined,
+	value: string | null | undefined,
 	tmdbId: number,
 	endpoint: string
 ): Promise<string | null> {
-	if (metaLanguage === 'original') {
+	if (mode === 'explicit') return value || null;
+	if (mode === 'original') {
 		try {
 			const details = await tmdb.fetch(endpoint);
 			const d = details as Record<string, unknown>;
@@ -30,19 +48,53 @@ export async function resolveLanguage(
 			return null;
 		}
 	}
-	return metaLanguage || null;
+	return null;
+}
+
+/**
+ * Derive the deprecated single-string `metadataLanguage` view from the v2 pair
+ * (kept one release for old clients): explicit → value, original → 'original',
+ * inherit/null → null.
+ */
+export function metadataLanguageToLegacy(
+	mode: string | null | undefined,
+	value: string | null | undefined
+): string | null {
+	if (mode === 'explicit') return value ?? null;
+	if (mode === 'original') return 'original';
+	return null;
+}
+
+let legacyMetadataLanguageWarned = false;
+
+/** Log once per process that the legacy single-string override is deprecated. */
+export function warnLegacyMetadataLanguage(source: string): void {
+	if (legacyMetadataLanguageWarned) return;
+	legacyMetadataLanguageWarned = true;
+	logger.warn(
+		{ source },
+		'metadataLanguage is deprecated; use metadataLanguageMode/metadataLanguageValue'
+	);
 }
 
 export async function refreshMovieMetadata(movieId: string): Promise<void> {
 	const [movie] = await db
-		.select({ tmdbId: movies.tmdbId, metadataLanguage: movies.metadataLanguage })
+		.select({
+			tmdbId: movies.tmdbId,
+			metadataLanguageMode: movies.metadataLanguageMode,
+			metadataLanguageValue: movies.metadataLanguageValue
+		})
 		.from(movies)
 		.where(eq(movies.id, movieId));
 
 	if (!movie) return;
 
-	const metaLang = movie.metadataLanguage ?? null;
-	const lang = await resolveLanguage(metaLang, movie.tmdbId, `/movie/${movie.tmdbId}`);
+	const lang = await resolveLanguage(
+		movie.metadataLanguageMode,
+		movie.metadataLanguageValue,
+		movie.tmdbId,
+		`/movie/${movie.tmdbId}`
+	);
 	const fetchLang = lang ? `&language=${lang}` : '';
 
 	try {
@@ -93,14 +145,22 @@ export async function refreshMovieMetadata(movieId: string): Promise<void> {
 
 export async function refreshSeriesMetadata(seriesId: string): Promise<void> {
 	const [s] = await db
-		.select({ tmdbId: series.tmdbId, metadataLanguage: series.metadataLanguage })
+		.select({
+			tmdbId: series.tmdbId,
+			metadataLanguageMode: series.metadataLanguageMode,
+			metadataLanguageValue: series.metadataLanguageValue
+		})
 		.from(series)
 		.where(eq(series.id, seriesId));
 
 	if (!s) return;
 
-	const metaLang = s.metadataLanguage ?? null;
-	const lang = await resolveLanguage(metaLang, s.tmdbId, `/tv/${s.tmdbId}`);
+	const lang = await resolveLanguage(
+		s.metadataLanguageMode,
+		s.metadataLanguageValue,
+		s.tmdbId,
+		`/tv/${s.tmdbId}`
+	);
 	const fetchLang = lang ? `&language=${lang}` : '';
 
 	try {

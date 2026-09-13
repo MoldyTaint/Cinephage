@@ -1,5 +1,4 @@
 import type {
-	SubtitleSettingsUpdate,
 	LanguageProfileCreate,
 	LanguageProfileUpdate,
 	SubtitleProviderCreate,
@@ -54,7 +53,13 @@ export async function getSubtitleSettings() {
 	return apiGet('/api/subtitles/settings');
 }
 
-export async function updateSubtitleSettings(payload: SubtitleSettingsUpdate) {
+/**
+ * @deprecated Subtitle settings no longer carry language defaults; use the
+ * language-settings endpoint instead. The payload is accepted as a loose
+ * record so legacy callers keep compiling until the UI is rewired (Task 6);
+ * the server schema strips the removed keys.
+ */
+export async function updateSubtitleSettings(payload: Record<string, unknown>) {
 	return apiPut('/api/subtitles/settings', payload);
 }
 

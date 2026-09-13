@@ -38,7 +38,11 @@ import { importService } from '$lib/server/downloadClients/import/index.js';
 import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 import { redundantFileIds } from '$lib/server/quality/buckets.js';
 import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
-import { refreshMovieMetadata } from '$lib/server/metadata/metadata-refresh.js';
+import {
+	refreshMovieMetadata,
+	metadataLanguageToLegacy,
+	warnLegacyMetadataLanguage
+} from '$lib/server/metadata/metadata-refresh.js';
 
 function isAnimeMovieSignal(input: {
 	rootFolderPath: string | null;
@@ -87,7 +91,8 @@ export const GET: RequestHandler = async ({ params }) => {
 				digitalReleaseDate: movies.digitalReleaseDate,
 				physicalReleaseDate: movies.physicalReleaseDate,
 				availabilityDelay: movies.availabilityDelay,
-				metadataLanguage: movies.metadataLanguage,
+				metadataLanguageMode: movies.metadataLanguageMode,
+				metadataLanguageValue: movies.metadataLanguageValue,
 				preferOriginalTitle: movies.preferOriginalTitle
 			})
 			.from(movies)
@@ -132,11 +137,16 @@ export const GET: RequestHandler = async ({ params }) => {
 				(movie.providerRefs as Partial<Record<'tmdb' | 'anilist' | 'mal', string>> | null) ??
 				undefined
 		});
-		return json({
-			success: true,
-			movie: {
-				...movie,
-				providerRefs: enrichedProviderRefs,
+			return json({
+				success: true,
+				movie: {
+					...movie,
+					// Legacy view derived from the v2 pair (kept one release).
+					metadataLanguage: metadataLanguageToLegacy(
+						movie.metadataLanguageMode,
+						movie.metadataLanguageValue
+					),
+					providerRefs: enrichedProviderRefs,
 				tmdbStatus: releaseInfo?.status ?? null,
 				releaseDate: releaseInfo?.release_date ?? null,
 				files: files.map((f) => ({
@@ -206,6 +216,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		folderPath,
 		tmdbCollectionId,
 		collectionName,
+		metadataLanguageMode,
+		metadataLanguageValue,
 		metadataLanguage,
 		preferOriginalTitle
 	} = body;
@@ -222,7 +234,8 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			wantsSubtitles: movies.wantsSubtitles,
 			languageProfileId: movies.languageProfileId,
 			hasFile: movies.hasFile,
-			metadataLanguage: movies.metadataLanguage
+			metadataLanguageMode: movies.metadataLanguageMode,
+			metadataLanguageValue: movies.metadataLanguageValue
 		})
 		.from(movies)
 		.where(eq(movies.id, params.id));
@@ -375,8 +388,23 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	if (collectionName !== undefined) {
 		updateData.collectionName = collectionName;
 	}
-	if (metadataLanguage !== undefined) {
-		updateData.metadataLanguage = metadataLanguage;
+	// Metadata language override (v2 pair). The update schema maps the
+	// deprecated single-string form onto metadataLanguageMode/Value.
+	const metadataLanguageProvided =
+		metadataLanguageMode !== undefined ||
+		metadataLanguageValue !== undefined ||
+		metadataLanguage !== undefined;
+	const nextMetadataLanguageMode = metadataLanguageProvided
+		? (metadataLanguageMode ?? 'inherit')
+		: null;
+	const nextMetadataLanguageValue =
+		nextMetadataLanguageMode === 'explicit' ? (metadataLanguageValue ?? null) : null;
+	if (metadataLanguageProvided) {
+		if (metadataLanguage !== undefined) {
+			warnLegacyMetadataLanguage('PATCH /api/library/movies/[id]');
+		}
+		updateData.metadataLanguageMode = nextMetadataLanguageMode;
+		updateData.metadataLanguageValue = nextMetadataLanguageValue;
 	}
 	if (typeof preferOriginalTitle === 'boolean') {
 		updateData.preferOriginalTitle = preferOriginalTitle;
@@ -392,7 +420,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 	// Refresh metadata from TMDB when language override changes
 	const languageChanged =
-		metadataLanguage !== undefined && metadataLanguage !== (currentMovie?.metadataLanguage ?? null);
+		metadataLanguageProvided &&
+		(nextMetadataLanguageMode !== (currentMovie?.metadataLanguageMode ?? null) ||
+			nextMetadataLanguageValue !== (currentMovie?.metadataLanguageValue ?? null));
 	if (languageChanged) {
 		refreshMovieMetadata(params.id).catch((err) => {
 			logger.error(

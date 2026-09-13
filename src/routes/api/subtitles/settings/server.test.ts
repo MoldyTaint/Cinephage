@@ -33,6 +33,7 @@ vi.mock('$lib/logging', () => ({
 }));
 
 const { GET, PUT } = await import('./+server');
+const { subtitleSettingsUpdateSchema } = await import('$lib/validation/schemas');
 
 describe('Subtitle Settings API', () => {
 	afterAll(() => {
@@ -59,5 +60,25 @@ describe('Subtitle Settings API', () => {
 		expect(data).not.toHaveProperty('defaultLanguageProfileId');
 		expect(data).not.toHaveProperty('defaultFallbackLanguage');
 		expect(data).not.toHaveProperty('autoSyncEnabled');
+	});
+
+	it('strips the removed language default keys at the schema layer', () => {
+		const parsed = subtitleSettingsUpdateSchema.parse({
+			defaultLanguageProfileId: '11111111-1111-4111-8111-111111111111',
+			defaultFallbackLanguage: 'en'
+		});
+
+		expect(parsed).toEqual({});
+	});
+
+	it('silently strips the removed language default keys on PUT', async () => {
+		const { status, data } = await api.put<Record<string, unknown>>(PUT, {
+			defaultLanguageProfileId: '11111111-1111-4111-8111-111111111111',
+			defaultFallbackLanguage: 'en'
+		});
+
+		expect(status).toBe(200);
+		expect(data).not.toHaveProperty('defaultLanguageProfileId');
+		expect(data).not.toHaveProperty('defaultFallbackLanguage');
 	});
 });

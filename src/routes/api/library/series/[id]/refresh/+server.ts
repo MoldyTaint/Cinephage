@@ -87,7 +87,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 				// produces the same localized titles/overviews the background
 				// metadata refresh writes. Null keeps the global TMDB default.
 				const fetchLanguage = await resolveLanguage(
-					seriesData.metadataLanguage ?? null,
+					seriesData.metadataLanguageMode,
+					seriesData.metadataLanguageValue,
 					seriesData.tmdbId,
 					`/tv/${seriesData.tmdbId}`
 				);
