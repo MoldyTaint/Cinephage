@@ -1,0 +1,261 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import {
+	autoSearchEpisode,
+	autoSearchMovie,
+	episodePreflightReason,
+	moviePreflightReason,
+	summarizeAutoSearchReason
+} from './auto-search.js';
+import type { MovieLike, EpisodeLike, SeriesLike } from './auto-search.js';
+import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
+
+const { searchService, downloadService, profileState } = vi.hoisted(() => {
+	const searchService = {
+		searchForMovie: vi.fn().mockResolvedValue({ results: [] }),
+		searchForEpisode: vi.fn().mockResolvedValue({ results: [] })
+	};
+	const downloadService = {
+		downloadForMovie: vi.fn().mockResolvedValue({
+			subtitleId: 'sub-new',
+			path: '/movies/x/y.srt',
+			language: 'en',
+			format: 'srt',
+			wasSynced: false,
+			syncOffset: null,
+			wasUpgrade: false
+		}),
+		downloadForEpisode: vi.fn().mockResolvedValue({
+			subtitleId: 'sub-new',
+			path: '/tv/x/y.srt',
+			language: 'en',
+			format: 'srt',
+			wasSynced: false,
+			syncOffset: null,
+			wasUpgrade: false
+		})
+	};
+
+	const profileState: {
+		profile: unknown;
+		movieStatus: { satisfied: boolean; missing: SubtitleRequirement[]; existing: [] };
+		episodeStatus: { satisfied: boolean; missing: SubtitleRequirement[]; existing: [] };
+	} = {
+		profile: undefined,
+		movieStatus: { satisfied: false, missing: [], existing: [] },
+		episodeStatus: { satisfied: false, missing: [], existing: [] }
+	};
+
+	return { searchService, downloadService, profileState };
+});
+
+vi.mock('./services/SubtitleSearchService.js', () => ({
+	getSubtitleSearchService: () => searchService
+}));
+vi.mock('./services/SubtitleDownloadService.js', () => ({
+	getSubtitleDownloadService: () => downloadService
+}));
+vi.mock('./services/LanguageProfileService.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('./services/LanguageProfileService.js')>();
+	return {
+		...actual,
+		LanguageProfileService: {
+			getInstance: () => ({
+				getProfileForMovie: vi.fn(async () => profileState.profile),
+				getProfileForSeries: vi.fn(async () => profileState.profile),
+				getMovieSubtitleStatus: vi.fn(async () => profileState.movieStatus),
+				getEpisodeSubtitleStatus: vi.fn(async () => profileState.episodeStatus)
+			})
+		}
+	};
+});
+
+vi.mock('$lib/logging/index.js', () => {
+	const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+	return { createChildLogger: vi.fn(() => logger) };
+});
+
+const requirement: SubtitleRequirement = { tag: 'en', variant: 'regular', accessibility: 'any' };
+
+function profile() {
+	return {
+		id: 'profile-1',
+		name: 'Default',
+		audio: { preferOriginal: true, languages: [] },
+		subtitles: [requirement],
+		cutoffRank: null,
+		minimumScore: 70,
+		upgradesAllowed: true
+	};
+}
+
+function candidate(overrides: Record<string, unknown> = {}) {
+	return {
+		providerId: 'prov',
+		providerName: 'Provider',
+		providerSubtitleId: 'c1',
+		language: 'en',
+		title: 'Movie',
+		isForced: false,
+		isHearingImpaired: false,
+		format: 'srt',
+		isHashMatch: false,
+		matchScore: 90,
+		...overrides
+	};
+}
+
+const baseMovie: MovieLike = {
+	id: 'movie-1',
+	title: 'Movie',
+	hasFile: true,
+	monitored: true,
+	wantsSubtitles: true
+};
+
+const baseEpisode: EpisodeLike = {
+	id: 'ep-1',
+	seriesId: 'series-1',
+	seasonNumber: 1,
+	episodeNumber: 1,
+	title: 'Episode',
+	hasFile: true,
+	monitored: true,
+	wantsSubtitlesOverride: null
+};
+
+const baseSeries: SeriesLike = { id: 'series-1', monitored: true, wantsSubtitles: true };
+
+beforeEach(() => {
+	vi.clearAllMocks();
+	profileState.profile = profile();
+	profileState.movieStatus = { satisfied: false, missing: [requirement], existing: [] };
+	profileState.episodeStatus = { satisfied: false, missing: [requirement], existing: [] };
+	searchService.searchForMovie.mockResolvedValue({ results: [] });
+	searchService.searchForEpisode.mockResolvedValue({ results: [] });
+});
+
+describe('preflight reasons', () => {
+	it('maps movie preflight in priority order', () => {
+		expect(moviePreflightReason({ ...baseMovie, hasFile: false })).toBe('no_file');
+		expect(moviePreflightReason({ ...baseMovie, monitored: false })).toBe('not_monitored');
+		expect(moviePreflightReason({ ...baseMovie, wantsSubtitles: false })).toBe('opted_out');
+		expect(moviePreflightReason(baseMovie)).toBeNull();
+	});
+
+	it('maps episode preflight including series flags', () => {
+		expect(episodePreflightReason({ ...baseEpisode, hasFile: false }, baseSeries)).toBe('no_file');
+		expect(episodePreflightReason({ ...baseEpisode, monitored: false }, baseSeries)).toBe(
+			'not_monitored'
+		);
+		expect(episodePreflightReason(baseEpisode, { ...baseSeries, monitored: false })).toBe(
+			'not_monitored'
+		);
+		expect(
+			episodePreflightReason({ ...baseEpisode, wantsSubtitlesOverride: false }, baseSeries)
+		).toBe('opted_out');
+		expect(episodePreflightReason(baseEpisode, { ...baseSeries, wantsSubtitles: false })).toBe(
+			'opted_out'
+		);
+		expect(episodePreflightReason(baseEpisode, baseSeries)).toBeNull();
+	});
+});
+
+describe('autoSearchMovie outcomes', () => {
+	it('skips when preflight fails without searching', async () => {
+		const result = await autoSearchMovie({ ...baseMovie, hasFile: false });
+
+		expect(result.skipped).toBe('no_file');
+		expect(result.searched).toBe(false);
+		expect(searchService.searchForMovie).not.toHaveBeenCalled();
+		expect(summarizeAutoSearchReason(result)).toBe('no_file');
+	});
+
+	it('reports no_profile when no profile resolves', async () => {
+		profileState.profile = undefined;
+		const result = await autoSearchMovie(baseMovie);
+
+		expect(result.skipped).toBe('no_profile');
+		expect(searchService.searchForMovie).not.toHaveBeenCalled();
+	});
+
+	it('reports satisfied when nothing is missing', async () => {
+		profileState.movieStatus = { satisfied: true, missing: [], existing: [] };
+		const result = await autoSearchMovie(baseMovie);
+
+		expect(result.searched).toBe(false);
+		expect(result.outcomes).toEqual([]);
+		expect(summarizeAutoSearchReason(result)).toBe('satisfied');
+	});
+
+	it('reserves no_results for genuinely zero provider results', async () => {
+		searchService.searchForMovie.mockResolvedValue({ results: [] });
+		const result = await autoSearchMovie(baseMovie);
+
+		expect(result.searched).toBe(true);
+		expect(result.outcomes).toHaveLength(1);
+		expect(result.outcomes[0].reason).toBe('no_results');
+		expect(summarizeAutoSearchReason(result)).toBe('no_results');
+	});
+
+	it('reports below_threshold with the rejected score and reason (requirement)', async () => {
+		searchService.searchForMovie.mockResolvedValue({
+			results: [candidate({ isForced: true, matchScore: 99 })]
+		});
+		const result = await autoSearchMovie(baseMovie);
+
+		expect(result.downloaded).toBe(0);
+		expect(result.outcomes[0].reason).toBe('below_threshold');
+		expect(result.outcomes[0].bestRejectedScore).toBe(99);
+		expect(result.outcomes[0].bestRejectedReason).toBe('requirement');
+	});
+
+	it('reports below_threshold with the rejected score and reason (threshold)', async () => {
+		searchService.searchForMovie.mockResolvedValue({ results: [candidate({ matchScore: 55 })] });
+		const result = await autoSearchMovie(baseMovie);
+
+		expect(result.outcomes[0].reason).toBe('below_threshold');
+		expect(result.outcomes[0].bestRejectedScore).toBe(55);
+		expect(result.outcomes[0].bestRejectedReason).toBe('threshold');
+	});
+
+	it('downloads a tuple-valid candidate above threshold', async () => {
+		searchService.searchForMovie.mockResolvedValue({ results: [candidate({ matchScore: 85 })] });
+		const result = await autoSearchMovie(baseMovie);
+
+		expect(result.downloaded).toBe(1);
+		expect(result.outcomes[0].reason).toBe('downloaded');
+		expect(result.outcomes[0].matchScore).toBe(85);
+		expect(result.subtitle?.subtitleId).toBe('sub-new');
+		expect(summarizeAutoSearchReason(result)).toBe('downloaded');
+	});
+
+	it('reports error when the download throws', async () => {
+		searchService.searchForMovie.mockResolvedValue({ results: [candidate()] });
+		downloadService.downloadForMovie.mockRejectedValueOnce(new Error('disk full'));
+		const result = await autoSearchMovie(baseMovie);
+
+		expect(result.downloaded).toBe(0);
+		expect(result.outcomes[0].reason).toBe('error');
+		expect(result.outcomes[0].error).toBe('disk full');
+	});
+});
+
+describe('autoSearchEpisode outcomes', () => {
+	it('skips opted-out episodes without searching', async () => {
+		const result = await autoSearchEpisode(
+			{ ...baseEpisode, wantsSubtitlesOverride: false },
+			baseSeries
+		);
+
+		expect(result.skipped).toBe('opted_out');
+		expect(searchService.searchForEpisode).not.toHaveBeenCalled();
+	});
+
+	it('downloads a tuple-valid candidate', async () => {
+		searchService.searchForEpisode.mockResolvedValue({ results: [candidate({ matchScore: 88 })] });
+		const result = await autoSearchEpisode(baseEpisode, baseSeries);
+
+		expect(result.downloaded).toBe(1);
+		expect(downloadService.downloadForEpisode).toHaveBeenCalledTimes(1);
+	});
+});

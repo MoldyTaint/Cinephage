@@ -11,18 +11,19 @@ import { movies, series, episodes, subtitleHistory } from '$lib/server/db/schema
 import { eq } from 'drizzle-orm';
 import { getSubtitleSearchService } from './SubtitleSearchService.js';
 import { getSubtitleDownloadService } from './SubtitleDownloadService.js';
-import { LanguageProfileService, toLegacyPreferences } from './LanguageProfileService.js';
-import { matchesRequirement } from '../requirement-matcher.js';
+import { LanguageProfileService, type LanguageProfile } from './LanguageProfileService.js';
+import { selectBestCandidate } from '../acquisition.js';
+import { DEFAULT_MINIMUM_SCORE } from '$lib/shared/language-profile.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { normalizeLanguageCode } from '$lib/shared/languages';
 import { isMovieMonitored } from '$lib/server/monitoring/specifications/MonitoredSpecification.js';
 
-/**
- * Default minimum score for auto-download (used if profile doesn't specify)
- */
-const DEFAULT_MIN_SCORE = 80;
+/** Unique language tags for a profile's requirements (search criteria input). */
+function profileLanguages(profile: LanguageProfile): string[] {
+	return [...new Set(profile.subtitles.map((requirement) => requirement.tag))];
+}
 
 /**
  * Result of an import-triggered subtitle search
@@ -165,7 +166,7 @@ async function searchForMovie(
 		return result;
 	}
 
-	const languages = toLegacyPreferences(profile).languages.map((l) => l.code);
+	const languages = profileLanguages(profile);
 	if (languages.length === 0) {
 		return result;
 	}
@@ -185,7 +186,7 @@ async function searchForMovie(
 
 	// Search for subtitles
 	const searchResults = await searchService.searchForMovie(movieId, languages);
-	const minScore = profile.minimumScore ?? DEFAULT_MIN_SCORE;
+	const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
 
 	logger.info(
 		{
@@ -200,33 +201,21 @@ async function searchForMovie(
 
 	// Download best match for each missing requirement
 	for (const requirement of status.missing) {
-		// Candidates must satisfy the full requirement tuple (language + variant +
-		// accessibility) before the score threshold is applied. Task 4 replaces this
-		// bridge with the shared acquisition helper.
-		const languageResults = searchResults.results.filter((r) =>
-			matchesRequirement(
-				{ language: r.language, isForced: r.isForced, isHearingImpaired: r.isHearingImpaired },
-				requirement
-			)
-		);
-		const matches = languageResults
-			.filter((r) => r.matchScore >= minScore)
-			.sort((a, b) => b.matchScore - a.matchScore);
-		const bestMatch = matches[0];
+		const selection = selectBestCandidate(searchResults.results, requirement, minScore);
+		const bestMatch = selection.best;
 
-		// Log when we have results but none meet minimum score
-		if (!bestMatch && languageResults.length > 0) {
-			const bestScore = Math.max(...languageResults.map((r) => r.matchScore));
+		// Log when we have results but none meet the tuple/threshold
+		if (!bestMatch && selection.bestRejected) {
 			logger.debug(
 				{
 					movieId,
 					title: movie.title,
 					language: requirement.tag,
-					resultsFound: languageResults.length,
-					bestScore,
+					bestRejectedScore: selection.bestRejected.result.matchScore,
+					bestRejectedReason: selection.bestRejected.reason,
 					minScore
 				},
-				'[SubtitleImportService] No match meets minimum score for movie'
+				'[SubtitleImportService] No acceptable subtitle for movie requirement'
 			);
 		}
 
@@ -386,7 +375,7 @@ async function searchForEpisode(
 		return result;
 	}
 
-	const languages = toLegacyPreferences(profile).languages.map((l) => l.code);
+	const languages = profileLanguages(profile);
 	if (languages.length === 0) {
 		return result;
 	}
@@ -408,7 +397,7 @@ async function searchForEpisode(
 
 	// Search for subtitles
 	const searchResults = await searchService.searchForEpisode(episodeId, languages);
-	const minScore = profile.minimumScore ?? DEFAULT_MIN_SCORE;
+	const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
 
 	logger.info(
 		{
@@ -425,23 +414,11 @@ async function searchForEpisode(
 
 	// Download best match for each missing requirement
 	for (const requirement of status.missing) {
-		// Candidates must satisfy the full requirement tuple (language + variant +
-		// accessibility) before the score threshold is applied. Task 4 replaces this
-		// bridge with the shared acquisition helper.
-		const languageResults = searchResults.results.filter((r) =>
-			matchesRequirement(
-				{ language: r.language, isForced: r.isForced, isHearingImpaired: r.isHearingImpaired },
-				requirement
-			)
-		);
-		const matches = languageResults
-			.filter((r) => r.matchScore >= minScore)
-			.sort((a, b) => b.matchScore - a.matchScore);
-		const bestMatch = matches[0];
+		const selection = selectBestCandidate(searchResults.results, requirement, minScore);
+		const bestMatch = selection.best;
 
-		// Log when we have results but none meet minimum score
-		if (!bestMatch && languageResults.length > 0) {
-			const bestScore = Math.max(...languageResults.map((r) => r.matchScore));
+		// Log when we have results but none meet the tuple/threshold
+		if (!bestMatch && selection.bestRejected) {
 			logger.debug(
 				{
 					episodeId,
@@ -449,11 +426,11 @@ async function searchForEpisode(
 					season: episode.seasonNumber,
 					episode: episode.episodeNumber,
 					language: requirement.tag,
-					resultsFound: languageResults.length,
-					bestScore,
+					bestRejectedScore: selection.bestRejected.result.matchScore,
+					bestRejectedReason: selection.bestRejected.reason,
 					minScore
 				},
-				'[SubtitleImportService] No match meets minimum score for episode'
+				'[SubtitleImportService] No acceptable subtitle for episode requirement'
 			);
 		}
 

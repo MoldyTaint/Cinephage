@@ -179,7 +179,7 @@ describe('Subtitle System Integration', () => {
 			expect(hashScore).toBeGreaterThanOrEqual(100);
 		});
 
-		it('should calculate episode scores with higher thresholds', () => {
+		it('should calculate episode scores on the shared 0-100 scale', () => {
 			const episodeCriteria: SubtitleSearchCriteria = {
 				title: 'Breaking Bad',
 				seriesTitle: 'Breaking Bad',
@@ -204,7 +204,7 @@ describe('Subtitle System Integration', () => {
 			};
 
 			const score = scoringService.score(hashResult, episodeCriteria);
-			expect(score).toBeGreaterThanOrEqual(300);
+			expect(score).toBe(100);
 		});
 	});
 

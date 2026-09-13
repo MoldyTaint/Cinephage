@@ -291,7 +291,9 @@ describe('SubtitleUpgradeTask monitored gating', () => {
 				tmdbId: 201,
 				title: 'Monitored Movie',
 				path: '/movies/upgrade-monitored',
+				hasFile: true,
 				monitored: true,
+				wantsSubtitles: true,
 				languageProfileId: 'profile-1'
 			},
 			{
@@ -299,7 +301,9 @@ describe('SubtitleUpgradeTask monitored gating', () => {
 				tmdbId: 202,
 				title: 'Unmonitored Movie',
 				path: '/movies/upgrade-unmonitored',
+				hasFile: true,
 				monitored: false,
+				wantsSubtitles: true,
 				languageProfileId: 'profile-1'
 			}
 		]);
@@ -355,6 +359,7 @@ describe('SubtitleUpgradeTask monitored gating', () => {
 				seriesId: monitoredSeriesId,
 				seasonNumber: 1,
 				episodeNumber: 1,
+				hasFile: true,
 				monitored: true
 			},
 			{
@@ -362,6 +367,7 @@ describe('SubtitleUpgradeTask monitored gating', () => {
 				seriesId: monitoredSeriesId,
 				seasonNumber: 1,
 				episodeNumber: 2,
+				hasFile: true,
 				monitored: false
 			},
 			{
@@ -369,6 +375,7 @@ describe('SubtitleUpgradeTask monitored gating', () => {
 				seriesId: unmonitoredSeriesId,
 				seasonNumber: 1,
 				episodeNumber: 1,
+				hasFile: true,
 				monitored: true
 			}
 		]);

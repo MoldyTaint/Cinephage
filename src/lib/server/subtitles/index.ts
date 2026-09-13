@@ -11,6 +11,12 @@ export * from './types';
 // Requirement matching (single source of truth for subtitle requirement tuples)
 export * from './requirement-matcher';
 
+// Candidate selection for acquisition (tuple-aware, threshold-aware)
+export * from './acquisition';
+
+// Per-requirement search backoff state
+export * from './subtitle-search-state';
+
 // Video objects (Bazarr-style)
 export * from './video';
 
@@ -19,9 +25,6 @@ export * from './language';
 
 // Subtitle class (Bazarr-style)
 export * from './subtitle';
-
-// Scoring system
-export * from './score';
 
 // Provider pool
 export * from './pool';

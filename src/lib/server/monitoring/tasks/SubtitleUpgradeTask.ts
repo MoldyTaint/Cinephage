@@ -3,6 +3,14 @@
  *
  * Searches for better-scoring subtitles for existing ones when the language profile
  * allows upgrades. Runs periodically (default: daily) to improve subtitle quality.
+ *
+ * Rotation: candidate rows are ordered by `last_checked_at` ASC (NULLs first) and
+ * `last_checked_at` is stamped for every row examined, so a capped run does not
+ * re-check the same first 50 subtitles forever.
+ *
+ * A candidate may only replace an existing subtitle that satisfies the SAME
+ * requirement tuple (language + variant + accessibility). A regular subtitle
+ * cannot replace a forced one and vice versa, even when it scores higher.
  */
 
 import { db } from '$lib/server/db/index.js';
@@ -14,16 +22,16 @@ import {
 	subtitleHistory,
 	monitoringHistory
 } from '$lib/server/db/schema.js';
-import { eq, and, isNotNull } from 'drizzle-orm';
+import { eq, and, isNotNull, asc, inArray, or, isNull } from 'drizzle-orm';
 import { getSubtitleSearchService } from '$lib/server/subtitles/services/SubtitleSearchService.js';
 import { getSubtitleDownloadService } from '$lib/server/subtitles/services/SubtitleDownloadService.js';
 import { getSubtitleProviderManager } from '$lib/server/subtitles/services/SubtitleProviderManager.js';
-import {
-	LanguageProfileService,
-	toLegacyPreferences
-} from '$lib/server/subtitles/services/LanguageProfileService.js';
+import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
+import { selectCandidates } from '$lib/server/subtitles/acquisition.js';
+import { matchesRequirement } from '$lib/server/subtitles/requirement-matcher.js';
 import { createChildLogger } from '$lib/logging/index.js';
 import { normalizeLanguageCode } from '$lib/shared/languages';
+import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
 import { isMovieMonitored } from '$lib/server/monitoring/specifications/MonitoredSpecification.js';
@@ -166,6 +174,35 @@ export async function executeSubtitleUpgradeTask(
 }
 
 /**
+ * Find the profile requirement an existing subtitle satisfies, if any.
+ * Used to keep upgrades within the same requirement tuple.
+ */
+function requirementForSubtitle(
+	profileRequirements: SubtitleRequirement[],
+	subtitle: typeof subtitles.$inferSelect
+): SubtitleRequirement | undefined {
+	return profileRequirements.find((requirement) =>
+		matchesRequirement(
+			{
+				language: subtitle.language,
+				isForced: subtitle.isForced,
+				isHearingImpaired: subtitle.isHearingImpaired
+			},
+			requirement
+		)
+	);
+}
+
+/**
+ * Stamp `last_checked_at` for every subtitle row examined this run so rotation
+ * advances even when no upgrade is found.
+ */
+async function markSubtitlesChecked(ids: string[], nowIso: string): Promise<void> {
+	if (ids.length === 0) return;
+	await db.update(subtitles).set({ lastCheckedAt: nowIso }).where(inArray(subtitles.id, ids));
+}
+
+/**
  * Search for subtitle upgrades on movies
  */
 async function searchMovieSubtitleUpgrades(
@@ -180,7 +217,9 @@ async function searchMovieSubtitleUpgrades(
 	let upgraded = 0;
 	let errorCount = 0;
 
-	// Get all movie subtitles with scores (we'll filter by profile settings below)
+	// Get movie subtitles with scores, oldest-checked first. Preflight filters
+	// (hasFile/monitored/wantsSubtitles) are applied in the query so opted-out or
+	// fileless rows are never scanned.
 	const movieSubtitles = await db
 		.select({
 			subtitle: subtitles,
@@ -193,9 +232,12 @@ async function searchMovieSubtitleUpgrades(
 				isNotNull(subtitles.movieId),
 				isNotNull(subtitles.matchScore),
 				isNotNull(movies.languageProfileId),
-				eq(movies.monitored, true)
+				eq(movies.monitored, true),
+				eq(movies.hasFile, true),
+				eq(movies.wantsSubtitles, true)
 			)
 		)
+		.orderBy(asc(subtitles.lastCheckedAt), asc(subtitles.id))
 		.limit(MAX_SUBTITLES_PER_RUN);
 
 	logger.debug(
@@ -203,6 +245,12 @@ async function searchMovieSubtitleUpgrades(
 			count: movieSubtitles.length
 		},
 		'[SubtitleUpgradeTask] Found movie subtitles to evaluate'
+	);
+
+	// Rotation advances for every row examined, upgrade or not.
+	await markSubtitlesChecked(
+		movieSubtitles.map((row) => row.subtitle.id),
+		executedAt.toISOString()
 	);
 
 	// Group by movie to avoid duplicate searches
@@ -261,7 +309,7 @@ async function searchMovieSubtitleUpgrades(
 
 					processed++;
 
-					const languages = toLegacyPreferences(profile).languages.map((l) => l.code);
+					const languages = [...new Set(profile.subtitles.map((l) => l.tag))];
 					if (languages.length === 0) return;
 
 					// Search for subtitles
@@ -269,14 +317,15 @@ async function searchMovieSubtitleUpgrades(
 
 					// Check each existing subtitle for upgrades
 					for (const existingSub of movieSubs) {
-						const currentScore = existingSub.matchScore ?? 0;
-						const normalizedExisting = normalizeLanguageCode(existingSub.language);
+						const requirement = requirementForSubtitle(profile.subtitles, existingSub);
+						if (!requirement) continue;
 
-						// Find a better match for this language
-						const betterMatch = results.results.find(
-							(r) =>
-								normalizeLanguageCode(r.language) === normalizedExisting &&
-								r.matchScore > currentScore + MIN_SCORE_IMPROVEMENT
+						const currentScore = existingSub.matchScore ?? 0;
+
+						// Tuple-valid candidates only, then require a real improvement.
+						const candidates = selectCandidates(results.results, requirement, 0);
+						const betterMatch = candidates.find(
+							(candidate) => candidate.matchScore > currentScore + MIN_SCORE_IMPROVEMENT
 						);
 
 						if (betterMatch) {
@@ -317,7 +366,7 @@ async function searchMovieSubtitleUpgrades(
 								logger.warn(
 									{
 										movieId: movie.id,
-										language: normalizedExisting,
+										language: normalizeLanguageCode(existingSub.language),
 										error: movieError
 									},
 									'[SubtitleUpgradeTask] Failed to download upgraded subtitle'
@@ -385,15 +434,30 @@ async function searchEpisodeSubtitleUpgrades(
 	let upgraded = 0;
 	let errorCount = 0;
 
-	// Get all episode subtitles with scores
+	// Get episode subtitles with scores, oldest-checked first. The series join
+	// enforces the preflight so unmonitored/opted-out rows are never scanned.
 	const episodeSubtitles = await db
 		.select({
 			subtitle: subtitles,
-			episode: episodes
+			episode: episodes,
+			series: series
 		})
 		.from(subtitles)
 		.innerJoin(episodes, eq(subtitles.episodeId, episodes.id))
-		.where(and(isNotNull(subtitles.episodeId), isNotNull(subtitles.matchScore)))
+		.innerJoin(series, eq(episodes.seriesId, series.id))
+		.where(
+			and(
+				isNotNull(subtitles.episodeId),
+				isNotNull(subtitles.matchScore),
+				eq(episodes.monitored, true),
+				eq(episodes.hasFile, true),
+				or(isNull(episodes.wantsSubtitlesOverride), eq(episodes.wantsSubtitlesOverride, true)),
+				eq(series.monitored, true),
+				eq(series.wantsSubtitles, true),
+				isNotNull(series.languageProfileId)
+			)
+		)
+		.orderBy(asc(subtitles.lastCheckedAt), asc(subtitles.id))
 		.limit(MAX_SUBTITLES_PER_RUN);
 
 	logger.debug(
@@ -401,6 +465,12 @@ async function searchEpisodeSubtitleUpgrades(
 			count: episodeSubtitles.length
 		},
 		'[SubtitleUpgradeTask] Found episode subtitles to evaluate'
+	);
+
+	// Rotation advances for every row examined, upgrade or not.
+	await markSubtitlesChecked(
+		episodeSubtitles.map((row) => row.subtitle.id),
+		executedAt.toISOString()
 	);
 
 	// Group by episode
@@ -418,14 +488,8 @@ async function searchEpisodeSubtitleUpgrades(
 		}
 	}
 
-	// Get series profiles for all episodes
-	const _seriesIds = [...new Set(episodeSubtitles.map((r) => r.episode.seriesId))];
-	const seriesData = await db
-		.select()
-		.from(series)
-		.where(and(isNotNull(series.languageProfileId), eq(series.monitored, true)));
-
-	const seriesMap = new Map(seriesData.map((s) => [s.id, s]));
+	// Series rows already joined above (monitored + profile present).
+	const seriesMap = new Map(episodeSubtitles.map((row) => [row.series.id, row.series]));
 
 	// Get provider manager for per-batch health checks
 	const providerManager = getSubtitleProviderManager();
@@ -458,7 +522,8 @@ async function searchEpisodeSubtitleUpgrades(
 				let newScore: number | undefined;
 
 				try {
-					if (!episode.monitored) return;
+					if (!episode.monitored || !episode.hasFile) return;
+					if (episode.wantsSubtitlesOverride === false) return;
 
 					// Get profile and check if upgrades are allowed
 					const profile = await profileService.getProfile(seriesRow.languageProfileId);
@@ -466,14 +531,9 @@ async function searchEpisodeSubtitleUpgrades(
 						return;
 					}
 
-					// Skip if episode has explicitly disabled subtitles
-					if (episode.wantsSubtitlesOverride === false) {
-						return;
-					}
-
 					processed++;
 
-					const languages = toLegacyPreferences(profile).languages.map((l) => l.code);
+					const languages = [...new Set(profile.subtitles.map((l) => l.tag))];
 					if (languages.length === 0) return;
 
 					// Search for subtitles
@@ -481,14 +541,15 @@ async function searchEpisodeSubtitleUpgrades(
 
 					// Check each existing subtitle for upgrades
 					for (const existingSub of episodeSubs) {
-						const currentScore = existingSub.matchScore ?? 0;
-						const normalizedExisting = normalizeLanguageCode(existingSub.language);
+						const requirement = requirementForSubtitle(profile.subtitles, existingSub);
+						if (!requirement) continue;
 
-						// Find a better match for this language
-						const betterMatch = results.results.find(
-							(r) =>
-								normalizeLanguageCode(r.language) === normalizedExisting &&
-								r.matchScore > currentScore + MIN_SCORE_IMPROVEMENT
+						const currentScore = existingSub.matchScore ?? 0;
+
+						// Tuple-valid candidates only, then require a real improvement.
+						const candidates = selectCandidates(results.results, requirement, 0);
+						const betterMatch = candidates.find(
+							(candidate) => candidate.matchScore > currentScore + MIN_SCORE_IMPROVEMENT
 						);
 
 						if (betterMatch) {
@@ -529,7 +590,7 @@ async function searchEpisodeSubtitleUpgrades(
 								logger.warn(
 									{
 										episodeId: episode.id,
-										language: normalizedExisting,
+										language: normalizeLanguageCode(existingSub.language),
 										error: episodeError
 									},
 									'[SubtitleUpgradeTask] Failed to download upgraded subtitle'
