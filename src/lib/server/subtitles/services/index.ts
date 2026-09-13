@@ -27,6 +27,12 @@ export {
 } from './LanguageProfileService';
 
 export {
+	LanguageSettingsService,
+	getLanguageSettingsService,
+	type LanguageSettingsData
+} from './LanguageSettingsService';
+
+export {
 	SubtitleSyncService,
 	getSubtitleSyncService,
 	type SyncOptions

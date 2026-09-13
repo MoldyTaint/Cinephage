@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PROVIDER_IMPLEMENTATIONS } from '$lib/server/subtitles/types';
+import { normalizeTmdbLanguage } from '$lib/server/languages/normalize.js';
 import { TMDB } from '$lib/config/constants.js';
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -977,6 +978,51 @@ export const languageProfileV2CreateSchema = languageProfileV2BaseSchema
 
 /** Partial update payload for the combined profile. */
 export const languageProfileV2UpdateSchema = languageProfileV2BaseSchema.partial();
+
+/**
+ * Language settings singleton (camelCase view of the language_settings row).
+ * defaultProfileId is the single default-profile authority; metadataLocale
+ * must be a valid BCP-47 locale (canonicalized via Intl); region is a
+ * two-letter country code (upper-cased); discoverOriginalFilter is null or a
+ * canonical base language tag (canonicalized via the server normalizer).
+ */
+export const languageSettingsSchema = z.object({
+	defaultProfileId: z.string().uuid().nullable().default(null),
+	metadataLocale: z
+		.string()
+		.refine(
+			(value) => {
+				try {
+					Intl.getCanonicalLocales(value);
+					return true;
+				} catch {
+					return false;
+				}
+			},
+			{ message: 'Invalid metadata locale' }
+		)
+		.transform((value) => Intl.getCanonicalLocales(value)[0] ?? value),
+	region: z
+		.string()
+		.regex(/^[A-Za-z]{2}$/, 'Region must be a two-letter country code')
+		.transform((value) => value.toUpperCase()),
+	discoverOriginalFilter: z
+		.string()
+		.nullable()
+		.refine((value) => value === null || normalizeTmdbLanguage(value) !== null, {
+			message: 'Must be a resolvable language tag or null'
+		})
+		.transform((value) => (value === null ? null : normalizeTmdbLanguage(value))),
+	unknownSubtitlePolicy: z.enum(['und', 'assume-language']).default('und'),
+	assumedLanguage: z.string().min(1).nullable().optional(),
+	autoSyncSubtitles: z.boolean().default(true)
+});
+
+/** Partial update payload for the language settings singleton. */
+export const languageSettingsUpdateSchema = languageSettingsSchema.partial();
+
+export type LanguageSettingsValues = z.infer<typeof languageSettingsSchema>;
+export type LanguageSettingsUpdateInput = z.input<typeof languageSettingsUpdateSchema>;
 
 // ============================================================
 // Subtitle Search Schemas
