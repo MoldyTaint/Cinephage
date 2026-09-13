@@ -382,7 +382,7 @@ export class LanguageProfileService {
 			// Check if we have this language in external subtitle files
 			const hasExternal = normalizedExisting.some(
 				(sub) =>
-					sub.normalizedLanguage === langPref.code &&
+					sub.normalizedLanguage === normalizeLanguageCode(langPref.code) &&
 					(sub.isForced ?? false) === langPref.forced &&
 					(!langPref.excludeHi || !(sub.isHearingImpaired ?? false))
 			);
@@ -391,7 +391,7 @@ export class LanguageProfileService {
 
 			if (!hasLanguage) {
 				missing.push({
-					code: langPref.code,
+					code: normalizeLanguageCode(langPref.code),
 					forced: langPref.forced,
 					hearingImpaired: langPref.hearingImpaired
 				});
@@ -438,7 +438,7 @@ export class LanguageProfileService {
 			// Check external subtitles
 			const hasExternal = normalizedExisting.some(
 				(sub) =>
-					sub.normalizedLanguage === langPref.code &&
+					sub.normalizedLanguage === normalizeLanguageCode(langPref.code) &&
 					(sub.isForced ?? false) === langPref.forced &&
 					(!langPref.excludeHi || !(sub.isHearingImpaired ?? false))
 			);

@@ -5,7 +5,12 @@
  * Supports language equivalence and per-provider converters.
  */
 
-import { SUPPORTED_LANGUAGES, type LanguageCode, type LanguageDefinition } from './types';
+import {
+	canonicalizeLanguageTag,
+	getLanguageDefinition,
+	type LanguageDefinition
+} from '$lib/shared/languages.js';
+import type { LanguageCode } from './types';
 
 /**
  * Language class with forced/hearing impaired as first-class attributes
@@ -38,57 +43,27 @@ export class Language {
 	hi: boolean;
 
 	constructor(alpha2: string, options: LanguageOptions = {}) {
-		this.alpha2 = alpha2.toLowerCase();
+		const canonical = canonicalizeLanguageTag(alpha2) || alpha2.trim().toLowerCase();
+		const [base, ...subtags] = canonical.split('-');
+		const region = subtags.find((part) => part.length === 2);
+		const scriptPart = subtags.find((part) => part.length === 4);
+
+		this.alpha2 = base;
 		this.forced = options.forced ?? false;
 		this.hi = options.hi ?? false;
-		this.country = options.country;
-		this.script = options.script;
+		this.country = options.country ?? (region ? region.toUpperCase() : undefined);
+		this.script = options.script ?? (scriptPart ? scriptPart : undefined);
 
-		// Look up language definition
-		const langDef = Language.findDefinition(this.alpha2);
-		this.alpha3 = langDef?.code3 ?? this.alpha2;
-		this.name = langDef?.name ?? alpha2;
+		const langDef = getLanguageDefinition(canonical);
+		this.alpha3 = langDef?.alpha3B ?? this.alpha2;
+		this.name = langDef?.name ?? canonical;
 		this.nativeName = langDef?.nativeName;
 	}
 
 	/**
-	 * Find language definition from SUPPORTED_LANGUAGES
-	 */
-	private static findDefinition(code: string): LanguageDefinition | undefined {
-		const normalizedCode = code.toLowerCase();
-
-		// Check main languages
-		const mainLang = SUPPORTED_LANGUAGES.find((l) => l.code === normalizedCode);
-		if (mainLang) return mainLang;
-
-		// Check variants (e.g., pt-br)
-		for (const lang of SUPPORTED_LANGUAGES) {
-			if (lang.variants) {
-				const variant = lang.variants.find((v) => v.code === normalizedCode);
-				if (variant) {
-					return {
-						...lang,
-						code: variant.code,
-						name: variant.name
-					};
-				}
-			}
-		}
-
-		return undefined;
-	}
-
-	/**
-	 * Create Language from ISO 639-1 or 639-2 code
+	 * Create Language from any recognized code (ISO 639-1/2/3 or alias)
 	 */
 	static fromCode(code: string, options: LanguageOptions = {}): Language {
-		// Handle 3-letter codes
-		if (code.length === 3) {
-			const langDef = SUPPORTED_LANGUAGES.find((l) => l.code3 === code.toLowerCase());
-			if (langDef) {
-				return new Language(langDef.code, options);
-			}
-		}
 		return new Language(code, options);
 	}
 
@@ -189,17 +164,21 @@ export class Language {
 	}
 
 	/**
-	 * Get simple code (alpha2 with optional country)
+	 * Get canonical code (base + script + country) used for comparisons
 	 */
 	get code(): LanguageCode {
-		if (this.country) {
-			return `${this.alpha2}-${this.country.toLowerCase()}`;
+		let code = this.alpha2;
+		if (this.script) {
+			code += `-${this.script}`;
 		}
-		return this.alpha2;
+		if (this.country) {
+			code += `-${this.country}`;
+		}
+		return code;
 	}
 
 	/**
-	 * Parse language from string (e.g., "en", "pt-br", "en.forced", "en.hi")
+	 * Parse language from string (e.g., "en", "pt-br", "zh-cn", "en.forced", "en.hi")
 	 */
 	static parse(input: string): Language {
 		const parts = input.toLowerCase().split('.');
@@ -208,14 +187,7 @@ export class Language {
 		const forced = flags.includes('forced') || flags.includes('force');
 		const hi = flags.includes('hi') || flags.includes('sdh') || flags.includes('cc');
 
-		// Handle language with country (e.g., pt-br)
-		const [alpha2, country] = langPart.split('-');
-
-		return new Language(alpha2, {
-			forced,
-			hi,
-			country: country?.toUpperCase()
-		});
+		return new Language(langPart, { forced, hi });
 	}
 }
 
