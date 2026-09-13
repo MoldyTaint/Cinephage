@@ -144,9 +144,9 @@ import {
  * Version 137: Add allow_movies and allow_tv columns to download_clients for debrid content-type restriction
  * Version 138: Add arr_id_mappings table for the Radarr/Sonarr-compatible API layer's surrogate integer IDs
  * Version 139: Add arr_notification_configs table for arr-compat clients (Pulsarr, etc.) registering webhooks
- * Version 137: Language system reset - v2 language profiles, language_settings singleton, metadata mode/value columns
+ * Version 140: Language system reset - v2 language profiles, language_settings singleton, metadata mode/value columns
  */
-export const CURRENT_SCHEMA_VERSION = 139;
+export const CURRENT_SCHEMA_VERSION = 140;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{

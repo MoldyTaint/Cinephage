@@ -779,6 +779,9 @@ describe('syncSchema language system', () => {
 			])
 		);
 
+		// Migration v137 seeds the singleton during syncSchema; clear it so the
+		// bare-row insert below exposes the raw DDL column defaults.
+		sqlite.prepare(`DELETE FROM "language_settings"`).run();
 		sqlite.prepare(`INSERT INTO "language_settings" ("id") VALUES ('singleton')`).run();
 		const settings = sqlite
 			.prepare(`SELECT * FROM "language_settings" WHERE "id" = 'singleton'`)

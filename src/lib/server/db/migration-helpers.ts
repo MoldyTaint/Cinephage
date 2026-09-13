@@ -595,6 +595,15 @@ export const MIGRATION_COLUMN_MAP: Record<number, Array<{ table: string; column:
 	137: [
 		{ table: 'download_clients', column: 'allow_movies' },
 		{ table: 'download_clients', column: 'allow_tv' }
+	],
+	140: [
+		{ table: 'movies', column: 'original_language' },
+		{ table: 'movies', column: 'metadata_language_mode' },
+		{ table: 'movies', column: 'metadata_language_value' },
+		{ table: 'series', column: 'original_language' },
+		{ table: 'series', column: 'metadata_language_mode' },
+		{ table: 'series', column: 'metadata_language_value' },
+		{ table: 'libraries', column: 'language_profile_id' }
 	]
 };
 
@@ -665,17 +674,25 @@ export function applyMigration(sqlite: Database.Database, migration: MigrationDe
 
 	logger.info(`[SchemaSync] Applying migration v${migration.version}: ${migration.name}`);
 
-	// Mark as in-progress (success=0)
-	sqlite
-		.prepare(
-			`
+	// Migrations perform schema surgery (table rebuilds, drops) that must not fire
+	// FK actions — e.g. dropping a parent table while children reference it would
+	// otherwise cascade-delete child rows. PRAGMA foreign_keys is a no-op inside a
+	// transaction, so it is toggled here, before the migration transaction opens,
+	// and restored afterwards.
+	const foreignKeysWereOn = sqlite.pragma('foreign_keys', { simple: true }) === 1;
+	if (foreignKeysWereOn) sqlite.pragma('foreign_keys = OFF');
+
+	try {
+		// Mark as in-progress (success=0)
+		sqlite
+			.prepare(
+				`
 		INSERT OR REPLACE INTO schema_migrations (version, name, checksum, applied_at, success)
 		VALUES (?, ?, ?, ?, 0)
 	`
-		)
-		.run(migration.version, migration.name, checksum, new Date().toISOString());
+			)
+			.run(migration.version, migration.name, checksum, new Date().toISOString());
 
-	try {
 		// Run migration in a transaction
 		sqlite.transaction(() => {
 			migration.apply(sqlite);
@@ -697,6 +714,8 @@ export function applyMigration(sqlite: Database.Database, migration: MigrationDe
 			`[SchemaSync] Migration v${migration.version} failed`
 		);
 		throw error;
+	} finally {
+		if (foreignKeysWereOn) sqlite.pragma('foreign_keys = ON');
 	}
 }
 
