@@ -2403,6 +2403,65 @@ describe('in-place subtitle companion renames', () => {
 		};
 	}
 
+	it('updates the subtitle DB row to follow an in-place companion rename', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const movieId = randomUUID();
+		const fileId = randomUUID();
+		const root = '/media';
+		const folder = 'Season 01';
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: root,
+			mediaType: 'movie',
+			name: 'subrename-root'
+		});
+		await db.insert(schema.movies).values({
+			id: movieId,
+			rootFolderId,
+			path: folder,
+			title: 'Sub Rename',
+			year: 2020,
+			tmdbId: 47,
+			hasFile: true
+		});
+		await db.insert(schema.movieFiles).values({
+			id: fileId,
+			movieId,
+			relativePath: 'Old.mkv'
+		});
+		await db.insert(schema.subtitles).values({
+			id: randomUUID(),
+			movieId,
+			movieFileId: fileId,
+			relativePath: 'Old.en.srt',
+			language: 'en',
+			format: 'srt'
+		});
+
+		(mockFs.readdir as ReturnType<typeof vi.fn>).mockResolvedValue(['Old.en.srt']);
+		mockedFileExists.mockImplementation(async (p: string) => p === `${root}/${folder}/Old.mkv`);
+
+		try {
+			const service = new RenamePreviewService();
+			// @ts-expect-error accessing private method for testing
+			const result = await service.executeFileRename(
+				{ ...buildItem('Old.mkv', 'New.mkv'), mediaId: movieId },
+				[]
+			);
+
+			expect(result.success).toBe(true);
+			const rows = await db.select().from(schema.subtitles).where(eq(schema.subtitles.movieId, movieId));
+			expect(rows).toHaveLength(1);
+			expect(rows[0].relativePath).toBe('New.en.srt');
+		} finally {
+			await db.delete(schema.subtitles).where(eq(schema.subtitles.movieId, movieId));
+			await db.delete(schema.movieFiles).where(eq(schema.movieFiles.id, fileId));
+			await db.delete(schema.movies).where(eq(schema.movies.id, movieId));
+			await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+		}
+	});
+
 	it('renames a stem-matched .en.srt sibling when the video is renamed in place', async () => {
 		const service = new RenamePreviewService();
 		(mockFs.readdir as ReturnType<typeof vi.fn>).mockResolvedValue([

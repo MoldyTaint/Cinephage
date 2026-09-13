@@ -19,7 +19,6 @@ import {
 	series,
 	episodes,
 	subtitles,
-	subtitleHistory,
 	monitoringHistory
 } from '$lib/server/db/schema.js';
 import { eq, and, isNotNull, asc, inArray, or, isNull } from 'drizzle-orm';
@@ -332,23 +331,18 @@ async function searchMovieSubtitleUpgrades(
 							try {
 								oldScore = currentScore;
 								newScore = betterMatch.matchScore;
-								await downloadService.downloadForMovie(movie.id, betterMatch);
+								// Target the same movie file the existing subtitle is linked to
+								// so the service replaces that row (and records it as an upgrade)
+								// instead of inserting a second row for an ambiguous multi-file movie.
+								await downloadService.downloadForMovie(movie.id, betterMatch, {
+									movieFileId: existingSub.movieFileId ?? undefined
+								});
 								upgraded++;
 								movieUpgraded++;
 
-								// Record upgrade in subtitle history
+								// History is owned by SubtitleDownloadService (single write,
+								// including replacedSubtitleId).
 								const normalizedLanguage = normalizeLanguageCode(betterMatch.language);
-								await db.insert(subtitleHistory).values({
-									movieId: movie.id,
-									action: 'upgraded',
-									language: normalizedLanguage,
-									providerId: betterMatch.providerId,
-									providerName: betterMatch.providerName,
-									providerSubtitleId: betterMatch.providerSubtitleId,
-									matchScore: betterMatch.matchScore,
-									wasHashMatch: betterMatch.isHashMatch ?? false,
-									replacedSubtitleId: existingSub.id
-								});
 
 								logger.info(
 									{
@@ -560,19 +554,9 @@ async function searchEpisodeSubtitleUpgrades(
 								upgraded++;
 								episodeUpgraded++;
 
-								// Record upgrade in subtitle history
+								// History is owned by SubtitleDownloadService (single write,
+								// including replacedSubtitleId).
 								const normalizedLanguage = normalizeLanguageCode(betterMatch.language);
-								await db.insert(subtitleHistory).values({
-									episodeId: episode.id,
-									action: 'upgraded',
-									language: normalizedLanguage,
-									providerId: betterMatch.providerId,
-									providerName: betterMatch.providerName,
-									providerSubtitleId: betterMatch.providerSubtitleId,
-									matchScore: betterMatch.matchScore,
-									wasHashMatch: betterMatch.isHashMatch ?? false,
-									replacedSubtitleId: existingSub.id
-								});
 
 								logger.info(
 									{

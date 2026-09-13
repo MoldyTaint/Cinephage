@@ -7,7 +7,7 @@
  */
 
 import { db } from '$lib/server/db';
-import { movies, series, episodes, subtitleHistory } from '$lib/server/db/schema';
+import { movies, series, episodes } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { getSubtitleSearchService } from './SubtitleSearchService.js';
 import { getSubtitleDownloadService } from './SubtitleDownloadService.js';
@@ -224,18 +224,8 @@ async function searchForMovie(
 				await downloadService.downloadForMovie(movieId, bestMatch);
 				result.downloaded++;
 
-				// Record in subtitle history
+				// History is owned by SubtitleDownloadService (single write).
 				const normalizedLanguage = normalizeLanguageCode(bestMatch.language);
-				await db.insert(subtitleHistory).values({
-					movieId,
-					action: 'downloaded',
-					language: normalizedLanguage,
-					providerId: bestMatch.providerId,
-					providerName: bestMatch.providerName,
-					providerSubtitleId: bestMatch.providerSubtitleId,
-					matchScore: bestMatch.matchScore,
-					wasHashMatch: bestMatch.isHashMatch ?? false
-				});
 
 				logger.info(
 					{
@@ -439,18 +429,8 @@ async function searchForEpisode(
 				await downloadService.downloadForEpisode(episodeId, bestMatch);
 				result.downloaded++;
 
-				// Record in subtitle history
+				// History is owned by SubtitleDownloadService (single write).
 				const normalizedLanguage = normalizeLanguageCode(bestMatch.language);
-				await db.insert(subtitleHistory).values({
-					episodeId,
-					action: 'downloaded',
-					language: normalizedLanguage,
-					providerId: bestMatch.providerId,
-					providerName: bestMatch.providerName,
-					providerSubtitleId: bestMatch.providerSubtitleId,
-					matchScore: bestMatch.matchScore,
-					wasHashMatch: bestMatch.isHashMatch ?? false
-				});
 
 				logger.info(
 					{

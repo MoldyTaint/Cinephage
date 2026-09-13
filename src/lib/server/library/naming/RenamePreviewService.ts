@@ -35,6 +35,8 @@ import {
 	getMediaBrowserManager,
 	getMediaBrowserNotifier
 } from '$lib/server/notifications/mediabrowser';
+import { syncSubtitleRowsForRenames } from '$lib/server/subtitles/subtitle-rename-sync';
+import { isSubtitleExtension } from '$lib/server/subtitles/subtitle-content';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 
@@ -1620,7 +1622,10 @@ export class RenamePreviewService {
 
 			// Carry stem-matched sibling subtitles along on in-place renames so
 			// external subs stay associated with the renamed video.
-			await this.renameSubtitleCompanions(item.currentFullPath, item.newFullPath, warnings);
+			await this.renameSubtitleCompanions(item.currentFullPath, item.newFullPath, warnings, {
+				mediaType: item.mediaType,
+				mediaId: item.mediaId
+			});
 
 			return {
 				fileId: item.fileId,
@@ -1659,7 +1664,8 @@ export class RenamePreviewService {
 	private async renameSubtitleCompanions(
 		oldPath: string,
 		newPath: string,
-		warnings: string[]
+		warnings: string[],
+		context: { mediaType: 'movie' | 'episode'; mediaId: string }
 	): Promise<void> {
 		const dir = dirname(oldPath);
 		if (dir !== dirname(newPath)) return;
@@ -1672,6 +1678,7 @@ export class RenamePreviewService {
 		// "Ep.forced.srt", "Ep.sdh.cc.sub"
 		const suffixRe =
 			/^(\.[a-z]{2,3}(-[a-zA-Z]{2,4})?|\.(forced|cc|sdh|default))*(\.(srt|ass|ssa|sub|vtt))$/i;
+		const renamed: Array<{ from: string; to: string }> = [];
 		try {
 			const entries = await readdir(dir);
 			for (const entry of entries) {
@@ -1685,6 +1692,7 @@ export class RenamePreviewService {
 				if (await fileExists(to)) continue;
 				try {
 					await rename(from, to);
+					renamed.push({ from, to });
 					logger.info({ from, to }, '[RenamePreviewService] Renamed subtitle companion');
 				} catch (err) {
 					const message = err instanceof Error ? err.message : String(err);
@@ -1695,6 +1703,24 @@ export class RenamePreviewService {
 		} catch (err) {
 			// Directory unreadable — non-fatal.
 			logger.warn({ err, dir }, '[RenamePreviewService] Could not scan for subtitle companions');
+		}
+
+		// Keep DB rows pointing at the renamed sidecars (best-effort).
+		if (renamed.length > 0) {
+			try {
+				await syncSubtitleRowsForRenames({
+					mediaType: context.mediaType,
+					mediaId: context.mediaId,
+					mappings: renamed
+				});
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				warnings.push(`Subtitle database paths could not be updated after rename: ${message}`);
+				logger.warn(
+					{ err, mediaType: context.mediaType, mediaId: context.mediaId },
+					'[RenamePreviewService] Failed to sync subtitle rows after companion rename'
+				);
+			}
 		}
 	}
 
@@ -1806,6 +1832,7 @@ export class RenamePreviewService {
 			try {
 				const entries = await readdir(oldFolder, { withFileTypes: true });
 				const unmatchedCompanions: string[] = [];
+				const movedSubtitles: Array<{ from: string; to: string }> = [];
 
 				for (const entry of entries) {
 					if (!entry.isFile()) continue;
@@ -1831,6 +1858,33 @@ export class RenamePreviewService {
 						await rename(src, dest);
 					} catch {
 						await moveFile(src, dest);
+					}
+					if (isSubtitleExtension(extname(entry.name))) {
+						movedSubtitles.push({ from: src, to: dest });
+					}
+				}
+
+				// Keep subtitle rows resolving to the moved sidecars. The media path
+				// was already updated above, so this uses the destination-dir fallback
+				// matching in syncSubtitleRowsForRenames; most rows already resolve
+				// correctly and are left untouched.
+				if (movedSubtitles.length > 0) {
+					try {
+						await syncSubtitleRowsForRenames({
+							mediaType,
+							mediaId,
+							mappings: movedSubtitles
+						});
+					} catch (err) {
+						warnings.push(
+							`Subtitle database paths could not be updated after the folder move: ${
+								err instanceof Error ? err.message : String(err)
+							}`
+						);
+						logger.warn(
+							{ err, mediaId, mediaType },
+							'[RenamePreviewService] Failed to sync subtitle rows after folder move'
+						);
 					}
 				}
 

@@ -25,6 +25,7 @@ import {
 import { eq } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import { getMediaBrowserNotifier } from '$lib/server/notifications/mediabrowser';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import type { SubtitleSyncResult } from '../types';
@@ -145,6 +146,8 @@ export class SubtitleSyncService {
 			);
 
 			await this.emitMediaUpdatedForSubtitle(subtitle[0]);
+			// The sidecar content changed on disk; tell media servers to re-read it.
+			getMediaBrowserNotifier().queueUpdate(subtitlePath, 'Modified', 'upgrade');
 		}
 
 		return result;
@@ -211,6 +214,7 @@ export class SubtitleSyncService {
 			});
 
 			await this.emitMediaUpdatedForSubtitle(subtitle[0]);
+			getMediaBrowserNotifier().queueUpdate(subtitlePath, 'Modified', 'upgrade');
 
 			return {
 				success: true,

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { eq } from 'drizzle-orm';
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../test/db-helper';
 import {
@@ -46,7 +46,14 @@ vi.mock('$lib/server/library/LibraryMediaEvents', () => ({
 	}
 }));
 
+const notifierQueueUpdateMock = vi.hoisted(() => vi.fn());
+
+vi.mock('$lib/server/notifications/mediabrowser', () => ({
+	getMediaBrowserNotifier: () => ({ queueUpdate: notifierQueueUpdateMock })
+}));
+
 const { SubtitleSyncService } = await import('./SubtitleSyncService');
+const { syncSubtitles } = await import('../sync/index.js');
 
 const ROOT_PATH = '/tmp/cinephage-subtitle-sync-service';
 const FILE_2160P_ID = 'movie-file-2160p';
@@ -162,5 +169,44 @@ describe('SubtitleSyncService.getSubtitlePaths', () => {
 
 		expect(videoPath).toBeTruthy();
 		expect(videoPath).toContain(files[0].relativePath);
+	});
+
+	it('notifies media servers after a successful sync', async () => {
+		notifierQueueUpdateMock.mockReset();
+		vi.mocked(syncSubtitles).mockReset();
+		vi.mocked(syncSubtitles).mockResolvedValue({
+			success: true,
+			offsetMs: 500,
+			splitCount: 0,
+			score: 1,
+			alignmentTimeMs: 1
+		});
+
+		const files = await testDb.db.select().from(movieFiles).where(eq(movieFiles.movieId, MOVIE_ID));
+		const movieFile = files[0];
+		const mediaDir = `${ROOT_PATH}/Test Movie (2024)`;
+		const subRelativePath = 'Test.Movie.2024.en.srt';
+		await mkdir(mediaDir, { recursive: true });
+		await writeFile(`${mediaDir}/${movieFile.relativePath}`, 'video');
+		await writeFile(`${mediaDir}/${subRelativePath}`, '1\n00:00:00,000 --> 00:00:01,000\nHi\n');
+
+		await testDb.db.insert(subtitles).values({
+			id: 'sub-sync-notify',
+			movieId: MOVIE_ID,
+			movieFileId: movieFile.id,
+			relativePath: subRelativePath,
+			language: 'en',
+			format: 'srt'
+		});
+
+		const service = SubtitleSyncService.getInstance();
+		const result = await service.syncSubtitle('sub-sync-notify');
+
+		expect(result.success).toBe(true);
+		expect(notifierQueueUpdateMock).toHaveBeenCalledWith(
+			`${mediaDir}/${subRelativePath}`,
+			'Modified',
+			'upgrade'
+		);
 	});
 });

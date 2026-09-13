@@ -15,7 +15,6 @@ import {
 	movies,
 	series,
 	episodes,
-	subtitleHistory,
 	monitoringHistory
 } from '$lib/server/db/schema.js';
 import { eq, and } from 'drizzle-orm';
@@ -373,18 +372,7 @@ async function searchMissingMovieSubtitles(
 
 							const normalizedLanguage = normalizeLanguageCode(bestMatch.language);
 
-							// Record success in subtitle history
-							await db.insert(subtitleHistory).values({
-								movieId: movie.id,
-								action: 'downloaded',
-								language: normalizedLanguage,
-								providerId: bestMatch.providerId,
-								providerName: bestMatch.providerName,
-								providerSubtitleId: bestMatch.providerSubtitleId,
-								matchScore: bestMatch.matchScore,
-								wasHashMatch: bestMatch.isHashMatch ?? false
-							});
-
+							// History is owned by SubtitleDownloadService (single write).
 							downloadedLanguages.push(normalizedLanguage);
 
 							// Reset only this requirement's backoff.
@@ -622,18 +610,7 @@ async function searchMissingEpisodeSubtitles(
 
 									const normalizedLanguage = normalizeLanguageCode(bestMatch.language);
 
-									// Record success in subtitle history
-									await db.insert(subtitleHistory).values({
-										episodeId: episodeId,
-										action: 'downloaded',
-										language: normalizedLanguage,
-										providerId: bestMatch.providerId,
-										providerName: bestMatch.providerName,
-										providerSubtitleId: bestMatch.providerSubtitleId,
-										matchScore: bestMatch.matchScore,
-										wasHashMatch: bestMatch.isHashMatch ?? false
-									});
-
+									// History is owned by SubtitleDownloadService (single write).
 									downloadedLanguages.push(normalizedLanguage);
 
 									// Reset only this requirement's backoff.
