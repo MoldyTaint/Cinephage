@@ -1,4 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import {
+	DEFAULT_EFFECTIVE_AUDIO_PREFERENCE,
+	audioPreferencesEqual,
+	type EffectiveAudioPreference
+} from '../language-utils';
 import type {
 	PlaybackMediaType,
 	PlaybackSession,
@@ -27,6 +32,10 @@ interface CreatePlaybackSessionInput {
 	subtitles?: PlaybackSessionSubtitle[];
 	attempts: PlaybackSessionAttempt[];
 	sourceExpiresAt?: number;
+	/** Resolved audio-preference snapshot stored on the session for reuse compatibility. */
+	audioPreference?: EffectiveAudioPreference;
+	/** Language of the chosen source (or the original language when it drove an untagged pick). */
+	chosenAudioLanguage?: string | null;
 }
 
 export class PlaybackSessionStore {
@@ -62,6 +71,15 @@ export class PlaybackSessionStore {
 			createdAt: now,
 			expiresAt: now + SESSION_TTL_MS,
 			sourceExpiresAt: input.sourceExpiresAt,
+			// Snapshot copies so later mutation of the caller's object cannot
+			// silently change the stored reuse-compatibility fingerprint.
+			audioPreference: input.audioPreference
+				? {
+						...input.audioPreference,
+						languages: [...input.audioPreference.languages]
+					}
+				: undefined,
+			chosenAudioLanguage: input.chosenAudioLanguage ?? null,
 			lastAccessedAt: now,
 			attempts: [...input.attempts],
 			resourceIdsByKey: {},
@@ -77,11 +95,31 @@ export class PlaybackSessionStore {
 		return session;
 	}
 
+	/**
+	 * Find a live session for the media identity that is compatible with the
+	 * currently requested audio preference.
+	 *
+	 * Compatibility semantics:
+	 * - Sessions WITH a stored `audioPreference` snapshot are reusable only when
+	 *   it deep-equals the requested preference, so a profile change takes
+	 *   effect on the next playback without `forceRefresh`.
+	 * - Sessions WITHOUT a snapshot (created before audio preference existed)
+	 *   are reusable only when the requested preference equals the no-profile
+	 *   default (`DEFAULT_EFFECTIVE_AUDIO_PREFERENCE`), because they were
+	 *   resolved under exactly that behavior. The default is always resolved
+	 *   through the shared constant so this comparison is consistent.
+	 *
+	 * The expired-source re-resolve behavior is unchanged. An incompatible (but
+	 * not expired) session is intentionally left in place: it may still be
+	 * serving an in-flight playback via its token and will age out with the
+	 * normal TTL.
+	 */
 	findReusableSession(
 		mediaType: PlaybackMediaType,
 		tmdbId: number,
 		season?: number,
-		episode?: number
+		episode?: number,
+		audioPreference?: EffectiveAudioPreference
 	): PlaybackSession | null {
 		const token = this.mediaIndex.get(this.mediaKey(mediaType, tmdbId, season, episode));
 		if (!token) {
@@ -97,6 +135,10 @@ export class PlaybackSessionStore {
 		// reused session would serve a dead stream — force a re-resolve.
 		if (session.sourceExpiresAt !== undefined && Date.now() / 1000 > session.sourceExpiresAt) {
 			this.deleteSession(token);
+			return null;
+		}
+
+		if (!this.isAudioPreferenceCompatible(session, audioPreference)) {
 			return null;
 		}
 
@@ -218,6 +260,25 @@ export class PlaybackSessionStore {
 		}
 
 		return `tv:${tmdbId}:${season ?? 'x'}:${episode ?? 'x'}`;
+	}
+
+	/**
+	 * A missing requested preference resolves to the no-profile default so the
+	 * check matches how PlaybackSessionService always resolves preferences.
+	 */
+	private isAudioPreferenceCompatible(
+		session: PlaybackSession,
+		requested?: EffectiveAudioPreference
+	): boolean {
+		const effective = requested ?? DEFAULT_EFFECTIVE_AUDIO_PREFERENCE;
+		const stored = session.audioPreference;
+		if (stored) {
+			return audioPreferencesEqual(stored, effective);
+		}
+
+		// Pre-deploy session without a snapshot: reusable only under the exact
+		// behavior it was created with (the no-profile default).
+		return audioPreferencesEqual(effective, DEFAULT_EFFECTIVE_AUDIO_PREFERENCE);
 	}
 }
 

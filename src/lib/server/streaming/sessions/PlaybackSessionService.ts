@@ -1,11 +1,16 @@
 import { logger } from '$lib/logging';
 import { getLibraryStreamingModule } from '$lib/server/cinephage/modules/library-streaming/LibraryStreamingModule.js';
+import {
+	resolveAudioPreferenceBucket,
+	sortSourcesByAudioPreference
+} from '../language-utils';
 import type {
 	PlaybackMediaType,
 	PlaybackSession,
 	PlaybackSessionSubtitle,
 	StreamSource
 } from '../types';
+import { getAudioPreferenceFor } from '../language-profile-helper';
 import { getPlaybackSessionStore } from './session-store';
 
 const streamLog = { logDomain: 'streams' as const };
@@ -63,12 +68,22 @@ export class PlaybackSessionService {
 			return { session: null, error: 'Aborted' };
 		}
 
+		// Resolve the CURRENT audio preference before the reuse check so a
+		// changed profile takes effect on the next launch without forceRefresh.
+		const audioPreference = await getAudioPreferenceFor(
+			params.type,
+			params.tmdbId,
+			params.season,
+			params.episode
+		);
+
 		if (!params.forceRefresh) {
 			const existing = this.store.findReusableSession(
 				params.type,
 				params.tmdbId,
 				params.season,
-				params.episode
+				params.episode,
+				audioPreference
 			);
 			if (existing) {
 				return { session: existing };
@@ -95,9 +110,17 @@ export class PlaybackSessionService {
 			};
 		}
 
-		// The API now returns a single pre-validated stream.
-		// Skip probing and use it directly for instant playback startup.
-		const source = lookup.sources[0];
+		// The API returns pre-validated sources; rank them by the resolved audio
+		// preference (original language first, then profile fallback languages,
+		// then untagged/neutral, then everything else — stable within buckets)
+		// and use the winner directly for instant playback startup.
+		const rankedSources = sortSourcesByAudioPreference(lookup.sources, audioPreference);
+		const source = rankedSources[0];
+
+		const chosenBucket = resolveAudioPreferenceBucket(source, audioPreference);
+		const chosenAudioLanguage =
+			source.language ??
+			(chosenBucket === 0 ? (audioPreference.originalLanguage ?? null) : null);
 
 		const session = this.store.createSession({
 			mediaType: params.type,
@@ -112,7 +135,9 @@ export class PlaybackSessionService {
 			requestHeaders: buildSourceHeaders(source),
 			subtitles: normalizeSubtitleList(source),
 			attempts: [],
-			sourceExpiresAt: source.expiresAt
+			sourceExpiresAt: source.expiresAt,
+			audioPreference,
+			chosenAudioLanguage
 		});
 
 		logger.info(
@@ -123,6 +148,8 @@ export class PlaybackSessionService {
 				entryUrl: source.url,
 				quality: source.quality,
 				language: source.language,
+				chosenAudioLanguage: session.chosenAudioLanguage,
+				audioPreference: session.audioPreference,
 				tmdbId: params.tmdbId,
 				mediaType: params.type,
 				season: params.season,

@@ -2,6 +2,8 @@
  * Shared streaming types used by the active Cinephage API path.
  */
 
+import type { EffectiveAudioPreference } from './language-utils';
+
 export type StreamType = 'hls' | 'm3u8' | 'mp4' | 'dash' | 'file';
 
 export type StreamStatus = 'working' | 'down' | 'unknown' | 'validating';
@@ -175,6 +177,20 @@ export interface PlaybackSession {
 	expiresAt: number;
 	/** Epoch seconds when the underlying source URL/signature stops being valid, if known. */
 	sourceExpiresAt?: number;
+	/**
+	 * Resolved audio-preference snapshot captured when the session was created.
+	 * Session reuse requires the current preference to deep-equal this value;
+	 * absent on sessions created before audio preference existed, which are
+	 * only reusable while the current request resolves to the no-profile
+	 * default (see DEFAULT_EFFECTIVE_AUDIO_PREFERENCE).
+	 */
+	audioPreference?: EffectiveAudioPreference;
+	/**
+	 * Language tag of the chosen source, or the original language when that
+	 * preference drove the pick of an untagged source; null when neither
+	 * applies (e.g. an untagged source picked as a neutral fallback).
+	 */
+	chosenAudioLanguage?: string | null;
 	lastAccessedAt: number;
 	attempts: PlaybackSessionAttempt[];
 	resourceIdsByKey: Record<string, string>;
