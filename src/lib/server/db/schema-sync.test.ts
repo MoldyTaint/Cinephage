@@ -852,9 +852,10 @@ describe('syncSchema language system', () => {
 				`INSERT INTO "movies" ("id", "tmdb_id", "title", "path") VALUES ('movie-1', 1, 'T', '/t')`
 			)
 			.run();
-		const movie = sqlite
-			.prepare(`SELECT * FROM "movies" WHERE "id" = 'movie-1'`)
-			.get() as Record<string, unknown>;
+		const movie = sqlite.prepare(`SELECT * FROM "movies" WHERE "id" = 'movie-1'`).get() as Record<
+			string,
+			unknown
+		>;
 		expect(movie.original_language).toBeNull();
 		expect(movie.metadata_language_mode).toBe('inherit');
 		expect(movie.metadata_language_value).toBeNull();
@@ -872,7 +873,11 @@ describe('syncSchema language system', () => {
 			'CHECK ((movie_id IS NOT NULL AND episode_id IS NULL) OR (movie_id IS NULL AND episode_id IS NOT NULL))'
 		);
 
-		sqlite.prepare(`INSERT INTO "movies" ("id", "tmdb_id", "title", "path") VALUES ('m1', 1, 'T', '/t')`).run();
+		sqlite
+			.prepare(
+				`INSERT INTO "movies" ("id", "tmdb_id", "title", "path") VALUES ('m1', 1, 'T', '/t')`
+			)
+			.run();
 		sqlite
 			.prepare(
 				`INSERT INTO "subtitles" ("id", "movie_id", "relative_path", "language", "format")
@@ -887,5 +892,47 @@ describe('syncSchema language system', () => {
 				)
 				.run()
 		).toThrow(/CHECK/);
+	});
+
+	it('creates subtitle_search_state and subtitles.last_checked_at', () => {
+		const sqlite = createTestDatabase();
+
+		syncSchema(sqlite);
+
+		expect(tableExists(sqlite, 'subtitle_search_state')).toBe(true);
+		expect(getColumnNames(sqlite, 'subtitle_search_state')).toEqual([
+			'owner_type',
+			'owner_id',
+			'requirement_key',
+			'failed_attempts',
+			'first_search_at',
+			'last_search_at'
+		]);
+		expect(getColumnNames(sqlite, 'subtitles')).toContain('last_checked_at');
+
+		const indexNames = (
+			sqlite.prepare(`SELECT name FROM sqlite_master WHERE type='index'`).all() as Array<{
+				name: string;
+			}>
+		).map((row) => row.name);
+		expect(indexNames).toContain('idx_subtitle_search_state_owner');
+
+		sqlite
+			.prepare(
+				`INSERT INTO "subtitle_search_state" ("owner_type", "owner_id", "requirement_key")
+				 VALUES ('movie', 'm1', 'en|forced|any')`
+			)
+			.run();
+		const state = sqlite
+			.prepare(`SELECT * FROM "subtitle_search_state" WHERE "owner_id" = 'm1'`)
+			.get() as Record<string, unknown>;
+		expect(state).toMatchObject({
+			owner_type: 'movie',
+			owner_id: 'm1',
+			requirement_key: 'en|forced|any',
+			failed_attempts: 0,
+			first_search_at: null,
+			last_search_at: null
+		});
 	});
 });

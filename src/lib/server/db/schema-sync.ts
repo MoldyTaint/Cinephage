@@ -140,13 +140,10 @@ import {
  * Version 133: Add import_failed and backfill canonical info hashes on download queue rows
  * Version 134: Store canonical info hashes on download history rows
  * Version 135: Deduplicate active download queue rows by client and info hash
- * Version 136: Add storage_items indexes on episode_file_id and movie_file_id
- * Version 137: Add allow_movies and allow_tv columns to download_clients for debrid content-type restriction
- * Version 138: Add arr_id_mappings table for the Radarr/Sonarr-compatible API layer's surrogate integer IDs
- * Version 139: Add arr_notification_configs table for arr-compat clients (Pulsarr, etc.) registering webhooks
  * Version 140: Language system reset - v2 language profiles, language_settings singleton, metadata mode/value columns
+ * Version 141: Subtitle reconciliation/backoff - subtitles.last_checked_at, subtitle_search_state table, episode path-base rewrite
  */
-export const CURRENT_SCHEMA_VERSION = 140;
+export const CURRENT_SCHEMA_VERSION = 141;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -946,8 +943,22 @@ const TABLE_DEFINITIONS: string[] = [
 		"size" integer,
 		"sync_offset" integer DEFAULT 0,
 		"was_synced" integer DEFAULT false,
+		"last_checked_at" text,
 		"date_added" text,
 		CHECK ((movie_id IS NOT NULL AND episode_id IS NULL) OR (movie_id IS NULL AND episode_id IS NOT NULL))
+	)`,
+
+	// Subtitle Search State - per-requirement adaptive backoff (m138). One row per
+	// (owner, requirement_key) so a failure on one requirement does not gate the
+	// others. requirement_key is the stable `tag|variant|accessibility` tuple.
+	`CREATE TABLE IF NOT EXISTS "subtitle_search_state" (
+		"owner_type" text NOT NULL,
+		"owner_id" text NOT NULL,
+		"requirement_key" text NOT NULL,
+		"failed_attempts" integer NOT NULL DEFAULT 0,
+		"first_search_at" text,
+		"last_search_at" text,
+		PRIMARY KEY ("owner_type", "owner_id", "requirement_key")
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "subtitle_history" (
@@ -1567,6 +1578,7 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_subtitles_movie" ON "subtitles" ("movie_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_subtitles_episode" ON "subtitles" ("episode_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_subtitles_movie_file" ON "subtitles" ("movie_file_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_subtitle_search_state_owner" ON "subtitle_search_state" ("owner_type", "owner_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_smart_lists_enabled" ON "smart_lists" ("enabled")`,
 	`CREATE INDEX IF NOT EXISTS "idx_smart_lists_next_refresh" ON "smart_lists" ("next_refresh_time")`,
 	`CREATE INDEX IF NOT EXISTS "idx_smart_lists_media_type" ON "smart_lists" ("media_type")`,

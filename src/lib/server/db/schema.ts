@@ -688,8 +688,11 @@ export const movies = sqliteTable(
 		wantsSubtitles: integer('wants_subtitles', { mode: 'boolean' }).default(true),
 		// Last time this movie was searched for releases (ISO timestamp)
 		lastSearchTime: text('last_search_time'),
+		// DEPRECATED (migration 138): superseded by per-requirement state in
+		// subtitle_search_state. Retained for now; scheduled for removal in Phase 7.
 		// Adaptive subtitle searching: consecutive failed subtitle search count
 		failedSubtitleAttempts: integer('failed_subtitle_attempts').default(0),
+		// DEPRECATED (migration 138): superseded by subtitle_search_state.first_search_at.
 		// Adaptive subtitle searching: when subtitle searching first began (ISO timestamp)
 		firstSubtitleSearchAt: text('first_subtitle_search_at'),
 		tmdbCollectionId: integer('tmdb_collection_id'),
@@ -913,8 +916,11 @@ export const episodes = sqliteTable(
 		wantsSubtitlesOverride: integer('wants_subtitles_override', { mode: 'boolean' }),
 		// Last time this episode was searched for releases (ISO timestamp)
 		lastSearchTime: text('last_search_time'),
+		// DEPRECATED (migration 138): superseded by per-requirement state in
+		// subtitle_search_state. Retained for now; scheduled for removal in Phase 7.
 		// Adaptive subtitle searching: consecutive failed subtitle search count
 		failedSubtitleAttempts: integer('failed_subtitle_attempts').default(0),
+		// DEPRECATED (migration 138): superseded by subtitle_search_state.first_search_at.
 		// Adaptive subtitle searching: when subtitle searching first began (ISO timestamp)
 		firstSubtitleSearchAt: text('first_subtitle_search_at')
 	},
@@ -1908,11 +1914,40 @@ export const subtitles = sqliteTable(
 		syncOffset: integer('sync_offset').default(0),
 		wasSynced: integer('was_synced', { mode: 'boolean' }).default(false),
 
+		// Upgrade rotation (migration 138): when the upgrade task last examined this
+		// row. Upgrades order by this ascending (NULLs first) and stamp it on examine
+		// so no subtitle is starved while others are re-checked every run.
+		lastCheckedAt: text('last_checked_at'),
+
 		dateAdded: text('date_added').$defaultFn(() => new Date().toISOString())
 	},
 	(table) => [
 		index('idx_subtitles_movie').on(table.movieId),
 		index('idx_subtitles_episode').on(table.episodeId)
+	]
+);
+
+/**
+ * Subtitle Search State - per-requirement adaptive backoff (migration 138).
+ *
+ * Replaces the old per-media-item columns (movies/episodes.failed_subtitle_attempts,
+ * first_subtitle_search_at), which are deprecated and slated for removal in Phase 7.
+ * `requirement_key` is the stable `tag|variant|accessibility` tuple so one failing
+ * requirement no longer gates the others for the same owner.
+ */
+export const subtitleSearchState = sqliteTable(
+	'subtitle_search_state',
+	{
+		ownerType: text('owner_type', { enum: ['movie', 'episode'] }).notNull(),
+		ownerId: text('owner_id').notNull(),
+		requirementKey: text('requirement_key').notNull(),
+		failedAttempts: integer('failed_attempts').notNull().default(0),
+		firstSearchAt: text('first_search_at'),
+		lastSearchAt: text('last_search_at')
+	},
+	(table) => [
+		primaryKey({ columns: [table.ownerType, table.ownerId, table.requirementKey] }),
+		index('idx_subtitle_search_state_owner').on(table.ownerType, table.ownerId)
 	]
 );
 

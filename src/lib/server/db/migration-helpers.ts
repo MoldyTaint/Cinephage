@@ -475,6 +475,7 @@ export const CRITICAL_COLUMNS: Record<string, string[]> = {
 		'metadata_language_value'
 	],
 	episodes: ['id', 'series_id', 'season_number', 'episode_number'],
+	subtitles: ['id', 'relative_path', 'language', 'format', 'last_checked_at'],
 	indexers: ['id', 'name', 'definition_id', 'enabled'],
 	scoring_profiles: ['id', 'name', 'is_default']
 };
@@ -604,7 +605,8 @@ export const MIGRATION_COLUMN_MAP: Record<number, Array<{ table: string; column:
 		{ table: 'series', column: 'metadata_language_mode' },
 		{ table: 'series', column: 'metadata_language_value' },
 		{ table: 'libraries', column: 'language_profile_id' }
-	]
+	],
+	138: [{ table: 'subtitles', column: 'last_checked_at' }]
 };
 
 /**
