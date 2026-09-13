@@ -22,7 +22,8 @@ vi.mock('$lib/server/db', () => ({
 	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
 
-const { resolveStoredSubtitlePath, resolveStoredSubtitlePaths } = await import('./subtitle-paths');
+const { resolveStoredSubtitlePath, resolveStoredSubtitlePaths, toStoredRelativePath } =
+	await import('./subtitle-paths');
 
 type Row = typeof subtitles.$inferSelect;
 
@@ -59,24 +60,15 @@ function seedRootFolder(id: string, path: string, mediaType = 'movie'): void {
 }
 
 function seedMovie(id: string, path: string, rootFolderId: string | null): void {
-	testDb.db
-		.insert(movies)
-		.values({ id, tmdbId: ++counter, title: id, path, rootFolderId })
-		.run();
+	testDb.db.insert(movies).values({ id, tmdbId: ++counter, title: id, path, rootFolderId }).run();
 }
 
 function seedSeries(id: string, path: string, rootFolderId: string | null): void {
-	testDb.db
-		.insert(series)
-		.values({ id, tmdbId: ++counter, title: id, path, rootFolderId })
-		.run();
+	testDb.db.insert(series).values({ id, tmdbId: ++counter, title: id, path, rootFolderId }).run();
 }
 
 function seedEpisode(id: string, seriesId: string, seasonNumber = 1, episodeNumber = 1): void {
-	testDb.db
-		.insert(episodes)
-		.values({ id, seriesId, seasonNumber, episodeNumber })
-		.run();
+	testDb.db.insert(episodes).values({ id, seriesId, seasonNumber, episodeNumber }).run();
 }
 
 function seedEpisodeFile(
@@ -110,9 +102,7 @@ describe('subtitle-paths', () => {
 			row({ id: 'sub-movie', movieId: 'movie-1', relativePath: 'Status Movie (2020).en.srt' })
 		);
 
-		expect(path).toBe(
-			join('/media/movies', 'Status Movie (2020)', 'Status Movie (2020).en.srt')
-		);
+		expect(path).toBe(join('/media/movies', 'Status Movie (2020)', 'Status Movie (2020).en.srt'));
 	});
 
 	it('resolves episode rows against the episode file directory (including the season folder)', async () => {
@@ -129,9 +119,7 @@ describe('subtitle-paths', () => {
 			})
 		);
 
-		expect(path).toBe(
-			join('/media/tv', 'Status Show', 'Season 01', 'Status Show S01E01.en.srt')
-		);
+		expect(path).toBe(join('/media/tv', 'Status Show', 'Season 01', 'Status Show S01E01.en.srt'));
 	});
 
 	it('picks deterministically when multiple episode files claim the episode', async () => {
@@ -157,7 +145,9 @@ describe('subtitle-paths', () => {
 
 		expect(await resolveStoredSubtitlePath(row({ id: 'a', movieId: 'missing-movie' }))).toBeNull();
 		expect(await resolveStoredSubtitlePath(row({ id: 'b', movieId: 'movie-no-root' }))).toBeNull();
-		expect(await resolveStoredSubtitlePath(row({ id: 'c', episodeId: 'missing-episode' }))).toBeNull();
+		expect(
+			await resolveStoredSubtitlePath(row({ id: 'c', episodeId: 'missing-episode' }))
+		).toBeNull();
 		expect(await resolveStoredSubtitlePath(row({ id: 'd', episodeId: 'ep-no-file' }))).toBeNull();
 		expect(await resolveStoredSubtitlePath(row({ id: 'e' }))).toBeNull();
 	});
@@ -179,5 +169,48 @@ describe('subtitle-paths', () => {
 		expect(resolved.get('m1')).toBe(join('/media/movies', 'Movie One', 'Movie One.en.srt'));
 		expect(resolved.get('e1')).toBe(join('/media/tv', 'Show One', 'Show One S01E01.en.srt'));
 		expect(resolved.get('m2')).toBeNull();
+	});
+
+	it('round-trips a scanner-written episode path through resolution', async () => {
+		seedRootFolder('rf-tv-rt', '/media/tv', 'tv');
+		seedSeries('series-rt', 'Show', 'rf-tv-rt');
+		seedEpisode('ep-rt', 'series-rt');
+		seedEpisodeFile('ef-rt', 'series-rt', 'Season 01/Show S01E01.mkv', ['ep-rt']);
+
+		const stored = toStoredRelativePath(
+			'/media/tv/Show/Season 01/Show S01E01.en.srt',
+			'/media/tv/Show/Season 01'
+		);
+		const resolved = await resolveStoredSubtitlePath(
+			row({ id: 'sub-ep-rt', episodeId: 'ep-rt', relativePath: stored })
+		);
+
+		expect(resolved).toBe('/media/tv/Show/Season 01/Show S01E01.en.srt');
+	});
+});
+
+describe('toStoredRelativePath', () => {
+	it('strips a movie folder base and keeps subdirectories', () => {
+		expect(
+			toStoredRelativePath(
+				'/media/movies/Movie (2020)/sub/Movie.en.srt',
+				'/media/movies/Movie (2020)'
+			)
+		).toBe('sub/Movie.en.srt');
+	});
+
+	it('strips an episode directory base (including the season folder)', () => {
+		expect(
+			toStoredRelativePath(
+				'/media/tv/Show/Season 01/Show S01E01.en.srt',
+				'/media/tv/Show/Season 01'
+			)
+		).toBe('Show S01E01.en.srt');
+	});
+
+	it('always emits forward slashes', () => {
+		expect(toStoredRelativePath('/media/tv/Show/Sub/File.en.srt', '/media/tv/Show')).toBe(
+			'Sub/File.en.srt'
+		);
 	});
 });

@@ -31,10 +31,34 @@ import {
 	subtitles
 } from '$lib/server/db/schema';
 import { inArray } from 'drizzle-orm';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 
 /** A row from the `subtitles` table. */
 export type StoredSubtitleRow = typeof subtitles.$inferSelect;
+
+/**
+ * Inverse of the resolution rules: derive the value to store in
+ * `subtitles.relative_path` for a sidecar at `absPath` given the base directory
+ * the row will later be resolved against.
+ *
+ * - movie rows: `mediaDirAbs` is the absolute movie folder.
+ * - episode rows: `mediaDirAbs` is the absolute directory of the owning episode
+ *   file (which includes the season folder when the library uses one):
+ *     toStoredRelativePath(sub.path, join(rootFolder.path, series.path, dirname(episodeFile.relativePath)))
+ *
+ * Separators are always normalized to `/` so stored values match migration 138's
+ * rewrite and stay filesystem independent. The scanner (writer) and
+ * `resolveStoredSubtitlePath` (reader) therefore share one definition of the
+ * base, preventing the drift that previously left scanner episode rows dangling.
+ *
+ * Callers must pass the correct base; a path outside it yields a `../`-prefixed
+ * value rather than an error.
+ */
+export function toStoredRelativePath(absPath: string, mediaDirAbs: string): string {
+	return relative(mediaDirAbs, absPath)
+		.split(/[\\/]+/)
+		.join('/');
+}
 
 /**
  * Resolve the absolute path for a single stored subtitle row.
@@ -129,8 +153,9 @@ export async function resolveStoredSubtitlePaths(
 			// for movie rows. Prefer a candidate with a matching id (defensive), then
 			// fall back to a deterministic order so repeated calls agree.
 			const file =
-				(row.movieFileId ? candidates.find((candidate) => candidate.id === row.movieFileId) : undefined) ??
-				sortByPath(candidates)[0];
+				(row.movieFileId
+					? candidates.find((candidate) => candidate.id === row.movieFileId)
+					: undefined) ?? sortByPath(candidates)[0];
 
 			return join(rootFolder.path, seriesRow.path, dirname(file.relativePath), row.relativePath);
 		}

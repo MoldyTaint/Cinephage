@@ -1,12 +1,25 @@
 /**
  * Subtitle Scanner Service
  *
- * Discovers and registers existing subtitle files on disk.
+ * Discovers and reconciles existing subtitle files on disk.
  * Integrates with the library scanner to detect subtitles alongside video files.
+ *
+ * Path base (Phase 3 Task 5):
+ * - movie rows are stored relative to the movie folder;
+ * - episode rows are stored relative to the directory of the owning episode file
+ *   (including the season folder when present).
+ * Both are produced by `toStoredRelativePath` and read back by
+ * `resolveStoredSubtitlePath`, so scanner, download/delete and sync share one
+ * definition. Migration 138 rewrote legacy episode rows onto this base.
+ *
+ * Reconciliation replaces the old insert-only behavior: a scan compares
+ * discovered sidecars against stored rows (identity = owner + stored relative
+ * path) and inserts/updates/deletes in one transaction per media item.
  */
 
 import { readdir, stat } from 'fs/promises';
-import { join, basename, dirname, extname } from 'path';
+import { existsSync } from 'node:fs';
+import { join, basename, extname, posix } from 'path';
 import { db } from '$lib/server/db';
 import {
 	subtitles,
@@ -21,6 +34,11 @@ import { eq, inArray } from 'drizzle-orm';
 import type { SubtitleFormat, LanguageCode } from '../types';
 import { randomUUID } from 'node:crypto';
 import { createChildLogger } from '$lib/logging';
+import {
+	resolveStoredSubtitlePaths,
+	toStoredRelativePath,
+	type StoredSubtitleRow
+} from '../subtitle-paths';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { normalizeLanguageCode } from '$lib/shared/languages';
@@ -182,6 +200,12 @@ const LANGUAGE_PATTERNS: Array<{ pattern: RegExp; code: LanguageCode }> = [
 const FORCED_PATTERN = /\.forced\./i;
 const HI_PATTERNS = [/\.hi\./i, /\.sdh\./i, /\.cc\./i, /hearing[_\s-]?impaired/i];
 
+/**
+ * Numbers that commonly appear in release names but are not episode numbers.
+ * Used by the absolute-episode fallback parser to avoid matching 1080/720 etc.
+ */
+const COMMON_VIDEO_NUMBERS = new Set([264, 265, 480, 576, 720, 1080, 2160, 4320]);
+
 interface DiscoveredSubtitle {
 	path: string;
 	relativePath: string;
@@ -193,11 +217,98 @@ interface DiscoveredSubtitle {
 	videoFileName?: string;
 }
 
-interface ScanResult {
+/** A sidecar that the scanner should persist, keyed by owner + stored path. */
+interface DesiredSubtitle {
+	/** movieId or episodeId, depending on the scanned media item. */
+	ownerId: string;
+	/** Value to store in `subtitles.relative_path` (movie-folder- or episode-dir-relative). */
+	relativePath: string;
+	/** Absolute path on disk (used for reassignment detection). */
+	absPath: string;
+	language: LanguageCode;
+	isForced: boolean;
+	isHearingImpaired: boolean;
+	format: SubtitleFormat;
+	size: number;
+	movieFileId: string | null;
+}
+
+/** Result counters for a scan, surfaced by the scan API. */
+export interface SubtitleScanResult {
 	discovered: number;
+	/** Newly inserted rows. */
+	added: number;
+	/** Alias of `added`, kept for existing API consumers. */
 	registered: number;
+	/** Rows whose metadata changed. */
+	updated: number;
+	/** Rows deleted because their file no longer exists on disk. */
+	removed: number;
+	/** Rows that were already up to date. */
+	unchanged: number;
+	/** Discovered sidecars that could not be associated / had no owner. */
 	skipped: number;
+	/** Skipped sidecars with the reason they were not associated. */
+	ambiguous: string[];
 	errors: string[];
+}
+
+type EpisodeFileRow = typeof episodeFiles.$inferSelect;
+
+function emptyResult(): SubtitleScanResult {
+	return {
+		discovered: 0,
+		added: 0,
+		registered: 0,
+		updated: 0,
+		removed: 0,
+		unchanged: 0,
+		skipped: 0,
+		ambiguous: [],
+		errors: []
+	};
+}
+
+/** Directory of a relative path, normalized to forward slashes; '' when at the base. */
+function relativeDir(relativePath: string): string {
+	const normalized = relativePath.replace(/\\/g, '/');
+	const dir = posix.dirname(normalized);
+	return dir === '.' ? '' : dir;
+}
+
+/** Base name of a path without its extension. */
+function stemOf(pathLike: string): string {
+	return basename(pathLike, extname(pathLike));
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+	return [...new Set(values.filter((value): value is string => typeof value === 'string'))];
+}
+
+/**
+ * Parse a season/episode marker from a file name.
+ * Returns a canonical key (`s01e02` for SxxExx / NxNN, or `abs:5` for a lone
+ * absolute episode number) or null when no marker is present.
+ */
+export function parseEpisodeMarker(name: string): string | null {
+	const se = /(?:^|[^a-z0-9])s(\d{1,2})[\s._-]*e(\d{1,3})(?![0-9])/i.exec(name);
+	if (se) return `s${Number(se[1])}e${Number(se[2])}`;
+
+	const x = /(?:^|[^a-z0-9])(\d{1,2})x(\d{1,3})(?![0-9])/i.exec(name);
+	if (x) return `s${Number(x[1])}e${Number(x[2])}`;
+
+	// Absolute episode number: accept a lone numeric token that is not a common
+	// video number (resolution/codec). Only unambiguous when exactly one remains.
+	const tokenPattern = /(?:^|[ ._\-[\]()])(\d{1,3})(?=$|[ ._\-[\]()])/g;
+	const numbers: number[] = [];
+	for (const match of name.matchAll(tokenPattern)) {
+		const num = Number(match[1]);
+		if (num > 0 && !COMMON_VIDEO_NUMBERS.has(num)) numbers.push(num);
+	}
+	const uniqueNumbers = [...new Set(numbers)];
+	if (uniqueNumbers.length === 1) return `abs:${uniqueNumbers[0]}`;
+
+	return null;
 }
 
 class SubtitleScannerService {
@@ -367,10 +478,13 @@ class SubtitleScannerService {
 	}
 
 	/**
-	 * Scan and register subtitles for a movie
+	 * Scan and reconcile subtitles for a movie.
+	 *
+	 * Movie rows are stored relative to the movie folder (unchanged behavior);
+	 * the sidecar is linked to the quality tier whose base name it matches.
 	 */
-	async scanMovieSubtitles(movieId: string): Promise<ScanResult> {
-		const result: ScanResult = { discovered: 0, registered: 0, skipped: 0, errors: [] };
+	async scanMovieSubtitles(movieId: string): Promise<SubtitleScanResult> {
+		const result = emptyResult();
 
 		try {
 			const movie = await db.query.movies.findFirst({
@@ -400,11 +514,6 @@ class SubtitleScannerService {
 			const discovered = await this.discoverSubtitles(moviePath, moviePath);
 			result.discovered = discovered.length;
 
-			const existingSubtitles = await db.query.subtitles.findMany({
-				where: eq(subtitles.movieId, movieId)
-			});
-			const existingPaths = new Set(existingSubtitles.map((s) => s.relativePath));
-
 			// Load this movie's files so each sidecar can be linked to the specific
 			// quality tier it belongs to (multi-quality support).
 			const movieFilesList = await db
@@ -428,51 +537,33 @@ class SubtitleScannerService {
 				}
 			}
 
+			const desired: DesiredSubtitle[] = [];
 			for (const sub of discovered) {
-				try {
-					if (existingPaths.has(sub.relativePath)) {
-						result.skipped++;
-						continue;
-					}
+				const lookupKey = sub.videoFileName?.toLowerCase();
+				const movieFileId =
+					lookupKey && !ambiguousBaseNames.has(lookupKey)
+						? baseNameToMovieFileId.get(lookupKey)
+						: undefined;
 
-					// Resolve the target movie file for this sidecar by exact
-					// (case-insensitive) base-name match.
-					const lookupKey = sub.videoFileName?.toLowerCase();
-					const movieFileId =
-						lookupKey && !ambiguousBaseNames.has(lookupKey)
-							? baseNameToMovieFileId.get(lookupKey)
-							: undefined;
-
-					// Register the subtitle
-					await db.insert(subtitles).values({
-						id: randomUUID(),
-						movieId,
-						movieFileId,
-						relativePath: sub.relativePath,
-						language: sub.language,
-						isForced: sub.isForced,
-						isHearingImpaired: sub.isHearingImpaired,
-						format: sub.format,
-						size: sub.size,
-						dateAdded: new Date().toISOString()
-					});
-
-					// Record in history
-					await db.insert(subtitleHistory).values({
-						id: randomUUID(),
-						movieId,
-						action: 'discovered',
-						language: sub.language,
-						createdAt: new Date().toISOString()
-					});
-
-					result.registered++;
-				} catch (error) {
-					result.errors.push(
-						`Error registering ${sub.relativePath}: ${error instanceof Error ? error.message : 'Unknown error'}`
-					);
-				}
+				desired.push({
+					ownerId: movieId,
+					relativePath: toStoredRelativePath(sub.path, moviePath),
+					absPath: sub.path,
+					language: sub.language,
+					isForced: sub.isForced,
+					isHearingImpaired: sub.isHearingImpaired,
+					format: sub.format,
+					size: sub.size,
+					movieFileId: movieFileId ?? null
+				});
 			}
+
+			const storedRows = await db.query.subtitles.findMany({
+				where: eq(subtitles.movieId, movieId)
+			});
+			const storedAbsPaths = await resolveStoredSubtitlePaths(storedRows);
+
+			this.reconcileItem(result, 'movie', desired, storedRows, storedAbsPaths);
 		} catch (error) {
 			result.errors.push(error instanceof Error ? error.message : 'Unknown error');
 		}
@@ -481,10 +572,16 @@ class SubtitleScannerService {
 	}
 
 	/**
-	 * Scan and register subtitles for a series
+	 * Scan and reconcile subtitles for a series.
+	 *
+	 * Episode rows are stored relative to the directory of the owning episode
+	 * file. Sidecars are associated unambiguously (exact stem, then SxxExx /
+	 * absolute marker, then proximity only for a single-episode directory);
+	 * anything else is skipped and reported instead of attaching to the first
+	 * episode in a shared season folder.
 	 */
-	async scanSeriesSubtitles(seriesId: string): Promise<ScanResult> {
-		const result: ScanResult = { discovered: 0, registered: 0, skipped: 0, errors: [] };
+	async scanSeriesSubtitles(seriesId: string): Promise<SubtitleScanResult> {
+		const result = emptyResult();
 
 		try {
 			const seriesData = await db.query.series.findFirst({
@@ -520,90 +617,43 @@ class SubtitleScannerService {
 				.from(episodeFiles)
 				.where(eq(episodeFiles.seriesId, seriesId));
 
-			// Collect all unique episode IDs and batch-fetch existing subtitles
+			const filesByDir = this.indexEpisodeFilesByDir(epFiles);
 			const allEpisodeIds = [...new Set(epFiles.flatMap((ef) => ef.episodeIds ?? []))];
-			const existingSubtitles =
+
+			const desired: DesiredSubtitle[] = [];
+			for (const sub of discovered) {
+				const association = this.associateSeriesSidecar(sub, filesByDir);
+				if ('skipped' in association) {
+					result.skipped++;
+					result.ambiguous.push(`${sub.relativePath}: ${association.skipped}`);
+					continue;
+				}
+
+				const episodeDir = relativeDir(association.episodeFile.relativePath);
+				const baseDirAbs = episodeDir ? join(seriesPath, episodeDir) : seriesPath;
+
+				desired.push({
+					ownerId: association.episodeId,
+					relativePath: toStoredRelativePath(sub.path, baseDirAbs),
+					absPath: sub.path,
+					language: sub.language,
+					isForced: sub.isForced,
+					isHearingImpaired: sub.isHearingImpaired,
+					format: sub.format,
+					size: sub.size,
+					movieFileId: null
+				});
+			}
+
+			const storedRows =
 				allEpisodeIds.length > 0
 					? await db.query.subtitles.findMany({
 							where: inArray(subtitles.episodeId, allEpisodeIds)
 						})
 					: [];
-			const existingKeys = new Set(
-				existingSubtitles.map((s) => `${s.episodeId}::${s.relativePath}`)
-			);
+			const storedAbsPaths = await resolveStoredSubtitlePaths(storedRows);
 
-			for (const sub of discovered) {
-				try {
-					// Try to match to an episode based on path proximity
-					let matchedEpisodeId: string | undefined;
-
-					// Check if subtitle is in the same directory as an episode file
-					const subDir = dirname(sub.relativePath);
-					for (const epFile of epFiles) {
-						const epDir = dirname(epFile.relativePath);
-						if (subDir === epDir || sub.relativePath.startsWith(epDir + '/')) {
-							// Find the episode ID
-							if (epFile.episodeIds && epFile.episodeIds.length > 0) {
-								matchedEpisodeId = epFile.episodeIds[0];
-								break;
-							}
-						}
-					}
-
-					if (!matchedEpisodeId) {
-						// Try to match by filename similarity
-						if (sub.videoFileName) {
-							for (const epFile of epFiles) {
-								const epBaseName = basename(epFile.relativePath, extname(epFile.relativePath));
-								if (epBaseName.toLowerCase().includes(sub.videoFileName.toLowerCase())) {
-									if (epFile.episodeIds && epFile.episodeIds.length > 0) {
-										matchedEpisodeId = epFile.episodeIds[0];
-										break;
-									}
-								}
-							}
-						}
-					}
-
-					if (!matchedEpisodeId) {
-						result.skipped++;
-						continue;
-					}
-
-					if (existingKeys.has(`${matchedEpisodeId}::${sub.relativePath}`)) {
-						result.skipped++;
-						continue;
-					}
-
-					// Register the subtitle
-					await db.insert(subtitles).values({
-						id: randomUUID(),
-						episodeId: matchedEpisodeId,
-						relativePath: sub.relativePath,
-						language: sub.language,
-						isForced: sub.isForced,
-						isHearingImpaired: sub.isHearingImpaired,
-						format: sub.format,
-						size: sub.size,
-						dateAdded: new Date().toISOString()
-					});
-
-					// Record in history
-					await db.insert(subtitleHistory).values({
-						id: randomUUID(),
-						episodeId: matchedEpisodeId,
-						action: 'discovered',
-						language: sub.language,
-						createdAt: new Date().toISOString()
-					});
-
-					result.registered++;
-				} catch (error) {
-					result.errors.push(
-						`Error registering ${sub.relativePath}: ${error instanceof Error ? error.message : 'Unknown error'}`
-					);
-				}
-			}
+			this.reconcileItem(result, 'episode', desired, storedRows, storedAbsPaths);
 		} catch (error) {
 			result.errors.push(error instanceof Error ? error.message : 'Unknown error');
 		}
@@ -612,33 +662,277 @@ class SubtitleScannerService {
 	}
 
 	/**
+	 * Index episode files by their (series-relative) directory.
+	 */
+	private indexEpisodeFilesByDir(epFiles: EpisodeFileRow[]): Map<string, EpisodeFileRow[]> {
+		const byDir = new Map<string, EpisodeFileRow[]>();
+		for (const file of epFiles) {
+			const dir = relativeDir(file.relativePath);
+			const list = byDir.get(dir);
+			if (list) list.push(file);
+			else byDir.set(dir, [file]);
+		}
+		return byDir;
+	}
+
+	/**
+	 * Associate a discovered sidecar with an episode using, in order:
+	 *   (a) exact video-stem match against an episode file basename in the same directory;
+	 *   (b) parsed SxxExx / absolute episode number matching an episode file in the same directory;
+	 *   (c) directory proximity, but ONLY when the directory holds exactly one episode file.
+	 * Anything else is skipped with a reason. Never defaults to `episodeIds[0]`
+	 * across a shared season directory.
+	 */
+	private associateSeriesSidecar(
+		sub: DiscoveredSubtitle,
+		filesByDir: Map<string, EpisodeFileRow[]>
+	): { episodeId: string; episodeFile: EpisodeFileRow } | { skipped: string } {
+		const sidecarDir = relativeDir(sub.relativePath);
+		const candidates = filesByDir.get(sidecarDir) ?? [];
+		const context = sidecarDir === '' ? 'series root' : `"${sidecarDir}"`;
+
+		if (candidates.length === 0) {
+			return { skipped: `no episode file in ${context}` };
+		}
+
+		// (a) Exact (stripped) video-stem match.
+		const strippedStem = (sub.videoFileName ?? '').toLowerCase();
+		if (strippedStem) {
+			const matches = candidates.filter(
+				(file) => stemOf(file.relativePath).toLowerCase() === strippedStem
+			);
+			if (matches.length > 0) {
+				const picked = this.pickEpisodeFromMatches(matches);
+				if (picked) return picked;
+				return {
+					skipped: `stem "${sub.videoFileName}" matches multiple episode files in ${context}`
+				};
+			}
+		}
+
+		// (b) Explicit SxxExx / absolute episode marker.
+		const marker = parseEpisodeMarker(sub.videoFileName || stemOf(sub.relativePath));
+		if (marker) {
+			const matches = candidates.filter(
+				(file) => parseEpisodeMarker(stemOf(file.relativePath)) === marker
+			);
+			if (matches.length > 0) {
+				const picked = this.pickEpisodeFromMatches(matches);
+				if (picked) return picked;
+				return {
+					skipped: `episode marker ${marker} matches multiple episode files in ${context}`
+				};
+			}
+		}
+
+		// (c) Proximity: safe only when the directory has exactly one episode file.
+		if (candidates.length === 1) {
+			const ids = uniqueStrings(candidates[0].episodeIds ?? []);
+			if (ids.length >= 1) {
+				return { episodeId: ids[0], episodeFile: candidates[0] };
+			}
+			return { skipped: `episode file has no episode id in ${context}` };
+		}
+
+		return {
+			skipped: `${context} has ${candidates.length} episode files and no exact/marker match`
+		};
+	}
+
+	/**
+	 * Turn the files matched by association step (a)/(b) into an episode.
+	 * A single matched file is unambiguous at file level (its first episode id
+	 * wins for combined multi-episode files). Multiple matched files only
+	 * resolve when they all reference the same episode; otherwise it is ambiguous.
+	 */
+	private pickEpisodeFromMatches(
+		matches: EpisodeFileRow[]
+	): { episodeId: string; episodeFile: EpisodeFileRow } | null {
+		const files = [...new Map(matches.map((file) => [file.id, file])).values()];
+		if (files.length === 1) {
+			const ids = uniqueStrings(files[0].episodeIds ?? []);
+			return ids.length >= 1 ? { episodeId: ids[0], episodeFile: files[0] } : null;
+		}
+
+		const episodeIds = uniqueStrings(files.flatMap((file) => file.episodeIds ?? []));
+		return episodeIds.length === 1 ? { episodeId: episodeIds[0], episodeFile: files[0] } : null;
+	}
+
+	/**
+	 * Reconcile discovered sidecars against stored rows for one media item.
+	 * Runs in a single transaction: insert new, update changed metadata, delete
+	 * rows whose file no longer exists (with a `deleted` history row).
+	 */
+	private reconcileItem(
+		result: SubtitleScanResult,
+		ownerType: 'movie' | 'episode',
+		desired: DesiredSubtitle[],
+		storedRows: StoredSubtitleRow[],
+		storedAbsPaths: Map<string, string | null>
+	): void {
+		const ownerIdOf = (row: StoredSubtitleRow): string =>
+			(ownerType === 'movie' ? row.movieId : row.episodeId) ?? '';
+		const keyOf = (ownerId: string, relativePath: string): string => `${ownerId}::${relativePath}`;
+
+		const desiredByKey = new Map<string, DesiredSubtitle>();
+		const desiredByAbs = new Map<string, DesiredSubtitle>();
+		for (const item of desired) {
+			const key = keyOf(item.ownerId, item.relativePath);
+			if (!desiredByKey.has(key)) desiredByKey.set(key, item);
+			desiredByAbs.set(item.absPath, item);
+		}
+
+		const storedByKey = new Map<string, StoredSubtitleRow>();
+		for (const row of storedRows) {
+			storedByKey.set(keyOf(ownerIdOf(row), row.relativePath), row);
+		}
+
+		let added = 0;
+		let updated = 0;
+		let removed = 0;
+		let unchanged = 0;
+
+		db.transaction((tx) => {
+			for (const item of desiredByKey.values()) {
+				const existing = storedByKey.get(keyOf(item.ownerId, item.relativePath));
+
+				if (!existing) {
+					tx.insert(subtitles)
+						.values({
+							id: randomUUID(),
+							movieId: ownerType === 'movie' ? item.ownerId : null,
+							episodeId: ownerType === 'episode' ? item.ownerId : null,
+							movieFileId: item.movieFileId,
+							relativePath: item.relativePath,
+							language: item.language,
+							isForced: item.isForced,
+							isHearingImpaired: item.isHearingImpaired,
+							format: item.format,
+							size: item.size,
+							dateAdded: new Date().toISOString()
+						})
+						.run();
+
+					tx.insert(subtitleHistory)
+						.values({
+							id: randomUUID(),
+							movieId: ownerType === 'movie' ? item.ownerId : null,
+							episodeId: ownerType === 'episode' ? item.ownerId : null,
+							action: 'discovered',
+							language: item.language,
+							createdAt: new Date().toISOString()
+						})
+						.run();
+
+					added++;
+					continue;
+				}
+
+				if (this.metadataChanged(existing, item)) {
+					tx.update(subtitles)
+						.set({
+							language: item.language,
+							isForced: item.isForced,
+							isHearingImpaired: item.isHearingImpaired,
+							movieFileId: item.movieFileId,
+							format: item.format,
+							size: item.size
+						})
+						.where(eq(subtitles.id, existing.id))
+						.run();
+					updated++;
+				} else {
+					unchanged++;
+				}
+			}
+
+			// Deletion pass: a stored row not represented by a desired entry is
+			// removed if its file is gone, or if the same file now belongs to a
+			// different owner/episode (stale association from the old scanner).
+			// Rows whose file still exists without a desired entry (e.g. an
+			// ambiguous sidecar) and rows with an unresolvable owner are kept.
+			for (const row of storedRows) {
+				if (desiredByKey.has(keyOf(ownerIdOf(row), row.relativePath))) continue;
+
+				const absPath = storedAbsPaths.get(row.id) ?? null;
+				const staleOwner = absPath !== null && desiredByAbs.has(absPath);
+				const fileGone = absPath !== null && !existsSync(absPath);
+
+				if (staleOwner || fileGone) {
+					tx.delete(subtitles).where(eq(subtitles.id, row.id)).run();
+					tx.insert(subtitleHistory)
+						.values({
+							id: randomUUID(),
+							movieId: row.movieId,
+							episodeId: row.episodeId,
+							action: 'deleted',
+							language: row.language,
+							errorMessage: staleOwner
+								? 'reassociated during subtitle scan reconciliation'
+								: 'file missing during subtitle scan reconciliation',
+							createdAt: new Date().toISOString()
+						})
+						.run();
+					removed++;
+				} else {
+					unchanged++;
+				}
+			}
+		});
+
+		result.added += added;
+		result.registered = result.added;
+		result.updated += updated;
+		result.removed += removed;
+		result.unchanged += unchanged;
+	}
+
+	/** Compare stored metadata against a desired sidecar. */
+	private metadataChanged(existing: StoredSubtitleRow, desired: DesiredSubtitle): boolean {
+		return (
+			existing.language !== desired.language ||
+			(existing.isForced ?? false) !== desired.isForced ||
+			(existing.isHearingImpaired ?? false) !== desired.isHearingImpaired ||
+			(existing.movieFileId ?? null) !== desired.movieFileId ||
+			existing.format !== desired.format ||
+			(existing.size ?? null) !== desired.size
+		);
+	}
+
+	/**
 	 * Scan all movies and series for subtitles
 	 */
-	async scanAll(): Promise<{ movies: ScanResult; series: ScanResult }> {
-		const movieResults: ScanResult = { discovered: 0, registered: 0, skipped: 0, errors: [] };
-		const seriesResults: ScanResult = { discovered: 0, registered: 0, skipped: 0, errors: [] };
+	async scanAll(): Promise<{ movies: SubtitleScanResult; series: SubtitleScanResult }> {
+		const movieResults = emptyResult();
+		const seriesResults = emptyResult();
 
 		// Scan all movies
 		const allMovies = await db.select({ id: movies.id }).from(movies);
 		for (const movie of allMovies) {
 			const result = await this.scanMovieSubtitles(movie.id);
-			movieResults.discovered += result.discovered;
-			movieResults.registered += result.registered;
-			movieResults.skipped += result.skipped;
-			movieResults.errors.push(...result.errors);
+			this.mergeResult(movieResults, result);
 		}
 
 		// Scan all series
 		const allSeries = await db.select({ id: series.id }).from(series);
 		for (const show of allSeries) {
 			const result = await this.scanSeriesSubtitles(show.id);
-			seriesResults.discovered += result.discovered;
-			seriesResults.registered += result.registered;
-			seriesResults.skipped += result.skipped;
-			seriesResults.errors.push(...result.errors);
+			this.mergeResult(seriesResults, result);
 		}
 
 		return { movies: movieResults, series: seriesResults };
+	}
+
+	private mergeResult(target: SubtitleScanResult, source: SubtitleScanResult): void {
+		target.discovered += source.discovered;
+		target.added += source.added;
+		target.registered += source.registered;
+		target.updated += source.updated;
+		target.removed += source.removed;
+		target.unchanged += source.unchanged;
+		target.skipped += source.skipped;
+		target.ambiguous.push(...source.ambiguous);
+		target.errors.push(...source.errors);
 	}
 }
 
