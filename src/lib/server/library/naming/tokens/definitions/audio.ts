@@ -4,6 +4,7 @@
 
 import type { TokenDefinition } from '../types';
 import { normalizeAudioCodec } from '../../normalization';
+import { normalizeLanguageTag } from '../../../../languages/normalize.js';
 
 export const audioTokens: TokenDefinition[] = [
 	{
@@ -31,8 +32,17 @@ export const audioTokens: TokenDefinition[] = [
 	{
 		name: 'AudioLanguages',
 		category: 'audio',
-		description: 'Audio languages in file',
+		description: 'Canonical audio language tags in file (und when unknown)',
 		applicability: ['movie', 'episode'],
-		render: (info, config) => (config.includeMediaInfo ? info.audioLanguages?.join(' ') || '' : '')
+		render: (info, config) => {
+			if (!config.includeMediaInfo) return '';
+			// Canonicalize every source value (ffprobe emits ISO 639-2 like `eng`);
+			// markers such as `multi`/`und` normalize to `und`, never to a guess.
+			const meaningful = (info.audioLanguages ?? [])
+				.map((code) => normalizeLanguageTag(code))
+				.filter((tag) => tag !== 'und');
+			// Empty or fully-unknown track sets render as `und`.
+			return meaningful.length > 0 ? meaningful.join(' ') : 'und';
+		}
 	}
 ];

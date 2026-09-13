@@ -56,6 +56,7 @@ import {
 	type MediaNamingInfo
 } from '$lib/server/library/naming/NamingService';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService';
+import { resolveAudioLanguages } from '$lib/server/library/naming/preview-metadata.js';
 import { createChildLogger, runWithLogContext } from '$lib/logging';
 import { todayDateString } from '$lib/utils/format.js';
 import {
@@ -2450,10 +2451,7 @@ export class ImportService extends EventEmitter {
 			audioCodec: mediaInfo?.audioCodec ?? fromRelease.audioCodec,
 			audioChannels:
 				this.formatAudioChannels(mediaInfo?.audioChannels) ?? fromRelease.audioChannels,
-			audioLanguages:
-				mediaInfo?.audioLanguages && mediaInfo.audioLanguages.length > 0
-					? mediaInfo.audioLanguages
-					: fromRelease.audioLanguages
+			audioLanguages: resolveAudioLanguages(mediaInfo?.audioLanguages)
 		};
 
 		return this.getNamingService().generateMovieFileName(namingInfo);
@@ -2496,10 +2494,7 @@ export class ImportService extends EventEmitter {
 			audioCodec: mediaInfo?.audioCodec ?? fromRelease.audioCodec,
 			audioChannels:
 				this.formatAudioChannels(mediaInfo?.audioChannels) ?? fromRelease.audioChannels,
-			audioLanguages:
-				mediaInfo?.audioLanguages && mediaInfo.audioLanguages.length > 0
-					? mediaInfo.audioLanguages
-					: fromRelease.audioLanguages
+			audioLanguages: resolveAudioLanguages(mediaInfo?.audioLanguages)
 		};
 
 		return this.getNamingService().generateEpisodeFileName(namingInfo);

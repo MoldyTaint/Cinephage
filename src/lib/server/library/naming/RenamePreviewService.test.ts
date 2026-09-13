@@ -13,6 +13,8 @@ import { createTestDb, destroyTestDb } from '../../../../test/db-helper';
 import { RenamePreviewService, type RenamePreviewResult } from './RenamePreviewService';
 import { NamingService, type MediaNamingInfo, DEFAULT_NAMING_CONFIG } from './NamingService';
 import { chooseBestParsedRelease, resolveAudioLanguages } from './preview-metadata';
+import { clearLocalizationCaches } from './localization';
+import { namingSettingsService } from './NamingSettingsService';
 import { libraryOperationLock } from '../library-operation-lock';
 import { diskScanService } from '../disk-scan.js';
 import * as schema from '$lib/server/db/schema';
@@ -29,6 +31,13 @@ vi.mock('$lib/server/db', () => ({
 	},
 	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
+
+const tmdbFetch = vi.hoisted(() => vi.fn());
+
+vi.mock('$lib/server/tmdb', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('$lib/server/tmdb')>();
+	return { ...actual, tmdb: { ...actual.tmdb, fetch: tmdbFetch } };
+});
 
 const notifierMocks = vi.hoisted(() => ({
 	queueUpdate: vi.fn()
@@ -125,19 +134,14 @@ describe('RenamePreviewService', () => {
 
 	describe('audio language resolution', () => {
 		it('keeps audio languages from the ffprobe scan when present', () => {
-			expect(resolveAudioLanguages(['eng', 'fre'], ['ger'])).toEqual(['eng', 'fre']);
+			expect(resolveAudioLanguages(['eng', 'fre'])).toEqual(['eng', 'fre']);
 		});
 
-		it('falls back to filename-parsed languages when the scan found none', () => {
-			expect(resolveAudioLanguages(undefined, ['ger'])).toEqual(['ger']);
-		});
-
-		it('treats an empty scan result as missing so the filename fallback applies', () => {
-			expect(resolveAudioLanguages([], ['ger'])).toEqual(['ger']);
-		});
-
-		it('yields undefined when neither source carries languages', () => {
-			expect(resolveAudioLanguages([], [])).toBeUndefined();
+		it('never treats filename-parsed languages as audio evidence', () => {
+			// No scan data -> undefined; the {AudioLanguages} token renders `und`.
+			// The old filename fallback (['ger'] from the release name) is gone.
+			expect(resolveAudioLanguages(undefined)).toBeUndefined();
+			expect(resolveAudioLanguages([])).toBeUndefined();
 		});
 	});
 
@@ -2632,5 +2636,202 @@ describe('in-place subtitle companion renames', () => {
 		expect(result.success).toBe(true);
 		expect(mockFs.readdir).not.toHaveBeenCalled();
 		expect(mockFs.rename).not.toHaveBeenCalled();
+	});
+});
+
+describe('localized title rename parity', () => {
+	let configSpy: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		resetAllMocks();
+		clearLocalizationCaches();
+		tmdbFetch.mockReset();
+	});
+
+	afterEach(() => {
+		configSpy?.mockRestore();
+	});
+
+	function mockNamingConfig(overrides: Record<string, string>) {
+		configSpy = vi.spyOn(namingSettingsService, 'getConfigSync').mockReturnValue({
+			...DEFAULT_NAMING_CONFIG,
+			...overrides
+		} as ReturnType<typeof namingSettingsService.getConfigSync>);
+	}
+
+	it('preview and execute render identical localized output for {Title:ja}', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const movieId = randomUUID();
+		const fileId = randomUUID();
+		const root = '/tmp/opencode/localized-root';
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: root,
+			mediaType: 'movie',
+			name: 'localized-root'
+		});
+		await db.insert(schema.movies).values({
+			id: movieId,
+			rootFolderId,
+			path: 'Old (2001)',
+			title: 'Spirited Away',
+			year: 2001,
+			tmdbId: 129,
+			hasFile: true
+		});
+		await db.insert(schema.movieFiles).values({
+			id: fileId,
+			movieId,
+			relativePath: 'spirited.away.2001.mkv',
+			size: 100
+		});
+
+		tmdbFetch.mockResolvedValue({ title: '千と千尋の神隠し' });
+		mockNamingConfig({
+			movieFolderFormat: '{Title:ja} ({Year}) {MediaId}',
+			movieFileFormat: '{Title:ja} [{QualityFull}]'
+		});
+
+		try {
+			const svc = new RenamePreviewService();
+
+			// Preview renders the Japanese title fetched from TMDB.
+			const preview = await svc.previewMovie(movieId);
+			expect(tmdbFetch).toHaveBeenCalledTimes(1);
+			expect(tmdbFetch).toHaveBeenCalledWith('/movie/129?language=ja-JP', {}, true);
+			expect(preview.willChange).toHaveLength(1);
+			const previewedFolder = preview.willChange[0].newParentPath;
+			const previewedFile = preview.willChange[0].newRelativePath;
+			expect(previewedFolder).toContain('千と千尋の神隠し (2001)');
+			expect(previewedFile).toContain('千と千尋の神隠し');
+
+			// Execute produces the exact paths the preview proposed.
+			const currentFullPath = preview.willChange[0].currentFullPath;
+			mockedFileExists.mockImplementation(async (p: string) => p === currentFullPath);
+
+			const result = await svc.executeRenames([fileId]);
+
+			expect(result.succeeded).toBeGreaterThanOrEqual(1);
+			// Shared cache: execute must NOT refetch what preview already resolved.
+			expect(tmdbFetch).toHaveBeenCalledTimes(1);
+			expect(mockedMoveFile).toHaveBeenCalledWith(
+				preview.willChange[0].currentFullPath,
+				preview.willChange[0].newFullPath
+			);
+
+			// The moved file and updated DB folder both use the localized name.
+			const movieAfter = db.select().from(schema.movies).where(eq(schema.movies.id, movieId)).get();
+			expect(movieAfter?.path).toBe(previewedFolder);
+			const fileAfter = db
+				.select()
+				.from(schema.movieFiles)
+				.where(eq(schema.movieFiles.id, fileId))
+				.get();
+			expect(fileAfter?.relativePath).toBe(previewedFile);
+		} finally {
+			await db.delete(schema.movieFiles).where(eq(schema.movieFiles.id, fileId));
+			await db.delete(schema.movies).where(eq(schema.movies.id, movieId));
+			await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+		}
+	});
+
+	it('falls back to the base title when the language code has no valid locale', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const movieId = randomUUID();
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: '/tmp/opencode/invalid-locale-root',
+			mediaType: 'movie',
+			name: 'invalid-locale-root'
+		});
+		await db.insert(schema.movies).values({
+			id: movieId,
+			rootFolderId,
+			path: 'Old (2020)',
+			title: 'Base Title',
+			year: 2020,
+			tmdbId: 555001,
+			hasFile: true
+		});
+		await db.insert(schema.movieFiles).values({
+			id: randomUUID(),
+			movieId,
+			relativePath: 'base.title.2020.mkv'
+		});
+
+		mockNamingConfig({ movieFolderFormat: '{Title:xx} ({Year})' });
+
+		try {
+			const svc = new RenamePreviewService();
+			const preview = await svc.previewMovie(movieId);
+
+			// No fetch for the undecorable code; the base title renders.
+			expect(tmdbFetch).not.toHaveBeenCalled();
+			expect(preview.willChange).toHaveLength(1);
+			expect(preview.willChange[0].newParentPath).toBe('Base Title (2020)');
+		} finally {
+			await db.delete(schema.movies).where(eq(schema.movies.id, movieId));
+			await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+		}
+	});
+
+	it('localizes series folder and episode names via the tv endpoint', async () => {
+		const db = testDb.db;
+		const rootFolderId = randomUUID();
+		const seriesId = randomUUID();
+		const episodeId = randomUUID();
+		const fileId = randomUUID();
+		await db.insert(schema.rootFolders).values({
+			id: rootFolderId,
+			path: '/tmp/opencode/localized-series-root',
+			mediaType: 'tv',
+			name: 'localized-series-root'
+		});
+		await db.insert(schema.series).values({
+			id: seriesId,
+			rootFolderId,
+			path: 'Old Show (2015)',
+			title: 'Show',
+			year: 2015,
+			tmdbId: 60059
+		});
+		await db.insert(schema.episodes).values({
+			id: episodeId,
+			seriesId,
+			seasonNumber: 1,
+			episodeNumber: 1,
+			title: 'Pilot'
+		});
+		await db.insert(schema.episodeFiles).values({
+			id: fileId,
+			seriesId,
+			seasonNumber: 1,
+			relativePath: 'old.show.mkv',
+			episodeIds: [episodeId]
+		});
+
+		tmdbFetch.mockResolvedValue({ name: '日本語ショー' });
+		mockNamingConfig({
+			seriesFolderFormat: '{Title:ja} ({Year}) {SeriesId}',
+			episodeFileFormat: '{Title:ja} - S{Season:00}E{Episode:00}'
+		});
+
+		try {
+			const svc = new RenamePreviewService();
+			const preview = await svc.previewSeries(seriesId);
+
+			expect(tmdbFetch).toHaveBeenCalledTimes(1);
+			expect(tmdbFetch).toHaveBeenCalledWith('/tv/60059?language=ja-JP', {}, true);
+			expect(preview.willChange).toHaveLength(1);
+			expect(preview.willChange[0].newParentPath).toContain('日本語ショー (2015)');
+			expect(preview.willChange[0].newRelativePath).toContain('日本語ショー - S01E01');
+		} finally {
+			await db.delete(schema.episodeFiles).where(eq(schema.episodeFiles.id, fileId));
+			await db.delete(schema.episodes).where(eq(schema.episodes.id, episodeId));
+			await db.delete(schema.series).where(eq(schema.series.id, seriesId));
+			await db.delete(schema.rootFolders).where(eq(schema.rootFolders.id, rootFolderId));
+		}
 	});
 });
