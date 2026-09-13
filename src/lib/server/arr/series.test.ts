@@ -36,12 +36,14 @@ vi.mock('$lib/server/db/index.js', () => ({
 vi.mock('$lib/server/tmdb.js', () => ({
 	tmdb: {
 		searchTv: vi.fn(),
-		getTVShow: vi.fn()
+		getTVShow: vi.fn(),
+		findByExternalId: vi.fn()
 	}
 }));
 
-const { buildSeries, buildSeriesByArrId } = await import('./series.js');
+const { buildSeries, buildSeriesByArrId, buildSeriesLookup } = await import('./series.js');
 const { buildEpisodesForSeries } = await import('./episodes.js');
+const { tmdb } = await import('$lib/server/tmdb.js');
 
 const SERIES_ID = 'series-1';
 const ROOT_FOLDER_ID = 'root-1';
@@ -196,5 +198,59 @@ describe('buildEpisodesForSeries', () => {
 		const season1Episodes = await buildEpisodesForSeries({ seriesId: SERIES_ID, seasonNumber: 1 });
 		expect(season1Episodes).toHaveLength(1);
 		expect(season1Episodes[0].seasonNumber).toBe(1);
+	});
+});
+
+describe('buildSeriesLookup', () => {
+	it('resolves an already-added series by tvdb: term without calling TMDB', async () => {
+		testDb.db
+			.insert(series)
+			.values({
+				id: SERIES_ID,
+				tmdbId: 200,
+				tvdbId: 305288,
+				title: 'Stranger Things',
+				path: '/tv/stranger-things',
+				rootFolderId: ROOT_FOLDER_ID
+			})
+			.run();
+
+		const results = await buildSeriesLookup('tvdb:305288');
+
+		expect(results).toHaveLength(1);
+		expect(results[0].title).toBe('Stranger Things');
+		expect(tmdb.findByExternalId).not.toHaveBeenCalled();
+	});
+
+	it('falls back to TMDB find-by-external-id for a tvdb: term not yet in the library', async () => {
+		vi.mocked(tmdb.findByExternalId).mockResolvedValue({
+			tv_results: [{ id: 999 }]
+		} as Awaited<ReturnType<typeof tmdb.findByExternalId>>);
+		vi.mocked(tmdb.getTVShow).mockResolvedValue({
+			id: 999,
+			name: 'New Show',
+			overview: '',
+			poster_path: null,
+			backdrop_path: null,
+			first_air_date: '2024-01-01',
+			status: 'Continuing',
+			genres: []
+		} as unknown as Awaited<ReturnType<typeof tmdb.getTVShow>>);
+
+		const results = await buildSeriesLookup('tvdb:12345');
+
+		expect(tmdb.findByExternalId).toHaveBeenCalledWith('12345', 'tvdb_id');
+		expect(results).toHaveLength(1);
+		expect(results[0].title).toBe('New Show');
+	});
+
+	it('returns an empty array for a tvdb: term with no TMDB match', async () => {
+		vi.mocked(tmdb.findByExternalId).mockResolvedValue({
+			tv_results: []
+		} as unknown as Awaited<ReturnType<typeof tmdb.findByExternalId>>);
+
+		const results = await buildSeriesLookup('tvdb:0');
+
+		expect(results).toEqual([]);
 	});
 });

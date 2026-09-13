@@ -251,6 +251,34 @@ export async function buildSeriesLookup(term: string): Promise<Record<string, un
 		return show ? [show] : [];
 	}
 
+	// Sonarr's own identity key is TVDB, not TMDB - Seerr's addSeries() always
+	// looks a series up by `tvdb:<id>` first (its own getSeriesByTvdbId),
+	// before ever calling POST /series. Without this, that lookup silently
+	// falls through to a TMDB title search for the literal string
+	// "tvdb:12345", which never matches anything - Seerr sees an empty
+	// array and reports "series not found", with nothing to log on our side
+	// since nothing actually failed.
+	const tvdbMatch = /^tvdb:(\d+)$/i.exec(term);
+	if (tvdbMatch) {
+		const tvdbId = Number(tvdbMatch[1]);
+		const [existing] = await db
+			.select({ id: series.id })
+			.from(series)
+			.where(eq(series.tvdbId, tvdbId))
+			.limit(1);
+		if (existing) {
+			const arrId = await getOrAssignArrId('series', existing.id);
+			const show = await buildSeriesByArrId(arrId);
+			return show ? [show] : [];
+		}
+
+		const found = await tmdb.findByExternalId(String(tvdbId), 'tvdb_id');
+		const tmdbId = found.tv_results?.[0]?.id;
+		if (!tmdbId) return [];
+		const show = await buildSeriesLookupByTmdbId(tmdbId);
+		return show ? [show] : [];
+	}
+
 	const result = await tmdb.searchTv(term);
 	return result.results.map((show) => {
 		const year = show.first_air_date ? Number.parseInt(show.first_air_date.slice(0, 4), 10) : 0;

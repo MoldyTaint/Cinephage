@@ -20,6 +20,7 @@ import { rootFolders } from '$lib/server/db/schema.js';
 import { getEntityIdForArrId, getOrAssignArrId } from './ArrIdMappingService.js';
 import { buildMovieByArrId } from './movies.js';
 import { buildSeriesByArrId } from './series.js';
+import { tmdb } from '$lib/server/tmdb.js';
 
 type FetchFn = typeof fetch;
 
@@ -116,7 +117,22 @@ export async function addMovieFromArr(fetchFn: FetchFn, rawBody: Record<string, 
 
 /** POST /series - add a series to the library. */
 export async function addSeriesFromArr(fetchFn: FetchFn, rawBody: Record<string, unknown>) {
-	const tmdbId = rawBody.tmdbId as number | undefined;
+	let tmdbId = rawBody.tmdbId as number | undefined;
+
+	// Real Sonarr's identity key for AddSeriesOptions is `tvdbId` (lowercased
+	// `tvdbid` in Seerr's actual request body) - it has no tmdbId at all on
+	// add, unlike Radarr. Resolve it the same way series.ts's `tvdb:` lookup
+	// does, so a client that only ever sends tvdbId (which is every real
+	// Sonarr client, Seerr included) doesn't hit a spurious "tmdbId is
+	// required" 400.
+	if (!tmdbId) {
+		const tvdbId = (rawBody.tvdbid ?? rawBody.tvdbId) as number | undefined;
+		if (tvdbId) {
+			const found = await tmdb.findByExternalId(String(tvdbId), 'tvdb_id');
+			tmdbId = found.tv_results?.[0]?.id;
+		}
+	}
+
 	if (!tmdbId) {
 		return { ok: false, status: 400, body: { message: 'tmdbId is required' } };
 	}
@@ -209,7 +225,15 @@ export async function updateMovieFromArr(
 	return { ok: true, status: 200, body: await buildMovieByArrId(arrId) };
 }
 
-/** PUT /series/{id} - update monitored state/quality profile/type. */
+/**
+ * PUT /series/{id} - update monitored state/quality profile/type.
+ *
+ * Note: real Seerr's addSeries() also sends a per-season `seasons` array
+ * when a series already exists, but doesn't rely on this endpoint to apply
+ * it - it separately calls PUT /episode/monitor with the specific episode
+ * IDs for the newly-requested seasons (see monitorEpisodesFromArr below),
+ * which is the actual mechanism that ends up monitoring them.
+ */
 export async function updateSeriesFromArr(
 	fetchFn: FetchFn,
 	arrId: number,
@@ -292,6 +316,43 @@ export async function deleteSeriesFromArr(
 			ok: false,
 			status: response.status,
 			body: { message: responseBody.error ?? 'Failed to delete series' }
+		};
+	}
+
+	return { ok: true, status: 200, body: {} };
+}
+
+/**
+ * PUT /episode/monitor - real Sonarr's bulk episode-monitoring endpoint.
+ * Seerr calls this right after updating an already-existing series, to
+ * re-monitor specific episodes in the newly-requested seasons (the PUT
+ * /series call above only carries a season-level `monitored` summary, not
+ * per-episode state - this is the actual mechanism Seerr relies on for
+ * that, so it isn't a gap after all once this is wired up).
+ */
+export async function monitorEpisodesFromArr(
+	fetchFn: FetchFn,
+	episodeArrIds: number[],
+	monitored: boolean
+): Promise<WriteResult> {
+	const episodeIds = (
+		await Promise.all(episodeArrIds.map((id) => getEntityIdForArrId('episode', id)))
+	).filter((id): id is string => !!id);
+	if (episodeIds.length === 0) {
+		return { ok: false, status: 404, body: { message: 'No matching episodes found' } };
+	}
+
+	const response = await fetchFn('/api/library/episodes/batch', {
+		method: 'PATCH',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ episodeIds, monitored })
+	});
+	const responseBody = await response.json().catch(() => ({}));
+	if (!response.ok) {
+		return {
+			ok: false,
+			status: response.status,
+			body: { message: responseBody.error ?? 'Failed to monitor episodes' }
 		};
 	}
 
