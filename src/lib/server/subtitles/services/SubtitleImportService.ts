@@ -11,7 +11,7 @@ import { movies, series, episodes, subtitleHistory } from '$lib/server/db/schema
 import { eq } from 'drizzle-orm';
 import { getSubtitleSearchService } from './SubtitleSearchService.js';
 import { getSubtitleDownloadService } from './SubtitleDownloadService.js';
-import { LanguageProfileService } from './LanguageProfileService.js';
+import { LanguageProfileService, toLegacyPreferences } from './LanguageProfileService.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
@@ -164,7 +164,7 @@ async function searchForMovie(
 		return result;
 	}
 
-	const languages = profile.languages.map((l) => l.code);
+	const languages = toLegacyPreferences(profile).languages.map((l) => l.code);
 	if (languages.length === 0) {
 		return result;
 	}
@@ -380,7 +380,7 @@ async function searchForEpisode(
 		return result;
 	}
 
-	const languages = profile.languages.map((l) => l.code);
+	const languages = toLegacyPreferences(profile).languages.map((l) => l.code);
 	if (languages.length === 0) {
 		return result;
 	}

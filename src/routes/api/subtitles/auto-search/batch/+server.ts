@@ -1,7 +1,11 @@
 import type { RequestHandler } from './$types.js';
 import { getSubtitleSearchService } from '$lib/server/subtitles/services/SubtitleSearchService.js';
 import { getSubtitleDownloadService } from '$lib/server/subtitles/services/SubtitleDownloadService.js';
-import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
+import {
+	LanguageProfileService,
+	toLegacyPreferences,
+	type LanguageProfile
+} from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { db } from '$lib/server/db/index.js';
 import { episodes, series, movies } from '$lib/server/db/schema.js';
 import { eq, and, inArray } from 'drizzle-orm';
@@ -39,15 +43,12 @@ interface BatchCompletedEvent {
 	error?: string;
 }
 
-function getLanguages(
-	profile:
-		| {
-				languages: Array<{ code: string }>;
-		  }
-		| undefined
-): string[] {
-	if (profile && profile.languages && profile.languages.length > 0) {
-		return profile.languages.map((l) => l.code);
+function getLanguages(profile: LanguageProfile | undefined): string[] {
+	if (profile) {
+		const legacy = toLegacyPreferences(profile);
+		if (legacy.languages.length > 0) {
+			return legacy.languages.map((l) => l.code);
+		}
 	}
 	return ['en'];
 }

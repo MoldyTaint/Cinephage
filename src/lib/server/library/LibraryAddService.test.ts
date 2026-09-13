@@ -8,7 +8,9 @@ const mocks = vi.hoisted(() => ({
 	seedDefaultScoringProfiles: vi.fn(),
 	getProfile: vi.fn(),
 	getDefaultScoringProfile: vi.fn(),
-	getEffectiveAnimeRootFolderEnforcement: vi.fn().mockResolvedValue(false)
+	getEffectiveAnimeRootFolderEnforcement: vi.fn().mockResolvedValue(false),
+	getDefaultLanguageProfile: vi.fn(),
+	logWarn: vi.fn()
 }));
 
 vi.mock('$lib/server/db/index.js', () => ({
@@ -27,6 +29,14 @@ vi.mock('$lib/server/quality/index.js', () => ({
 	}
 }));
 
+vi.mock('$lib/server/subtitles/services/LanguageProfileService.js', () => ({
+	LanguageProfileService: {
+		getInstance: () => ({
+			getDefaultProfile: mocks.getDefaultLanguageProfile
+		})
+	}
+}));
+
 vi.mock('$lib/server/tmdb.js', () => ({ tmdb: {} }));
 vi.mock('$lib/server/workers/index.js', () => ({
 	SearchWorker: class {},
@@ -38,27 +48,31 @@ vi.mock('./anime-root-enforcement-settings.js', () => ({
 	getEffectiveAnimeRootFolderEnforcement: mocks.getEffectiveAnimeRootFolderEnforcement
 }));
 vi.mock('$lib/logging/index.js', () => ({
-	logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn() },
+	logger: { info: vi.fn(), debug: vi.fn(), warn: mocks.logWarn, error: vi.fn(), child: vi.fn() },
 	createChildLogger: vi.fn(() => ({
 		info: vi.fn(),
 		debug: vi.fn(),
-		warn: vi.fn(),
+		warn: mocks.logWarn,
 		error: vi.fn(),
 		child: vi.fn()
 	}))
 }));
 vi.mock('$lib/logging', () => ({
-	logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn() },
+	logger: { info: vi.fn(), debug: vi.fn(), warn: mocks.logWarn, error: vi.fn(), child: vi.fn() },
 	createChildLogger: vi.fn(() => ({
 		info: vi.fn(),
 		debug: vi.fn(),
-		warn: vi.fn(),
+		warn: mocks.logWarn,
 		error: vi.fn(),
 		child: vi.fn()
 	}))
 }));
 
-import { getEffectiveScoringProfileId, validateRootFolder } from './LibraryAddService.js';
+import {
+	getEffectiveScoringProfileId,
+	getLanguageProfileId,
+	validateRootFolder
+} from './LibraryAddService.js';
 import { ValidationError } from '$lib/errors';
 
 beforeEach(() => {
@@ -125,6 +139,27 @@ describe('validateRootFolder', () => {
 				mediaSubType: 'standard'
 			}
 		);
+	});
+});
+
+describe('getLanguageProfileId', () => {
+	it('returns null without resolving a profile when subtitles are not wanted', async () => {
+		await expect(getLanguageProfileId(false, 42)).resolves.toBeNull();
+		expect(mocks.getDefaultLanguageProfile).not.toHaveBeenCalled();
+	});
+
+	it('returns the default profile id resolved through language settings', async () => {
+		mocks.getDefaultLanguageProfile.mockResolvedValue({ id: 'profile-default' });
+
+		await expect(getLanguageProfileId(true, 42)).resolves.toBe('profile-default');
+		expect(mocks.getDefaultLanguageProfile).toHaveBeenCalledTimes(1);
+	});
+
+	it('warns and returns null when no default profile is configured', async () => {
+		mocks.getDefaultLanguageProfile.mockResolvedValue(undefined);
+
+		await expect(getLanguageProfileId(true, 42)).resolves.toBeNull();
+		expect(mocks.logWarn).toHaveBeenCalled();
 	});
 });
 

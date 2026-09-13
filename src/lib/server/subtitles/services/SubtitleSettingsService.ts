@@ -5,9 +5,10 @@
  * Settings are stored in the subtitle_settings table as key-value pairs.
  *
  * NOTE: Scheduling-related settings (search intervals, trigger timing) have been
- * consolidated into MonitoringScheduler. This service now only handles:
- * - defaultLanguageProfileId: default profile for new media
- * - defaultFallbackLanguage: fallback when subtitle language can't be detected
+ * consolidated into MonitoringScheduler. The language defaults
+ * (defaultLanguageProfileId / defaultFallbackLanguage) moved to the
+ * language_settings singleton (LanguageSettingsService); this service keeps the
+ * subtitle_settings key-value store for any remaining settings.
  */
 
 import { db } from '$lib/server/db';
@@ -17,25 +18,14 @@ import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 
-/** All available subtitle settings (non-scheduler related) */
-export interface SubtitleSettingsData {
-	/** Default language profile ID for new media */
-	defaultLanguageProfileId: string | null;
-	/** Fallback language code when subtitle file language cannot be detected (ISO 639-1) */
-	defaultFallbackLanguage: string;
-}
+/** All available subtitle settings (non-scheduler, non-language related) */
+export interface SubtitleSettingsData {}
 
 /** Default settings values */
-const DEFAULT_SETTINGS: SubtitleSettingsData = {
-	defaultLanguageProfileId: null,
-	defaultFallbackLanguage: 'en'
-};
+const DEFAULT_SETTINGS: SubtitleSettingsData = {};
 
 /** Mapping between camelCase and database keys */
-const SETTING_KEY_MAP: Record<keyof SubtitleSettingsData, string> = {
-	defaultLanguageProfileId: 'default_language_profile_id',
-	defaultFallbackLanguage: 'default_fallback_language'
-};
+const SETTING_KEY_MAP: Record<keyof SubtitleSettingsData, string> = {};
 
 /**
  * Service for managing subtitle settings
@@ -114,7 +104,8 @@ export class SubtitleSettingsService {
 	 */
 	async resetToDefaults(): Promise<SubtitleSettingsData> {
 		// Delete all settings
-		for (const dbKey of Object.values(SETTING_KEY_MAP)) {
+		const dbKeys = Object.values(SETTING_KEY_MAP) as string[];
+		for (const dbKey of dbKeys) {
 			await db.delete(subtitleSettings).where(eq(subtitleSettings.key, dbKey));
 		}
 
@@ -124,13 +115,6 @@ export class SubtitleSettingsService {
 
 		logger.info('Subtitle settings reset to defaults');
 		return { ...DEFAULT_SETTINGS };
-	}
-
-	/**
-	 * Get the fallback language for subtitle files with no detectable language
-	 */
-	async getFallbackLanguage(): Promise<string> {
-		return this.get('defaultFallbackLanguage');
 	}
 
 	/**

@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getSubtitleSearchService } from '$lib/server/subtitles/services/SubtitleSearchService';
-import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
+import { LanguageProfileService, toLegacyPreferences } from '$lib/server/subtitles/services/LanguageProfileService';
 import { subtitleSearchSchema } from '$lib/validation/schemas';
 import { db } from '$lib/server/db';
 import { movies, episodes, series } from '$lib/server/db/schema';
@@ -33,7 +33,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		if (languages.length === 0) {
 			const profile = await profileService.getProfileForMovie(validated.movieId);
 			if (profile) {
-				languages = profile.languages.map((l) => l.code);
+				languages = toLegacyPreferences(profile).languages.map((l) => l.code);
 			}
 		}
 		if (languages.length === 0) {
@@ -70,7 +70,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		if (languages.length === 0) {
 			const profile = await profileService.getProfileForSeries(seriesData.id);
 			if (profile) {
-				languages = profile.languages.map((l) => l.code);
+				languages = toLegacyPreferences(profile).languages.map((l) => l.code);
 			}
 		}
 		if (languages.length === 0) {

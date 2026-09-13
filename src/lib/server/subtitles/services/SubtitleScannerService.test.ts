@@ -119,9 +119,9 @@ describe('SubtitleScannerService', () => {
 			});
 		});
 
-		it('should default to English when no language detected', () => {
-			expect(scanner.detectLanguage('movie.srt')).toBe('en');
-			expect(scanner.detectLanguage('Movie.2023.1080p.BluRay.srt')).toBe('en');
+		it('should default to undetermined when no language detected', () => {
+			expect(scanner.detectLanguage('movie.srt')).toBe('und');
+			expect(scanner.detectLanguage('Movie.2023.1080p.BluRay.srt')).toBe('und');
 		});
 	});
 

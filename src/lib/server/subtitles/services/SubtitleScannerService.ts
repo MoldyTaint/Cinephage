@@ -20,7 +20,6 @@ import {
 import { eq, inArray } from 'drizzle-orm';
 import type { SubtitleFormat, LanguageCode } from '../types';
 import { randomUUID } from 'node:crypto';
-import { getSubtitleSettingsService } from './SubtitleSettingsService';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
@@ -203,8 +202,8 @@ interface ScanResult {
 
 class SubtitleScannerService {
 	private static instance: SubtitleScannerService | null = null;
-	private fallbackLanguage: LanguageCode = 'en';
-	private settingsLoaded = false;
+	// Undetermined language — never assume a specific language (spec §2.2)
+	private fallbackLanguage: LanguageCode = 'und';
 
 	private constructor() {}
 
@@ -213,20 +212,6 @@ class SubtitleScannerService {
 			SubtitleScannerService.instance = new SubtitleScannerService();
 		}
 		return SubtitleScannerService.instance;
-	}
-
-	/**
-	 * Load settings including fallback language
-	 */
-	private async ensureSettingsLoaded(): Promise<void> {
-		if (this.settingsLoaded) return;
-		try {
-			const settingsService = getSubtitleSettingsService();
-			this.fallbackLanguage = (await settingsService.getFallbackLanguage()) as LanguageCode;
-			this.settingsLoaded = true;
-		} catch (error) {
-			logger.warn({ error }, 'Failed to load subtitle settings, using default fallback language');
-		}
 	}
 
 	/**
@@ -259,7 +244,7 @@ class SubtitleScannerService {
 				return normalizeLanguageCode(code);
 			}
 		}
-		// Use configurable fallback language (defaults to 'en' if not loaded)
+		// Undetermined fallback when no language could be detected from the filename
 		return this.fallbackLanguage;
 	}
 
@@ -301,9 +286,6 @@ class SubtitleScannerService {
 	 * Discover subtitle files in a directory
 	 */
 	async discoverSubtitles(directoryPath: string, rootPath: string): Promise<DiscoveredSubtitle[]> {
-		// Ensure settings are loaded before scanning
-		await this.ensureSettingsLoaded();
-
 		const subtitleFiles: DiscoveredSubtitle[] = [];
 
 		try {

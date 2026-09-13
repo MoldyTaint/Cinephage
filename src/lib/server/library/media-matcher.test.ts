@@ -72,10 +72,12 @@ vi.mock('$lib/server/monitoring/MonitoringScheduler.js', () => ({
 	}
 }));
 
-vi.mock('$lib/server/subtitles/services/SubtitleSettingsService.js', () => ({
-	getSubtitleSettingsService: () => ({
-		get: async () => null
-	})
+vi.mock('$lib/server/subtitles/services/LanguageProfileService.js', () => ({
+	LanguageProfileService: {
+		getInstance: () => ({
+			getDefaultProfile: vi.fn().mockResolvedValue(undefined)
+		})
+	}
 }));
 
 vi.mock('$lib/server/subtitles/services/SubtitleImportService.js', () => ({

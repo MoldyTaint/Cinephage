@@ -8,7 +8,10 @@
 import { db } from '$lib/server/db';
 import { movies, series } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
-import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
+import {
+	getLanguageProfileService,
+	toLegacyPreferences
+} from '$lib/server/subtitles/services/LanguageProfileService';
 import { logger } from '$lib/logging';
 
 const streamLog = { logDomain: 'streams' as const };
@@ -38,7 +41,7 @@ export async function getPreferredLanguagesForMovie(tmdbId: number): Promise<str
 		}
 
 		// Extract language codes in order of preference
-		const languages = profile.languages.map((lang) => lang.code);
+		const languages = toLegacyPreferences(profile).languages.map((lang) => lang.code);
 
 		logger.debug(
 			{
@@ -89,7 +92,7 @@ export async function getPreferredLanguagesForSeries(tmdbId: number): Promise<st
 		}
 
 		// Extract language codes in order of preference
-		const languages = profile.languages.map((lang) => lang.code);
+		const languages = toLegacyPreferences(profile).languages.map((lang) => lang.code);
 
 		logger.debug(
 			{

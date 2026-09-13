@@ -10,10 +10,11 @@
  */
 
 import { db } from '$lib/server/db/index.js';
-import { rootFolders, languageProfiles, series } from '$lib/server/db/schema.js';
+import { rootFolders, series } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { qualityFilter } from '$lib/server/quality/index.js';
+import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { searchOnAdd } from './searchOnAdd.js';
 import { SearchWorker, workerManager } from '$lib/server/workers/index.js';
 import { ValidationError, NotFoundError, ExternalServiceError } from '$lib/errors';
@@ -159,11 +160,8 @@ export async function getLanguageProfileId(
 		return null;
 	}
 
-	const [defaultLanguageProfile] = await db
-		.select()
-		.from(languageProfiles)
-		.where(eq(languageProfiles.isDefault, true))
-		.limit(1);
+	// language_settings.default_profile_id is the single default authority
+	const defaultLanguageProfile = await LanguageProfileService.getInstance().getDefaultProfile();
 
 	if (!defaultLanguageProfile) {
 		logger.warn(

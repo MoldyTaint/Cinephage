@@ -6,7 +6,8 @@ import {
 	episodes,
 	subtitles,
 	subtitleHistory,
-	monitoringHistory
+	monitoringHistory,
+	languageProfiles
 } from '$lib/server/db/schema';
 
 const testDb: TestDatabase = createTestDb();
@@ -38,22 +39,16 @@ const { searchService, downloadService, providerManager, profileService, missing
 			getEnabledProviders: vi.fn().mockResolvedValue([{ name: 'TestProvider' }])
 		};
 
+		// v2 profile shape (LanguageProfileRow) — the tasks bridge it to the
+		// legacy preference list through the real toLegacyPreferences adapter.
 		const defaultProfile = {
 			id: 'profile-1',
 			name: 'Default',
-			languages: [
-				{
-					code: 'en',
-					forced: false,
-					hearingImpaired: false,
-					excludeHi: false,
-					isCutoff: true
-				}
-			],
-			cutoffIndex: 0,
+			audio: { preferOriginal: true, languages: [] },
+			subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
+			cutoffRank: 0,
 			upgradesAllowed: true,
-			minimumScore: 80,
-			isDefault: true
+			minimumScore: 80
 		};
 
 		const defaultStatus = {
@@ -134,11 +129,18 @@ vi.mock('$lib/server/subtitles/services/SubtitleProviderManager.js', () => ({
 	getSubtitleProviderManager: () => providerManager
 }));
 
-vi.mock('$lib/server/subtitles/services/LanguageProfileService.js', () => ({
-	LanguageProfileService: {
-		getInstance: () => profileService
-	}
-}));
+vi.mock('$lib/server/subtitles/services/LanguageProfileService.js', async (importOriginal) => {
+	const actual =
+		await importOriginal<
+			typeof import('$lib/server/subtitles/services/LanguageProfileService.js')
+		>();
+	return {
+		...actual,
+		LanguageProfileService: {
+			getInstance: () => profileService
+		}
+	};
+});
 
 const { executeMissingSubtitlesTask } = await import('./MissingSubtitlesTask.js');
 const { executeSubtitleUpgradeTask } = await import('./SubtitleUpgradeTask.js');
@@ -150,6 +152,18 @@ function resetDb() {
 	testDb.db.delete(episodes).run();
 	testDb.db.delete(series).run();
 	testDb.db.delete(movies).run();
+	testDb.db.delete(languageProfiles).run();
+	// Migration 137 added a real FK from movies/series.language_profile_id to
+	// language_profiles.id, so the profile the tests assign must exist (v2 shape).
+	testDb.db.insert(languageProfiles).values({
+		id: 'profile-1',
+		name: 'Default',
+		audio: { preferOriginal: true, languages: [] },
+		subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
+		cutoffRank: 0,
+		minimumScore: 80,
+		upgradesAllowed: true
+	}).run();
 }
 
 beforeEach(() => {

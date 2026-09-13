@@ -1,17 +1,16 @@
 import type { PageServerLoad } from './$types';
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
-import { getSubtitleSettingsService } from '$lib/server/subtitles/services/SubtitleSettingsService';
+import { LanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService';
 
 export const load: PageServerLoad = async () => {
 	const profileService = LanguageProfileService.getInstance();
-	const settingsService = getSubtitleSettingsService();
+	const settingsService = LanguageSettingsService.getInstance();
 
 	const profiles = await profileService.getProfiles();
-	const settings = await settingsService.getAll();
+	const settings = await settingsService.get();
 
 	return {
 		profiles,
-		defaultProfileId: settings.defaultLanguageProfileId,
-		defaultFallbackLanguage: settings.defaultFallbackLanguage
+		defaultProfileId: settings.defaultProfileId
 	};
 };

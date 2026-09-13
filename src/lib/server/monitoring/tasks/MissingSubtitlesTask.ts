@@ -17,7 +17,10 @@ import { eq, and } from 'drizzle-orm';
 import { getSubtitleSearchService } from '$lib/server/subtitles/services/SubtitleSearchService.js';
 import { getSubtitleDownloadService } from '$lib/server/subtitles/services/SubtitleDownloadService.js';
 import { getSubtitleProviderManager } from '$lib/server/subtitles/services/SubtitleProviderManager.js';
-import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
+import {
+	LanguageProfileService,
+	toLegacyPreferences
+} from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { createChildLogger } from '$lib/logging/index.js';
 import { normalizeLanguageCode } from '$lib/shared/languages';
 import type { TaskResult } from '../MonitoringScheduler.js';
@@ -318,10 +321,12 @@ async function searchMissingMovieSubtitles(
 
 					processed++;
 
-					// Get profile for minimum score
-					const profile = await profileService.getProfile(profileId);
-					const minScore = profile?.minimumScore ?? DEFAULT_MIN_SCORE;
-					const languages = profile?.languages.map((l) => l.code) ?? [];
+				// Get profile for minimum score
+				const profile = await profileService.getProfile(profileId);
+				const minScore = profile?.minimumScore ?? DEFAULT_MIN_SCORE;
+				const languages = profile
+					? toLegacyPreferences(profile).languages.map((l) => l.code)
+					: [];
 
 					if (languages.length === 0) return;
 
@@ -516,7 +521,7 @@ async function searchMissingEpisodeSubtitles(
 			if (!profile) continue;
 
 			const minScore = profile.minimumScore ?? DEFAULT_MIN_SCORE;
-			const languages = profile.languages.map((l) => l.code);
+			const languages = toLegacyPreferences(profile).languages.map((l) => l.code);
 
 			if (languages.length === 0) continue;
 

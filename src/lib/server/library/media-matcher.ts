@@ -24,7 +24,6 @@ import { tmdb, type SearchResult } from '$lib/server/tmdb.js';
 import { mediaInfoService } from './media-info.js';
 import { basename, dirname, extname, join, relative } from 'path';
 import { RootFolderConflictError } from '$lib/errors';
-import { getSubtitleSettingsService } from '$lib/server/subtitles/services/SubtitleSettingsService.js';
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { logger, createChildLogger } from '$lib/logging/index.js';
@@ -32,6 +31,7 @@ import { parseRelease, extractExternalIds } from '$lib/server/indexers/parser/Re
 import { getMediaParseStem } from './media-utils.js';
 import { resolveTvEpisodeIdentifier, extractSeasonFromPath } from './tv-episode-resolver.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
+import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { canonicalizeArticleTitle, calculateMatchConfidence } from './title-matching.js';
 
@@ -1007,9 +1007,10 @@ export class MediaMatcherService {
 			// Update hasFile flag
 			await db.update(movies).set({ hasFile: true }).where(eq(movies.id, movieId));
 		} else {
-			// Get default language profile for new media
-			const subtitleSettings = getSubtitleSettingsService();
-			const defaultProfileId = await subtitleSettings.get('defaultLanguageProfileId');
+			// Get default language profile for new media (language_settings is the
+			// single default authority)
+			const defaultProfile = await LanguageProfileService.getInstance().getDefaultProfile();
+			const defaultProfileId = defaultProfile?.id ?? null;
 			const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
 				rootFolder.id,
 				'movie'
@@ -1164,9 +1165,10 @@ export class MediaMatcherService {
 		if (existingSeries) {
 			seriesId = existingSeries.id;
 		} else {
-			// Get default language profile for new media
-			const subtitleSettings = getSubtitleSettingsService();
-			const defaultProfileId = await subtitleSettings.get('defaultLanguageProfileId');
+			// Get default language profile for new media (language_settings is the
+			// single default authority)
+			const defaultProfile = await LanguageProfileService.getInstance().getDefaultProfile();
+			const defaultProfileId = defaultProfile?.id ?? null;
 			const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
 				rootFolder.id,
 				'tv'

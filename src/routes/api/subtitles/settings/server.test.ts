@@ -43,32 +43,21 @@ describe('Subtitle Settings API', () => {
 		clearTestDb(testDb);
 	});
 
-	it('does not expose legacy auto-sync settings', async () => {
-		const { status, data } = await api.get<{
-			defaultLanguageProfileId: string | null;
-			defaultFallbackLanguage: string;
-			autoSyncEnabled?: boolean;
-		}>(GET);
+	it('no longer exposes language defaults (moved to language_settings)', async () => {
+		const { status, data } = await api.get<Record<string, unknown>>(GET);
 
 		expect(status).toBe(200);
-		expect(data.defaultLanguageProfileId).toBeNull();
-		expect(data.defaultFallbackLanguage).toBe('en');
+		expect(data).not.toHaveProperty('defaultLanguageProfileId');
+		expect(data).not.toHaveProperty('defaultFallbackLanguage');
 		expect(data).not.toHaveProperty('autoSyncEnabled');
 	});
 
-	it('updates remaining subtitle settings without auto-sync fields', async () => {
-		const { status, data } = await api.put<{
-			defaultLanguageProfileId: string | null;
-			defaultFallbackLanguage: string;
-			autoSyncEnabled?: boolean;
-		}>(PUT, {
-			defaultLanguageProfileId: '9a3d9ab6-9bd5-4c40-b8a5-9e035fbaeb49',
-			defaultFallbackLanguage: 'es'
-		});
+	it('accepts a patch without the removed language default keys', async () => {
+		const { status, data } = await api.put<Record<string, unknown>>(PUT, {});
 
 		expect(status).toBe(200);
-		expect(data.defaultLanguageProfileId).toBe('9a3d9ab6-9bd5-4c40-b8a5-9e035fbaeb49');
-		expect(data.defaultFallbackLanguage).toBe('es');
+		expect(data).not.toHaveProperty('defaultLanguageProfileId');
+		expect(data).not.toHaveProperty('defaultFallbackLanguage');
 		expect(data).not.toHaveProperty('autoSyncEnabled');
 	});
 });
