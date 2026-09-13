@@ -72,3 +72,9 @@ export function normalizeTmdbLanguage(raw: string | null | undefined): string | 
 	if (tag === UNKNOWN) return null;
 	return tag.split('-')[0];
 }
+
+/** Validate and canonicalize an ISO 3166-1 region code (2 letters, upper). */
+export function normalizeRegionCode(raw: string | null | undefined): string | null {
+	const value = typeof raw === 'string' ? raw.trim() : '';
+	return /^[A-Za-z]{2}$/.test(value) ? value.toUpperCase() : null;
+}

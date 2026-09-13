@@ -1,6 +1,10 @@
 import { db } from './db';
-import { settings } from './db/schema';
+import { languageSettings, settings } from './db/schema';
 import { eq } from 'drizzle-orm';
+import {
+	normalizeMetadataLocale,
+	normalizeRegionCode
+} from '$lib/server/languages/normalize.js';
 import type {
 	GlobalTmdbFilters,
 	MovieDetails,
@@ -44,6 +48,11 @@ let _cachedFilters: GlobalTmdbFilters | null = null;
 let _settingsCacheTimestamp = 0;
 let _settingsCachePromise: Promise<void> | null = null;
 
+// Row id of the language_settings singleton. Kept as a literal (instead of
+// importing LanguageSettingsService) to avoid import cycles — tmdb.ts sits
+// below most services in the dependency graph.
+const LANGUAGE_SETTINGS_SINGLETON_ID = 'singleton';
+
 async function loadTmdbSettings(): Promise<{ apiKey: string; filters: GlobalTmdbFilters | null }> {
 	const now = Date.now();
 	if (_cachedApiKey !== null && now - _settingsCacheTimestamp < SETTINGS_CACHE_TTL_MS) {
@@ -68,6 +77,34 @@ async function loadTmdbSettings(): Promise<{ apiKey: string; filters: GlobalTmdb
 						logger.error({ err: e }, 'Failed to parse global filters');
 					}
 				}
+
+				// language_settings is the TMDB locale/region authority: metadata_locale
+				// feeds the response `language` and `region` feeds region filtering.
+				// Migration 137 seeded the singleton from global_filters, so existing
+				// installs are covered. Fall back to global_filters.language/region
+				// when the singleton row is missing or its values are unparseable.
+				if (_cachedFilters) {
+					let localeRow: typeof languageSettings.$inferSelect | undefined;
+					try {
+						localeRow = await db.query.languageSettings.findFirst({
+							where: eq(languageSettings.id, LANGUAGE_SETTINGS_SINGLETON_ID)
+						});
+					} catch (e) {
+						logger.warn({ err: e }, 'Failed to read language_settings for TMDB locale');
+					}
+					const locale =
+						normalizeMetadataLocale(localeRow?.metadataLocale) ??
+						normalizeMetadataLocale(_cachedFilters.language);
+					if (locale) {
+						_cachedFilters.language = locale;
+					}
+					const region =
+						normalizeRegionCode(localeRow?.region) ?? normalizeRegionCode(_cachedFilters.region);
+					if (region) {
+						_cachedFilters.region = region;
+					}
+				}
+
 				_settingsCacheTimestamp = Date.now();
 			} finally {
 				_settingsCachePromise = null;
