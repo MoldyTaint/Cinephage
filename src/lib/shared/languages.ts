@@ -1,237 +1,271 @@
 /**
- * Shared Language Definitions
+ * Shared Language Registry
  *
- * This module provides centralized language definitions that can be used
- * by both client-side (Svelte components) and server-side code.
+ * Single source of truth for language identity shared by client and server.
+ * Contains the curated language set, canonical BCP-47 tags, and aliases.
  *
- * Single source of truth for all language-related functionality.
+ * Full ISO 639-2/3 resolution for arbitrary observed tags (ffprobe, media
+ * servers, release names) lives in the server-only normalizer at
+ * `$lib/server/languages/normalize.ts`.
  */
 
-/**
- * Language definition with metadata for UI and provider mapping
- */
-export interface LanguageDefinition {
-	/** ISO 639-1 code (2-letter) */
+/** Canonical BCP-47 language tag: 'en', 'pt-BR', 'zh-Hans', 'und' */
+export type LanguageTag = string;
+
+/** TMDB response locale: 'en-US', 'fr-FR' */
+export type MetadataLocale = string;
+
+/** TMDB original-language / discover filter value: 'ja', 'en' */
+export type TmdbLanguage = string;
+
+/** Release filename markers that are not languages */
+export type ReleaseMarker = 'multi' | 'original' | 'unknown';
+
+export interface LanguageVariant {
+	/** Canonical BCP-47 tag, e.g. 'pt-BR', 'zh-Hans' */
 	code: string;
-	/** ISO 639-2 code (3-letter) - for matching in filenames */
-	code3?: string;
+	/** English display name */
+	name: string;
+}
+
+export interface LanguageDefinition {
+	/** Canonical BCP-47 base tag, e.g. 'en', 'pt' */
+	code: string;
+	/** ISO 639-2 bibliographic code, e.g. 'ger' */
+	alpha3B?: string;
+	/** ISO 639-2 terminologic code, e.g. 'deu' */
+	alpha3T?: string;
 	/** English name */
 	name: string;
 	/** Native name */
 	nativeName?: string;
-	/** Regional variants (e.g., 'pt-br' for Brazilian Portuguese) */
-	variants?: Array<{ code: string; name: string }>;
+	/** Canonical regional/script variants */
+	variants?: readonly LanguageVariant[];
 }
 
-/**
- * Master list of supported languages for subtitle operations.
- * This is the single source of truth for all language-related functionality.
- * Languages are ordered by global usage/popularity for UI display.
- */
 export const SUPPORTED_LANGUAGES: readonly LanguageDefinition[] = [
-	{ code: 'en', code3: 'eng', name: 'English', nativeName: 'English' },
+	{ code: 'en', alpha3B: 'eng', alpha3T: 'eng', name: 'English', nativeName: 'English' },
 	{
 		code: 'es',
-		code3: 'spa',
+		alpha3B: 'spa',
+		alpha3T: 'spa',
 		name: 'Spanish',
 		nativeName: 'Español',
-		variants: [{ code: 'es-la', name: 'Spanish (Latin America)' }]
+		variants: [{ code: 'es-419', name: 'Spanish (Latin America)' }]
 	},
 	{
 		code: 'fr',
-		code3: 'fre',
+		alpha3B: 'fre',
+		alpha3T: 'fra',
 		name: 'French',
 		nativeName: 'Français',
-		variants: [{ code: 'fr-ca', name: 'French (Canada)' }]
+		variants: [{ code: 'fr-CA', name: 'French (Canada)' }]
 	},
-	{ code: 'de', code3: 'ger', name: 'German', nativeName: 'Deutsch' },
-	{ code: 'it', code3: 'ita', name: 'Italian', nativeName: 'Italiano' },
+	{ code: 'de', alpha3B: 'ger', alpha3T: 'deu', name: 'German', nativeName: 'Deutsch' },
+	{ code: 'it', alpha3B: 'ita', alpha3T: 'ita', name: 'Italian', nativeName: 'Italiano' },
 	{
 		code: 'pt',
-		code3: 'por',
+		alpha3B: 'por',
+		alpha3T: 'por',
 		name: 'Portuguese',
 		nativeName: 'Português',
-		variants: [{ code: 'pt-br', name: 'Portuguese (Brazil)' }]
+		variants: [{ code: 'pt-BR', name: 'Portuguese (Brazil)' }]
 	},
-	{ code: 'ru', code3: 'rus', name: 'Russian', nativeName: 'Русский' },
+	{ code: 'ru', alpha3B: 'rus', alpha3T: 'rus', name: 'Russian', nativeName: 'Русский' },
 	{
 		code: 'zh',
-		code3: 'chi',
+		alpha3B: 'chi',
+		alpha3T: 'zho',
 		name: 'Chinese',
 		nativeName: '中文',
 		variants: [
-			{ code: 'zh-tw', name: 'Chinese (Traditional)' },
-			{ code: 'zh-cn', name: 'Chinese (Simplified)' }
+			{ code: 'zh-Hans', name: 'Chinese (Simplified)' },
+			{ code: 'zh-Hant', name: 'Chinese (Traditional)' }
 		]
 	},
-	{ code: 'ja', code3: 'jpn', name: 'Japanese', nativeName: '日本語' },
-	{ code: 'ko', code3: 'kor', name: 'Korean', nativeName: '한국어' },
-	{ code: 'ar', code3: 'ara', name: 'Arabic', nativeName: 'العربية' },
-	{ code: 'hi', code3: 'hin', name: 'Hindi', nativeName: 'हिन्दी' },
-	{ code: 'nl', code3: 'dut', name: 'Dutch', nativeName: 'Nederlands' },
-	{ code: 'pl', code3: 'pol', name: 'Polish', nativeName: 'Polski' },
-	{ code: 'sv', code3: 'swe', name: 'Swedish', nativeName: 'Svenska' },
-	{ code: 'no', code3: 'nor', name: 'Norwegian', nativeName: 'Norsk' },
-	{ code: 'da', code3: 'dan', name: 'Danish', nativeName: 'Dansk' },
-	{ code: 'fi', code3: 'fin', name: 'Finnish', nativeName: 'Suomi' },
-	{ code: 'el', code3: 'gre', name: 'Greek', nativeName: 'Ελληνικά' },
-	{ code: 'tr', code3: 'tur', name: 'Turkish', nativeName: 'Türkçe' },
-	{ code: 'he', code3: 'heb', name: 'Hebrew', nativeName: 'עברית' },
-	{ code: 'th', code3: 'tha', name: 'Thai', nativeName: 'ไทย' },
-	{ code: 'vi', code3: 'vie', name: 'Vietnamese', nativeName: 'Tiếng Việt' },
-	{ code: 'cs', code3: 'cze', name: 'Czech', nativeName: 'Čeština' },
-	{ code: 'hu', code3: 'hun', name: 'Hungarian', nativeName: 'Magyar' },
-	{ code: 'ro', code3: 'rum', name: 'Romanian', nativeName: 'Română' },
-	{ code: 'bg', code3: 'bul', name: 'Bulgarian', nativeName: 'Български' },
-	{ code: 'uk', code3: 'ukr', name: 'Ukrainian', nativeName: 'Українська' },
-	{ code: 'id', code3: 'ind', name: 'Indonesian', nativeName: 'Bahasa Indonesia' },
-	{ code: 'ms', code3: 'may', name: 'Malay', nativeName: 'Bahasa Melayu' },
-	{ code: 'hr', code3: 'hrv', name: 'Croatian', nativeName: 'Hrvatski' },
-	{ code: 'sr', code3: 'srp', name: 'Serbian', nativeName: 'Српски' },
-	{ code: 'sk', code3: 'slo', name: 'Slovak', nativeName: 'Slovenčina' },
-	{ code: 'sl', code3: 'slv', name: 'Slovenian', nativeName: 'Slovenščina' },
-	{ code: 'et', code3: 'est', name: 'Estonian', nativeName: 'Eesti' },
-	{ code: 'lv', code3: 'lav', name: 'Latvian', nativeName: 'Latviešu' },
-	{ code: 'lt', code3: 'lit', name: 'Lithuanian', nativeName: 'Lietuvių' },
-	{ code: 'fa', code3: 'per', name: 'Persian', nativeName: 'فارسی' },
-	{ code: 'bn', code3: 'ben', name: 'Bengali', nativeName: 'বাংলা' },
-	{ code: 'ta', code3: 'tam', name: 'Tamil', nativeName: 'தமிழ்' },
-	{ code: 'te', code3: 'tel', name: 'Telugu', nativeName: 'తెలుగు' },
-	{ code: 'ml', code3: 'mal', name: 'Malayalam', nativeName: 'മലയാളം' },
-	{ code: 'kn', code3: 'kan', name: 'Kannada', nativeName: 'ಕನ್ನಡ' },
-	{ code: 'mr', code3: 'mar', name: 'Marathi', nativeName: 'मराठी' },
-	{ code: 'gu', code3: 'guj', name: 'Gujarati', nativeName: 'ગુજરાતી' },
-	{ code: 'pa', code3: 'pan', name: 'Punjabi', nativeName: 'ਪੰਜਾਬੀ' },
-	{ code: 'ur', code3: 'urd', name: 'Urdu', nativeName: 'اردو' },
-	{ code: 'ne', code3: 'nep', name: 'Nepali', nativeName: 'नेपाली' },
-	{ code: 'si', code3: 'sin', name: 'Sinhala', nativeName: 'සිංහල' },
-	{ code: 'my', code3: 'bur', name: 'Burmese', nativeName: 'မြန်မာဘာသာ' },
-	{ code: 'km', code3: 'khm', name: 'Khmer', nativeName: 'ខ្មែរ' },
-	{ code: 'lo', code3: 'lao', name: 'Lao', nativeName: 'ລາວ' },
-	{ code: 'mn', code3: 'mon', name: 'Mongolian', nativeName: 'Монгол' },
-	{ code: 'ka', code3: 'geo', name: 'Georgian', nativeName: 'ქართული' },
-	{ code: 'az', code3: 'aze', name: 'Azerbaijani', nativeName: 'Azərbaycan' },
-	{ code: 'kk', code3: 'kaz', name: 'Kazakh', nativeName: 'Қазақша' },
-	{ code: 'uz', code3: 'uzb', name: 'Uzbek', nativeName: "O'zbek" },
-	{ code: 'tl', code3: 'tgl', name: 'Tagalog', nativeName: 'Tagalog' },
-	{ code: 'sw', code3: 'swa', name: 'Swahili', nativeName: 'Kiswahili' },
-	{ code: 'am', code3: 'amh', name: 'Amharic', nativeName: 'አማርኛ' },
-	{ code: 'is', code3: 'ice', name: 'Icelandic', nativeName: 'Íslenska' },
-	{ code: 'mk', code3: 'mac', name: 'Macedonian', nativeName: 'Македонски' },
-	{ code: 'bs', code3: 'bos', name: 'Bosnian', nativeName: 'Bosanski' },
-	{ code: 'sq', code3: 'alb', name: 'Albanian', nativeName: 'Shqip' },
-	{ code: 'cy', code3: 'wel', name: 'Welsh', nativeName: 'Cymraeg' },
-	{ code: 'ga', code3: 'gle', name: 'Irish', nativeName: 'Gaeilge' },
-	{ code: 'mt', code3: 'mlt', name: 'Maltese', nativeName: 'Malti' },
-	{ code: 'eu', code3: 'baq', name: 'Basque', nativeName: 'Euskara' },
-	{ code: 'ca', code3: 'cat', name: 'Catalan', nativeName: 'Català' },
-	{ code: 'gl', code3: 'glg', name: 'Galician', nativeName: 'Galego' },
-	{ code: 'af', code3: 'afr', name: 'Afrikaans', nativeName: 'Afrikaans' },
-	{ code: 'hy', code3: 'arm', name: 'Armenian', nativeName: 'Հdelays' },
-	{ code: 'be', code3: 'bel', name: 'Belarusian', nativeName: 'Беларуская' },
-	{ code: 'ku', code3: 'kur', name: 'Kurdish', nativeName: 'Kurdî' },
-	{ code: 'eo', code3: 'epo', name: 'Esperanto', nativeName: 'Esperanto' }
-] as const;
+	{ code: 'ja', alpha3B: 'jpn', alpha3T: 'jpn', name: 'Japanese', nativeName: '日本語' },
+	{ code: 'ko', alpha3B: 'kor', alpha3T: 'kor', name: 'Korean', nativeName: '한국어' },
+	{ code: 'ar', alpha3B: 'ara', alpha3T: 'ara', name: 'Arabic', nativeName: 'العربية' },
+	{ code: 'hi', alpha3B: 'hin', alpha3T: 'hin', name: 'Hindi', nativeName: 'हिन्दी' },
+	{ code: 'nl', alpha3B: 'dut', alpha3T: 'nld', name: 'Dutch', nativeName: 'Nederlands' },
+	{ code: 'pl', alpha3B: 'pol', alpha3T: 'pol', name: 'Polish', nativeName: 'Polski' },
+	{ code: 'sv', alpha3B: 'swe', alpha3T: 'swe', name: 'Swedish', nativeName: 'Svenska' },
+	{ code: 'no', alpha3B: 'nor', alpha3T: 'nor', name: 'Norwegian', nativeName: 'Norsk' },
+	{ code: 'da', alpha3B: 'dan', alpha3T: 'dan', name: 'Danish', nativeName: 'Dansk' },
+	{ code: 'fi', alpha3B: 'fin', alpha3T: 'fin', name: 'Finnish', nativeName: 'Suomi' },
+	{ code: 'el', alpha3B: 'gre', alpha3T: 'ell', name: 'Greek', nativeName: 'Ελληνικά' },
+	{ code: 'tr', alpha3B: 'tur', alpha3T: 'tur', name: 'Turkish', nativeName: 'Türkçe' },
+	{ code: 'he', alpha3B: 'heb', alpha3T: 'heb', name: 'Hebrew', nativeName: 'עברית' },
+	{ code: 'th', alpha3B: 'tha', alpha3T: 'tha', name: 'Thai', nativeName: 'ไทย' },
+	{ code: 'vi', alpha3B: 'vie', alpha3T: 'vie', name: 'Vietnamese', nativeName: 'Tiếng Việt' },
+	{ code: 'cs', alpha3B: 'cze', alpha3T: 'ces', name: 'Czech', nativeName: 'Čeština' },
+	{ code: 'hu', alpha3B: 'hun', alpha3T: 'hun', name: 'Hungarian', nativeName: 'Magyar' },
+	{ code: 'ro', alpha3B: 'rum', alpha3T: 'ron', name: 'Romanian', nativeName: 'Română' },
+	{ code: 'bg', alpha3B: 'bul', alpha3T: 'bul', name: 'Bulgarian', nativeName: 'Български' },
+	{ code: 'uk', alpha3B: 'ukr', alpha3T: 'ukr', name: 'Ukrainian', nativeName: 'Українська' },
+	{ code: 'id', alpha3B: 'ind', alpha3T: 'ind', name: 'Indonesian', nativeName: 'Bahasa Indonesia' },
+	{ code: 'ms', alpha3B: 'may', alpha3T: 'msa', name: 'Malay', nativeName: 'Bahasa Melayu' },
+	{ code: 'hr', alpha3B: 'hrv', alpha3T: 'hrv', name: 'Croatian', nativeName: 'Hrvatski' },
+	{ code: 'sr', alpha3B: 'srp', alpha3T: 'srp', name: 'Serbian', nativeName: 'Српски' },
+	{ code: 'sk', alpha3B: 'slo', alpha3T: 'slk', name: 'Slovak', nativeName: 'Slovenčina' },
+	{ code: 'sl', alpha3B: 'slv', alpha3T: 'slv', name: 'Slovenian', nativeName: 'Slovenščina' },
+	{ code: 'et', alpha3B: 'est', alpha3T: 'est', name: 'Estonian', nativeName: 'Eesti' },
+	{ code: 'lv', alpha3B: 'lav', alpha3T: 'lav', name: 'Latvian', nativeName: 'Latviešu' },
+	{ code: 'lt', alpha3B: 'lit', alpha3T: 'lit', name: 'Lithuanian', nativeName: 'Lietuvių' },
+	{ code: 'fa', alpha3B: 'per', alpha3T: 'fas', name: 'Persian', nativeName: 'فارسی' },
+	{ code: 'bn', alpha3B: 'ben', alpha3T: 'ben', name: 'Bengali', nativeName: 'বাংলা' },
+	{ code: 'ta', alpha3B: 'tam', alpha3T: 'tam', name: 'Tamil', nativeName: 'தமிழ்' },
+	{ code: 'te', alpha3B: 'tel', alpha3T: 'tel', name: 'Telugu', nativeName: 'తెలుగు' },
+	{ code: 'ml', alpha3B: 'mal', alpha3T: 'mal', name: 'Malayalam', nativeName: 'മലയാളം' },
+	{ code: 'kn', alpha3B: 'kan', alpha3T: 'kan', name: 'Kannada', nativeName: 'ಕನ್ನಡ' },
+	{ code: 'mr', alpha3B: 'mar', alpha3T: 'mar', name: 'Marathi', nativeName: 'मराठी' },
+	{ code: 'gu', alpha3B: 'guj', alpha3T: 'guj', name: 'Gujarati', nativeName: 'ગુજરાતી' },
+	{ code: 'pa', alpha3B: 'pan', alpha3T: 'pan', name: 'Punjabi', nativeName: 'ਪੰਜਾਬੀ' },
+	{ code: 'ur', alpha3B: 'urd', alpha3T: 'urd', name: 'Urdu', nativeName: 'اردو' },
+	{ code: 'ne', alpha3B: 'nep', alpha3T: 'nep', name: 'Nepali', nativeName: 'नेपाली' },
+	{ code: 'si', alpha3B: 'sin', alpha3T: 'sin', name: 'Sinhala', nativeName: 'සිංහල' },
+	{ code: 'my', alpha3B: 'bur', alpha3T: 'mya', name: 'Burmese', nativeName: 'မြန်မာဘာသာ' },
+	{ code: 'km', alpha3B: 'khm', alpha3T: 'khm', name: 'Khmer', nativeName: 'ខ្មែរ' },
+	{ code: 'lo', alpha3B: 'lao', alpha3T: 'lao', name: 'Lao', nativeName: 'ລາວ' },
+	{ code: 'mn', alpha3B: 'mon', alpha3T: 'mon', name: 'Mongolian', nativeName: 'Монгол' },
+	{ code: 'ka', alpha3B: 'geo', alpha3T: 'kat', name: 'Georgian', nativeName: 'ქართული' },
+	{ code: 'az', alpha3B: 'aze', alpha3T: 'aze', name: 'Azerbaijani', nativeName: 'Azərbaycan' },
+	{ code: 'kk', alpha3B: 'kaz', alpha3T: 'kaz', name: 'Kazakh', nativeName: 'Қазақша' },
+	{ code: 'uz', alpha3B: 'uzb', alpha3T: 'uzb', name: 'Uzbek', nativeName: "O'zbek" },
+	{ code: 'tl', alpha3B: 'tgl', alpha3T: 'tgl', name: 'Tagalog', nativeName: 'Tagalog' },
+	{ code: 'sw', alpha3B: 'swa', alpha3T: 'swa', name: 'Swahili', nativeName: 'Kiswahili' },
+	{ code: 'am', alpha3B: 'amh', alpha3T: 'amh', name: 'Amharic', nativeName: 'አማርኛ' },
+	{ code: 'is', alpha3B: 'ice', alpha3T: 'isl', name: 'Icelandic', nativeName: 'Íslenska' },
+	{ code: 'mk', alpha3B: 'mac', alpha3T: 'mkd', name: 'Macedonian', nativeName: 'Македонски' },
+	{ code: 'bs', alpha3B: 'bos', alpha3T: 'bos', name: 'Bosnian', nativeName: 'Bosanski' },
+	{ code: 'sq', alpha3B: 'alb', alpha3T: 'sqi', name: 'Albanian', nativeName: 'Shqip' },
+	{ code: 'cy', alpha3B: 'wel', alpha3T: 'cym', name: 'Welsh', nativeName: 'Cymraeg' },
+	{ code: 'ga', alpha3B: 'gle', alpha3T: 'gle', name: 'Irish', nativeName: 'Gaeilge' },
+	{ code: 'mt', alpha3B: 'mlt', alpha3T: 'mlt', name: 'Maltese', nativeName: 'Malti' },
+	{ code: 'eu', alpha3B: 'baq', alpha3T: 'eus', name: 'Basque', nativeName: 'Euskara' },
+	{ code: 'ca', alpha3B: 'cat', alpha3T: 'cat', name: 'Catalan', nativeName: 'Català' },
+	{ code: 'gl', alpha3B: 'glg', alpha3T: 'glg', name: 'Galician', nativeName: 'Galego' },
+	{ code: 'af', alpha3B: 'afr', alpha3T: 'afr', name: 'Afrikaans', nativeName: 'Afrikaans' },
+	{ code: 'hy', alpha3B: 'arm', alpha3T: 'hye', name: 'Armenian', nativeName: 'Հայերեն' },
+	{ code: 'be', alpha3B: 'bel', alpha3T: 'bel', name: 'Belarusian', nativeName: 'Беларуская' },
+	{ code: 'ku', alpha3B: 'kur', alpha3T: 'kur', name: 'Kurdish', nativeName: 'Kurdî' },
+	{ code: 'eo', alpha3B: 'epo', alpha3T: 'epo', name: 'Esperanto', nativeName: 'Esperanto' }
+];
 
 /**
- * All language codes including variants, for dropdown/select options
+ * Provider and legacy aliases that are not covered by ISO codes.
+ * Keys are lower-case; values are canonical tags.
  */
+const LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
+	pb: 'pt-BR',
+	pob: 'pt-BR',
+	chs: 'zh-Hans',
+	zhs: 'zh-Hans',
+	'zh-cn': 'zh-Hans',
+	'zh-sg': 'zh-Hans',
+	cht: 'zh-Hant',
+	zht: 'zh-Hant',
+	'zh-tw': 'zh-Hant',
+	'zh-hk': 'zh-Hant',
+	'es-la': 'es-419',
+	nob: 'no',
+	nno: 'no'
+};
+
+const LANGUAGE_LOOKUP = new Map<string, string>();
+const LANGUAGE_BY_TAG = new Map<string, LanguageDefinition>();
+
+for (const lang of SUPPORTED_LANGUAGES) {
+	LANGUAGE_BY_TAG.set(lang.code, lang);
+	LANGUAGE_LOOKUP.set(lang.code.toLowerCase(), lang.code);
+	if (lang.alpha3B) LANGUAGE_LOOKUP.set(lang.alpha3B.toLowerCase(), lang.code);
+	if (lang.alpha3T) LANGUAGE_LOOKUP.set(lang.alpha3T.toLowerCase(), lang.code);
+	for (const variant of lang.variants ?? []) {
+		LANGUAGE_BY_TAG.set(variant.code, {
+			...lang,
+			code: variant.code,
+			name: variant.name,
+			variants: undefined
+		});
+		LANGUAGE_LOOKUP.set(variant.code.toLowerCase(), variant.code);
+	}
+}
+
+for (const [alias, tag] of Object.entries(LANGUAGE_ALIASES)) {
+	LANGUAGE_LOOKUP.set(alias, tag);
+}
+
+/** All language codes including variants, for dropdown/select options */
 export const ALL_LANGUAGE_OPTIONS: readonly { code: string; name: string }[] =
 	SUPPORTED_LANGUAGES.flatMap((lang) => [
 		{ code: lang.code, name: lang.name },
-		...(lang.variants ?? [])
+		...(lang.variants ?? []).map((variant) => ({ code: variant.code, name: variant.name }))
 	]);
 
-/**
- * Set of all valid ISO 639-1 language codes for quick validation
- */
-export const VALID_LANGUAGE_CODES: ReadonlySet<string> = new Set(
-	SUPPORTED_LANGUAGES.flatMap((lang) => [lang.code, ...(lang.variants?.map((v) => v.code) ?? [])])
-);
+/** Set of canonical tags recognized by the curated registry */
+export const VALID_LANGUAGE_CODES: ReadonlySet<string> = new Set(LANGUAGE_BY_TAG.keys());
 
-/**
- * Map for quick language name lookup by code
- */
+/** Map for quick language name lookup by canonical tag */
 export const LANGUAGE_CODE_TO_NAME: ReadonlyMap<string, string> = new Map(
-	SUPPORTED_LANGUAGES.flatMap((lang) => [
-		[lang.code, lang.name],
-		...(lang.variants?.map((v) => [v.code, v.name] as [string, string]) ?? [])
-	])
+	[...LANGUAGE_BY_TAG].map(([tag, definition]) => [tag, definition.name])
 );
 
 /**
- * Map for ISO 639-2 (3-letter) to ISO 639-1 (2-letter) conversion
+ * Canonicalize any language input to a curated canonical tag.
+ *
+ * Accepts ISO 639-1 (`en`), ISO 639-2/B (`ger`), ISO 639-2/T (`deu`),
+ * registered variants (`pt-br`, `zh-cn`), and provider aliases (`pob`).
+ * Returns an empty string when the language cannot be resolved.
  */
-export const ISO639_2_TO_1: ReadonlyMap<string, string> = new Map(
-	SUPPORTED_LANGUAGES.filter((lang) => lang.code3).map((lang) => [lang.code3!, lang.code])
-);
+export function canonicalizeLanguageTag(input: string): string {
+	if (!input) return '';
+	const cleaned = input.trim().replace(/_/g, '-');
+	if (!cleaned) return '';
+	const lower = cleaned.toLowerCase();
+	const exact = LANGUAGE_LOOKUP.get(lower) ?? LANGUAGE_LOOKUP.get(lower.replace(/-/g, ''));
+	if (exact) return exact;
 
-/**
- * Common aliases for language codes
- */
-const LANGUAGE_ALIASES: Record<string, string> = {
-	pb: 'pt-br', // Brazilian Portuguese alias
-	pob: 'pt-br', // Another Brazilian Portuguese alias
-	chi: 'zh', // Chinese
-	chs: 'zh-cn', // Chinese Simplified
-	cht: 'zh-tw', // Chinese Traditional
-	zht: 'zh-tw', // Chinese Traditional
-	zhs: 'zh-cn', // Chinese Simplified
-	nor: 'no', // Norwegian
-	nob: 'no', // Norwegian Bokmål
-	nno: 'no', // Norwegian Nynorsk
-	ger: 'de', // German
-	fre: 'fr', // French
-	spa: 'es', // Spanish
-	por: 'pt', // Portuguese
-	jpn: 'ja', // Japanese
-	kor: 'ko', // Korean
-	ara: 'ar', // Arabic
-	dut: 'nl', // Dutch
-	rum: 'ro', // Romanian
-	gre: 'el', // Greek
-	heb: 'he', // Hebrew
-	per: 'fa' // Persian/Farsi
-};
-
-/**
- * Validate if a language code is supported
- */
-export function isValidLanguageCode(code: string): boolean {
-	const lower = code.toLowerCase();
-	return VALID_LANGUAGE_CODES.has(lower) || lower in LANGUAGE_ALIASES;
+	let canonical: string | undefined;
+	try {
+		canonical = Intl.getCanonicalLocales(cleaned)[0];
+	} catch {
+		return '';
+	}
+	if (!canonical) return '';
+	const base = canonical.split('-')[0].toLowerCase();
+	return LANGUAGE_LOOKUP.has(base) ? canonical : '';
 }
 
 /**
- * Normalize a language code (lowercase, handle variants and aliases)
+ * Look up a curated language definition by any recognized input.
+ */
+export function getLanguageDefinition(input: string): LanguageDefinition | undefined {
+	const canonical = canonicalizeLanguageTag(input);
+	return canonical ? LANGUAGE_BY_TAG.get(canonical) : undefined;
+}
+
+/** Validate whether an input resolves to a curated language tag */
+export function isValidLanguageCode(code: string): boolean {
+	return canonicalizeLanguageTag(code) !== '';
+}
+
+/**
+ * Backward-compatible normalizer. Returns the canonical tag when resolvable,
+ * otherwise the trimmed lower-case input so callers can still display it.
  */
 export function normalizeLanguageCode(code: string): string {
-	const lower = code.toLowerCase().trim();
-
-	// Check if it's a valid 2-letter code
-	if (VALID_LANGUAGE_CODES.has(lower)) {
-		return lower;
-	}
-
-	// Try to convert from 3-letter code
-	const converted = ISO639_2_TO_1.get(lower);
-	if (converted) {
-		return converted;
-	}
-
-	// Check aliases
-	const aliased = LANGUAGE_ALIASES[lower];
-	if (aliased) {
-		return aliased;
-	}
-
-	return lower;
+	return canonicalizeLanguageTag(code) || code.trim().toLowerCase();
 }
 
-/**
- * Get language name from code
- */
+/** Get a display name for any language input. Falls back to the input itself. */
 export function getLanguageName(code: string): string {
-	const normalized = normalizeLanguageCode(code);
-	return LANGUAGE_CODE_TO_NAME.get(normalized) ?? code.toUpperCase();
+	const canonical = canonicalizeLanguageTag(code);
+	if (!canonical) return code.toUpperCase();
+	const direct = LANGUAGE_CODE_TO_NAME.get(canonical);
+	if (direct) return direct;
+	const [base, ...rest] = canonical.split('-');
+	const baseName = LANGUAGE_CODE_TO_NAME.get(base);
+	if (!baseName) return canonical;
+	const region = rest.find((part) => part.length === 2);
+	return region ? `${baseName} (${region.toUpperCase()})` : baseName;
 }
