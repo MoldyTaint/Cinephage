@@ -865,7 +865,11 @@ export const subtitleProviderTestSchema = z.object({
 // Language Profile Schemas
 // ============================================================
 
-import { isValidLanguageCode } from '$lib/shared/languages';
+import {
+	canonicalizeLanguageTag,
+	isValidLanguageCode,
+	type LanguageTag
+} from '$lib/shared/languages';
 import { CAPTURED_LOG_LEVELS, CAPTURED_LOG_DOMAINS } from '$lib/logging/log-capture';
 
 /**
@@ -913,6 +917,66 @@ export const languageProfileCreateSchema = z.object({
  * Schema for updating a language profile.
  */
 export const languageProfileUpdateSchema = languageProfileCreateSchema.required().partial();
+
+/**
+ * Canonical language tag input. Canonicalizes aliases before validation so
+ * 'ENG', 'ger', 'pob', 'zh-tw' are stored canonically; unknown codes fail.
+ */
+export const languageTagSchema = z
+	.string()
+	.min(2)
+	.max(35)
+	.transform((value) => canonicalizeLanguageTag(value) || value.trim().toLowerCase())
+	.refine((value): value is LanguageTag => isValidLanguageCode(value), {
+		message: 'Invalid language code'
+	});
+
+/**
+ * One subtitle requirement: language + variant + accessibility policy.
+ * This replaces the boolean (forced, hearingImpaired, excludeHi, isCutoff)
+ * combination once the pipeline migrates (Phase 3).
+ */
+export const subtitleRequirementSchema = z.object({
+	tag: languageTagSchema,
+	variant: z.enum(['regular', 'forced', 'both']).default('regular'),
+	accessibility: z.enum(['any', 'prefer-hi', 'require-hi', 'exclude-hi']).default('any')
+});
+
+/** Combined profile audio preferences. */
+export const audioPreferenceSchema = z.object({
+	preferOriginal: z.boolean().default(true),
+	languages: z.array(languageTagSchema).default([])
+});
+
+const languageProfileV2BaseSchema = z.object({
+	name: z.string().min(1, 'Name is required').max(60, 'Name must be 60 characters or less'),
+	audio: audioPreferenceSchema.default({ preferOriginal: true, languages: [] }),
+	subtitles: z
+		.array(subtitleRequirementSchema)
+		.min(1, 'At least one subtitle language is required'),
+	cutoffRank: z.number().int().min(0).nullable().default(null),
+	minimumScore: z.number().int().min(0).max(100).default(70),
+	upgradesAllowed: z.boolean().default(true)
+});
+
+/** Create payload for the combined profile (Phase 2 persistence). */
+export const languageProfileV2CreateSchema = languageProfileV2BaseSchema
+	.refine((profile) => profile.cutoffRank === null || profile.cutoffRank < profile.subtitles.length, {
+		message: 'Cutoff rank must reference a subtitle requirement',
+		path: ['cutoffRank']
+	})
+	.refine(
+		(profile) => {
+			const keys = profile.subtitles.map(
+				(requirement) => `${requirement.tag}|${requirement.variant}|${requirement.accessibility}`
+			);
+			return new Set(keys).size === keys.length;
+		},
+		{ message: 'Duplicate subtitle requirements are not allowed', path: ['subtitles'] }
+	);
+
+/** Partial update payload for the combined profile. */
+export const languageProfileV2UpdateSchema = languageProfileV2BaseSchema.partial();
 
 // ============================================================
 // Subtitle Search Schemas
