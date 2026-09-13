@@ -1,7 +1,29 @@
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { describe, expect, it, vi, afterEach, beforeAll, afterAll } from 'vitest';
 import { deflateSync, gzipSync } from 'node:zlib';
+import {
+	createTestDb,
+	destroyTestDb,
+	type TestDatabase
+} from '../../../../test/db-helper';
+import { livetvAccounts, livetvChannels } from '$lib/server/db/schema';
 import { M3uProvider } from './M3uProvider';
 import type { LiveTvAccount } from '$lib/types/livetv';
+
+/**
+ * In-memory database backing the livetv channel lookups fetchEpg performs.
+ * The mock defers access via getters so module import order stays simple.
+ */
+const testDb: TestDatabase = createTestDb();
+
+vi.mock('$lib/server/db', () => ({
+	get db() {
+		return testDb.db;
+	},
+	get sqlite() {
+		return testDb.sqlite;
+	},
+	initializeDatabase: vi.fn().mockResolvedValue(undefined)
+}));
 
 const TEST_PLAYLIST = '#EXTM3U\n#EXTINF:-1 tvg-id="news",News\nhttp://example.com/stream.m3u8\n';
 
@@ -37,6 +59,110 @@ function createTestAccount(epgUrl?: string): LiveTvAccount {
 
 afterEach(() => {
 	vi.restoreAllMocks();
+});
+
+afterAll(() => {
+	destroyTestDb(testDb);
+});
+
+// ============================================================================
+// XMLTV @lang preservation (Phase 5 Task 3)
+// ============================================================================
+
+const MULTILANG_XMLTV = `<?xml version="1.0" encoding="UTF-8"?>
+<tv>
+  <channel id="c1"><display-name>News Channel</display-name></channel>
+  <programme start="20260913000000 +0000" stop="20260913010000 +0000" channel="c1">
+    <title lang="en">News</title>
+    <title lang="fr">Informations</title>
+    <desc>Plain first</desc>
+    <desc lang="de">Beschreibung</desc>
+    <category lang="en">Sports</category>
+  </programme>
+  <programme start="20260913010000 +0000" stop="20260913020000 +0000" channel="c1">
+    <title>Only One</title>
+    <desc>Untranslated desc</desc>
+  </programme>
+  <programme start="20260913020000 +0000" stop="20260913030000 +0000" channel="c1">
+    <title lang="pt-BR">Jornal</title>
+  </programme>
+</tv>`;
+
+describe('M3uProvider XMLTV @lang preservation', () => {
+	beforeAll(() => {
+		testDb.db
+			.insert(livetvAccounts)
+			.values({ id: 'test-account', name: 'Test M3U', providerType: 'm3u' })
+			.run();
+		testDb.db
+			.insert(livetvChannels)
+			.values({
+				id: 'chan-1',
+				accountId: 'test-account',
+				providerType: 'm3u',
+				externalId: 'c1',
+				name: 'News Channel',
+				m3uData: { tvgId: 'c1', url: 'http://example.com/stream.m3u8' }
+			})
+			.run();
+	});
+
+	async function fetchMultilangEpg() {
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+			new Response(MULTILANG_XMLTV, { headers: { 'content-type': 'application/xml' } })
+		);
+		const provider = new M3uProvider();
+		return provider.fetchEpg(
+			createTestAccount('https://example.com/epg.xml'),
+			new Date('2026-09-12T00:00:00Z'),
+			new Date('2026-09-14T00:00:00Z')
+		);
+	}
+
+	it('keeps the plain columns at the pre-i18n first-element behavior', async () => {
+		const programs = await fetchMultilangEpg();
+		expect(programs).toHaveLength(3);
+
+		const [multi, untranslated, singleLang] = programs;
+
+		// Multi-language programme: the FIRST element wins for the plain columns.
+		expect(multi.title).toBe('News');
+		expect(multi.description).toBe('Plain first');
+		expect(multi.category).toBe('Sports');
+
+		// Untranslated programme: bare string elements parse as before.
+		expect(untranslated.title).toBe('Only One');
+		expect(untranslated.description).toBe('Untranslated desc');
+		expect(untranslated.category).toBeNull();
+
+		// Single element carrying a lang attribute still resolves via #text.
+		expect(singleLang.title).toBe('Jornal');
+		expect(singleLang.description).toBeNull();
+		expect(singleLang.category).toBeNull();
+	});
+
+	it('stores the complete per-language variant lists', async () => {
+		const programs = await fetchMultilangEpg();
+		const [multi, untranslated, singleLang] = programs;
+
+		expect(multi.titleI18n).toEqual([
+			{ lang: 'en', text: 'News' },
+			{ lang: 'fr', text: 'Informations' }
+		]);
+		expect(multi.descriptionI18n).toEqual([
+			{ lang: null, text: 'Plain first' },
+			{ lang: 'de', text: 'Beschreibung' }
+		]);
+		expect(multi.categoryI18n).toEqual([{ lang: 'en', text: 'Sports' }]);
+
+		// Untranslated elements are preserved as lang-less entries.
+		expect(untranslated.titleI18n).toEqual([{ lang: null, text: 'Only One' }]);
+		expect(untranslated.descriptionI18n).toEqual([{ lang: null, text: 'Untranslated desc' }]);
+		expect(untranslated.categoryI18n).toBeNull();
+
+		// lang attributes are lower-cased.
+		expect(singleLang.titleI18n).toEqual([{ lang: 'pt-br', text: 'Jornal' }]);
+	});
 });
 
 describe('M3uProvider XMLTV compression handling', () => {

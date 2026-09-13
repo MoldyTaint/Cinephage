@@ -651,6 +651,16 @@ export interface EpgProgramRaw {
 }
 
 /**
+ * A single localized text variant preserved from an XMLTV `@lang` attribute
+ * (migration 140). `lang` is the lower-cased `@_lang` value, or null when the
+ * source element carried no language.
+ */
+export interface EpgLocalizedText {
+	lang: string | null;
+	text: string;
+}
+
+/**
  * EPG program stored in database
  */
 export interface EpgProgram {
@@ -664,6 +674,14 @@ export interface EpgProgram {
 	category: string | null;
 	director: string | null;
 	actor: string | null;
+	/**
+	 * All localized variants seen for the title/description/category XMLTV
+	 * elements. Optional; providers without language information leave these
+	 * unset and display falls back to the plain columns.
+	 */
+	titleI18n?: EpgLocalizedText[] | null;
+	descriptionI18n?: EpgLocalizedText[] | null;
+	categoryI18n?: EpgLocalizedText[] | null;
 	startTime: string;
 	endTime: string;
 	duration: number;

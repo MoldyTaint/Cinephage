@@ -24,9 +24,14 @@ const logger = createChildLogger({ logDomain: 'system' as const });
  * - Rows whose stored value is not parseable JSON (or not an array) are left
  *   untouched and logged.
  *
- * STRUCTURE NOTE (Phase 5 Task 3): this same migration is extended with the
- * epg_programs i18n columns before it ships. Keep apply() as an ordered list
- * of named steps and append new steps before the integrity gates.
+ * STRUCTURE NOTE (Phase 5 Task 3, applied): this migration also adds the
+ * epg_programs i18n columns — title_i18n / description_i18n / category_i18n
+ * (nullable text JSON arrays of { lang: string | null, text: string }). They
+ * preserve every XMLTV text element variant with its lower-cased `@_lang`
+ * attribute so text selection can happen at display time. Existing rows keep
+ * NULL i18n columns; readers fall back to the plain title/description/category
+ * columns. apply() is an ordered list of named steps, each individually
+ * idempotent, finished by the integrity gates.
  */
 
 const BATCH_SIZE = 500;
@@ -36,6 +41,12 @@ const SYNCED_ITEM_LANGUAGE_COLUMNS = [
 	{ canonical: 'audio_languages', raw: 'audio_languages_raw' },
 	{ canonical: 'subtitle_languages', raw: 'subtitle_languages_raw' }
 ] as const;
+
+/**
+ * epg_programs columns holding ALL localized XMLTV text variants as JSON
+ * arrays of { lang: string | null, text: string } (Phase 5 Task 3).
+ */
+const EPG_PROGRAM_I18N_COLUMNS = ['title_i18n', 'description_i18n', 'category_i18n'] as const;
 
 /** Step 1 — add the raw provenance columns (no-op when they already exist). */
 function addSyncedItemRawLanguageColumns(sqlite: Database.Database): void {
@@ -161,6 +172,20 @@ function canonicalizeSyncedItemLanguages(sqlite: Database.Database): void {
 	}
 }
 
+/**
+ * Step 3 (Task 3) — add the epg_programs i18n columns (no-op when they already
+ * exist). Nullable with no backfill: rows written before this migration keep
+ * NULL and readers fall back to the plain text columns.
+ */
+function addEpgProgramI18nColumns(sqlite: Database.Database): void {
+	if (!tableExists(sqlite, 'epg_programs')) return;
+	for (const column of EPG_PROGRAM_I18N_COLUMNS) {
+		if (columnExists(sqlite, 'epg_programs', column)) continue;
+		sqlite.prepare(`ALTER TABLE "epg_programs" ADD COLUMN "${column}" text`).run();
+		logger.info(`[migration v140] Added epg_programs.${column}`);
+	}
+}
+
 /** Final step — integrity gates (report, never fail the migration). */
 function runIntegrityChecks(sqlite: Database.Database): void {
 	const fkViolations = sqlite.prepare('PRAGMA foreign_key_check').all();
@@ -186,8 +211,8 @@ export const migration_v143: MigrationDefinition = {
 		// Step 2 (Task 2): canonicalize the stored language arrays in place.
 		canonicalizeSyncedItemLanguages(sqlite);
 
-		// Step 3 (Task 3 extension point): epg_programs i18n columns are appended
-		// here as additional named steps before this migration ships.
+		// Step 3 (Task 3): epg_programs i18n columns for XMLTV @lang preservation.
+		addEpgProgramI18nColumns(sqlite);
 
 		// Final: integrity gates.
 		runIntegrityChecks(sqlite);

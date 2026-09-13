@@ -141,7 +141,7 @@ import {
  * Version 134: Store canonical info hashes on download history rows
  * Version 135: Deduplicate active download queue rows by client and info hash
  * Version 142: Allow AniList/MAL title variants in alternate_titles (source CHECK extended, table rebuilt)
- * Version 143: Media-server stats language normalization - raw language provenance columns + canonicalized arrays on media_server_synced_items
+ * Version 143: Media-server stats language normalization - raw language provenance columns + canonicalized arrays on media_server_synced_items; epg_programs title_i18n/description_i18n/category_i18n JSON columns
  */
 export const CURRENT_SCHEMA_VERSION = 143;
 
@@ -1366,6 +1366,9 @@ const TABLE_DEFINITIONS: string[] = [
 		"title" text NOT NULL,
 		"description" text,
 		"category" text,
+		"title_i18n" text,
+		"description_i18n" text,
+		"category_i18n" text,
 		"director" text,
 		"actor" text,
 		"start_time" text NOT NULL,

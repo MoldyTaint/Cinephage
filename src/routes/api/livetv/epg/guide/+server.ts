@@ -7,6 +7,9 @@
  * - start: ISO date string (default: now)
  * - end: ISO date string (default: +6 hours)
  * - channelIds: Comma-separated channel IDs (optional, defaults to lineup channels)
+ * - lang: Optional display language tag (e.g. "en", "fr", "pt-BR"; the base tag
+ *   is used). Invalid/unknown values are ignored. When omitted, the plain EPG
+ *   text columns are returned unchanged.
  */
 
 import { json } from '@sveltejs/kit';
@@ -18,6 +21,7 @@ import {
 } from '$lib/server/livetv/epg/epg-utils';
 import { channelLineupService } from '$lib/server/livetv/lineup';
 import { createChildLogger } from '$lib/logging';
+import { normalizeTmdbLanguage } from '$lib/server/languages/normalize';
 import { ValidationError } from '$lib/errors';
 import { z } from 'zod';
 
@@ -29,6 +33,17 @@ const paramsSchema = z.object({
 	start: z.string().datetime().optional(),
 	end: z.string().datetime().optional()
 });
+
+/**
+ * Resolve the optional `lang` query parameter to a canonical base language tag.
+ * Returns null when absent or invalid so the request falls back to the plain
+ * EPG columns (invalid input is ignored, never an error).
+ */
+function resolveLangParam(url: URL): string | null {
+	const raw = url.searchParams.get('lang');
+	if (!raw || !raw.trim()) return null;
+	return normalizeTmdbLanguage(raw);
+}
 
 export const GET: RequestHandler = async ({ url }) => {
 	try {
@@ -89,7 +104,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		);
 		const guideMap = mapGuideDataToRequestedChannels(
 			resolvedPlan,
-			epgService.getGuideData(resolvedPlan.sourceChannelIds, start, end)
+			epgService.getGuideData(resolvedPlan.sourceChannelIds, start, end, resolveLangParam(url))
 		);
 
 		// Convert map to object for JSON

@@ -14,6 +14,7 @@ import type { ProtocolSettings } from '$lib/server/indexers/types/index.js';
 import type { NewznabCategory } from '$lib/server/indexers/newznab/types.js';
 import type { DesiredQuality } from '$lib/types/library.js';
 import type { AudioPreference, SubtitleRequirement } from '$lib/shared/language-profile.js';
+import type { EpgLocalizedText } from '$lib/types/livetv.js';
 
 // ============================================================================
 // Better Auth Tables
@@ -3555,6 +3556,13 @@ export const epgPrograms = sqliteTable(
 		title: text('title').notNull(),
 		description: text('description'),
 		category: text('category'),
+		// Localized variants preserved from XMLTV @lang attributes (migration 140):
+		// JSON arrays of { lang: string | null, text: string } with lang lower-cased.
+		// Nullable — rows written before (or without) language data keep NULL, and
+		// display-time selection falls back to the plain columns above.
+		titleI18n: text('title_i18n', { mode: 'json' }).$type<EpgLocalizedText[]>(),
+		descriptionI18n: text('description_i18n', { mode: 'json' }).$type<EpgLocalizedText[]>(),
+		categoryI18n: text('category_i18n', { mode: 'json' }).$type<EpgLocalizedText[]>(),
 		director: text('director'),
 		actor: text('actor'),
 		// Timing (ISO 8601 strings)
