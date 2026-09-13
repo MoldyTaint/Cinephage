@@ -455,7 +455,7 @@ export class LanguageProfileService {
 			const cutoffLang = profile.languages[profile.cutoffIndex];
 			return normalizedExisting.some(
 				(sub) =>
-					sub.normalizedLanguage === cutoffLang.code &&
+					sub.normalizedLanguage === normalizeLanguageCode(cutoffLang.code) &&
 					(sub.isForced ?? false) === cutoffLang.forced
 			);
 		}
