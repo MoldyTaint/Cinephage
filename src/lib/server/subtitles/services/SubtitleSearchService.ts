@@ -625,7 +625,13 @@ export class SubtitleSearchService {
 				if (!capabilities.supportsTvShows) return 'provider does not support TV shows';
 				break;
 			case 'anime':
-				if (!capabilities.supportsAnime) return 'provider does not support anime';
+				// Anime is episodic TV content. A provider is eligible when it opts
+				// into anime explicitly OR supports TV shows (the sane default), so
+				// anime libraries keep general-provider coverage; only providers
+				// that support neither are skipped.
+				if (!capabilities.supportsAnime && !capabilities.supportsTvShows) {
+					return 'provider does not support anime';
+				}
 				break;
 		}
 

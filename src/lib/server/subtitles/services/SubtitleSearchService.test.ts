@@ -609,6 +609,81 @@ describe('SubtitleSearchService - capability gating and priority tiers', () => {
 		expect(aggregated.providerResults[0].skipped).toBe('provider does not support TV shows');
 	});
 
+	it('treats TV-capable providers as anime-eligible (default capabilities)', async () => {
+		// Default capabilities: supportsMovies/supportsTvShows true, supportsAnime false.
+		const general = makeProvider({
+			id: 'general',
+			search: vi.fn().mockResolvedValue([result({ providerId: 'general' })])
+		});
+		mockGetEnabledProviders.mockResolvedValue([general]);
+
+		const aggregated = await service.search(criteria, {}, { mediaKind: 'anime' });
+
+		expect(general.search).toHaveBeenCalledTimes(1);
+		expect(aggregated.providerResults[0].skipped).toBeUndefined();
+		expect(aggregated.results).toHaveLength(1);
+	});
+
+	it('skips a movies-only provider for an anime search', async () => {
+		const moviesOnly = makeProvider({
+			id: 'movies-only',
+			capabilities: {
+				hashVerifiable: false,
+				hearingImpairedVerifiable: false,
+				skipWrongFps: true,
+				supportsTvShows: false,
+				supportsMovies: true,
+				supportsAnime: false
+			}
+		});
+		mockGetEnabledProviders.mockResolvedValue([moviesOnly]);
+
+		const aggregated = await service.search(criteria, {}, { mediaKind: 'anime' });
+
+		expect(moviesOnly.search).not.toHaveBeenCalled();
+		expect(aggregated.providerResults[0].skipped).toBe('provider does not support anime');
+	});
+
+	it('still applies movie/TV gating unchanged', async () => {
+		const moviesOnly = makeProvider({
+			id: 'movies-only',
+			capabilities: {
+				hashVerifiable: false,
+				hearingImpairedVerifiable: false,
+				skipWrongFps: true,
+				supportsTvShows: false,
+				supportsMovies: true,
+				supportsAnime: false
+			}
+		});
+		const tvOnly = makeProvider({
+			id: 'tv-only',
+			capabilities: {
+				hashVerifiable: false,
+				hearingImpairedVerifiable: false,
+				skipWrongFps: true,
+				supportsTvShows: true,
+				supportsMovies: false,
+				supportsAnime: false
+			}
+		});
+		mockGetEnabledProviders.mockResolvedValue([moviesOnly, tvOnly]);
+
+		const movieSearch = await service.search(criteria, {}, { mediaKind: 'movie' });
+		expect(moviesOnly.search).toHaveBeenCalledTimes(1);
+		expect(movieSearch.providerResults.find((p) => p.providerId === 'tv-only')?.skipped).toBe(
+			'provider does not support movies'
+		);
+
+		moviesOnly.search.mockClear();
+		tvOnly.search.mockClear();
+		const tvSearch = await service.search(criteria, {}, { mediaKind: 'tv' });
+		expect(tvOnly.search).toHaveBeenCalledTimes(1);
+		expect(tvSearch.providerResults.find((p) => p.providerId === 'movies-only')?.skipped).toBe(
+			'provider does not support TV shows'
+		);
+	});
+
 	it('skips providers that cannot verify HI when a require-hi requirement is acquired', async () => {
 		const unverifiable = makeProvider({ id: 'no-hi' });
 		const verifiable = makeProvider({

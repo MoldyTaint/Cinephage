@@ -338,8 +338,15 @@ async function searchMissingMovieSubtitles(
 					const missingCodes = activeMissing.map((m) => m.tag).join(', ');
 					const missingLabel = missingCodes ? `Subtitles: ${missingCodes}` : undefined;
 
-					// Search for subtitles
-					const results = await searchService.searchForMovie(movie.id, languages);
+					// Search for subtitles. Gate providers that cannot verify HI when
+					// any requirement being acquired is `require-hi`, otherwise such a
+					// requirement could hit a provider that cannot prove HI status.
+					const requireHearingImpaired = activeMissing.some(
+						(r) => r.accessibility === 'require-hi'
+					);
+					const results = await searchService.searchForMovie(movie.id, languages, {
+						requireHearingImpaired
+					});
 
 					// Download best match for each missing requirement
 					for (const requirement of activeMissing) {
@@ -578,8 +585,14 @@ async function searchMissingEpisodeSubtitles(
 							const missingCodes = activeMissing.map((m) => m.tag).join(', ');
 							const missingLabel = missingCodes ? `Subtitles: ${missingCodes}` : undefined;
 
-							// Search for subtitles
-							const results = await searchService.searchForEpisode(episodeId, languages);
+							// Search for subtitles. Gate providers that cannot verify HI
+							// when any requirement being acquired is `require-hi`.
+							const requireHearingImpaired = activeMissing.some(
+								(r) => r.accessibility === 'require-hi'
+							);
+							const results = await searchService.searchForEpisode(episodeId, languages, {
+								requireHearingImpaired
+							});
 
 							for (const requirement of activeMissing) {
 								const key = requirementKey(requirement);

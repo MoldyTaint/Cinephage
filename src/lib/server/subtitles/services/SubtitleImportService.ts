@@ -184,8 +184,13 @@ async function searchForMovie(
 		return result;
 	}
 
-	// Search for subtitles
-	const searchResults = await searchService.searchForMovie(movieId, languages);
+	// Search for subtitles. Gate providers that cannot verify HI when any missing
+	// requirement is `require-hi`, otherwise such a requirement could hit a
+	// provider that cannot prove HI status.
+	const requireHearingImpaired = status.missing.some((r) => r.accessibility === 'require-hi');
+	const searchResults = await searchService.searchForMovie(movieId, languages, {
+		requireHearingImpaired
+	});
 	const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
 
 	logger.info(
@@ -385,8 +390,13 @@ async function searchForEpisode(
 		return result;
 	}
 
-	// Search for subtitles
-	const searchResults = await searchService.searchForEpisode(episodeId, languages);
+	// Search for subtitles. Gate providers that cannot verify HI when any missing
+	// requirement is `require-hi`, otherwise such a requirement could hit a
+	// provider that cannot prove HI status.
+	const requireHearingImpaired = status.missing.some((r) => r.accessibility === 'require-hi');
+	const searchResults = await searchService.searchForEpisode(episodeId, languages, {
+		requireHearingImpaired
+	});
 	const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
 
 	logger.info(

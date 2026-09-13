@@ -260,13 +260,17 @@ describe('MissingSubtitlesTask monitored gating', () => {
 
 		expect(result.itemsProcessed).toBe(2);
 		expect(searchService.searchForMovie).toHaveBeenCalledTimes(1);
-		expect(searchService.searchForMovie).toHaveBeenCalledWith(monitoredMovieId, ['en']);
+		expect(searchService.searchForMovie).toHaveBeenCalledWith(monitoredMovieId, ['en'], {
+			requireHearingImpaired: false
+		});
 		expect(
 			searchService.searchForMovie.mock.calls.some((call) => call[0] === unmonitoredMovieId)
 		).toBe(false);
 
 		expect(searchService.searchForEpisode).toHaveBeenCalledTimes(1);
-		expect(searchService.searchForEpisode).toHaveBeenCalledWith(monitoredEpisodeId, ['en']);
+		expect(searchService.searchForEpisode).toHaveBeenCalledWith(monitoredEpisodeId, ['en'], {
+			requireHearingImpaired: false
+		});
 		expect(
 			searchService.searchForEpisode.mock.calls.some(
 				(call) => call[0] === unmonitoredEpisodeId || call[0] === unmonitoredSeriesEpisodeId
@@ -411,13 +415,17 @@ describe('SubtitleUpgradeTask monitored gating', () => {
 
 		expect(result.itemsProcessed).toBe(2);
 		expect(searchService.searchForMovie).toHaveBeenCalledTimes(1);
-		expect(searchService.searchForMovie).toHaveBeenCalledWith(monitoredMovieId, ['en']);
+		expect(searchService.searchForMovie).toHaveBeenCalledWith(monitoredMovieId, ['en'], {
+			requireHearingImpaired: false
+		});
 		expect(
 			searchService.searchForMovie.mock.calls.some((call) => call[0] === unmonitoredMovieId)
 		).toBe(false);
 
 		expect(searchService.searchForEpisode).toHaveBeenCalledTimes(1);
-		expect(searchService.searchForEpisode).toHaveBeenCalledWith(monitoredEpisodeId, ['en']);
+		expect(searchService.searchForEpisode).toHaveBeenCalledWith(monitoredEpisodeId, ['en'], {
+			requireHearingImpaired: false
+		});
 		expect(
 			searchService.searchForEpisode.mock.calls.some(
 				(call) => call[0] === unmonitoredEpisodeId || call[0] === unmonitoredSeriesEpisodeId
@@ -425,3 +433,105 @@ describe('SubtitleUpgradeTask monitored gating', () => {
 		).toBe(false);
 	});
 });
+
+describe('HI gating on scheduled/import searches', () => {
+	it('MissingSubtitlesTask passes requireHearingImpaired for a require-hi movie', async () => {
+		await testDb.db.insert(movies).values({
+			id: 'hi-movie',
+			tmdbId: 401,
+			title: 'HI Movie',
+			path: '/movies/hi',
+			hasFile: true,
+			wantsSubtitles: true,
+			monitored: true,
+			languageProfileId: 'profile-1'
+		});
+
+		profileService.getMovieSubtitleStatus.mockResolvedValueOnce({
+			satisfied: false,
+			missing: [{ tag: 'en', variant: 'regular', accessibility: 'require-hi' }],
+			existing: []
+		});
+
+		await executeMissingSubtitlesTask(null);
+
+		expect(searchService.searchForMovie).toHaveBeenCalledWith('hi-movie', ['en'], {
+			requireHearingImpaired: true
+		});
+	});
+
+	it('MissingSubtitlesTask passes requireHearingImpaired for a require-hi episode', async () => {
+		const seriesId = 'hi-series';
+		const episodeId = 'hi-episode';
+		await testDb.db.insert(series).values({
+			id: seriesId,
+			tmdbId: 402,
+			title: 'HI Series',
+			path: '/series/hi',
+			monitored: true,
+			wantsSubtitles: true,
+			languageProfileId: 'profile-1'
+		});
+		await testDb.db.insert(episodes).values({
+			id: episodeId,
+			seriesId,
+			seasonNumber: 1,
+			episodeNumber: 1,
+			hasFile: true,
+			monitored: true
+		});
+		missingEpisodesBySeries.set(seriesId, [episodeId]);
+
+		profileService.getEpisodeSubtitleStatus.mockResolvedValueOnce({
+			satisfied: false,
+			missing: [{ tag: 'en', variant: 'regular', accessibility: 'require-hi' }],
+			existing: []
+		});
+
+		await executeMissingSubtitlesTask(null);
+
+		expect(searchService.searchForEpisode).toHaveBeenCalledWith(episodeId, ['en'], {
+			requireHearingImpaired: true
+		});
+	});
+
+	it('SubtitleUpgradeTask passes requireHearingImpaired for a require-hi profile', async () => {
+		const movieId = 'hi-upgrade-movie';
+		await testDb.db.insert(movies).values({
+			id: movieId,
+			tmdbId: 403,
+			title: 'HI Upgrade Movie',
+			path: '/movies/hi-upgrade',
+			hasFile: true,
+			wantsSubtitles: true,
+			monitored: true,
+			languageProfileId: 'profile-1'
+		});
+		await testDb.db.insert(subtitles).values({
+			id: 'hi-upgrade-sub',
+			movieId,
+			relativePath: 'hi-upgrade.srt',
+			language: 'en',
+			isHearingImpaired: true,
+			format: 'srt',
+			matchScore: 50
+		});
+
+		profileService.getProfile.mockResolvedValueOnce({
+			id: 'profile-1',
+			name: 'Default',
+			audio: { preferOriginal: true, languages: [] },
+			subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'require-hi' }],
+			cutoffRank: 0,
+			upgradesAllowed: true,
+			minimumScore: 80
+		});
+
+		await executeSubtitleUpgradeTask(null);
+
+		expect(searchService.searchForMovie).toHaveBeenCalledWith(movieId, ['en'], {
+			requireHearingImpaired: true
+		});
+	});
+});
+

@@ -311,8 +311,15 @@ async function searchMovieSubtitleUpgrades(
 					const languages = [...new Set(profile.subtitles.map((l) => l.tag))];
 					if (languages.length === 0) return;
 
-					// Search for subtitles
-					const results = await searchService.searchForMovie(movie.id, languages);
+					// Search for subtitles. Gate providers that cannot verify HI when
+					// the profile requires HI; otherwise an upgrade candidate could
+					// not verify the accessibility of the subtitle it replaces.
+					const requireHearingImpaired = profile.subtitles.some(
+						(r) => r.accessibility === 'require-hi'
+					);
+					const results = await searchService.searchForMovie(movie.id, languages, {
+						requireHearingImpaired
+					});
 
 					// Check each existing subtitle for upgrades
 					for (const existingSub of movieSubs) {
@@ -530,8 +537,15 @@ async function searchEpisodeSubtitleUpgrades(
 					const languages = [...new Set(profile.subtitles.map((l) => l.tag))];
 					if (languages.length === 0) return;
 
-					// Search for subtitles
-					const results = await searchService.searchForEpisode(episode.id, languages);
+					// Search for subtitles. Gate providers that cannot verify HI when
+					// the profile requires HI; otherwise an upgrade candidate could
+					// not verify the accessibility of the subtitle it replaces.
+					const requireHearingImpaired = profile.subtitles.some(
+						(r) => r.accessibility === 'require-hi'
+					);
+					const results = await searchService.searchForEpisode(episode.id, languages, {
+						requireHearingImpaired
+					});
 
 					// Check each existing subtitle for upgrades
 					for (const existingSub of episodeSubs) {
