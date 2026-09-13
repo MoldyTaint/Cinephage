@@ -27,6 +27,7 @@ import {
 	type ThrottleableError
 } from '../errors/ProviderErrors';
 import { getThrottleConfig, PROVIDER_RESET_CALCULATORS } from '../throttle/ThrottleMap';
+import { RateLimiter } from '../providers/mixins';
 
 /**
  * Transient error types that should use a sliding window gate before throttling.
@@ -61,6 +62,17 @@ export class SubtitleProviderManager {
 	private static instance: SubtitleProviderManager | null = null;
 	private providerInstances: Map<string, ISubtitleProvider> = new Map();
 	private initialized: boolean = false;
+
+	/**
+	 * Shared per-provider rate limiters keyed by provider id. A limiter is
+	 * created lazily from the stored `requestsPerMinute` and reused for both
+	 * search and download calls. Updated providers drop their limiter so the new
+	 * rate takes effect.
+	 */
+	private rateLimiters: Map<string, RateLimiter> = new Map();
+
+	/** The requests-per-minute a cached limiter was built with (for rebuilds). */
+	private rateLimiterRpm: Map<string, number> = new Map();
 
 	/**
 	 * In-memory sliding window tracker for transient errors per provider.
@@ -204,6 +216,7 @@ export class SubtitleProviderManager {
 
 		// Clear cached instance so it gets recreated
 		this.providerInstances.delete(id);
+		this.dropRateLimiter(id);
 
 		const updated = await this.getProvider(id);
 		if (!updated) {
@@ -220,6 +233,7 @@ export class SubtitleProviderManager {
 	async deleteProvider(id: string): Promise<void> {
 		await db.delete(subtitleProviders).where(eq(subtitleProviders.id, id));
 		this.providerInstances.delete(id);
+		this.dropRateLimiter(id);
 		logger.info({ id }, 'Deleted subtitle provider');
 	}
 
@@ -244,6 +258,8 @@ export class SubtitleProviderManager {
 		try {
 			instance = factory.createProvider(config);
 			this.providerInstances.set(id, instance);
+			// Prime the shared limiter with the provider's configured rate.
+			this.ensureRateLimiter(id, this.resolveRequestsPerMinute(config));
 			return instance;
 		} catch (error) {
 			logger.error(
@@ -275,6 +291,81 @@ export class SubtitleProviderManager {
 		}
 
 		return instances;
+	}
+
+	// =========================================================================
+	// Rate limiting
+	// =========================================================================
+
+	/**
+	 * Resolve the effective requests-per-minute for a provider.
+	 *
+	 * Precedence: stored `requestsPerMinute` (when > 0) → the definition's
+	 * `defaultRequestsPerMinute` → 60. A value <= 0 means "no limit" and callers
+	 * skip acquisition.
+	 */
+	private resolveRequestsPerMinute(config: SubtitleProviderConfig): number {
+		if (typeof config.requestsPerMinute === 'number' && config.requestsPerMinute > 0) {
+			return config.requestsPerMinute;
+		}
+		const definitionDefault = this.getDefinition(config.implementation)?.defaultRequestsPerMinute;
+		return definitionDefault && definitionDefault > 0 ? definitionDefault : 60;
+	}
+
+	/**
+	 * Get (or lazily build) the shared rate limiter for a provider.
+	 * Returns null when the effective rate is <= 0 (unlimited).
+	 */
+	private ensureRateLimiter(id: string, requestsPerMinute: number): RateLimiter | null {
+		if (!(requestsPerMinute > 0)) {
+			this.rateLimiters.delete(id);
+			this.rateLimiterRpm.delete(id);
+			return null;
+		}
+
+		const existing = this.rateLimiters.get(id);
+		if (existing && this.rateLimiterRpm.get(id) === requestsPerMinute) {
+			return existing;
+		}
+
+		const limiter = new RateLimiter(requestsPerMinute);
+		this.rateLimiters.set(id, limiter);
+		this.rateLimiterRpm.set(id, requestsPerMinute);
+		return limiter;
+	}
+
+	/**
+	 * Await a token from the provider's shared rate limiter before making a
+	 * request. Used by search and download paths.
+	 */
+	async acquireRateLimit(id: string): Promise<void> {
+		let limiter: RateLimiter | null | undefined = this.rateLimiters.get(id);
+		if (!limiter) {
+			const config = await this.getProvider(id);
+			const rpm = config ? this.resolveRequestsPerMinute(config) : 60;
+			limiter = this.ensureRateLimiter(id, rpm);
+		}
+		if (limiter) {
+			await limiter.acquire();
+		}
+	}
+
+	/** Drop a cached limiter so it is rebuilt with the current rate. */
+	private dropRateLimiter(id: string): void {
+		this.rateLimiters.delete(id);
+		this.rateLimiterRpm.delete(id);
+	}
+
+	/** Test helper: clear all cached rate limiters. */
+	clearRateLimitersForTests(): void {
+		this.rateLimiters.clear();
+		this.rateLimiterRpm.clear();
+	}
+
+	/** Test helper: whether the provider's cached limiter has a token ready. */
+	canMakeRequestForTests(id: string): boolean {
+		const limiter = this.rateLimiters.get(id);
+		return limiter ? limiter.canMakeRequest() : false;
 	}
 
 	// =========================================================================

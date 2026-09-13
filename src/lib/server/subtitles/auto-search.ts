@@ -160,7 +160,9 @@ export async function autoSearchMovie(
 	if (languages.length === 0) return emptyResult('movie', movie.id, movie.title, 'no_profile');
 
 	const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
-	const searchResults = await getSubtitleSearchService().searchForMovie(movie.id, languages);
+	const searchResults = await getSubtitleSearchService().searchForMovie(movie.id, languages, {
+		requireHearingImpaired: status.missing.some((r) => r.accessibility === 'require-hi')
+	});
 
 	return acquireRequirements(
 		'movie',
@@ -202,7 +204,9 @@ export async function autoSearchEpisode(
 	if (languages.length === 0) return emptyResult('episode', episode.id, title, 'no_profile');
 
 	const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
-	const searchResults = await getSubtitleSearchService().searchForEpisode(episode.id, languages);
+	const searchResults = await getSubtitleSearchService().searchForEpisode(episode.id, languages, {
+		requireHearingImpaired: status.missing.some((r) => r.accessibility === 'require-hi')
+	});
 
 	return acquireRequirements(
 		'episode',

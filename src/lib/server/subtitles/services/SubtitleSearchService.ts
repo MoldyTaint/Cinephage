@@ -13,7 +13,8 @@ import {
 	movieFiles,
 	episodeFiles,
 	subtitleBlacklist,
-	rootFolders
+	rootFolders,
+	libraries
 } from '$lib/server/db/schema';
 import { basename, join } from 'path';
 import { eq, and } from 'drizzle-orm';
@@ -24,10 +25,17 @@ import type {
 	SubtitleSearchCriteria,
 	SubtitleSearchResult,
 	AggregatedSearchResult,
-	MediaContext
+	MediaContext,
+	SubtitleMediaKind
 } from '../types';
+import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
+import { DEFAULT_MINIMUM_SCORE } from '$lib/shared/language-profile.js';
+import { selectBestCandidate } from '../acquisition.js';
+import { languageSatisfies } from '../requirement-matcher.js';
 import { getSubtitleProviderManager } from './SubtitleProviderManager';
 import { getSubtitleScoringService } from './SubtitleScoringService';
+import type { ISubtitleProvider } from '../providers/interfaces';
+import type { ProviderCapabilities } from '../providers/BaseProvider';
 
 const criteriaIdCache = new Map<string, { imdbId?: string; tvdbId?: number; expires: number }>();
 const CACHE_TTL_MS = 30 * 60 * 1000;
@@ -52,6 +60,31 @@ export interface SubtitleSearchOptions {
 	includeHearingImpaired?: boolean;
 	/** Drop HI results when true (default: keep) */
 	excludeHearingImpaired?: boolean;
+	/**
+	 * Media kind for provider capability gating. Derived automatically by
+	 * `searchForMovie`/`searchForEpisode`; direct `search()` callers may pass it.
+	 * When omitted, capability gating by media type is skipped.
+	 */
+	mediaKind?: SubtitleMediaKind;
+	/**
+	 * When true, providers whose capabilities cannot verify hearing-impaired
+	 * status are skipped (used when acquiring a `require-hi` requirement).
+	 */
+	requireHearingImpaired?: boolean;
+	/**
+	 * When true, hash-verifiable providers are ordered ahead of non-hash
+	 * providers within a priority tier. Defaults to true when the criteria
+	 * carries a video hash.
+	 */
+	preferHashVerifiable?: boolean;
+	/**
+	 * Single requirement currently being acquired. When provided, priority tiers
+	 * stop as soon as a tier yields a candidate accepted by
+	 * `selectBestCandidate` for this requirement.
+	 */
+	requirement?: SubtitleRequirement;
+	/** Minimum match score for the tier-acceptance check (default 70). */
+	minimumScore?: number;
 }
 
 /**
@@ -124,7 +157,7 @@ export class SubtitleSearchService {
 				includeHearingImpaired: options?.includeHearingImpaired,
 				excludeHearingImpaired: options?.excludeHearingImpaired
 			};
-			return this.search(criteria, { movieId }, options);
+			return this.search(criteria, { movieId }, { ...options, mediaKind: 'movie' });
 		}
 
 		// Per-file search: each file gets its own hash matching.
@@ -153,7 +186,7 @@ export class SubtitleSearchService {
 			};
 
 			try {
-				const batch = await this.search(criteria, { movieId }, options);
+				const batch = await this.search(criteria, { movieId }, { ...options, mediaKind: 'movie' });
 
 				// Tag every result in this batch with the originating file id and a
 				// display label so the interactive modal can group/label results.
@@ -255,7 +288,29 @@ export class SubtitleSearchService {
 			excludeHearingImpaired: options?.excludeHearingImpaired
 		};
 
-		return this.search(criteria, { episodeId }, options);
+		return this.search(criteria, { episodeId }, {
+			...options,
+			mediaKind: await this.resolveSeriesMediaKind(seriesData[0])
+		});
+	}
+
+	/**
+	 * Resolve the capability media kind for a series: `anime` when the series
+	 * type is anime or its library subtype is anime, otherwise `tv`.
+	 */
+	private async resolveSeriesMediaKind(seriesRow: {
+		seriesType?: string | null;
+		libraryId?: string | null;
+	}): Promise<SubtitleMediaKind> {
+		if (seriesRow.seriesType === 'anime') return 'anime';
+		if (!seriesRow.libraryId) return 'tv';
+
+		const library = await db
+			.select({ mediaSubType: libraries.mediaSubType })
+			.from(libraries)
+			.where(eq(libraries.id, seriesRow.libraryId))
+			.limit(1);
+		return library[0]?.mediaSubType === 'anime' ? 'anime' : 'tv';
 	}
 
 	/**
@@ -354,77 +409,170 @@ export class SubtitleSearchService {
 			? new Set<string>()
 			: await this.getBlacklist(mediaRef);
 
-		// Search all providers concurrently
 		const providerResults: AggregatedSearchResult['providerResults'] = [];
 		const allResults: SubtitleSearchResult[] = [];
+		const tierTimings: NonNullable<AggregatedSearchResult['tierTimings']> = [];
 
-		const searchPromises = providers.map(async (provider) => {
-			const providerStart = Date.now();
-			try {
-				// Check if provider can search
-				if (!provider.canSearch(enrichedCriteria)) {
-					return {
-						providerId: provider.id,
-						providerName: provider.name,
-						resultCount: 0,
-						error: 'Provider cannot search with given criteria',
-						searchTimeMs: 0
-					};
-				}
-
-				const results = await provider.search(enrichedCriteria, {
-					maxResults: options?.maxResultsPerProvider || 25,
-					timeout: options?.timeout || 30000
-				});
-
-				// Score each result
-				for (const result of results) {
-					result.matchScore = scoringService.score(result, enrichedCriteria);
-				}
-
-				// Record success
-				await providerManager.recordSuccess(provider.id);
-
-				const searchTimeMs = Date.now() - providerStart;
-				return {
-					providerId: provider.id,
-					providerName: provider.name,
-					resultCount: results.length,
-					searchTimeMs,
-					results
-				};
-			} catch (error) {
-				const errorMsg = error instanceof Error ? error.message : String(error);
-				logger.error({ err: error }, `Provider search failed: ${provider.name}`);
-
-				// Record error - pass actual error object to preserve type information for proper throttling
-				await providerManager.recordError(provider.id, error instanceof Error ? error : errorMsg);
-
-				return {
+		// ------------------------------------------------------------------
+		// Capability gating
+		//
+		// Providers that cannot serve the requested media kind are skipped (with
+		// a logged reason), as are providers that cannot verify HI subtitles when
+		// the acquisition requires it. This happens before any network call.
+		// ------------------------------------------------------------------
+		const eligibleProviders: ISubtitleProvider[] = [];
+		for (const provider of providers) {
+			const skipReason = this.capabilitySkipReason(provider, options);
+			if (skipReason) {
+				logger.info(
+					{ providerId: provider.id, providerName: provider.name, reason: skipReason },
+					'[Subtitles] Provider skipped by capability gating'
+				);
+				providerResults.push({
 					providerId: provider.id,
 					providerName: provider.name,
 					resultCount: 0,
-					error: errorMsg,
-					searchTimeMs: Date.now() - providerStart
-				};
+					searchTimeMs: 0,
+					skipped: skipReason
+				});
+				continue;
 			}
-		});
+			eligibleProviders.push(provider);
+		}
 
-		const searchResults = await Promise.all(searchPromises);
+		// ------------------------------------------------------------------
+		// Priority tiers
+		//
+		// Enabled providers are grouped by ascending `priority` into tiers.
+		// Tiers are queried sequentially (concurrent `Promise.all` within a tier)
+		// and the cascade stops as soon as a tier yields acceptable candidates, so
+		// lower-priority tiers act purely as fallback. "Acceptable" means:
+		// - an explicit `options.requirement` is satisfied by a candidate accepted
+		//   by `selectBestCandidate` at `minimumScore` (the requirement being
+		//   acquired), or
+		// - every requested language has a result whose language satisfies it
+		//   (`languageSatisfies`) at `minimumScore` (default 0).
+		// When neither is satisfied every tier is queried (pre-tier behavior).
+		// ------------------------------------------------------------------
+		const preferHashVerifiable =
+			options?.preferHashVerifiable ??
+			Boolean(enrichedCriteria.videoHash || enrichedCriteria.filePath);
 
-		// Aggregate results
-		for (const result of searchResults) {
-			providerResults.push({
-				providerId: result.providerId,
-				providerName: result.providerName,
-				resultCount: result.resultCount,
-				error: result.error,
-				searchTimeMs: result.searchTimeMs
+		const tiers = new Map<number, ISubtitleProvider[]>();
+		for (const provider of eligibleProviders) {
+			const entry = tiers.get(provider.priority);
+			if (entry) entry.push(provider);
+			else tiers.set(provider.priority, [provider]);
+		}
+
+		const searchableProviders = Array.from(tiers.keys()).sort((a, b) => a - b);
+
+		for (const priority of searchableProviders) {
+			const tierProviders = [...(tiers.get(priority) ?? [])];
+
+			// Prefer hash-verifiable providers within the tier when a hash is in play.
+			if (preferHashVerifiable) {
+				tierProviders.sort(
+					(a, b) =>
+						Number(b.capabilities?.hashVerifiable ?? false) -
+						Number(a.capabilities?.hashVerifiable ?? false)
+				);
+			}
+
+			const tierStart = Date.now();
+			const tierResultsAll: SubtitleSearchResult[] = [];
+
+			const searchResults = await Promise.all(
+				tierProviders.map(async (provider) => {
+					const providerStart = Date.now();
+					try {
+						// Check if provider can search
+						if (!provider.canSearch(enrichedCriteria)) {
+							return {
+								providerId: provider.id,
+								providerName: provider.name,
+								resultCount: 0,
+								error: undefined as string | undefined,
+								skipped: 'Provider cannot search with given criteria' as string | undefined,
+								searchTimeMs: 0
+							};
+						}
+
+						// Shared per-provider rate limiter (keyed by provider id).
+						await providerManager.acquireRateLimit(provider.id);
+
+						const results = await provider.search(enrichedCriteria, {
+							maxResults: options?.maxResultsPerProvider || 25,
+							timeout: options?.timeout || 30000
+						});
+
+						// Score each result
+						for (const result of results) {
+							result.matchScore = scoringService.score(result, enrichedCriteria);
+						}
+
+						// Record success
+						await providerManager.recordSuccess(provider.id);
+
+						const searchTimeMs = Date.now() - providerStart;
+						return {
+							providerId: provider.id,
+							providerName: provider.name,
+							resultCount: results.length,
+							error: undefined as string | undefined,
+							skipped: undefined as string | undefined,
+							searchTimeMs,
+							results
+						};
+					} catch (error) {
+						const errorMsg = error instanceof Error ? error.message : String(error);
+						logger.error({ err: error }, `Provider search failed: ${provider.name}`);
+
+						// Record error - pass actual error object to preserve type information for proper throttling
+						await providerManager.recordError(
+							provider.id,
+							error instanceof Error ? error : errorMsg
+						);
+
+						return {
+							providerId: provider.id,
+							providerName: provider.name,
+							resultCount: 0,
+							error: errorMsg,
+							skipped: undefined as string | undefined,
+							searchTimeMs: Date.now() - providerStart
+						};
+					}
+				})
+			);
+
+			// Aggregate this tier's results
+			for (const result of searchResults) {
+				providerResults.push({
+					providerId: result.providerId,
+					providerName: result.providerName,
+					resultCount: result.resultCount,
+					error: result.error,
+					skipped: result.skipped,
+					searchTimeMs: result.searchTimeMs
+				});
+
+				if ('results' in result && result.results) {
+					allResults.push(...result.results);
+					tierResultsAll.push(...result.results);
+				}
+			}
+
+			const accepted = this.tierAccepted(tierResultsAll, criteria, options);
+			tierTimings.push({
+				priority,
+				providerIds: tierProviders.map((p) => p.id),
+				searchTimeMs: Date.now() - tierStart,
+				accepted,
+				stopped: accepted
 			});
 
-			if ('results' in result && result.results) {
-				allResults.push(...result.results);
-			}
+			if (accepted) break;
 		}
 
 		// Filter blacklisted
@@ -452,8 +600,66 @@ export class SubtitleSearchService {
 			results: rankedResults,
 			totalResults: rankedResults.length,
 			searchTimeMs: Date.now() - startTime,
-			providerResults
+			providerResults,
+			tierTimings
 		};
+	}
+
+	/**
+	 * Why a provider cannot serve this search, or null when it can.
+	 * Media-kind gating uses `options.mediaKind`; HI gating is opt-in via
+	 * `options.requireHearingImpaired`. Returns a human-readable reason.
+	 */
+	private capabilitySkipReason(
+		provider: ISubtitleProvider,
+		options?: SubtitleSearchOptions
+	): string | null {
+		const capabilities: ProviderCapabilities | undefined = provider.capabilities;
+		if (!capabilities) return null;
+
+		switch (options?.mediaKind) {
+			case 'movie':
+				if (!capabilities.supportsMovies) return 'provider does not support movies';
+				break;
+			case 'tv':
+				if (!capabilities.supportsTvShows) return 'provider does not support TV shows';
+				break;
+			case 'anime':
+				if (!capabilities.supportsAnime) return 'provider does not support anime';
+				break;
+		}
+
+		if (options?.requireHearingImpaired && !capabilities.hearingImpairedVerifiable) {
+			return 'provider cannot verify hearing-impaired subtitles';
+		}
+
+		return null;
+	}
+
+	/**
+	 * Whether a tier's results are acceptable enough to stop the priority
+	 * cascade. See `search()` for the acceptance rules.
+	 */
+	private tierAccepted(
+		tierResults: SubtitleSearchResult[],
+		criteria: SubtitleSearchCriteria,
+		options?: SubtitleSearchOptions
+	): boolean {
+		if (tierResults.length === 0) return false;
+
+		if (options?.requirement) {
+			const selection = selectBestCandidate(
+				tierResults,
+				options.requirement,
+				options.minimumScore ?? DEFAULT_MINIMUM_SCORE
+			);
+			return Boolean(selection.best);
+		}
+
+		const minScore = options?.minimumScore ?? 0;
+		return criteria.languages.every((lang) =>
+			tierResults.some((r) => r.matchScore >= minScore && languageSatisfies(r.language, lang))
+		);
 	}
 
 	/**

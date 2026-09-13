@@ -23,6 +23,8 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 
 const providerDownloadMock = vi.hoisted(() => vi.fn());
 const getProviderInstanceMock = vi.hoisted(() => vi.fn());
+const acquireRateLimitMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const recordErrorMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const syncSubtitleMock = vi.hoisted(() => vi.fn());
 const notifierQueueUpdateMock = vi.hoisted(() => vi.fn());
 const mockLogger = vi.hoisted(() => ({
@@ -56,7 +58,9 @@ vi.mock('$lib/server/notifications/mediabrowser', () => ({
 
 vi.mock('./SubtitleProviderManager', () => ({
 	getSubtitleProviderManager: () => ({
-		getProviderInstance: getProviderInstanceMock
+		getProviderInstance: getProviderInstanceMock,
+		acquireRateLimit: acquireRateLimitMock,
+		recordError: recordErrorMock
 	})
 }));
 
@@ -196,6 +200,8 @@ describe('SubtitleDownloadService', () => {
 		await fsPromises.rm(ROOT_PATH, { recursive: true, force: true });
 		providerDownloadMock.mockReset();
 		getProviderInstanceMock.mockReset();
+		acquireRateLimitMock.mockReset().mockResolvedValue(undefined);
+		recordErrorMock.mockReset().mockResolvedValue(undefined);
 		syncSubtitleMock.mockReset();
 		notifierQueueUpdateMock.mockReset();
 		mockedWriteFile.mockClear();
@@ -414,6 +420,15 @@ describe('SubtitleDownloadService', () => {
 		const result = await service.downloadForMovie(movieId, buildSearchResult({ format: 'srt' }));
 
 		expect(result.path.endsWith('.vtt')).toBe(true);
+	});
+
+	it('acquires the provider rate limit before downloading', async () => {
+		const movieId = await seedMovie();
+		const service = SubtitleDownloadService.getInstance();
+
+		await service.downloadForMovie(movieId, buildSearchResult());
+
+		expect(acquireRateLimitMock).toHaveBeenCalledWith('provider-1');
 	});
 
 	it('rejects content that is not a recognizable subtitle format', async () => {

@@ -103,8 +103,7 @@ export interface SubtitleScoreBreakdown {
 /**
  * Result from a subtitle search
  */
-export interface SubtitleSearchResult {
-	// Provider info
+export interface SubtitleSearchResult {	// Provider info
 	providerId: string;
 	providerName: string;
 	providerSubtitleId: string;
@@ -177,6 +176,14 @@ export interface ProviderSearchOptions {
 }
 
 /**
+ * Media kind used for provider capability gating.
+ * - `movie`: movies
+ * - `tv`: standard/daily TV series
+ * - `anime`: series whose type/library subtype is anime
+ */
+export type SubtitleMediaKind = 'movie' | 'tv' | 'anime';
+
+/**
  * Aggregated search result across providers
  */
 export interface AggregatedSearchResult {
@@ -189,6 +196,20 @@ export interface AggregatedSearchResult {
 		resultCount: number;
 		error?: string;
 		searchTimeMs: number;
+		/** Set when the provider was intentionally not queried (with the reason). */
+		skipped?: string;
+	}>;
+	/**
+	 * Per-tier timing when priority tiers are used. Present only for searches
+	 * that ran at least one tier. `stopped` marks the tier whose accepted
+	 * candidates ended the cascade.
+	 */
+	tierTimings?: Array<{
+		priority: number;
+		providerIds: string[];
+		searchTimeMs: number;
+		accepted: boolean;
+		stopped: boolean;
 	}>;
 }
 

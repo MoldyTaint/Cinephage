@@ -297,9 +297,10 @@ export class SubtitleDownloadService {
 			throw new Error(`Provider not available: ${result.providerId}`);
 		}
 
-		// Download subtitle content
+		// Download subtitle content (rate-limited via the provider's shared limiter)
 		let content: Buffer;
 		try {
+			await providerManager.acquireRateLimit(result.providerId);
 			content = await provider.download(result);
 		} catch (error) {
 			logger.error(

@@ -36,6 +36,7 @@ export const PROVIDER_INFO: ProviderInfo = {
 				required: true,
 				description: 'Your Assrt API token'
 			}
-		]
+		],
+		defaultRequestsPerMinute: 30
 	}
 };
