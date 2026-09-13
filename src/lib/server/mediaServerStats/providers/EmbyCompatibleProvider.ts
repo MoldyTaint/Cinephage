@@ -4,6 +4,11 @@ import type {
 	SyncedMediaItem,
 	SyncResult
 } from '../types.js';
+import {
+	dedupeStreamsByLanguage,
+	normalizeLanguageLists,
+	pickPrimaryStream
+} from '../language-normalize.js';
 
 const PAGE_SIZE = 1000;
 const TIMEOUT_MS = 30_000;
@@ -142,10 +147,43 @@ export abstract class EmbyCompatibleProvider implements MediaServerStatsProvider
 		}
 
 		const providerIds = raw.ProviderIds ?? {};
-		const mediaSource = raw.MediaSources?.[0];
-		const videoStream = this.getVideoStream(mediaSource);
-		const audioStreams = this.getAudioStreams(mediaSource);
-		const subtitleStreams = this.getSubtitleStreams(mediaSource);
+		// Deterministic enumeration (Phase 5): walk ALL MediaSources in order
+		// instead of MediaSources[0], so multi-version items contribute their full
+		// stream set. Source-level fields (container/size/bitrate) keep the first
+		// source.
+		const mediaSources = this.asArray(raw.MediaSources);
+		const primarySource = mediaSources[0] ?? null;
+		const videoStream =
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			mediaSources.map((source: any) => this.getVideoStream(source)).find((v) => v != null) ??
+			null;
+		// Audio/subtitle tracks dedupe by normalized language tag (first seen
+		// wins) so repeated tracks across sources do not duplicate languages.
+		const audioStreams = dedupeStreamsByLanguage(
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			mediaSources.flatMap((source: any) => this.getAudioStreams(source)),
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(s: any) => s.Language
+		);
+		const subtitleStreams = dedupeStreamsByLanguage(
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			mediaSources.flatMap((source: any) => this.getSubtitleStreams(source)),
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(s: any) => s.Language
+		);
+
+		// Primary = first stream flagged default/selected, else the first overall.
+		const primaryAudio = pickPrimaryStream(audioStreams);
+
+		// Canonical tags for the language arrays, untouched source strings kept raw.
+		const audioLanguages = normalizeLanguageLists(
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			audioStreams.map((s: any) => s.Language)
+		);
+		const subtitleLanguages = normalizeLanguageLists(
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			subtitleStreams.map((s: any) => s.Language)
+		);
 
 		const { isHDR, hdrFormat } = this.resolveHDR(videoStream);
 
@@ -177,25 +215,24 @@ export abstract class EmbyCompatibleProvider implements MediaServerStatsProvider
 			isHDR,
 			hdrFormat,
 			videoBitrate: videoStream?.BitRate ?? null,
-			audioCodec: audioStreams[0]?.Codec ?? null,
-			audioChannels: audioStreams[0]?.Channels ?? null,
-			audioChannelLayout: audioStreams[0]?.ChannelLayout ?? null,
-			audioBitrate: audioStreams[0]?.BitRate ?? null,
-			audioLanguages: audioStreams
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				.map((s: any) => s.Language)
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				.filter((l: any): l is string => typeof l === 'string' && l.length > 0),
-			subtitleLanguages: subtitleStreams
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				.map((s: any) => s.Language)
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				.filter((l: any): l is string => typeof l === 'string' && l.length > 0),
-			containerFormat: mediaSource?.Container ?? null,
-			fileSize: mediaSource?.Size ?? null,
-			bitrate: mediaSource?.Bitrate ?? null,
+			audioCodec: primaryAudio?.Codec ?? null,
+			audioChannels: primaryAudio?.Channels ?? null,
+			audioChannelLayout: primaryAudio?.ChannelLayout ?? null,
+			audioBitrate: primaryAudio?.BitRate ?? null,
+			audioLanguages: audioLanguages.canonical,
+			subtitleLanguages: subtitleLanguages.canonical,
+			audioLanguagesRaw: audioLanguages.raw,
+			subtitleLanguagesRaw: subtitleLanguages.raw,
+			containerFormat: primarySource?.Container ?? null,
+			fileSize: primarySource?.Size ?? null,
+			bitrate: primarySource?.Bitrate ?? null,
 			duration: raw.RunTimeTicks ? raw.RunTimeTicks / 10_000_000 : null
 		};
+	}
+
+	private asArray<T>(value: T | T[] | undefined | null): T[] {
+		if (!value) return [];
+		return Array.isArray(value) ? value : [value];
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any

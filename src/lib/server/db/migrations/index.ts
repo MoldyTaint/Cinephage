@@ -139,6 +139,7 @@ import { migration_v139 } from './139-add-arr-notification-configs.js';
 import { migration_v140 } from './140-language-system-reset.js';
 import { migration_v141 } from './141-subtitle-search-state-and-episode-path-base.js';
 import { migration_v142 } from './142-allow-anilist-mal-alternate-title-sources.js';
+import { migration_v143 } from './143-media-server-language-normalization.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -280,5 +281,6 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v139,
 	migration_v140,
 	migration_v141,
-	migration_v142
+	migration_v142,
+	migration_v143
 ];

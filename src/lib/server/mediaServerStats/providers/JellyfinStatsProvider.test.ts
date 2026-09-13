@@ -168,8 +168,11 @@ describe('JellyfinStatsProvider', () => {
 		expect(item.containerFormat).toBe('mkv');
 		expect(item.fileSize).toBe(10737418240);
 		expect(item.duration).toBe(7200);
-		expect(item.audioLanguages).toEqual(['eng', 'fre']);
-		expect(item.subtitleLanguages).toEqual(['eng', 'spa']);
+		expect(item.audioLanguages).toEqual(['en', 'fr']);
+		expect(item.subtitleLanguages).toEqual(['en', 'es']);
+		// Untouched source strings are preserved alongside the canonical tags.
+		expect(item.audioLanguagesRaw).toEqual(['eng', 'fre']);
+		expect(item.subtitleLanguagesRaw).toEqual(['eng', 'spa']);
 	});
 
 	it('should drop stray season/episode numbers on movies (covers shared EmbyCompatible base)', async () => {
@@ -408,8 +411,64 @@ describe('JellyfinStatsProvider', () => {
 		const provider = new JellyfinStatsProvider(mockConfig);
 		const result = await provider.fetchAllItems();
 
-		expect(result.items[0].audioLanguages).toEqual(['eng', 'jpn']);
-		expect(result.items[0].subtitleLanguages).toEqual(['eng', 'fre', 'jpn']);
+		expect(result.items[0].audioLanguages).toEqual(['en', 'ja']);
+		// The empty Language stream is dropped from both views.
+		expect(result.items[0].audioLanguagesRaw).toEqual(['eng', 'jpn']);
+		expect(result.items[0].subtitleLanguages).toEqual(['en', 'fr', 'ja']);
+		expect(result.items[0].subtitleLanguagesRaw).toEqual(['eng', 'fre', 'jpn']);
+	});
+
+	it('should enumerate streams across all MediaSources deterministically (covers shared Emby base)', async () => {
+		// Multi-version item: source 1 carries eng + fre audio and eng/fre subs;
+		// source 2 repeats eng, adds jpn audio (flagged default) and a jpn sub.
+		const multiVersionItem = makeJellyfinItem({
+			Id: 'multi-source-1',
+			Name: 'Multi Source Movie',
+			MediaSources: [
+				{
+					Container: 'mkv',
+					Size: 1000,
+					Bitrate: 20000,
+					MediaStreams: [
+						{ Type: 'Video', Codec: 'h264', Width: 1920, Height: 1080 },
+						{ Type: 'Audio', Codec: 'dts', Channels: 6, Language: 'eng' },
+						{ Type: 'Audio', Codec: 'aac', Channels: 2, Language: 'fre' },
+						{ Type: 'Subtitle', Language: 'eng' },
+						{ Type: 'Subtitle', Language: 'fre' }
+					]
+				},
+				{
+					Container: 'mp4',
+					MediaStreams: [
+						{ Type: 'Audio', Codec: 'eac3', Channels: 6, Language: 'eng' },
+						{ Type: 'Audio', Codec: 'flac', Channels: 2, Language: 'jpn', IsDefault: true },
+						{ Type: 'Subtitle', Language: 'jpn' }
+					]
+				}
+			]
+		});
+
+		mockFetch.mockResolvedValueOnce(mockAdminResponse());
+		mockFetch.mockResolvedValueOnce(
+			mockFetchResponse({ TotalRecordCount: 1, Items: [multiVersionItem] })
+		);
+
+		const provider = new JellyfinStatsProvider(mockConfig);
+		const result = await provider.fetchAllItems();
+
+		const item = result.items[0];
+		// First-seen order across sources; duplicates collapse.
+		expect(item.audioLanguages).toEqual(['en', 'fr', 'ja']);
+		expect(item.audioLanguagesRaw).toEqual(['eng', 'fre', 'jpn']);
+		expect(item.subtitleLanguages).toEqual(['en', 'fr', 'ja']);
+		expect(item.subtitleLanguagesRaw).toEqual(['eng', 'fre', 'jpn']);
+		// Primary audio = first default-flagged stream (the jpn flac track).
+		expect(item.audioCodec).toBe('flac');
+		expect(item.audioChannels).toBe(2);
+		// Source-level fields still come from the first source.
+		expect(item.containerFormat).toBe('mkv');
+		expect(item.fileSize).toBe(1000);
+		expect(item.bitrate).toBe(20000);
 	});
 
 	it('should handle empty library', async () => {

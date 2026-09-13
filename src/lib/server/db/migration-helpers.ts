@@ -606,7 +606,7 @@ export const MIGRATION_COLUMN_MAP: Record<number, Array<{ table: string; column:
 		{ table: 'series', column: 'metadata_language_value' },
 		{ table: 'libraries', column: 'language_profile_id' }
 	],
-	138: [{ table: 'subtitles', column: 'last_checked_at' }]
+	141: [{ table: 'subtitles', column: 'last_checked_at' }]
 };
 
 /**

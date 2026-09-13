@@ -3147,6 +3147,10 @@ export const mediaServerSyncedItems = sqliteTable(
 		audioBitrate: integer('audio_bitrate'),
 		audioLanguages: text('audio_languages', { mode: 'json' }).$type<string[]>().default([]),
 		subtitleLanguages: text('subtitle_languages', { mode: 'json' }).$type<string[]>().default([]),
+		// Untouched source language strings as reported by the media server;
+		// audio/subtitle above hold the canonicalized tags (migration v140).
+		audioLanguagesRaw: text('audio_languages_raw', { mode: 'json' }).$type<string[]>(),
+		subtitleLanguagesRaw: text('subtitle_languages_raw', { mode: 'json' }).$type<string[]>(),
 		containerFormat: text('container_format'),
 		fileSize: integer('file_size'),
 		bitrate: integer('bitrate'),
