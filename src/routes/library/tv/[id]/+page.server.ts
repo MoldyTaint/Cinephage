@@ -208,6 +208,8 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 			librarySlug: libraries.slug,
 			libraryName: libraries.name,
 			libraryIsDefault: libraries.isDefault,
+			metadataLanguageMode: series.metadataLanguageMode,
+			metadataLanguageValue: series.metadataLanguageValue,
 			metadataLanguage: series.metadataLanguage,
 			preferOriginalTitle: series.preferOriginalTitle
 		})

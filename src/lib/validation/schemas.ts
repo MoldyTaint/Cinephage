@@ -979,6 +979,9 @@ export const languageProfileV2CreateSchema = languageProfileV2BaseSchema
 /** Partial update payload for the combined profile. */
 export const languageProfileV2UpdateSchema = languageProfileV2BaseSchema.partial();
 
+export type LanguageProfileV2Create = z.infer<typeof languageProfileV2CreateSchema>;
+export type LanguageProfileV2Update = z.infer<typeof languageProfileV2UpdateSchema>;
+
 /**
  * Language settings singleton (camelCase view of the language_settings row).
  * defaultProfileId is the single default-profile authority; metadataLocale

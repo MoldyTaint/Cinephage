@@ -135,6 +135,8 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			librarySlug: libraries.slug,
 			libraryName: libraries.name,
 			libraryIsDefault: libraries.isDefault,
+			metadataLanguageMode: movies.metadataLanguageMode,
+			metadataLanguageValue: movies.metadataLanguageValue,
 			metadataLanguage: movies.metadataLanguage,
 			preferOriginalTitle: movies.preferOriginalTitle
 		})
@@ -192,6 +194,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 
 	const movieWithFiles: LibraryMovie = {
 		...movie,
+		metadataLanguageMode: movie.metadataLanguageMode as 'inherit' | 'original' | 'explicit',
 		tmdbStatus: releaseInfo?.status ?? null,
 		releaseDate: releaseInfo?.release_date ?? null,
 		// Ensure added is always a string

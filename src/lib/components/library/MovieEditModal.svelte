@@ -61,7 +61,8 @@
 		removeUnwantedFiles?: boolean;
 		tmdbCollectionId?: number | null;
 		collectionName?: string | null;
-		metadataLanguage?: string | null;
+		metadataLanguageMode: 'inherit' | 'original' | 'explicit';
+		metadataLanguageValue: string | null;
 		preferOriginalTitle?: boolean;
 	}
 
@@ -93,8 +94,57 @@
 	let animeRootWarningShown = $state(false);
 	let enforceAnimeSubtype = $state(false);
 	let detectedAnime = $state(false);
-	let metadataLanguage = $state<string | null>(null);
+	let metadataLanguageMode = $state<'inherit' | 'original' | 'explicit'>('inherit');
+	let metadataLanguageValue = $state<string | null>('en-US');
 	let preferOriginalTitle = $state(false);
+
+	const LOCALE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+		{ value: 'ar-SA', label: 'Arabic' },
+		{ value: 'zh-CN', label: 'Chinese (zh-CN)' },
+		{ value: 'zh-TW', label: 'Chinese (zh-TW)' },
+		{ value: 'da-DK', label: 'Danish' },
+		{ value: 'nl-NL', label: 'Dutch' },
+		{ value: 'en-US', label: 'English' },
+		{ value: 'fi-FI', label: 'Finnish' },
+		{ value: 'fr-FR', label: 'French' },
+		{ value: 'de-DE', label: 'German' },
+		{ value: 'he-IL', label: 'Hebrew' },
+		{ value: 'hi-IN', label: 'Hindi' },
+		{ value: 'it-IT', label: 'Italian' },
+		{ value: 'ja-JP', label: 'Japanese' },
+		{ value: 'ko-KR', label: 'Korean' },
+		{ value: 'no-NO', label: 'Norwegian' },
+		{ value: 'pl-PL', label: 'Polish' },
+		{ value: 'pt-BR', label: 'Portuguese' },
+		{ value: 'ru-RU', label: 'Russian' },
+		{ value: 'es-ES', label: 'Spanish' },
+		{ value: 'sv-SE', label: 'Swedish' },
+		{ value: 'th-TH', label: 'Thai' },
+		{ value: 'tr-TR', label: 'Turkish' }
+	];
+
+	/**
+	 * Read the metadata language pair, falling back to the deprecated legacy
+	 * single-string field when the pair is absent.
+	 */
+	function resolveMetadataLanguage(source: {
+		metadataLanguageMode?: 'inherit' | 'original' | 'explicit' | null;
+		metadataLanguageValue?: string | null;
+		metadataLanguage?: string | null;
+	}): { mode: 'inherit' | 'original' | 'explicit'; value: string | null } {
+		if (source.metadataLanguageMode) {
+			const mode = source.metadataLanguageMode;
+			return {
+				mode,
+				value: mode === 'explicit' ? (source.metadataLanguageValue ?? 'en-US') : null
+			};
+		}
+
+		const legacy = source.metadataLanguage;
+		if (!legacy) return { mode: 'inherit', value: null };
+		if (legacy.toLowerCase() === 'original') return { mode: 'original', value: null };
+		return { mode: 'explicit', value: legacy };
+	}
 
 	const resolutionOptions = [
 		{ value: '2160p' as DesiredQuality, label: '4K' },
@@ -179,7 +229,9 @@
 			folderPath = movie.path ?? '';
 			collectionId = movie.tmdbCollectionId ?? null;
 			collectionName = movie.collectionName ?? null;
-			metadataLanguage = movie.metadataLanguage ?? null;
+			const resolvedMetadataLanguage = resolveMetadataLanguage(movie);
+			metadataLanguageMode = resolvedMetadataLanguage.mode;
+			metadataLanguageValue = resolvedMetadataLanguage.value;
 			preferOriginalTitle = movie.preferOriginalTitle === true;
 			void loadAnimeRoutingContext(movie.tmdbId);
 		}
@@ -329,7 +381,8 @@
 			...(showRemoveUnwantedFiles && removeUnwantedFiles ? { removeUnwantedFiles: true } : {}),
 			tmdbCollectionId: collectionId,
 			collectionName,
-			metadataLanguage,
+			metadataLanguageMode,
+			metadataLanguageValue: metadataLanguageMode === 'explicit' ? metadataLanguageValue : null,
 			preferOriginalTitle
 		});
 	}
@@ -718,38 +771,32 @@
 			</h4>
 			<div class="grid grid-cols-2 gap-3">
 				<div class="form-control w-full">
-					<label class="label py-0.5" for="movie-metadata-language">
+					<label class="label py-0.5" for="movie-metadata-language-mode">
 						<span class="label-text text-xs text-base-content/80">Language</span>
 					</label>
 					<select
-						id="movie-metadata-language"
-						bind:value={metadataLanguage}
+						id="movie-metadata-language-mode"
+						bind:value={metadataLanguageMode}
 						class="select-bordered select w-full select-sm"
 					>
-						<option value={null}>Inherit Global</option>
+						<option value="inherit">Inherit Global</option>
 						<option value="original">Original Language</option>
-						<option value="ar-SA">Arabic</option>
-						<option value="zh-CN">Chinese (zh-CN)</option>
-						<option value="zh-TW">Chinese (zh-TW)</option>
-						<option value="da-DK">Danish</option>
-						<option value="nl-NL">Dutch</option>
-						<option value="en-US">English</option>
-						<option value="fi-FI">Finnish</option>
-						<option value="fr-FR">French</option>
-						<option value="de-DE">German</option>
-						<option value="he-IL">Hebrew</option>
-						<option value="hi-IN">Hindi</option>
-						<option value="it-IT">Italian</option>
-						<option value="ja-JP">Japanese</option>
-						<option value="ko-KR">Korean</option>
-						<option value="no-NO">Norwegian</option>
-						<option value="pl-PL">Polish</option>
-						<option value="pt-BR">Portuguese</option>
-						<option value="ru-RU">Russian</option>
-						<option value="es-ES">Spanish</option>
-						<option value="sv-SE">Swedish</option>
-						<option value="th-TH">Thai</option>
-						<option value="tr-TR">Turkish</option>
+						<option value="explicit">Explicit Locale</option>
+					</select>
+				</div>
+				<div class="form-control w-full">
+					<label class="label py-0.5" for="movie-metadata-language-value">
+						<span class="label-text text-xs text-base-content/80">Locale</span>
+					</label>
+					<select
+						id="movie-metadata-language-value"
+						bind:value={metadataLanguageValue}
+						disabled={metadataLanguageMode !== 'explicit'}
+						class="select-bordered select w-full select-sm"
+					>
+						{#each LOCALE_OPTIONS as option (option.value)}
+							<option value={option.value}>{option.label}</option>
+						{/each}
 					</select>
 				</div>
 				<label class="label cursor-pointer">

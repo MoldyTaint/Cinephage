@@ -26,6 +26,9 @@
 		path?: string | null;
 		episodeGroupId?: string | null;
 		id?: string | null;
+		metadataLanguageMode?: 'inherit' | 'original' | 'explicit' | null;
+		metadataLanguageValue?: string | null;
+		/** @deprecated Legacy single-string view derived from the pair. */
 		metadataLanguage?: string | null;
 		preferOriginalTitle?: boolean | null;
 	}
@@ -74,7 +77,8 @@
 		seriesType: 'standard' | 'anime' | 'daily';
 		folderPath?: string;
 		episodeGroupId?: string | null;
-		metadataLanguage?: string | null;
+		metadataLanguageMode: 'inherit' | 'original' | 'explicit';
+		metadataLanguageValue: string | null;
 		preferOriginalTitle?: boolean;
 	}
 
@@ -113,8 +117,57 @@
 		}>
 	>([]);
 	let episodeGroupsLoading = $state(false);
-	let metadataLanguage = $state<string | null>(null);
+	let metadataLanguageMode = $state<'inherit' | 'original' | 'explicit'>('inherit');
+	let metadataLanguageValue = $state<string | null>('en-US');
 	let preferOriginalTitle = $state(false);
+
+	const LOCALE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+		{ value: 'ar-SA', label: 'Arabic' },
+		{ value: 'zh-CN', label: 'Chinese (zh-CN)' },
+		{ value: 'zh-TW', label: 'Chinese (zh-TW)' },
+		{ value: 'da-DK', label: 'Danish' },
+		{ value: 'nl-NL', label: 'Dutch' },
+		{ value: 'en-US', label: 'English' },
+		{ value: 'fi-FI', label: 'Finnish' },
+		{ value: 'fr-FR', label: 'French' },
+		{ value: 'de-DE', label: 'German' },
+		{ value: 'he-IL', label: 'Hebrew' },
+		{ value: 'hi-IN', label: 'Hindi' },
+		{ value: 'it-IT', label: 'Italian' },
+		{ value: 'ja-JP', label: 'Japanese' },
+		{ value: 'ko-KR', label: 'Korean' },
+		{ value: 'no-NO', label: 'Norwegian' },
+		{ value: 'pl-PL', label: 'Polish' },
+		{ value: 'pt-BR', label: 'Portuguese' },
+		{ value: 'ru-RU', label: 'Russian' },
+		{ value: 'es-ES', label: 'Spanish' },
+		{ value: 'sv-SE', label: 'Swedish' },
+		{ value: 'th-TH', label: 'Thai' },
+		{ value: 'tr-TR', label: 'Turkish' }
+	];
+
+	/**
+	 * Read the metadata language pair, falling back to the deprecated legacy
+	 * single-string field when the pair is absent.
+	 */
+	function resolveMetadataLanguage(source: {
+		metadataLanguageMode?: 'inherit' | 'original' | 'explicit' | null;
+		metadataLanguageValue?: string | null;
+		metadataLanguage?: string | null;
+	}): { mode: 'inherit' | 'original' | 'explicit'; value: string | null } {
+		if (source.metadataLanguageMode) {
+			const mode = source.metadataLanguageMode;
+			return {
+				mode,
+				value: mode === 'explicit' ? (source.metadataLanguageValue ?? 'en-US') : null
+			};
+		}
+
+		const legacy = source.metadataLanguage;
+		if (!legacy) return { mode: 'inherit', value: null };
+		if (legacy.toLowerCase() === 'original') return { mode: 'original', value: null };
+		return { mode: 'explicit', value: legacy };
+	}
 
 	const requiredMediaSubType = $derived(
 		enforceAnimeSubtype ? (detectedAnime ? ('anime' as const) : ('standard' as const)) : undefined
@@ -250,7 +303,9 @@
 			detectedAnime = false;
 			folderPath = series.path ?? '';
 			episodeGroupOption = series.episodeGroupId ?? '';
-			metadataLanguage = series.metadataLanguage ?? null;
+			const resolvedMetadataLanguage = resolveMetadataLanguage(series);
+			metadataLanguageMode = resolvedMetadataLanguage.mode;
+			metadataLanguageValue = resolvedMetadataLanguage.value;
 			preferOriginalTitle = series.preferOriginalTitle === true;
 			void loadAnimeRoutingContext(series.tmdbId);
 			if (series.id) {
@@ -322,7 +377,8 @@
 			seriesType,
 			...(folderPathChanged && folderPath.trim() ? { folderPath: folderPath.trim() } : {}),
 			episodeGroupId: episodeGroupOption || null,
-			metadataLanguage,
+			metadataLanguageMode,
+			metadataLanguageValue: metadataLanguageMode === 'explicit' ? metadataLanguageValue : null,
 			preferOriginalTitle
 		});
 	}
@@ -606,38 +662,32 @@
 			</h4>
 			<div class="grid grid-cols-2 gap-3">
 				<div class="form-control w-full">
-					<label class="label py-0.5" for="series-metadata-language">
+					<label class="label py-0.5" for="series-metadata-language-mode">
 						<span class="label-text text-xs text-base-content/80">Language</span>
 					</label>
 					<select
-						id="series-metadata-language"
-						bind:value={metadataLanguage}
+						id="series-metadata-language-mode"
+						bind:value={metadataLanguageMode}
 						class="select-bordered select w-full select-sm"
 					>
-						<option value={null}>Inherit Global</option>
+						<option value="inherit">Inherit Global</option>
 						<option value="original">Original Language</option>
-						<option value="ar-SA">Arabic</option>
-						<option value="zh-CN">Chinese (zh-CN)</option>
-						<option value="zh-TW">Chinese (zh-TW)</option>
-						<option value="da-DK">Danish</option>
-						<option value="nl-NL">Dutch</option>
-						<option value="en-US">English</option>
-						<option value="fi-FI">Finnish</option>
-						<option value="fr-FR">French</option>
-						<option value="de-DE">German</option>
-						<option value="he-IL">Hebrew</option>
-						<option value="hi-IN">Hindi</option>
-						<option value="it-IT">Italian</option>
-						<option value="ja-JP">Japanese</option>
-						<option value="ko-KR">Korean</option>
-						<option value="no-NO">Norwegian</option>
-						<option value="pl-PL">Polish</option>
-						<option value="pt-BR">Portuguese</option>
-						<option value="ru-RU">Russian</option>
-						<option value="es-ES">Spanish</option>
-						<option value="sv-SE">Swedish</option>
-						<option value="th-TH">Thai</option>
-						<option value="tr-TR">Turkish</option>
+						<option value="explicit">Explicit Locale</option>
+					</select>
+				</div>
+				<div class="form-control w-full">
+					<label class="label py-0.5" for="series-metadata-language-value">
+						<span class="label-text text-xs text-base-content/80">Locale</span>
+					</label>
+					<select
+						id="series-metadata-language-value"
+						bind:value={metadataLanguageValue}
+						disabled={metadataLanguageMode !== 'explicit'}
+						class="select-bordered select w-full select-sm"
+					>
+						{#each LOCALE_OPTIONS as option (option.value)}
+							<option value={option.value}>{option.label}</option>
+						{/each}
 					</select>
 				</div>
 				<label class="label cursor-pointer">

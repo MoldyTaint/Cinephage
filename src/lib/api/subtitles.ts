@@ -1,6 +1,8 @@
 import type {
-	LanguageProfileCreate,
-	LanguageProfileUpdate,
+	LanguageProfileV2Create,
+	LanguageProfileV2Update,
+	LanguageSettingsUpdateInput,
+	LanguageSettingsValues,
 	SubtitleProviderCreate,
 	SubtitleProviderUpdate,
 	SubtitleProviderTest,
@@ -87,16 +89,31 @@ export async function getLanguageProfiles() {
 	return apiGet('/api/subtitles/language-profiles');
 }
 
-export async function createLanguageProfile(payload: LanguageProfileCreate) {
+export async function createLanguageProfile(payload: LanguageProfileV2Create) {
 	return apiPost('/api/subtitles/language-profiles', payload);
 }
 
-export async function updateLanguageProfile(id: string, payload: LanguageProfileUpdate) {
+export async function updateLanguageProfile(id: string, payload: LanguageProfileV2Update) {
 	return apiPut(`/api/subtitles/language-profiles/${id}`, payload);
 }
 
 export async function deleteLanguageProfile(id: string) {
 	return apiDelete(`/api/subtitles/language-profiles/${id}`);
+}
+
+/**
+ * Read the global language settings singleton (default profile, metadata
+ * locale/region, discover filter, unknown-subtitle policy, auto-sync).
+ */
+export async function getLanguageSettings(): Promise<LanguageSettingsValues> {
+	return apiGet<LanguageSettingsValues>('/api/subtitles/language-settings');
+}
+
+/** Partially update the global language settings singleton. */
+export async function updateLanguageSettings(
+	payload: LanguageSettingsUpdateInput
+): Promise<LanguageSettingsValues> {
+	return apiPut<LanguageSettingsValues>('/api/subtitles/language-settings', payload);
 }
 
 export async function getSubtitleProviders() {
