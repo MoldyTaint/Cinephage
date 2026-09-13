@@ -8,6 +8,9 @@
 // Core types
 export * from './types';
 
+// Requirement matching (single source of truth for subtitle requirement tuples)
+export * from './requirement-matcher';
+
 // Video objects (Bazarr-style)
 export * from './video';
 
