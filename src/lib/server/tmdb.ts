@@ -451,6 +451,23 @@ export const tmdb = {
 	},
 
 	/**
+	 * Get all translations for a movie (language-tagged titles/overviews).
+	 * Unlike alternative_titles, this endpoint identifies the language of each
+	 * title (ISO 639-1), which alternative_titles does not supply.
+	 */
+	async getMovieTranslations(tmdbId: number): Promise<TranslationsResponse> {
+		return this.fetch(`/movie/${tmdbId}/translations`) as Promise<TranslationsResponse>;
+	},
+
+	/**
+	 * Get all translations for a TV show (language-tagged names/overviews).
+	 * TV translations carry the title in `data.name` (movies use `data.title`).
+	 */
+	async getTvTranslations(tmdbId: number): Promise<TranslationsResponse> {
+		return this.fetch(`/tv/${tmdbId}/translations`) as Promise<TranslationsResponse>;
+	},
+
+	/**
 	 * Find media by external ID (IMDB or TVDB)
 	 */
 	async findByExternalId(
@@ -681,6 +698,31 @@ export interface MovieAlternateTitlesResponse {
 export interface TvAlternateTitlesResponse {
 	id: number;
 	results: TmdbAlternateTitle[];
+}
+
+/**
+ * A single translation entry from /movie|tv/{id}/translations.
+ * Movies carry the localized title in data.title; TV shows use data.name.
+ */
+export interface TmdbTranslation {
+	iso_639_1: string; // Language code (e.g., 'en', 'ja', 'hu')
+	iso_3166_1: string; // Country code (e.g., 'US', 'JP')
+	name: string;
+	english_name: string;
+	data: {
+		title?: string; // Movies
+		name?: string; // TV shows
+		overview?: string;
+		homepage?: string;
+	};
+}
+
+/**
+ * Translations response from TMDB
+ */
+export interface TranslationsResponse {
+	id: number;
+	translations: TmdbTranslation[];
 }
 
 /**

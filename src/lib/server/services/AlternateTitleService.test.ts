@@ -1,5 +1,64 @@
-import { describe, it, expect } from 'vitest';
-import { cleanTitle, selectSearchTitles, containsNonLatinScript } from './AlternateTitleService';
+import { describe, it, expect, vi, afterAll } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { createTestDb, destroyTestDb } from '../../../test/db-helper.js';
+
+const testDb = createTestDb();
+
+vi.mock('$lib/server/db', () => ({
+	get db() {
+		return testDb.db;
+	},
+	get sqlite() {
+		return testDb.sqlite;
+	},
+	initializeDatabase: vi.fn().mockResolvedValue(undefined)
+}));
+
+vi.mock('$lib/server/tmdb.js', () => ({
+	tmdb: {
+		getMovieAlternateTitles: vi.fn(),
+		getTvAlternateTitles: vi.fn(),
+		getMovieTranslations: vi.fn(),
+		getTvTranslations: vi.fn()
+	}
+}));
+
+import {
+	cleanTitle,
+	selectSearchTitles,
+	containsNonLatinScript,
+	fetchAndStoreMovieAlternateTitles,
+	fetchAndStoreSeriesAlternateTitles,
+	storeProviderTitleVariants,
+	getMovieSearchTitles,
+	getSeriesSearchTitles
+} from './AlternateTitleService';
+import { tmdb } from '$lib/server/tmdb.js';
+import { alternateTitles, movies, series } from '$lib/server/db/schema.js';
+
+const mockedAlternateTitles = tmdb as unknown as {
+	getMovieAlternateTitles: ReturnType<typeof vi.fn>;
+	getTvAlternateTitles: ReturnType<typeof vi.fn>;
+	getMovieTranslations: ReturnType<typeof vi.fn>;
+	getTvTranslations: ReturnType<typeof vi.fn>;
+};
+
+afterAll(() => {
+	destroyTestDb(testDb);
+});
+
+function listStoredTitles(mediaId: string) {
+	return testDb.db
+		.select({
+			title: alternateTitles.title,
+			source: alternateTitles.source,
+			language: alternateTitles.language,
+			country: alternateTitles.country
+		})
+		.from(alternateTitles)
+		.where(eq(alternateTitles.mediaId, mediaId))
+		.all();
+}
 
 describe('cleanTitle', () => {
 	describe('Hungarian diacritics (the primary bug fix)', () => {
@@ -182,5 +241,288 @@ describe('containsNonLatinScript', () => {
 	it('rejects plain Latin titles', () => {
 		expect(containsNonLatinScript('War Machine')).toBe(false);
 		expect(containsNonLatinScript('Máquina de Guerra')).toBe(false);
+	});
+});
+
+// ===========================================================================
+// DB-backed suites: translations storage, provider variants, search titles.
+// Uses an in-memory SQLite schema created by createTestDb (fresh DDL already
+// carries the extended v139 source CHECK).
+// ===========================================================================
+
+describe('fetchAndStoreMovieAlternateTitles (translations)', () => {
+	it('stores country rows with null language and translation rows with language, skipping own-title noise', async () => {
+		testDb.db
+			.insert(movies)
+			.values({ id: 'movie-trans-1', tmdbId: 9101, title: 'Dune', path: 'Dune' })
+			.run();
+
+		mockedAlternateTitles.getMovieAlternateTitles.mockResolvedValue({
+			id: 9101,
+			titles: [{ iso_3166_1: 'HU', title: 'Dűne', type: '' }]
+		});
+		mockedAlternateTitles.getMovieTranslations.mockResolvedValue({
+			id: 9101,
+			translations: [
+				{ iso_639_1: 'hu', iso_3166_1: 'HU', data: { title: 'Dűne: Második rész' } },
+				{ iso_639_1: 'ja', iso_3166_1: 'JP', data: { title: 'デューン 砂の惑星' } },
+				// Same clean title + language as another translation entry: deduped.
+				{ iso_639_1: 'hu', iso_3166_1: 'HU', data: { title: 'Dűne: Második rész ' } },
+				// Equals the movie's own display title: skipped as noise.
+				{ iso_639_1: 'en', iso_3166_1: 'US', data: { title: 'Dune' } },
+				// No title in data: skipped.
+				{ iso_639_1: 'fr', iso_3166_1: 'FR', data: {} }
+			]
+		});
+
+		const inserted = await fetchAndStoreMovieAlternateTitles('movie-trans-1', 9101);
+
+		expect(inserted).toBe(3); // country row + hu translation + ja translation
+		const rows = listStoredTitles('movie-trans-1');
+		expect(rows).toEqual(
+			expect.arrayContaining([
+				{ title: 'Dűne', source: 'tmdb', language: null, country: 'HU' },
+				{ title: 'Dűne: Második rész', source: 'tmdb', language: 'hu', country: null },
+				{ title: 'デューン 砂の惑星', source: 'tmdb', language: 'ja', country: null }
+			])
+		);
+	});
+
+	it('skips translations equal to the original title and dedupes on refetch', async () => {
+		testDb.db
+			.insert(movies)
+			.values({
+				id: 'movie-trans-2',
+				tmdbId: 9102,
+				title: 'Waqt',
+				originalTitle: 'वक्त',
+				path: 'Waqt'
+			})
+			.run();
+
+		mockedAlternateTitles.getMovieAlternateTitles.mockResolvedValue({ id: 9102, titles: [] });
+		mockedAlternateTitles.getMovieTranslations.mockResolvedValue({
+			id: 9102,
+			translations: [
+				{ iso_639_1: 'hi', iso_3166_1: 'IN', data: { title: 'वक्त' } }, // original title -> skip
+				{ iso_639_1: 'ru', iso_3166_1: 'RU', data: { title: 'Время' } }
+			]
+		});
+
+		await fetchAndStoreMovieAlternateTitles('movie-trans-2', 9102);
+		expect(listStoredTitles('movie-trans-2')).toHaveLength(1);
+
+		// Refetch (e.g. next refresh): no duplicate rows.
+		const secondRun = await fetchAndStoreMovieAlternateTitles('movie-trans-2', 9102);
+		expect(secondRun).toBe(0);
+		expect(listStoredTitles('movie-trans-2')).toHaveLength(1);
+	});
+
+	it('keeps country rows when translations fail and vice versa', async () => {
+		testDb.db
+			.insert(movies)
+			.values({ id: 'movie-trans-3', tmdbId: 9103, title: 'Cargo', path: 'Cargo' })
+			.run();
+
+		mockedAlternateTitles.getMovieAlternateTitles.mockResolvedValue({
+			id: 9103,
+			titles: [{ iso_3166_1: 'DE', title: 'Cargo', type: '' }]
+		});
+		mockedAlternateTitles.getMovieTranslations.mockRejectedValue(new Error('TMDB down'));
+
+		await expect(fetchAndStoreMovieAlternateTitles('movie-trans-3', 9103)).resolves.toBe(1);
+		expect(listStoredTitles('movie-trans-3')).toHaveLength(1);
+
+		// Reverse: alternative_titles fails, translations still stored.
+		testDb.db
+			.insert(movies)
+			.values({ id: 'movie-trans-4', tmdbId: 9104, title: 'Cargo II', path: 'Cargo II' })
+			.run();
+		mockedAlternateTitles.getMovieAlternateTitles.mockRejectedValue(new Error('TMDB down'));
+		mockedAlternateTitles.getMovieTranslations.mockResolvedValue({
+			id: 9104,
+			translations: [{ iso_639_1: 'de', iso_3166_1: 'DE', data: { title: 'Fracht' } }]
+		});
+
+		await expect(fetchAndStoreMovieAlternateTitles('movie-trans-4', 9104)).resolves.toBe(1);
+		expect(listStoredTitles('movie-trans-4')).toEqual([
+			{ title: 'Fracht', source: 'tmdb', language: 'de', country: null }
+		]);
+	});
+
+	it('stores TV translations from data.name', async () => {
+		testDb.db
+			.insert(series)
+			.values({ id: 'series-trans-1', tmdbId: 9201, title: 'Dark', path: 'Dark' })
+			.run();
+
+		mockedAlternateTitles.getTvAlternateTitles.mockResolvedValue({ id: 9201, results: [] });
+		mockedAlternateTitles.getTvTranslations.mockResolvedValue({
+			id: 9201,
+			translations: [
+				{ iso_639_1: 'ja', iso_3166_1: 'JP', data: { name: 'ダーク（ドラマ）' } },
+				{ iso_639_1: 'en', iso_3166_1: 'US', data: { name: 'Dark' } } // own title -> skip
+			]
+		});
+
+		const inserted = await fetchAndStoreSeriesAlternateTitles('series-trans-1', 9201);
+
+		expect(inserted).toBe(1);
+		expect(listStoredTitles('series-trans-1')).toEqual([
+			{ title: 'ダーク（ドラマ）', source: 'tmdb', language: 'ja', country: null }
+		]);
+	});
+});
+
+describe('storeProviderTitleVariants', () => {
+	it('inserts anilist variants and is idempotent on re-link/refresh', async () => {
+		testDb.db
+			.insert(series)
+			.values({ id: 'series-variants-1', tmdbId: 9301, title: 'Cowboy Bebop', path: 'Cowboy Bebop' })
+			.run();
+
+		const variants = [
+			{ title: 'Cowboy Bebop', language: null, country: null },
+			{ title: 'カウボーイビバップ', language: null, country: 'JP' }
+		];
+
+		await storeProviderTitleVariants('series', 'series-variants-1', 'anilist', variants);
+		expect(listStoredTitles('series-variants-1')).toHaveLength(2);
+
+		// Repeat link/refresh stores nothing new.
+		await storeProviderTitleVariants('series', 'series-variants-1', 'anilist', variants);
+		expect(listStoredTitles('series-variants-1')).toHaveLength(2);
+
+		// The same titles from a different provider are still stored (distinct source).
+		await storeProviderTitleVariants('series', 'series-variants-1', 'mal', [
+			{ title: 'Cowboy Bebop', language: null, country: null }
+		]);
+		const rows = listStoredTitles('series-variants-1');
+		expect(rows).toHaveLength(3);
+		expect(rows.filter((r) => r.source === 'anilist')).toHaveLength(2);
+		expect(rows.filter((r) => r.source === 'mal')).toHaveLength(1);
+		// No provider supplies language codes; country only where AniList gave one.
+		expect(rows.find((r) => r.title === 'カウボーイビバップ')).toMatchObject({
+			source: 'anilist',
+			language: null,
+			country: 'JP'
+		});
+	});
+
+	it('never writes a language that was not supplied by the provider', async () => {
+		testDb.db
+			.insert(series)
+			.values({ id: 'series-variants-2', tmdbId: 9302, title: 'Vinland Saga', path: 'Vinland Saga' })
+			.run();
+
+		await storeProviderTitleVariants('series', 'series-variants-2', 'mal', [
+			{ title: 'ヴィンランド・サガ' } // no language/country given at all
+		]);
+
+		expect(listStoredTitles('series-variants-2')).toEqual([
+			{ title: 'ヴィンランド・サガ', source: 'mal', language: null, country: null }
+		]);
+	});
+});
+
+describe('search titles include provider variants (regression)', () => {
+	it('includes anilist/mal variants in movie search titles with CJK ordering preserved', async () => {
+		testDb.db
+			.insert(movies)
+			.values({
+				id: 'movie-search-1',
+				tmdbId: 9401,
+				title: 'Cowboy Bebop',
+				originalTitle: 'カウボーイビバップ',
+				path: 'Cowboy Bebop'
+			})
+			.run();
+
+		// Country-tagged TMDB rows first (en preferred group), then provider
+		// variants (country null -> fallback group).
+		await testDb.db.insert(alternateTitles).values([
+			{
+				mediaType: 'movie',
+				mediaId: 'movie-search-1',
+				title: 'Cowboy Bebop: The Movie',
+				cleanTitle: cleanTitle('Cowboy Bebop: The Movie'),
+				source: 'tmdb',
+				country: 'US'
+			},
+			{
+				mediaType: 'movie',
+				mediaId: 'movie-search-1',
+				title: 'Kaubōi Bibappu',
+				cleanTitle: cleanTitle('Kaubōi Bibappu'),
+				source: 'anilist'
+			},
+			{
+				mediaType: 'movie',
+				mediaId: 'movie-search-1',
+				title: 'カウボーイビバップ 天国の扉',
+				cleanTitle: cleanTitle('カウボーイビバップ 天国の扉'),
+				source: 'mal'
+			},
+			{
+				mediaType: 'movie',
+				mediaId: 'movie-search-1',
+				title: 'カウボーイビバップ',
+				cleanTitle: cleanTitle('カウボーイビバップ'),
+				source: 'tmdb',
+				country: 'JP'
+			}
+		]);
+
+		const titles = await getMovieSearchTitles('movie-search-1', 'en');
+
+		// Display title first.
+		expect(titles[0]).toBe('Cowboy Bebop');
+		// Every variant survives the cap (list stays under it anyway).
+		expect(titles).toContain('Cowboy Bebop: The Movie');
+		expect(titles).toContain('Kaubōi Bibappu');
+		expect(titles).toContain('カウボーイビバップ 天国の扉');
+		expect(titles).toContain('カウボーイビバップ');
+		// CJK ordering still applies: Latin-script titles before CJK-script ones.
+		const firstCjkIndex = titles.findIndex((t) => containsNonLatinScript(t));
+		const lastLatinIndex = titles.findLastIndex((t) => !containsNonLatinScript(t));
+		expect(lastLatinIndex).toBeLessThan(firstCjkIndex);
+		// Original title (same text as the JP tmdb row) appears exactly once.
+		expect(titles.filter((t) => t === 'カウボーイビバップ')).toHaveLength(1);
+	});
+
+	it('includes anilist/mal variants in series search titles', async () => {
+		testDb.db
+			.insert(series)
+			.values({
+				id: 'series-search-1',
+				tmdbId: 9402,
+				title: 'Vinland Saga',
+				path: 'Vinland Saga',
+				originalTitle: 'ヴィンランド・サガ'
+			})
+			.run();
+
+		await testDb.db.insert(alternateTitles).values([
+			{
+				mediaType: 'series',
+				mediaId: 'series-search-1',
+				title: 'Vinland Saga Season 2',
+				cleanTitle: cleanTitle('Vinland Saga Season 2'),
+				source: 'anilist'
+			},
+			{
+				mediaType: 'series',
+				mediaId: 'series-search-1',
+				title: 'ヴィンランド・サガ II',
+				cleanTitle: cleanTitle('ヴィンランド・サガ II'),
+				source: 'mal'
+			}
+		]);
+
+		const titles = await getSeriesSearchTitles('series-search-1', 'en');
+
+		expect(titles[0]).toBe('Vinland Saga');
+		expect(titles).toContain('Vinland Saga Season 2');
+		expect(titles).toContain('ヴィンランド・サガ II');
 	});
 });

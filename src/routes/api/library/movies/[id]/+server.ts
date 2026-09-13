@@ -34,6 +34,7 @@ import { getLibraryEntityService } from '$lib/server/library/LibraryEntityServic
 import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
 import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
+import { persistLinkedProviderTitleVariants } from '$lib/server/metadata/provider-resolution.js';
 import { importService } from '$lib/server/downloadClients/import/index.js';
 import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 import { redundantFileIds } from '$lib/server/quality/buckets.js';
@@ -416,6 +417,18 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 	if (Object.keys(updateData).length > 0) {
 		await db.update(movies).set(updateData).where(eq(movies.id, params.id));
+	}
+
+	// Manual anime provider link: fetch the linked AniList/MAL entries and
+	// persist their title variants as alternate titles (idempotent). Runs in
+	// the background — external provider latency must not stall the PATCH.
+	if (providerRefs?.anilist || providerRefs?.mal) {
+		persistLinkedProviderTitleVariants('movie', params.id, providerRefs).catch((err) => {
+			logger.warn(
+				{ movieId: params.id, err },
+				'[API] Failed to persist linked provider title variants'
+			);
+		});
 	}
 
 	// Refresh metadata from TMDB when language override changes

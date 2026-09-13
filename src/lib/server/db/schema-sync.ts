@@ -140,10 +140,15 @@ import {
  * Version 133: Add import_failed and backfill canonical info hashes on download queue rows
  * Version 134: Store canonical info hashes on download history rows
  * Version 135: Deduplicate active download queue rows by client and info hash
+ * Version 136: Add storage_items indexes on episode_file_id and movie_file_id
+ * Version 137: Add allow_movies and allow_tv columns to download_clients for debrid content-type restriction
+ * Version 138: Add arr_id_mappings table for the Radarr/Sonarr-compatible API layer's surrogate integer IDs
+ * Version 139: Add arr_notification_configs table for arr-compat clients (Pulsarr, etc.) registering webhooks
  * Version 140: Language system reset - v2 language profiles, language_settings singleton, metadata mode/value columns
  * Version 141: Subtitle reconciliation/backoff - subtitles.last_checked_at, subtitle_search_state table, episode path-base rewrite
+ * Version 142: Allow AniList/MAL title variants in alternate_titles (source CHECK extended, table rebuilt)
  */
-export const CURRENT_SCHEMA_VERSION = 141;
+export const CURRENT_SCHEMA_VERSION = 142;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -699,7 +704,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"media_id" text NOT NULL,
 		"title" text NOT NULL,
 		"clean_title" text NOT NULL,
-		"source" text NOT NULL CHECK ("source" IN ('tmdb', 'user')),
+		"source" text NOT NULL CHECK ("source" IN ('tmdb', 'user', 'anilist', 'mal')),
 		"language" text,
 		"country" text,
 		"created_at" text

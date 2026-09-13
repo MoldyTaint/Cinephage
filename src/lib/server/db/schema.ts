@@ -1025,8 +1025,9 @@ export const alternateTitles = sqliteTable(
 		title: text('title').notNull(),
 		// Normalized title for matching (lowercase, no special chars)
 		cleanTitle: text('clean_title').notNull(),
-		// Source of this title: 'tmdb' (auto-fetched) or 'user' (manually added)
-		source: text('source', { enum: ['tmdb', 'user'] }).notNull(),
+	// Source of this title: 'tmdb' (auto-fetched), 'user' (manually added), or
+	// 'anilist'/'mal' (anime provider title variants — migration 139)
+	source: text('source', { enum: ['tmdb', 'user', 'anilist', 'mal'] }).notNull(),
 		// ISO 639-1 language code (e.g., 'en', 'cs', 'de')
 		language: text('language'),
 		// ISO 3166-1 country code (e.g., 'US', 'CZ', 'DE')

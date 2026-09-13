@@ -41,6 +41,7 @@ import { seriesUpdateSchema } from '$lib/validation/schemas.js';
 import { tmdb } from '$lib/server/tmdb.js';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
 import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
+import { persistLinkedProviderTitleVariants } from '$lib/server/metadata/provider-resolution.js';
 import {
 	refreshSeriesMetadata,
 	metadataLanguageToLegacy,
@@ -450,6 +451,18 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 		if (Object.keys(updateData).length > 0) {
 			await db.update(series).set(updateData).where(eq(series.id, params.id));
+		}
+
+		// Manual anime provider link: fetch the linked AniList/MAL entries and
+		// persist their title variants as alternate titles (idempotent). Runs in
+		// the background — external provider latency must not stall the PATCH.
+		if (providerRefs?.anilist || providerRefs?.mal) {
+			persistLinkedProviderTitleVariants('series', params.id, providerRefs).catch((err) => {
+				logger.warn(
+					{ seriesId: params.id, err },
+					'[API] Failed to persist linked provider title variants'
+				);
+			});
 		}
 
 		// Refresh metadata from TMDB when language override changes

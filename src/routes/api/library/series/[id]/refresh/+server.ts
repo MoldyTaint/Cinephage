@@ -16,7 +16,10 @@ import { series, seasons, episodes, episodeFiles } from '$lib/server/db/schema.j
 import { eq, inArray } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { todayDateString } from '$lib/utils/format.js';
-import { enrichAnimeMetadata } from '$lib/server/metadata/provider-resolution.js';
+import {
+	enrichAnimeMetadata,
+	persistEnrichmentTitleVariants
+} from '$lib/server/metadata/provider-resolution.js';
 import {
 	getEffectiveEpisodeGroup,
 	buildSeasonsAndEpisodesFromGroup,
@@ -148,6 +151,9 @@ export const POST: RequestHandler = async ({ params, request }) => {
 							adultSources.push(pid);
 						}
 					}
+					// Persist AniList/MAL title variants as alternate titles
+					// (idempotent; language only when the provider supplies one).
+					await persistEnrichmentTitleVariants('series', id, enrichment.details);
 				}
 				// Sticky-OR: once adult, always adult
 				const newAdult = (seriesData.adult ?? false) || adultFromEnrichment;

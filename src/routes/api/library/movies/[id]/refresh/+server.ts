@@ -11,7 +11,7 @@ import { db } from '$lib/server/db/index.js';
 import { movies } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
-import { enrichAnimeMetadata } from '$lib/server/metadata/provider-resolution.js';
+import { enrichAnimeMetadata, persistEnrichmentTitleVariants } from '$lib/server/metadata/provider-resolution.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { createChildLogger } from '$lib/logging';
 import {
@@ -84,13 +84,16 @@ export const POST: RequestHandler = async ({ params }) => {
 				'anime'
 			);
 			Object.assign(providerRefs, enrichment.refs);
-			for (const [pid, details] of Object.entries(enrichment.details)) {
-				if (details.isAdult) {
-					adultFromEnrichment = true;
-					adultSources.push(pid);
+				for (const [pid, details] of Object.entries(enrichment.details)) {
+					if (details.isAdult) {
+						adultFromEnrichment = true;
+						adultSources.push(pid);
+					}
 				}
+				// Persist AniList/MAL title variants as alternate titles
+				// (idempotent; language only when the provider supplies one).
+				await persistEnrichmentTitleVariants('movie', id, enrichment.details);
 			}
-		}
 		// TMDB adult flag (authoritative for non-anime too)
 		if (tmdbMovie.adult === true) {
 			adultFromEnrichment = true;
