@@ -82,9 +82,9 @@
 						<div class="card bg-base-200 shadow-sm">
 							<div class="card-body p-4">
 								<div class="flex items-start justify-between gap-3">
-									<div class="flex min-w-0 items-center gap-3">
+									<div class="flex min-w-0 items-start gap-3">
 										<div
-											class="rounded-lg p-2 {folder.mediaType === 'movie'
+											class="shrink-0 rounded-lg p-2 {folder.mediaType === 'movie'
 												? 'bg-primary/20 text-primary'
 												: 'bg-secondary/20 text-secondary'}"
 										>
@@ -95,13 +95,18 @@
 											{/if}
 										</div>
 										<div class="min-w-0">
-											<h3 class="flex items-center gap-2">
-												<span class="font-semibold">{folder.name}</span>
+											<h3 class="flex flex-wrap items-center gap-2">
+												<span class="font-semibold break-all">{folder.name}</span>
 												{#if folder.isDefault}
-													<span class="badge gap-1 badge-primary">
+													<span class="badge gap-1 badge-sm badge-primary">
 														<Star class="h-3 w-3" />
 														{m.rootFolders_badgeDefault()}
 													</span>
+												{/if}
+												{#if (folder.mediaSubType ?? 'standard') === 'anime'}
+													<span class="badge badge-sm badge-accent"
+														>{m.settings_general_badgeAnime()}</span
+													>
 												{/if}
 												{#if folder.readOnly}
 													<span
@@ -112,11 +117,6 @@
 														{m.rootFolders_badgeReadOnly()}
 													</span>
 												{/if}
-												{#if (folder.mediaSubType ?? 'standard') === 'anime'}
-													<span class="badge badge-sm badge-accent"
-														>{m.settings_general_badgeAnime()}</span
-													>
-												{/if}
 											</h3>
 											<p class="max-w-full font-mono text-sm break-all text-base-content/60">
 												{folder.path}
@@ -124,7 +124,7 @@
 										</div>
 									</div>
 
-									<div class="flex gap-1">
+									<div class="flex shrink-0 gap-1">
 										<button
 											class="btn btn-square btn-ghost btn-sm"
 											onclick={() => onEdit(folder)}

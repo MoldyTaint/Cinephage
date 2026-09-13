@@ -439,7 +439,7 @@
 						<label class="label cursor-pointer gap-1">
 							<input
 								type="checkbox"
-								class="checkbox checkbox-sm"
+								class="checkbox checkbox-sm checkbox-primary"
 								checked={lang.forced}
 								onchange={(e) => updateLanguage(i, 'forced', e.currentTarget.checked)}
 							/>
@@ -451,7 +451,7 @@
 						<label class="label cursor-pointer gap-1">
 							<input
 								type="checkbox"
-								class="checkbox checkbox-sm"
+								class="checkbox checkbox-sm checkbox-primary"
 								checked={lang.hearingImpaired}
 								onchange={(e) => updateLanguage(i, 'hearingImpaired', e.currentTarget.checked)}
 							/>
@@ -462,7 +462,7 @@
 						<label class="label cursor-pointer gap-1">
 							<input
 								type="checkbox"
-								class="checkbox checkbox-sm"
+								class="checkbox checkbox-sm checkbox-primary"
 								checked={lang.excludeHi}
 								onchange={(e) => updateLanguage(i, 'excludeHi', e.currentTarget.checked)}
 							/>
@@ -530,12 +530,16 @@
 
 		<div class="flex flex-col gap-2 sm:flex-row sm:gap-4">
 			<label class="label cursor-pointer gap-2">
-				<input type="checkbox" class="checkbox" bind:checked={formUpgradesAllowed} />
+				<input
+					type="checkbox"
+					class="checkbox checkbox-primary"
+					bind:checked={formUpgradesAllowed}
+				/>
 				<span class="label-text">{m.settings_integrations_languageProfiles_allowUpgrades()}</span>
 			</label>
 
 			<label class="label cursor-pointer gap-2">
-				<input type="checkbox" class="checkbox" bind:checked={formIsDefault} />
+				<input type="checkbox" class="checkbox checkbox-primary" bind:checked={formIsDefault} />
 				<span class="label-text">{m.settings_integrations_languageProfiles_setAsDefault()}</span>
 			</label>
 		</div>

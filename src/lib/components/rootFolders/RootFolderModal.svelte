@@ -228,7 +228,11 @@
 			</div>
 
 			<label class="flex cursor-pointer items-center gap-3 py-2">
-				<input type="checkbox" class="checkbox shrink-0 checkbox-sm" bind:checked={isDefault} />
+				<input
+					type="checkbox"
+					class="checkbox shrink-0 checkbox-sm checkbox-primary"
+					bind:checked={isDefault}
+				/>
 				<span class="text-sm"
 					>{m.rootFolders_setAsDefault({
 						mediaType: defaultScopeLabel
@@ -237,7 +241,11 @@
 			</label>
 
 			<label class="flex cursor-pointer items-center gap-3 py-2">
-				<input type="checkbox" class="checkbox shrink-0 checkbox-sm" bind:checked={readOnly} />
+				<input
+					type="checkbox"
+					class="checkbox shrink-0 checkbox-sm checkbox-primary"
+					bind:checked={readOnly}
+				/>
 				<span class="text-sm">{m.rootFolders_readOnlyLabel()}</span>
 			</label>
 
@@ -246,7 +254,7 @@
 			>
 				<input
 					type="checkbox"
-					class="checkbox shrink-0 checkbox-sm"
+					class="checkbox shrink-0 checkbox-sm checkbox-primary"
 					bind:checked={preserveSymlinks}
 					disabled={symlinkModeEnabled}
 				/>
@@ -266,7 +274,7 @@
 			<label class="flex cursor-pointer items-center gap-3 py-2">
 				<input
 					type="checkbox"
-					class="checkbox shrink-0 checkbox-sm"
+					class="checkbox shrink-0 checkbox-sm checkbox-primary"
 					bind:checked={defaultMonitored}
 				/>
 				<span class="min-w-0 text-sm">{m.rootFolders_monitorNewContent()}</span>

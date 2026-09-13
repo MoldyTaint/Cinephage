@@ -40,7 +40,7 @@
 	<label class="label cursor-pointer gap-2">
 		<input
 			type="checkbox"
-			class="checkbox checkbox-sm"
+			class="checkbox checkbox-sm checkbox-primary"
 			checked={showRejected}
 			onchange={(e) => onShowRejectedChange(e.currentTarget.checked)}
 		/>

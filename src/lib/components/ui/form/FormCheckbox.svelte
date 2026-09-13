@@ -30,7 +30,7 @@
 	const inputClass = $derived(
 		variant === 'toggle'
 			? `toggle toggle-${size} toggle-${color} mt-0.5 shrink-0`
-			: `checkbox checkbox-${size} mt-0.5 shrink-0`
+			: `checkbox checkbox-${size} checkbox-${color} mt-0.5 shrink-0`
 	);
 </script>
 
@@ -39,7 +39,7 @@
 	<div class="min-w-0">
 		<span class="text-sm">{label}</span>
 		{#if description}
-			<p class="text-xs break-words whitespace-normal text-base-content/60">{description}</p>
+			<p class="text-xs wrap-break-word whitespace-normal text-base-content/60">{description}</p>
 		{/if}
 	</div>
 </label>

@@ -494,7 +494,7 @@
 		{#snippet actions()}
 			<input
 				type="checkbox"
-				class="toggle toggle-lg"
+				class="toggle toggle-primary"
 				checked={arrCompatEnabled}
 				disabled={savingArrCompatEnabled}
 				onchange={toggleArrCompatEnabled}

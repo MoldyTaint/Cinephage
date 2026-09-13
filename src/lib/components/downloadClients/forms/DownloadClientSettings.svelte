@@ -72,7 +72,7 @@
 			<input
 				id={urlBaseToggleId}
 				type="checkbox"
-				class="checkbox checkbox-sm"
+				class="checkbox checkbox-sm checkbox-primary"
 				bind:checked={urlBaseEnabled}
 				onchange={handleUrlBaseToggle}
 			/>
@@ -207,7 +207,7 @@
 				<input
 					id="sequentialDownload"
 					type="checkbox"
-					class="checkbox checkbox-sm"
+					class="checkbox checkbox-sm checkbox-primary"
 					bind:checked={sequentialDownload}
 				/>
 				<span class="label-text text-sm"

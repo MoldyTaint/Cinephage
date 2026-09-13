@@ -1774,7 +1774,7 @@
 		<label class="mt-2 flex cursor-pointer items-start gap-2 text-sm">
 			<input
 				type="checkbox"
-				class="checkbox mt-0.5 checkbox-sm"
+				class="checkbox mt-0.5 checkbox-sm checkbox-primary"
 				bind:checked={historyConfirmRemoveFromClient}
 				disabled={historyConfirmLoading}
 			/>

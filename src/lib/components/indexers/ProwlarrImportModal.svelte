@@ -833,7 +833,7 @@
 					<div class="flex items-center gap-3 border-b border-base-300 bg-base-200/40 px-4 py-2.5">
 						<input
 							type="checkbox"
-							class="checkbox checkbox-sm"
+							class="checkbox checkbox-sm checkbox-primary"
 							checked={allSelected}
 							indeterminate={someSelected}
 							onchange={(e) => toggleAll((e.target as HTMLInputElement).checked)}
@@ -849,7 +849,7 @@
 						>
 							<input
 								type="checkbox"
-								class="checkbox shrink-0 checkbox-sm"
+								class="checkbox shrink-0 checkbox-sm checkbox-primary"
 								checked={selected.has(indexer.id)}
 								disabled={duplicate}
 								onchange={(e) => toggleOne(indexer.id, (e.target as HTMLInputElement).checked)}

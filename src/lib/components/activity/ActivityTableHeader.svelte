@@ -55,7 +55,7 @@
 				<input
 					bind:this={selectAllCheckbox}
 					type="checkbox"
-					class="checkbox checkbox-xs"
+					class="checkbox checkbox-xs checkbox-primary"
 					checked={allSelectableSelected}
 					aria-label={m.activity_table_selectAllVisible()}
 					onclick={(e) => {

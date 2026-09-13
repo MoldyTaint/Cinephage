@@ -444,7 +444,7 @@
 								<div class="flex min-w-0 items-center gap-3">
 									<input
 										type="checkbox"
-										class="checkbox checkbox-sm"
+										class="checkbox checkbox-sm checkbox-primary"
 										checked={selectedIssueSet.has(item.id)}
 										onchange={() => toggleIssueSelection(item.id)}
 									/>

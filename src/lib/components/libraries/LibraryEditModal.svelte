@@ -40,6 +40,7 @@
 	type ProfileRef = {
 		id: string;
 		name: string;
+		isDefault?: boolean;
 	};
 
 	type LibraryFormData = {
@@ -79,14 +80,22 @@
 		void (async () => {
 			try {
 				const data = (await getScoringProfiles()) as unknown as {
-					profiles?: Array<{ id: string; name: string }>;
+					profiles?: Array<{ id: string; name: string; isDefault?: boolean }>;
 				};
-				availableProfiles = (data.profiles ?? []).map((p) => ({ id: p.id, name: p.name }));
+				availableProfiles = (data.profiles ?? []).map((p) => ({
+					id: p.id,
+					name: p.name,
+					isDefault: p.isDefault ?? false
+				}));
 			} catch {
 				availableProfiles = [];
 			}
 		})();
 	});
+
+	const defaultProfileName = $derived(
+		availableProfiles.find((p) => p.isDefault)?.name ?? m.common_default()
+	);
 
 	const isCreateMode = $derived(libraryId === null);
 	const editingLibrary = $derived(
@@ -230,8 +239,8 @@
 					class="select-bordered select select-sm"
 					bind:value={libraryForm.qualityProfileId}
 				>
-					<option value="">{m.common_default()}</option>
-					{#each availableProfiles as profile (profile.id)}
+					<option value={null}>{defaultProfileName}</option>
+					{#each availableProfiles.filter((p) => !p.isDefault) as profile (profile.id)}
 						<option value={profile.id}>{profile.name}</option>
 					{/each}
 				</select>
@@ -317,5 +326,6 @@
 		onSave={saveLibrary}
 		saving={librarySaving}
 		saveLabel={m.settings_general_saveLibrary()}
+		saveDisabled={!libraryForm.name.trim()}
 	/>
 </ModalWrapper>

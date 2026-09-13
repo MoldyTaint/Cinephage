@@ -120,11 +120,19 @@
 			<span class="label-text py-1">{m.common_categories()}</span>
 			<div class="flex flex-wrap gap-x-4 gap-y-1">
 				<label class="label cursor-pointer gap-2">
-					<input type="checkbox" class="checkbox checkbox-sm" bind:checked={allowMovies} />
+					<input
+						type="checkbox"
+						class="checkbox checkbox-sm checkbox-primary"
+						bind:checked={allowMovies}
+					/>
 					<span class="label-text">{m.common_movies()}</span>
 				</label>
 				<label class="label cursor-pointer gap-2">
-					<input type="checkbox" class="checkbox checkbox-sm" bind:checked={allowTv} />
+					<input
+						type="checkbox"
+						class="checkbox checkbox-sm checkbox-primary"
+						bind:checked={allowTv}
+					/>
 					<span class="label-text">{m.common_tvShows()}</span>
 				</label>
 			</div>
@@ -137,12 +145,20 @@
 
 		<div class="flex flex-col gap-2">
 			<label class="label cursor-pointer gap-2">
-				<input type="checkbox" class="checkbox checkbox-sm" bind:checked={enabled} />
+				<input
+					type="checkbox"
+					class="checkbox checkbox-sm checkbox-primary"
+					bind:checked={enabled}
+				/>
 				<span class="label-text">{m.common_enabled()}</span>
 			</label>
 
 			<label class="label cursor-pointer gap-2">
-				<input type="checkbox" class="checkbox checkbox-sm" bind:checked={removeAfterImport} />
+				<input
+					type="checkbox"
+					class="checkbox checkbox-sm checkbox-primary"
+					bind:checked={removeAfterImport}
+				/>
 				<span class="label-text">{m.downloadClient_removeAfterImport()}</span>
 			</label>
 		</div>

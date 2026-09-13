@@ -279,7 +279,7 @@
 								<th class="w-10">
 									<input
 										type="checkbox"
-										class="checkbox checkbox-xs"
+										class="checkbox checkbox-xs checkbox-primary"
 										checked={blockedKeywords.length > 0 &&
 											blockedKeywords.every((k) => selectedIds.has(k.id))}
 										onchange={(e) => handleSelectAll((e.target as HTMLInputElement).checked)}
@@ -297,7 +297,7 @@
 									<td>
 										<input
 											type="checkbox"
-											class="checkbox checkbox-xs"
+											class="checkbox checkbox-xs checkbox-primary"
 											checked={selectedIds.has(kw.id)}
 											onchange={(e) => {
 												if ((e.target as HTMLInputElement).checked) selectedIds.add(kw.id);

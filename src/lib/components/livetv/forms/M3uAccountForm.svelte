@@ -221,7 +221,7 @@
 				<label class="label cursor-pointer gap-2">
 					<input
 						type="checkbox"
-						class="checkbox checkbox-sm"
+						class="checkbox checkbox-sm checkbox-primary"
 						checked={autoRefresh}
 						onchange={(e) => onAutoRefreshChange(e.currentTarget.checked)}
 					/>
@@ -261,7 +261,7 @@
 			<label class="label cursor-pointer gap-2">
 				<input
 					type="checkbox"
-					class="checkbox checkbox-sm"
+					class="checkbox checkbox-sm checkbox-primary"
 					checked={enabled}
 					onchange={(e) => onEnabledChange(e.currentTarget.checked)}
 				/>

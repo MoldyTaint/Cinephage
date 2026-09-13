@@ -122,7 +122,7 @@
 		{#if showCheckboxes}
 			<input
 				type="checkbox"
-				class="checkbox mt-1 shrink-0 checkbox-sm"
+				class="checkbox mt-1 shrink-0 checkbox-sm checkbox-primary"
 				checked={selected}
 				onchange={onSelect}
 			/>

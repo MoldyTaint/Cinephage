@@ -235,7 +235,7 @@
 		<td class="w-10">
 			<input
 				type="checkbox"
-				class="checkbox checkbox-sm"
+				class="checkbox checkbox-sm checkbox-primary"
 				checked={selected}
 				onchange={handleCheckboxChange}
 			/>

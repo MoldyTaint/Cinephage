@@ -578,7 +578,7 @@
 				<label class="label mt-4 cursor-pointer justify-start gap-3 whitespace-normal">
 					<input
 						type="checkbox"
-						class="checkbox checkbox-sm"
+						class="checkbox checkbox-sm checkbox-primary"
 						bind:checked={backupIncludeIndexerCookies}
 					/>
 					<div class="min-w-0">
@@ -628,7 +628,7 @@
 				<input
 					id="backup-restore-file"
 					type="file"
-					class="file-input-bordered file-input w-full max-w-full min-w-0"
+					class="file-input-bordered file-input w-full max-w-full min-w-0 focus:border-primary focus:outline-none"
 					accept="application/json,.json"
 					onchange={handleBackupFileChange}
 				/>
@@ -671,7 +671,7 @@
 								>
 									<input
 										type="checkbox"
-										class="checkbox mt-0.5 checkbox-sm"
+										class="checkbox mt-0.5 checkbox-sm checkbox-primary"
 										checked={selectedRestoreSections.includes(section.id)}
 										onchange={(event) =>
 											toggleRestoreSection(

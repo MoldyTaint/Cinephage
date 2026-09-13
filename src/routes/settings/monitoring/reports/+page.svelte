@@ -1206,7 +1206,7 @@
 							<th class="w-8 pr-0">
 								<input
 									type="checkbox"
-									class="checkbox checkbox-xs"
+									class="checkbox checkbox-xs checkbox-primary"
 									checked={selectedIds.size === records.length && records.length > 0}
 									onchange={(e) => {
 										selectedIds = (e.target as HTMLInputElement).checked
@@ -1243,7 +1243,7 @@
 								<td class="pr-0" onclick={(e) => e.stopPropagation()}>
 									<input
 										type="checkbox"
-										class="checkbox checkbox-xs"
+										class="checkbox checkbox-xs checkbox-primary"
 										checked={isSelected}
 										onchange={() => {
 											const next = new Set(selectedIds);
@@ -1865,7 +1865,7 @@
 							<th class="w-8 pr-0">
 								<input
 									type="checkbox"
-									class="checkbox checkbox-xs"
+									class="checkbox checkbox-xs checkbox-primary"
 									checked={selectedIds.size === records.length && records.length > 0}
 									onchange={(e) => {
 										selectedIds = (e.target as HTMLInputElement).checked
@@ -1896,7 +1896,7 @@
 								<td class="pr-0" onclick={(e) => e.stopPropagation()}>
 									<input
 										type="checkbox"
-										class="checkbox checkbox-xs"
+										class="checkbox checkbox-xs checkbox-primary"
 										checked={isSelected}
 										onchange={() => {
 											const next = new Set(selectedIds);
@@ -2470,7 +2470,7 @@
 							<th class="w-8 pr-0">
 								<input
 									type="checkbox"
-									class="checkbox checkbox-xs"
+									class="checkbox checkbox-xs checkbox-primary"
 									checked={selectedIds.size === records.length && records.length > 0}
 									onchange={(e) => {
 										selectedIds = (e.target as HTMLInputElement).checked
@@ -2499,7 +2499,7 @@
 								<td class="pr-0" onclick={(e) => e.stopPropagation()}>
 									<input
 										type="checkbox"
-										class="checkbox checkbox-xs"
+										class="checkbox checkbox-xs checkbox-primary"
 										checked={isSelected}
 										onchange={() => {
 											const next = new Set(selectedIds);
@@ -3055,7 +3055,7 @@
 							<th class="w-8 pr-0"
 								><input
 									type="checkbox"
-									class="checkbox checkbox-xs"
+									class="checkbox checkbox-xs checkbox-primary"
 									checked={selectedIds.size === records.length && records.length > 0}
 									onchange={(e) => {
 										selectedIds = (e.target as HTMLInputElement).checked
@@ -3084,7 +3084,7 @@
 								<td class="pr-0" onclick={(e) => e.stopPropagation()}>
 									<input
 										type="checkbox"
-										class="checkbox checkbox-xs"
+										class="checkbox checkbox-xs checkbox-primary"
 										checked={isSelected}
 										onchange={() => {
 											const next = new Set(selectedIds);

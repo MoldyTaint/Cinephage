@@ -175,7 +175,7 @@
 								<th class="w-10">
 									<input
 										type="checkbox"
-										class="checkbox checkbox-xs"
+										class="checkbox checkbox-xs checkbox-primary"
 										checked={entries.length > 0 && entries.every((e) => selectedIds.has(e.id))}
 										onchange={(e) => handleSelectAll((e.target as HTMLInputElement).checked)}
 									/>
@@ -193,7 +193,7 @@
 									<td>
 										<input
 											type="checkbox"
-											class="checkbox checkbox-xs"
+											class="checkbox checkbox-xs checkbox-primary"
 											checked={selectedIds.has(entry.id)}
 											onchange={(e) =>
 												handleSelect(entry.id, (e.target as HTMLInputElement).checked)}

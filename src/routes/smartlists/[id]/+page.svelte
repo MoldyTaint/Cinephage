@@ -510,7 +510,7 @@
 			<label class="label shrink-0 cursor-pointer gap-1.5 py-0 whitespace-nowrap sm:gap-2">
 				<input
 					type="checkbox"
-					class="checkbox checkbox-sm"
+					class="checkbox checkbox-sm checkbox-primary"
 					bind:checked={showExcluded}
 					onchange={() => applyFilters()}
 				/>

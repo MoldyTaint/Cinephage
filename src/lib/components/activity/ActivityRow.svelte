@@ -73,7 +73,7 @@
 		<td class="w-10">
 			<input
 				type="checkbox"
-				class="checkbox checkbox-xs"
+				class="checkbox checkbox-xs checkbox-primary"
 				checked={isSelected}
 				disabled={!isSelectable}
 				aria-label={`Select ${activity.mediaTitle}`}

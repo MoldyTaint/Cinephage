@@ -182,7 +182,7 @@
 	<label class="label cursor-pointer gap-2">
 		<input
 			type="checkbox"
-			class="checkbox checkbox-sm"
+			class="checkbox checkbox-sm checkbox-primary"
 			bind:checked={useSsl}
 			onchange={onSslChange}
 		/>
@@ -190,7 +190,7 @@
 	</label>
 
 	<label class="label cursor-pointer gap-2">
-		<input type="checkbox" class="checkbox checkbox-sm" bind:checked={enabled} />
+		<input type="checkbox" class="checkbox checkbox-sm checkbox-primary" bind:checked={enabled} />
 		<span class="label-text">{m.common_enabled()}</span>
 	</label>
 </div>

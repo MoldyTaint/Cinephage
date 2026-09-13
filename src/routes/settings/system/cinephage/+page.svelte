@@ -144,7 +144,7 @@
 						</button>
 						<input
 							type="checkbox"
-							class="toggle toggle-lg"
+							class="toggle toggle-primary"
 							checked={config.enabled}
 							onchange={handleToggleSubsystem}
 						/>
@@ -202,7 +202,7 @@
 					<label class="flex cursor-pointer items-center gap-2 text-sm">
 						<input
 							type="checkbox"
-							class="toggle toggle-sm"
+							class="toggle toggle-primary toggle-sm"
 							checked={config.autoUpdate}
 							onchange={handleToggleAutoUpdate}
 						/>
@@ -267,7 +267,7 @@
 							</div>
 							<input
 								type="checkbox"
-								class="toggle toggle-sm"
+								class="toggle toggle-primary toggle-sm"
 								checked={mod.enabled}
 								disabled={!config.enabled}
 								onchange={() => handleToggleModule(mod.moduleId, mod.enabled)}
@@ -279,7 +279,7 @@
 								<label class="flex cursor-pointer items-center gap-2 text-sm">
 									<input
 										type="checkbox"
-										class="checkbox checkbox-sm"
+										class="checkbox checkbox-sm checkbox-primary"
 										checked={Boolean(mod.settings.useHttps)}
 										disabled={!config.enabled}
 										onchange={(e) =>

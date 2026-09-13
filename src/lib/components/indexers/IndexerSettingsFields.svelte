@@ -102,7 +102,7 @@
 					<label class="flex cursor-pointer items-start gap-3 py-2">
 						<input
 							type="checkbox"
-							class="checkbox mt-0.5 shrink-0 checkbox-sm"
+							class="checkbox mt-0.5 shrink-0 checkbox-sm checkbox-primary"
 							checked={settings[setting.name] === 'true'}
 							onchange={(e) =>
 								updateSetting(setting.name, e.currentTarget.checked ? 'true' : 'false')}

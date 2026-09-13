@@ -164,7 +164,7 @@
 					<label class="label cursor-pointer justify-start gap-2">
 						<input
 							type="checkbox"
-							class="checkbox checkbox-sm"
+							class="checkbox checkbox-sm checkbox-primary"
 							checked={filtersState.excluded_genre_ids.includes(genre.id)}
 							onchange={(event) => toggleExcludedGenre(genre.id, event.currentTarget.checked)}
 						/>

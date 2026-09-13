@@ -253,7 +253,11 @@
 		</div>
 
 		<label class="label cursor-pointer gap-2">
-			<input type="checkbox" class="checkbox checkbox-xs" bind:checked={filters.activeOnly} />
+			<input
+				type="checkbox"
+				class="checkbox checkbox-xs checkbox-primary"
+				bind:checked={filters.activeOnly}
+			/>
 			<span class="label-text text-sm">{m.blocklist_filterActiveOnly()}</span>
 		</label>
 

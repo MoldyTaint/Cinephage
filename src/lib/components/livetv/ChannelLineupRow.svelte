@@ -140,7 +140,7 @@
 	<td class="w-10">
 		<input
 			type="checkbox"
-			class="checkbox checkbox-sm"
+			class="checkbox checkbox-sm checkbox-primary"
 			checked={selected}
 			onchange={(e) => onSelect(e.currentTarget.checked)}
 		/>
@@ -244,7 +244,7 @@
 	</td>
 
 	<!-- Now Playing (EPG) -->
-	<td class="hidden max-w-[300px] lg:table-cell">
+	<td class="hidden max-w-75 lg:table-cell">
 		{#if epgNow?.now}
 			<button
 				type="button"

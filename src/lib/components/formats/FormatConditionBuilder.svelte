@@ -391,7 +391,7 @@
 						<label class="flex cursor-pointer items-center gap-2">
 							<input
 								type="checkbox"
-								class="checkbox checkbox-sm"
+								class="checkbox checkbox-sm checkbox-primary"
 								checked={condition.required}
 								disabled={readonly}
 								onchange={(e) => updateCondition(index, { required: e.currentTarget.checked })}
@@ -405,7 +405,7 @@
 						<label class="flex cursor-pointer items-center gap-2">
 							<input
 								type="checkbox"
-								class="checkbox checkbox-sm"
+								class="checkbox checkbox-sm checkbox-primary"
 								checked={condition.negate}
 								disabled={readonly}
 								onchange={(e) => updateCondition(index, { negate: e.currentTarget.checked })}

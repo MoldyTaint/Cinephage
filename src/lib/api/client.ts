@@ -22,13 +22,31 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<ApiRe
 	const res = await fetch(url, options);
 
 	if (!res.ok) {
-		let body: ApiResponse & { message?: string };
+		let body: ApiResponse & {
+			message?: string;
+			context?: { details?: { fieldErrors?: Record<string, string[]>; formErrors?: string[] } };
+		};
 		try {
 			body = await res.json();
 		} catch {
 			body = { success: false, error: res.statusText };
 		}
-		throw new ApiError(body.error || body.message || res.statusText, res.status, body);
+
+		// Zod validation errors (ValidationError's toJSON()) carry the real
+		// per-field reason in context.details, but the top-level message is
+		// always the generic "Validation failed" - surface the specific
+		// reason instead when it's available.
+		const details = body.context?.details;
+		const fieldMessages = Object.entries(details?.fieldErrors ?? {})
+			.filter(([, messages]) => messages?.length)
+			.map(([field, messages]) => `${field}: ${messages[0]}`);
+		const specificMessage = [...fieldMessages, ...(details?.formErrors ?? [])].join('; ');
+
+		throw new ApiError(
+			specificMessage || body.error || body.message || res.statusText,
+			res.status,
+			body
+		);
 	}
 
 	return res.json() as Promise<ApiResponse<T>>;

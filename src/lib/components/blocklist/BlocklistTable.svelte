@@ -109,7 +109,7 @@
 				<th class="w-10">
 					<input
 						type="checkbox"
-						class="checkbox checkbox-xs"
+						class="checkbox checkbox-xs checkbox-primary"
 						checked={allSelected}
 						indeterminate={someSelected}
 						onchange={(e) => onSelectAll((e.currentTarget as HTMLInputElement).checked)}
@@ -179,7 +179,7 @@
 					<td>
 						<input
 							type="checkbox"
-							class="checkbox checkbox-xs"
+							class="checkbox checkbox-xs checkbox-primary"
 							checked={selectedIds.has(entry.id)}
 							onchange={(e) => onSelect(entry.id, (e.currentTarget as HTMLInputElement).checked)}
 							aria-label={m.blocklist_tableSelectEntry({ title: entry.title })}

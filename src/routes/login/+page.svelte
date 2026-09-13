@@ -123,7 +123,7 @@
 				<!-- Remember Me -->
 				<div class="form-control">
 					<label class="label cursor-pointer justify-start gap-2">
-						<input type="checkbox" class="checkbox" bind:checked={rememberMe} />
+						<input type="checkbox" class="checkbox checkbox-primary" bind:checked={rememberMe} />
 						<span class="label-text">{m.login_rememberMe()}</span>
 					</label>
 				</div>

@@ -54,7 +54,7 @@
 	<label class="flex items-center gap-2 text-xs text-base-content/60">
 		<input
 			type="checkbox"
-			class="checkbox checkbox-xs"
+			class="checkbox checkbox-xs checkbox-primary"
 			checked={showAdded}
 			onchange={onToggleAdded}
 		/>

@@ -94,7 +94,7 @@
 		<td>
 			<input
 				type="checkbox"
-				class="checkbox checkbox-sm"
+				class="checkbox checkbox-sm checkbox-primary"
 				checked={selected}
 				onchange={(e) => onSelectChange(item.id, e.currentTarget.checked)}
 			/>

@@ -232,7 +232,11 @@
 				search coverage, and the adult classification used for XXX category searches.
 			</p>
 			<label class="label cursor-pointer justify-start gap-3">
-				<input type="checkbox" class="checkbox" bind:checked={animeEnrichmentEnabled} />
+				<input
+					type="checkbox"
+					class="checkbox checkbox-primary"
+					bind:checked={animeEnrichmentEnabled}
+				/>
 				<span class="label-text">Enable anime metadata enrichment</span>
 			</label>
 			{#if enrichmentError}

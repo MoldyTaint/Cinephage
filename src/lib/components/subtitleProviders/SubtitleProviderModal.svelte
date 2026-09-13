@@ -395,7 +395,11 @@
 
 				<div class="flex gap-4 pt-2">
 					<label class="label cursor-pointer gap-2">
-						<input type="checkbox" class="checkbox checkbox-sm" bind:checked={enabled} />
+						<input
+							type="checkbox"
+							class="checkbox checkbox-sm checkbox-primary"
+							bind:checked={enabled}
+						/>
 						<span class="label-text">{m.subtitleProviders_modal_enabled()}</span>
 					</label>
 				</div>

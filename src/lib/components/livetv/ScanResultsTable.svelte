@@ -342,7 +342,7 @@
 							<th class="w-12">
 								<input
 									type="checkbox"
-									class="checkbox checkbox-sm"
+									class="checkbox checkbox-sm checkbox-primary"
 									checked={allSelected}
 									onchange={toggleSelectAll}
 								/>
@@ -371,7 +371,7 @@
 								<td>
 									<input
 										type="checkbox"
-										class="checkbox checkbox-sm"
+										class="checkbox checkbox-sm checkbox-primary"
 										checked={selectedIds.has(result.id)}
 										onchange={() => toggleSelection(result.id)}
 									/>

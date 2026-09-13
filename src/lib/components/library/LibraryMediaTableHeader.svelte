@@ -41,7 +41,7 @@
 		<th class="w-10">
 			<input
 				type="checkbox"
-				class="checkbox checkbox-sm"
+				class="checkbox checkbox-sm checkbox-primary"
 				checked={allSelected}
 				indeterminate={someSelected}
 				onchange={(e) => onSelectAll(e.currentTarget.checked)}

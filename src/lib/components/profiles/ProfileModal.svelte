@@ -439,7 +439,7 @@
 					<label class="label cursor-pointer gap-2">
 						<input
 							type="checkbox"
-							class="checkbox checkbox-sm"
+							class="checkbox checkbox-sm checkbox-primary"
 							bind:checked={upgradesAllowed}
 							disabled={isCoreReadonly}
 						/>
@@ -449,7 +449,7 @@
 					<label class="label cursor-pointer gap-2">
 						<input
 							type="checkbox"
-							class="checkbox checkbox-sm"
+							class="checkbox checkbox-sm checkbox-primary"
 							bind:checked={preventDowngrades}
 							disabled={isFullyReadonly}
 						/>
@@ -460,7 +460,7 @@
 						<label class="label cursor-pointer gap-2">
 							<input
 								type="checkbox"
-								class="checkbox checkbox-sm"
+								class="checkbox checkbox-sm checkbox-primary"
 								bind:checked={isDefault}
 								disabled={isFullyReadonly}
 							/>

@@ -250,7 +250,11 @@
 		</div>
 
 		<label class="label cursor-pointer gap-2">
-			<input type="checkbox" class="checkbox checkbox-sm" bind:checked={showHashOnly} />
+			<input
+				type="checkbox"
+				class="checkbox checkbox-sm checkbox-primary"
+				bind:checked={showHashOnly}
+			/>
 			<span class="label-text">Hash matches only</span>
 		</label>
 	</div>

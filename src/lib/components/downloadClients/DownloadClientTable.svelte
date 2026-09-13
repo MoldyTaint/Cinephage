@@ -122,7 +122,7 @@
 				<label class="flex items-center gap-2 text-xs font-medium">
 					<input
 						type="checkbox"
-						class="checkbox checkbox-sm"
+						class="checkbox checkbox-sm checkbox-primary"
 						checked={allSelected}
 						indeterminate={someSelected}
 						onchange={(e) => onSelectAll(e.currentTarget.checked)}
@@ -146,7 +146,7 @@
 				<div class="mb-2 flex items-start gap-2.5">
 					<input
 						type="checkbox"
-						class="checkbox checkbox-sm"
+						class="checkbox checkbox-sm checkbox-primary"
 						checked={selectedIds.has(client.id)}
 						onchange={(e) => onSelect(client.id, e.currentTarget.checked)}
 					/>
@@ -255,7 +255,7 @@
 					<th class="w-10">
 						<input
 							type="checkbox"
-							class="checkbox checkbox-sm"
+							class="checkbox checkbox-sm checkbox-primary"
 							checked={allSelected}
 							indeterminate={someSelected}
 							onchange={(e) => onSelectAll(e.currentTarget.checked)}
@@ -318,7 +318,7 @@
 						<td class="w-10">
 							<input
 								type="checkbox"
-								class="checkbox checkbox-sm"
+								class="checkbox checkbox-sm checkbox-primary"
 								checked={selectedIds.has(client.id)}
 								onchange={(e) => onSelect(client.id, e.currentTarget.checked)}
 							/>
