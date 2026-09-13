@@ -21,6 +21,7 @@ import {
 	LanguageProfileService,
 	toLegacyPreferences
 } from '$lib/server/subtitles/services/LanguageProfileService.js';
+import { matchesRequirement } from '$lib/server/subtitles/requirement-matcher.js';
 import { createChildLogger } from '$lib/logging/index.js';
 import { normalizeLanguageCode } from '$lib/shared/languages';
 import type { TaskResult } from '../MonitoringScheduler.js';
@@ -330,17 +331,26 @@ async function searchMissingMovieSubtitles(
 
 					if (languages.length === 0) return;
 
-					const missingCodes = status.missing.map((m) => m.code).join(', ');
+					const missingCodes = status.missing.map((m) => m.tag).join(', ');
 					const missingLabel = missingCodes ? `Subtitles: ${missingCodes}` : undefined;
 
 					// Search for subtitles
 					const results = await searchService.searchForMovie(movie.id, languages);
 
-					// Download best match for each missing language
-					for (const missing of status.missing) {
-						// Get all results for this language
-						const languageResults = results.results.filter(
-							(r) => normalizeLanguageCode(r.language) === missing.code
+					// Download best match for each missing requirement
+					for (const requirement of status.missing) {
+						// Candidates must satisfy the full requirement tuple before the
+						// score threshold is applied. Task 4 replaces this bridge with the
+						// shared acquisition helper.
+						const languageResults = results.results.filter((r) =>
+							matchesRequirement(
+								{
+									language: r.language,
+									isForced: r.isForced,
+									isHearingImpaired: r.isHearingImpaired
+								},
+								requirement
+							)
 						);
 
 						// Filter for minimum score, then sort by score descending
@@ -356,7 +366,7 @@ async function searchMissingMovieSubtitles(
 								{
 									movieId: movie.id,
 									title: movie.title,
-									language: missing.code,
+									language: requirement.tag,
 									resultsFound: languageResults.length,
 									bestScore,
 									minScore
@@ -399,14 +409,14 @@ async function searchMissingMovieSubtitles(
 								errorCount++;
 								movieError =
 									downloadError instanceof Error ? downloadError.message : String(downloadError);
-								logger.warn(
-									{
-										movieId: movie.id,
-										language: missing.code,
-										error: movieError
-									},
-									'[MissingSubtitlesTask] Failed to download subtitle for movie'
-								);
+									logger.warn(
+										{
+											movieId: movie.id,
+											language: requirement.tag,
+											error: movieError
+										},
+										'[MissingSubtitlesTask] Failed to download subtitle for movie'
+									);
 							}
 						}
 					}
@@ -588,16 +598,25 @@ async function searchMissingEpisodeSubtitles(
 
 							// Get status for this episode
 							const status = await profileService.getEpisodeSubtitleStatus(episodeId);
-							const missingCodes = status.missing.map((m) => m.code).join(', ');
+							const missingCodes = status.missing.map((m) => m.tag).join(', ');
 							const missingLabel = missingCodes ? `Subtitles: ${missingCodes}` : undefined;
 
 							// Search for subtitles
 							const results = await searchService.searchForEpisode(episodeId, languages);
 
-							for (const missing of status.missing) {
-								// Get all results for this language
-								const languageResults = results.results.filter(
-									(r) => normalizeLanguageCode(r.language) === missing.code
+							for (const requirement of status.missing) {
+								// Candidates must satisfy the full requirement tuple before the
+								// score threshold is applied. Task 4 replaces this bridge with the
+								// shared acquisition helper.
+								const languageResults = results.results.filter((r) =>
+									matchesRequirement(
+										{
+											language: r.language,
+											isForced: r.isForced,
+											isHearingImpaired: r.isHearingImpaired
+										},
+										requirement
+									)
 								);
 
 								// Filter for minimum score, then sort by score descending
@@ -612,7 +631,7 @@ async function searchMissingEpisodeSubtitles(
 									logger.debug(
 										{
 											episodeId,
-											language: missing.code,
+											language: requirement.tag,
 											resultsFound: languageResults.length,
 											bestScore,
 											minScore
@@ -660,7 +679,7 @@ async function searchMissingEpisodeSubtitles(
 										logger.warn(
 											{
 												episodeId,
-												language: missing.code,
+												language: requirement.tag,
 												error: episodeError
 											},
 											'[MissingSubtitlesTask] Failed to download subtitle for episode'

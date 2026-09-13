@@ -3,6 +3,7 @@
  */
 
 import type { LanguageTag } from '$lib/shared/languages.js';
+import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
 
 /**
  * Canonical language code.
@@ -201,21 +202,23 @@ export interface SubtitleDownloadResult {
 }
 
 /**
- * Subtitle status for a media item
+ * Subtitle status for a media item.
+ *
+ * `missing` is the ordered list of v2 requirements that are not satisfied by a
+ * file that currently exists on disk. `existing` describes every external
+ * subtitle row found for the item, tagged with the requirement key it matches
+ * (null when it matches none).
  */
 export interface SubtitleStatus {
 	satisfied: boolean;
-	missing: Array<{
-		code: LanguageCode;
-		forced: boolean;
-		hearingImpaired: boolean;
-	}>;
+	missing: SubtitleRequirement[];
 	existing: Array<{
 		language: LanguageCode;
 		subtitleId: string;
 		isForced: boolean;
 		isHearingImpaired: boolean;
 		matchScore?: number;
+		requirementKey: string | null;
 	}>;
 }
 

@@ -35,6 +35,7 @@ import type {
 } from '../types';
 import { getSubtitleProviderManager } from './SubtitleProviderManager';
 import { isThrottleableError } from '../errors/ProviderErrors';
+import { resolveStoredSubtitlePath } from '../subtitle-paths';
 import AdmZip from 'adm-zip';
 
 /**
@@ -194,7 +195,7 @@ export class SubtitleDownloadService {
 		}
 
 		// Get full path and delete file
-		const fullPath = await this.getSubtitleFullPath(subtitle[0]);
+		const fullPath = await resolveStoredSubtitlePath(subtitle[0]);
 		if (fullPath && existsSync(fullPath)) {
 			await unlink(fullPath);
 			logger.debug({ path: fullPath }, 'Deleted subtitle file');
@@ -342,7 +343,7 @@ export class SubtitleDownloadService {
 			replacedSubtitleId = existingSubtitle.id;
 
 			// Delete old file if it exists
-			const oldPath = await this.getSubtitleFullPath(existingSubtitle);
+			const oldPath = await resolveStoredSubtitlePath(existingSubtitle);
 			if (oldPath && existsSync(oldPath) && oldPath !== subtitlePath) {
 				await unlink(oldPath);
 			}
@@ -537,75 +538,6 @@ export class SubtitleDownloadService {
 			.limit(1);
 
 		return existing[0] || null;
-	}
-
-	/**
-	 * Get full path for a subtitle record
-	 */
-	private async getSubtitleFullPath(
-		subtitle: typeof subtitles.$inferSelect
-	): Promise<string | null> {
-		if (subtitle.movieId) {
-			const movie = await db.select().from(movies).where(eq(movies.id, subtitle.movieId)).limit(1);
-			if (!movie[0]) return null;
-
-			const rootFolder = movie[0].rootFolderId
-				? await db
-						.select()
-						.from(rootFolders)
-						.where(eq(rootFolders.id, movie[0].rootFolderId))
-						.limit(1)
-				: null;
-
-			const rootPath = rootFolder?.[0]?.path || '';
-			return join(rootPath, movie[0].path, subtitle.relativePath);
-		}
-
-		if (subtitle.episodeId) {
-			const episode = await db
-				.select()
-				.from(episodes)
-				.where(eq(episodes.id, subtitle.episodeId))
-				.limit(1);
-			if (!episode[0]) return null;
-
-			const seriesData = await db
-				.select()
-				.from(series)
-				.where(eq(series.id, episode[0].seriesId))
-				.limit(1);
-			if (!seriesData[0]) return null;
-
-			const rootFolder = seriesData[0].rootFolderId
-				? await db
-						.select()
-						.from(rootFolders)
-						.where(eq(rootFolders.id, seriesData[0].rootFolderId))
-						.limit(1)
-				: null;
-
-			const rootPath = rootFolder?.[0]?.path || '';
-
-			// Find the episode file to get the correct directory (includes season folder)
-			const files = await db
-				.select()
-				.from(episodeFiles)
-				.where(eq(episodeFiles.seriesId, episode[0].seriesId));
-			const file = files.find((f) => {
-				const ids = f.episodeIds as string[] | null;
-				return ids?.includes(subtitle.episodeId!);
-			});
-
-			if (file) {
-				const mediaDir = join(rootPath, seriesData[0].path, dirname(file.relativePath));
-				return join(mediaDir, subtitle.relativePath);
-			}
-
-			// Fallback: use series path if no file found
-			return join(rootPath, seriesData[0].path, subtitle.relativePath);
-		}
-
-		return null;
 	}
 }
 

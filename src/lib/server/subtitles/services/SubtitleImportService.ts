@@ -12,6 +12,7 @@ import { eq } from 'drizzle-orm';
 import { getSubtitleSearchService } from './SubtitleSearchService.js';
 import { getSubtitleDownloadService } from './SubtitleDownloadService.js';
 import { LanguageProfileService, toLegacyPreferences } from './LanguageProfileService.js';
+import { matchesRequirement } from '../requirement-matcher.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
@@ -190,18 +191,23 @@ async function searchForMovie(
 		{
 			movieId,
 			title: movie.title,
-			missingLanguages: status.missing.map((m) => m.code),
+			missingLanguages: status.missing.map((m) => m.tag),
 			resultsFound: searchResults.results.length,
 			minScore
 		},
 		'[SubtitleImportService] Searching subtitles for movie'
 	);
 
-	// Download best match for each missing language
-	for (const missing of status.missing) {
-		// Get all results for this language that meet minimum score
-		const languageResults = searchResults.results.filter(
-			(r) => normalizeLanguageCode(r.language) === missing.code
+	// Download best match for each missing requirement
+	for (const requirement of status.missing) {
+		// Candidates must satisfy the full requirement tuple (language + variant +
+		// accessibility) before the score threshold is applied. Task 4 replaces this
+		// bridge with the shared acquisition helper.
+		const languageResults = searchResults.results.filter((r) =>
+			matchesRequirement(
+				{ language: r.language, isForced: r.isForced, isHearingImpaired: r.isHearingImpaired },
+				requirement
+			)
 		);
 		const matches = languageResults
 			.filter((r) => r.matchScore >= minScore)
@@ -215,7 +221,7 @@ async function searchForMovie(
 				{
 					movieId,
 					title: movie.title,
-					language: missing.code,
+					language: requirement.tag,
 					resultsFound: languageResults.length,
 					bestScore,
 					minScore
@@ -259,7 +265,7 @@ async function searchForMovie(
 					{
 						movieId,
 						title: movie.title,
-						language: missing.code,
+						language: requirement.tag,
 						error: errorMsg
 					},
 					'[SubtitleImportService] Failed to download subtitle for movie'
@@ -410,18 +416,23 @@ async function searchForEpisode(
 			seriesTitle: seriesData.title,
 			season: episode.seasonNumber,
 			episode: episode.episodeNumber,
-			missingLanguages: status.missing.map((m) => m.code),
+			missingLanguages: status.missing.map((m) => m.tag),
 			resultsFound: searchResults.results.length,
 			minScore
 		},
 		'[SubtitleImportService] Searching subtitles for episode'
 	);
 
-	// Download best match for each missing language
-	for (const missing of status.missing) {
-		// Get all results for this language that meet minimum score
-		const languageResults = searchResults.results.filter(
-			(r) => normalizeLanguageCode(r.language) === missing.code
+	// Download best match for each missing requirement
+	for (const requirement of status.missing) {
+		// Candidates must satisfy the full requirement tuple (language + variant +
+		// accessibility) before the score threshold is applied. Task 4 replaces this
+		// bridge with the shared acquisition helper.
+		const languageResults = searchResults.results.filter((r) =>
+			matchesRequirement(
+				{ language: r.language, isForced: r.isForced, isHearingImpaired: r.isHearingImpaired },
+				requirement
+			)
 		);
 		const matches = languageResults
 			.filter((r) => r.matchScore >= minScore)
@@ -437,7 +448,7 @@ async function searchForEpisode(
 					seriesTitle: seriesData.title,
 					season: episode.seasonNumber,
 					episode: episode.episodeNumber,
-					language: missing.code,
+					language: requirement.tag,
 					resultsFound: languageResults.length,
 					bestScore,
 					minScore
@@ -485,7 +496,7 @@ async function searchForEpisode(
 						seriesTitle: seriesData.title,
 						season: episode.seasonNumber,
 						episode: episode.episodeNumber,
-						language: missing.code,
+						language: requirement.tag,
 						error: errorMsg
 					},
 					'[SubtitleImportService] Failed to download subtitle for episode'

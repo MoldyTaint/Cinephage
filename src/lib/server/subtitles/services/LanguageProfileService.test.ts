@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../test/db-helper';
 import { eq } from 'drizzle-orm';
-import { libraries, movies } from '$lib/server/db/schema';
+import { libraries, movies, rootFolders } from '$lib/server/db/schema';
 import type { LanguageProfile } from './LanguageProfileService';
 import type { SubtitleStatus } from '../types';
 
@@ -33,7 +33,10 @@ const TABLES_TO_CLEAR = [
 	'series',
 	'libraries',
 	'smart_lists',
-	'subtitles'
+	'subtitles',
+	'episode_files',
+	'episodes',
+	'root_folders'
 ];
 
 /** Complete v2 profile fixture with overrides. */
@@ -75,8 +78,43 @@ function subtitleRecord(overrides: Record<string, unknown>): never {
 		isForced: false,
 		isHearingImpaired: false,
 		matchScore: 90,
+		movieId: 'movie-status',
 		...overrides
 	} as never;
+}
+
+/**
+ * Seed a movie + root folder so resolveStoredSubtitlePaths can build a real
+ * absolute path for movie-scoped subtitle rows. Returns the movie id.
+ */
+let movieFixtureCounter = 0;
+function seedMovieFixture(movieId = 'movie-status', rootPath = '/media/movies'): string {
+	testDb.db
+		.insert(rootFolders)
+		.values({ id: `rf-${movieId}`, name: 'Movies', path: rootPath, mediaType: 'movie' })
+		.run();
+	testDb.db
+		.insert(movies)
+		.values({
+			id: movieId,
+			tmdbId: ++movieFixtureCounter,
+			title: 'Status Movie',
+			path: 'Status Movie (2020)',
+			rootFolderId: `rf-${movieId}`
+		})
+		.run();
+	return movieId;
+}
+
+/** Call the private async status calculator with an injected existence predicate. */
+async function calculate(
+	service: ReturnType<typeof LanguageProfileService.getInstance>,
+	profile: LanguageProfile,
+	rows: never[],
+	exists: (path: string) => boolean
+): Promise<SubtitleStatus> {
+	// @ts-expect-error accessing private async method for testing
+	return service.calculateStatus(profile, rows, exists);
 }
 
 describe('LanguageProfileService', () => {
@@ -390,7 +428,7 @@ describe('LanguageProfileService', () => {
 	});
 
 	describe('Status calculation logic', () => {
-		it('should identify missing languages based on profile requirements', async () => {
+		it('should identify missing requirements based on the profile', async () => {
 			const profile = makeProfile({
 				subtitles: [
 					{ tag: 'en', variant: 'regular', accessibility: 'any' },
@@ -398,50 +436,145 @@ describe('LanguageProfileService', () => {
 				]
 			});
 
-			// @ts-expect-error accessing private method for testing
-			const status: SubtitleStatus = profileService.calculateStatus(profile, []);
+			const status = await calculate(profileService, profile, [], () => true);
 
 			expect(status.satisfied).toBe(false);
-			expect(status.missing.map((m) => m.code)).toEqual(['en', 'es']);
-			expect(status.missing.every((m) => !m.forced)).toBe(true);
+			expect(status.missing.map((m) => m.tag)).toEqual(['en', 'es']);
+			expect(status.missing[0]).toEqual({ tag: 'en', variant: 'regular', accessibility: 'any' });
 		});
 
-		it('should respect forced subtitle flag matching', async () => {
+		it('should enforce require-hi (a non-HI subtitle does not satisfy it)', async () => {
+			seedMovieFixture();
+			const profile = makeProfile({
+				subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'require-hi' }]
+			});
+
+			const nonHi = await calculate(
+				profileService,
+				profile,
+				[subtitleRecord({ id: 'non-hi', isHearingImpaired: false })],
+				() => true
+			);
+			expect(nonHi.satisfied).toBe(false);
+			expect(nonHi.missing[0].accessibility).toBe('require-hi');
+
+			const hi = await calculate(
+				profileService,
+				profile,
+				[subtitleRecord({ id: 'hi', isHearingImpaired: true })],
+				() => true
+			);
+			expect(hi.satisfied).toBe(true);
+		});
+
+		it('should not count a stored row whose file does not exist on disk', async () => {
+			seedMovieFixture();
+			const profile = makeProfile();
+
+			const gone = await calculate(
+				profileService,
+				profile,
+				[subtitleRecord({ id: 'gone' })],
+				() => false
+			);
+			expect(gone.satisfied).toBe(false);
+			expect(gone.missing).toHaveLength(1);
+
+			const present = await calculate(
+				profileService,
+				profile,
+				[subtitleRecord({ id: 'present' })],
+				() => true
+			);
+			expect(present.satisfied).toBe(true);
+		});
+
+		it('should stat each distinct resolved path at most once per call', async () => {
+			seedMovieFixture();
+			const profile = makeProfile();
+			const exists = vi.fn().mockReturnValue(true);
+
+			await calculate(
+				profileService,
+				profile,
+				[subtitleRecord({ id: 'row-a' }), subtitleRecord({ id: 'row-b' })],
+				exists
+			);
+
+			// Both rows share the same relative path -> one stat.
+			expect(exists).toHaveBeenCalledTimes(1);
+		});
+
+		it('should respect forced variant matching', async () => {
+			seedMovieFixture();
 			const profile = makeProfile({
 				subtitles: [{ tag: 'en', variant: 'forced', accessibility: 'any' }]
 			});
 
-			// @ts-expect-error accessing private method for testing
-			const status: SubtitleStatus = profileService.calculateStatus(profile, [
-				subtitleRecord({ id: 'sub-regular', isForced: false })
-			]);
+			const regular = await calculate(
+				profileService,
+				profile,
+				[subtitleRecord({ id: 'sub-regular', isForced: false })],
+				() => true
+			);
+			expect(regular.satisfied).toBe(false);
+			expect(regular.missing[0].variant).toBe('forced');
 
-			expect(status.satisfied).toBe(false);
-			expect(status.missing[0].forced).toBe(true);
-
-			// @ts-expect-error accessing private method for testing
-			const satisfiedStatus: SubtitleStatus = profileService.calculateStatus(profile, [
-				subtitleRecord({ id: 'sub-forced', isForced: true })
-			]);
-
-			expect(satisfiedStatus.satisfied).toBe(true);
+			const forced = await calculate(
+				profileService,
+				profile,
+				[subtitleRecord({ id: 'sub-forced', isForced: true })],
+				() => true
+			);
+			expect(forced.satisfied).toBe(true);
 		});
 
-		it('should respect excludeHi when checking existing subtitles', async () => {
+		it('should respect exclude-hi when checking existing subtitles', async () => {
+			seedMovieFixture();
 			const profile = makeProfile({
 				subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'exclude-hi' }]
 			});
 
-			// @ts-expect-error accessing private method for testing
-			const status: SubtitleStatus = profileService.calculateStatus(profile, [
-				subtitleRecord({ isHearingImpaired: true })
-			]);
+			const status = await calculate(
+				profileService,
+				profile,
+				[subtitleRecord({ isHearingImpaired: true })],
+				() => true
+			);
 
 			expect(status.satisfied).toBe(false);
-			expect(status.missing[0].code).toBe('en');
+			expect(status.missing[0].accessibility).toBe('exclude-hi');
 		});
 
-		it('should use cutoffRank to determine when satisfied', async () => {
+		it('should emit exactly ONE missing entry for a both requirement', async () => {
+			const profile = makeProfile({
+				subtitles: [{ tag: 'en', variant: 'both', accessibility: 'any' }],
+				cutoffRank: 0
+			});
+
+			const status = await calculate(profileService, profile, [], () => true);
+
+			expect(status.missing).toEqual([{ tag: 'en', variant: 'both', accessibility: 'any' }]);
+		});
+
+		it('should let either variant satisfy a both requirement', async () => {
+			seedMovieFixture();
+			const profile = makeProfile({
+				subtitles: [{ tag: 'en', variant: 'both', accessibility: 'any' }]
+			});
+
+			const status = await calculate(
+				profileService,
+				profile,
+				[subtitleRecord({ id: 'regular', isForced: false })],
+				() => true
+			);
+
+			expect(status.satisfied).toBe(true);
+		});
+
+		it('should use cutoffRank to determine satisfied', async () => {
+			seedMovieFixture();
 			const profile = makeProfile({
 				subtitles: [
 					{ tag: 'en', variant: 'regular', accessibility: 'any' },
@@ -451,16 +584,42 @@ describe('LanguageProfileService', () => {
 				cutoffRank: 0
 			});
 
-			// @ts-expect-error accessing private method for testing
-			const status: SubtitleStatus = profileService.calculateStatus(profile, [
-				subtitleRecord({ language: 'en' })
-			]);
+			const status = await calculate(
+				profileService,
+				profile,
+				[subtitleRecord({ language: 'en' })],
+				() => true
+			);
 
 			expect(status.satisfied).toBe(true);
 			expect(status.missing).toHaveLength(0);
 		});
 
+		it('should truncate missing after the cutoff rank', async () => {
+			seedMovieFixture();
+			const profile = makeProfile({
+				subtitles: [
+					{ tag: 'en', variant: 'regular', accessibility: 'any' },
+					{ tag: 'es', variant: 'regular', accessibility: 'any' },
+					{ tag: 'fr', variant: 'regular', accessibility: 'any' }
+				],
+				cutoffRank: 1
+			});
+
+			// en present, es missing. fr is beyond the cutoff and must not be reported.
+			const status = await calculate(
+				profileService,
+				profile,
+				[subtitleRecord({ language: 'en' })],
+				() => true
+			);
+
+			expect(status.satisfied).toBe(false);
+			expect(status.missing.map((m) => m.tag)).toEqual(['es']);
+		});
+
 		it('should keep searching when cutoffRank is null even if a language is satisfied', async () => {
+			seedMovieFixture();
 			const profile = makeProfile({
 				subtitles: [
 					{ tag: 'en', variant: 'regular', accessibility: 'any' },
@@ -469,91 +628,54 @@ describe('LanguageProfileService', () => {
 				cutoffRank: null
 			});
 
-			// @ts-expect-error accessing private method for testing
-			const status: SubtitleStatus = profileService.calculateStatus(profile, [
-				subtitleRecord({ language: 'en' })
-			]);
+			const status = await calculate(
+				profileService,
+				profile,
+				[subtitleRecord({ language: 'en' })],
+				() => true
+			);
 
 			expect(status.satisfied).toBe(false);
-			expect(status.missing.map((m) => m.code)).toEqual(['es']);
-
-			// @ts-expect-error accessing private method for testing
-			const cutoff: boolean = profileService.checkCutoffSatisfied(profile, [
-				subtitleRecord({ language: 'en' })
-			]);
-			expect(cutoff).toBe(false);
+			expect(status.missing.map((m) => m.tag)).toEqual(['es']);
 		});
 
 		it('should not treat embedded subtitles as satisfying profile requirements', async () => {
 			const profile = makeProfile();
 
-			// @ts-expect-error accessing private method for testing
-			const status: SubtitleStatus = profileService.calculateStatus(profile, [
-				subtitleRecord({
-					id: 'embedded-en',
-					relativePath: 'embedded:en',
-					format: 'embedded'
-				})
-			]);
+			const status = await calculate(
+				profileService,
+				profile,
+				[
+					subtitleRecord({
+						id: 'embedded-en',
+						relativePath: 'embedded:en',
+						format: 'embedded'
+					})
+				],
+				() => true
+			);
 
 			expect(status.satisfied).toBe(false);
 			expect(status.missing).toHaveLength(1);
-			expect(status.missing[0].code).toBe('en');
+			expect(status.missing[0].tag).toBe('en');
 		});
 
-		it('should not treat embedded subtitles as satisfying cutoff', async () => {
-			const profile = makeProfile({ cutoffRank: 0 });
-
-			// @ts-expect-error accessing private method for testing
-			const satisfied: boolean = profileService.checkCutoffSatisfied(profile, [
-				subtitleRecord({
-					id: 'embedded-en',
-					relativePath: 'embedded:en',
-					format: 'embedded'
-				})
-			]);
-
-			expect(satisfied).toBe(false);
-		});
-
-		it('should treat external subtitle files as satisfying requirements', async () => {
+		it('should treat existing external files as satisfying and tag existing rows with requirementKey', async () => {
+			seedMovieFixture();
 			const profile = makeProfile();
 
-			// @ts-expect-error accessing private method for testing
-			const status: SubtitleStatus = profileService.calculateStatus(profile, [
-				subtitleRecord({ id: 'external-en' })
-			]);
+			const status = await calculate(
+				profileService,
+				profile,
+				[subtitleRecord({ id: 'external-en' })],
+				() => true
+			);
 
 			expect(status.satisfied).toBe(true);
 			expect(status.missing).toHaveLength(0);
 			expect(status.existing).toHaveLength(1);
 			expect(status.existing[0].subtitleId).toBe('external-en');
-		});
-
-		it('should require every variant of a both requirement before cutoff is reached', async () => {
-			const profile = makeProfile({
-				subtitles: [{ tag: 'en', variant: 'both', accessibility: 'any' }],
-				cutoffRank: 0
-			});
-
-			// @ts-expect-error accessing private method for testing
-			const partial: SubtitleStatus = profileService.calculateStatus(profile, [
-				subtitleRecord({ id: 'sub-regular', isForced: false })
-			]);
-
-			expect(partial.satisfied).toBe(false);
-			expect(partial.missing).toEqual([
-				{ code: 'en', forced: true, hearingImpaired: false }
-			]);
-
-			// @ts-expect-error accessing private method for testing
-			const complete: SubtitleStatus = profileService.calculateStatus(profile, [
-				subtitleRecord({ id: 'sub-regular', isForced: false }),
-				subtitleRecord({ id: 'sub-forced', isForced: true })
-			]);
-
-			expect(complete.satisfied).toBe(true);
-			expect(complete.missing).toHaveLength(0);
+			expect(status.existing[0].requirementKey).toBe('en|regular|any');
 		});
 	});
 
@@ -573,13 +695,13 @@ describe('LanguageProfileService', () => {
 		it('should have correct structure for unsatisfied status', () => {
 			const status: SubtitleStatus = {
 				satisfied: false,
-				missing: [{ code: 'en', forced: false, hearingImpaired: false }],
+				missing: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
 				existing: []
 			};
 
 			expect(status.satisfied).toBe(false);
 			expect(status.missing).toHaveLength(1);
-			expect(status.missing[0].code).toBe('en');
+			expect(status.missing[0].tag).toBe('en');
 		});
 
 		it('should track existing subtitles with all metadata', () => {
@@ -592,7 +714,8 @@ describe('LanguageProfileService', () => {
 						subtitleId: 'sub-123',
 						isForced: false,
 						isHearingImpaired: true,
-						matchScore: 95
+						matchScore: 95,
+						requirementKey: 'en|regular|any'
 					}
 				]
 			};
@@ -601,6 +724,7 @@ describe('LanguageProfileService', () => {
 			expect(status.existing[0].subtitleId).toBe('sub-123');
 			expect(status.existing[0].isHearingImpaired).toBe(true);
 			expect(status.existing[0].matchScore).toBe(95);
+			expect(status.existing[0].requirementKey).toBe('en|regular|any');
 		});
 	});
 

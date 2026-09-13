@@ -6,9 +6,11 @@
  * authority in language_settings.default_profile_id (there is no is_default
  * flag on profiles anymore).
  *
- * The status/cutoff matching below still runs on the legacy v1 preference
- * shape via toLegacyPreferences() — temporary until Phase 3 replaces the
- * matcher with v2-native scoring.
+ * The status/cutoff matching is v2-native: it iterates the ordered
+ * `subtitles` requirements through the shared requirement matcher and only
+ * counts a requirement satisfied when a matching row's file exists on disk.
+ * `toLegacyPreferences()` remains only as a language-list adapter for the
+ * acquisition paths that Task 4 rewires.
  */
 
 import { db } from '$lib/server/db';
@@ -25,18 +27,21 @@ import {
 } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { extname } from 'node:path';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
-import type { SubtitleStatus, LanguageCode } from '../types';
+import type { SubtitleStatus } from '../types';
 import { normalizeLanguageCode } from '$lib/shared/languages';
 import type {
 	AudioPreference,
 	SubtitleAccessibility,
 	SubtitleRequirement
 } from '$lib/shared/language-profile.js';
-import { DEFAULT_MINIMUM_SCORE } from '$lib/shared/language-profile.js';
+import { DEFAULT_MINIMUM_SCORE, requirementKey } from '$lib/shared/language-profile.js';
+import { matchesRequirement } from '../requirement-matcher.js';
+import { resolveStoredSubtitlePaths } from '../subtitle-paths.js';
 import { LanguageSettingsService } from './LanguageSettingsService.js';
 import {
 	languageProfileV2CreateSchema,
@@ -120,7 +125,6 @@ export function toLegacyPreferences(profile: LanguageProfile): LegacyProfilePref
 	return { languages, cutoffIndex };
 }
 
-const AUDIO_FALLBACK: AudioPreference = { preferOriginal: true, languages: [] };
 const VARIANTS = new Set(['regular', 'forced', 'both']);
 const ACCESSIBILITIES = new Set(['any', 'prefer-hi', 'require-hi', 'exclude-hi']);
 
@@ -448,14 +452,6 @@ export class LanguageProfileService {
 	}
 
 	/**
-	 * Get languages needed for a movie based on profile
-	 */
-	async getLanguagesNeeded(movieId: string): Promise<LanguageCode[]> {
-		const status = await this.getMovieSubtitleStatus(movieId);
-		return status.missing.map((m) => m.code);
-	}
-
-	/**
 	 * Get list of episode IDs missing subtitles for a series
 	 */
 	async getSeriesEpisodesMissingSubtitles(seriesId: string): Promise<string[]> {
@@ -475,7 +471,7 @@ export class LanguageProfileService {
 				.from(subtitles)
 				.where(eq(subtitles.episodeId, episode.id));
 
-			const status = this.calculateStatus(profile, existingSubtitles);
+			const status = await this.calculateStatus(profile, existingSubtitles);
 			if (!status.satisfied && status.missing.length > 0) {
 				missing.push(episode.id);
 			}
@@ -484,142 +480,93 @@ export class LanguageProfileService {
 		return missing;
 	}
 
-	/**
-	 * Check if cutoff is satisfied for a movie
-	 */
-	async isCutoffSatisfied(movieId: string): Promise<boolean> {
-		const profile = await this.getProfileForMovie(movieId);
-		if (!profile) return true;
-
-		// Get external subtitles
-		const existingSubtitles = await db
-			.select()
-			.from(subtitles)
-			.where(eq(subtitles.movieId, movieId));
-
-		return this.checkCutoffSatisfied(profile, existingSubtitles);
-	}
-
 	// =========================================================================
 	// Helpers
 	// =========================================================================
 
 	/**
-	 * Calculate subtitle status against a profile
+	 * Calculate subtitle status against a profile.
+	 *
+	 * A v2 requirement counts as satisfied only when an external subtitle row
+	 * matches its full tuple (language, variant, accessibility via the shared
+	 * matcher) AND that row's resolved file exists on disk. `exists` is
+	 * injectable so tests can simulate the filesystem; each distinct resolved
+	 * path is stat'ed at most once per call.
+	 *
+	 * Cutoff: when `cutoffRank` is set, status is satisfied once the requirement
+	 * at that rank is satisfied and `missing` is truncated after it.
+	 *
 	 * @param profile - The language profile to check against
 	 * @param existingSubtitles - External subtitle files from the subtitles table
+	 * @param exists - File-existence predicate (defaults to fs.existsSync)
 	 */
-	private calculateStatus(
+	private async calculateStatus(
 		profile: LanguageProfile,
-		existingSubtitles: Array<typeof subtitles.$inferSelect>
-	): SubtitleStatus {
-		const legacy = toLegacyPreferences(profile);
+		existingSubtitles: Array<typeof subtitles.$inferSelect>,
+		exists: (path: string) => boolean = existsSync
+	): Promise<SubtitleStatus> {
+		const external = existingSubtitles.filter((sub) => this.isExternalSubtitleRecord(sub));
+		const resolvedPaths = await resolveStoredSubtitlePaths(external);
 
-		const normalizedExisting = existingSubtitles
-			.filter((sub) => this.isExternalSubtitleRecord(sub))
-			.map((sub) => ({
-				...sub,
-				normalizedLanguage: normalizeLanguageCode(sub.language)
-			}));
-
-		const existing: SubtitleStatus['existing'] = normalizedExisting.map((sub) => ({
-			language: sub.normalizedLanguage,
-			subtitleId: sub.id,
-			isForced: sub.isForced ?? false,
-			isHearingImpaired: sub.isHearingImpaired ?? false,
-			matchScore: sub.matchScore ?? undefined
-		}));
-
-		const missing: SubtitleStatus['missing'] = [];
-		let cutoffReached = false;
-
-		for (let i = 0; i < legacy.languages.length; i++) {
-			const langPref = legacy.languages[i];
-
-			// Check if we have this language in external subtitle files
-			const hasExternal = normalizedExisting.some(
-				(sub) =>
-					sub.normalizedLanguage === normalizeLanguageCode(langPref.code) &&
-					(sub.isForced ?? false) === langPref.forced &&
-					(!langPref.excludeHi || !(sub.isHearingImpaired ?? false))
-			);
-
-			const hasLanguage = hasExternal;
-
-			if (!hasLanguage) {
-				missing.push({
-					code: normalizeLanguageCode(langPref.code),
-					forced: langPref.forced,
-					hearingImpaired: langPref.hearingImpaired
-				});
-			}
-
-			// Check cutoff
-			if (langPref.isCutoff && hasLanguage) {
-				cutoffReached = true;
-			}
-
-			// Also check profile cutoff index
-			if (i === legacy.cutoffIndex && hasLanguage) {
-				cutoffReached = true;
+		// Stat each distinct resolved path once for the whole call.
+		const existsByPath = new Map<string, boolean>();
+		for (const sub of external) {
+			const path = resolvedPaths.get(sub.id) ?? null;
+			if (path && !existsByPath.has(path)) {
+				existsByPath.set(path, exists(path));
 			}
 		}
 
-		// If cutoff is reached, clear remaining missing languages
-		const satisfied = cutoffReached || missing.length === 0;
+		const requirements = profile.subtitles;
+		const satisfiedFlags = requirements.map((requirement) =>
+			external.some((sub) => {
+				const path = resolvedPaths.get(sub.id) ?? null;
+				if (!path || existsByPath.get(path) !== true) return false;
+				return matchesRequirement(
+					{
+						language: sub.language,
+						isForced: sub.isForced,
+						isHearingImpaired: sub.isHearingImpaired
+					},
+					requirement
+				);
+			})
+		);
 
-		return {
-			satisfied,
-			missing: cutoffReached ? [] : missing,
-			existing
-		};
-	}
+		const cutoffIndex =
+			profile.cutoffRank !== null && profile.cutoffRank < requirements.length
+				? profile.cutoffRank
+				: null;
 
-	/**
-	 * Check if cutoff is satisfied
-	 */
-	private checkCutoffSatisfied(
-		profile: LanguageProfile,
-		existingSubtitles: Array<typeof subtitles.$inferSelect>
-	): boolean {
-		const legacy = toLegacyPreferences(profile);
+		// Requirements are ordered by priority; the cutoff truncates the missing
+		// list after the cutoff requirement.
+		const limit = cutoffIndex === null ? requirements.length : cutoffIndex + 1;
+		const missing = requirements.slice(0, limit).filter((_, index) => !satisfiedFlags[index]);
+		const satisfied = cutoffIndex === null ? missing.length === 0 : satisfiedFlags[cutoffIndex];
 
-		const normalizedExisting = existingSubtitles
-			.filter((sub) => this.isExternalSubtitleRecord(sub))
-			.map((sub) => ({
-				...sub,
-				normalizedLanguage: normalizeLanguageCode(sub.language)
-			}));
-
-		for (let i = 0; i <= Math.min(legacy.cutoffIndex, legacy.languages.length - 1); i++) {
-			const langPref = legacy.languages[i];
-
-			// Check external subtitles
-			const hasExternal = normalizedExisting.some(
-				(sub) =>
-					sub.normalizedLanguage === normalizeLanguageCode(langPref.code) &&
-					(sub.isForced ?? false) === langPref.forced &&
-					(!langPref.excludeHi || !(sub.isHearingImpaired ?? false))
+		const existing: SubtitleStatus['existing'] = external.map((sub) => {
+			const matched = requirements.find((requirement) =>
+				matchesRequirement(
+					{
+						language: sub.language,
+						isForced: sub.isForced,
+						isHearingImpaired: sub.isHearingImpaired
+					},
+					requirement
+				)
 			);
 
-			const hasLanguage = hasExternal;
+			return {
+				language: normalizeLanguageCode(sub.language),
+				subtitleId: sub.id,
+				isForced: sub.isForced ?? false,
+				isHearingImpaired: sub.isHearingImpaired ?? false,
+				matchScore: sub.matchScore ?? undefined,
+				requirementKey: matched ? requirementKey(matched) : null
+			};
+		});
 
-			if (langPref.isCutoff && hasLanguage) {
-				return true;
-			}
-		}
-
-		// Check if cutoff index language is satisfied
-		if (legacy.languages[legacy.cutoffIndex]) {
-			const cutoffLang = legacy.languages[legacy.cutoffIndex];
-			return normalizedExisting.some(
-				(sub) =>
-					sub.normalizedLanguage === normalizeLanguageCode(cutoffLang.code) &&
-					(sub.isForced ?? false) === cutoffLang.forced
-			);
-		}
-
-		return false;
+		return { satisfied, missing, existing };
 	}
 
 	/**

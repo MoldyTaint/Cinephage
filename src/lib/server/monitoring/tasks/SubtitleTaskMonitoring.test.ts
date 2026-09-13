@@ -53,13 +53,7 @@ const { searchService, downloadService, providerManager, profileService, missing
 
 		const defaultStatus = {
 			satisfied: false,
-			missing: [
-				{
-					code: 'en',
-					forced: false,
-					hearingImpaired: false
-				}
-			],
+			missing: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
 			existing: []
 		};
 
