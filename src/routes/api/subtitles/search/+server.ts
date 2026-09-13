@@ -1,13 +1,70 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getSubtitleSearchService } from '$lib/server/subtitles/services/SubtitleSearchService';
-import { LanguageProfileService, toLegacyPreferences } from '$lib/server/subtitles/services/LanguageProfileService';
+import {
+	LanguageProfileService,
+	toLegacyPreferences,
+	type LanguageProfile
+} from '$lib/server/subtitles/services/LanguageProfileService';
+import {
+	selectBestCandidate,
+	type CandidateRejectionReason,
+	type SearchResultLike
+} from '$lib/server/subtitles/acquisition';
 import { subtitleSearchSchema } from '$lib/validation/schemas';
 import { db } from '$lib/server/db';
 import { movies, episodes, series } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import type { SubtitleSearchCriteria } from '$lib/server/subtitles/types';
 import { parseBody } from '$lib/server/api/validate.js';
+
+/** Why no result would be auto-downloaded for the effective profile. */
+interface RejectionSummary {
+	effectiveMinimumScore?: number;
+	bestRejectedScore?: number;
+	bestRejectedReason?: CandidateRejectionReason;
+}
+
+/**
+ * Best score that failed the effective profile, so the UI can say
+ * "N results, best score X below threshold Y" instead of "No subtitles found"
+ * when results exist but none is acceptable.
+ *
+ * A result is acceptable when it satisfies a requirement tuple AND clears
+ * `minimumScore`; if any requirement has an acceptable candidate there is
+ * nothing to report. Otherwise the highest-scoring rejected result (across all
+ * requirements) is returned with the reason it lost.
+ */
+function summarizeRejections(
+	results: readonly SearchResultLike[],
+	profile?: LanguageProfile
+): RejectionSummary {
+	if (!profile || results.length === 0) return {};
+
+	const minimumScore = profile.minimumScore;
+	let bestRejected: { score: number; reason: CandidateRejectionReason } | undefined;
+
+	for (const requirement of profile.subtitles) {
+		const selection = selectBestCandidate(results, requirement, minimumScore);
+		if (selection.best) {
+			return { effectiveMinimumScore: minimumScore };
+		}
+		if (selection.bestRejected) {
+			const { result, reason } = selection.bestRejected;
+			if (!bestRejected || result.matchScore > bestRejected.score) {
+				bestRejected = { score: result.matchScore, reason };
+			}
+		}
+	}
+
+	return bestRejected
+		? {
+				effectiveMinimumScore: minimumScore,
+				bestRejectedScore: bestRejected.score,
+				bestRejectedReason: bestRejected.reason
+			}
+		: { effectiveMinimumScore: minimumScore };
+}
 
 /**
  * POST /api/subtitles/search
@@ -28,23 +85,28 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json({ error: 'Movie not found' }, { status: 404 });
 		}
 
-		// Get languages from profile or request
+		// Resolve languages and the rejection summary from the effective profile.
+		const profile = await profileService.getProfileForMovie(validated.movieId);
 		let languages = validated.languages || [];
-		if (languages.length === 0) {
-			const profile = await profileService.getProfileForMovie(validated.movieId);
-			if (profile) {
-				languages = toLegacyPreferences(profile).languages.map((l) => l.code);
-			}
+		if (languages.length === 0 && profile) {
+			languages = toLegacyPreferences(profile).languages.map((l) => l.code);
 		}
 		if (languages.length === 0) {
 			languages = ['en']; // Default to English
 		}
 
 		const results = await searchService.searchForMovie(validated.movieId, languages, {
-			providerIds: validated.providerIds
+			providerIds: validated.providerIds,
+			includeForced: validated.includeForced,
+			includeHearingImpaired: validated.includeHearingImpaired,
+			excludeHearingImpaired: validated.excludeHearingImpaired
 		});
 
-		return json(results);
+		return json({
+			...results,
+			languages,
+			...summarizeRejections(results.results, profile)
+		});
 	}
 
 	// Search for episode subtitles
@@ -65,23 +127,28 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json({ error: 'Series not found' }, { status: 404 });
 		}
 
-		// Get languages from profile or request
+		// Resolve languages and the rejection summary from the effective profile.
+		const profile = await profileService.getProfileForSeries(seriesData.id);
 		let languages = validated.languages || [];
-		if (languages.length === 0) {
-			const profile = await profileService.getProfileForSeries(seriesData.id);
-			if (profile) {
-				languages = toLegacyPreferences(profile).languages.map((l) => l.code);
-			}
+		if (languages.length === 0 && profile) {
+			languages = toLegacyPreferences(profile).languages.map((l) => l.code);
 		}
 		if (languages.length === 0) {
 			languages = ['en']; // Default to English
 		}
 
 		const results = await searchService.searchForEpisode(validated.episodeId, languages, {
-			providerIds: validated.providerIds
+			providerIds: validated.providerIds,
+			includeForced: validated.includeForced,
+			includeHearingImpaired: validated.includeHearingImpaired,
+			excludeHearingImpaired: validated.excludeHearingImpaired
 		});
 
-		return json(results);
+		return json({
+			...results,
+			languages,
+			...summarizeRejections(results.results, profile)
+		});
 	}
 
 	// Manual search with provided parameters
@@ -89,6 +156,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ error: 'Either movieId, episodeId, or title is required' }, { status: 400 });
 	}
 
+	const languages = validated.languages?.length ? validated.languages : ['en'];
 	const criteria: SubtitleSearchCriteria = {
 		title: validated.title,
 		year: validated.year,
@@ -97,7 +165,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		seriesTitle: validated.seriesTitle,
 		season: validated.season,
 		episode: validated.episode,
-		languages: validated.languages || ['en'],
+		languages,
 		includeForced: validated.includeForced,
 		includeHearingImpaired: validated.includeHearingImpaired,
 		excludeHearingImpaired: validated.excludeHearingImpaired
@@ -111,5 +179,6 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 	);
 
-	return json(results);
+	// Manual title search has no owning media item, so no effective profile.
+	return json({ ...results, languages });
 };

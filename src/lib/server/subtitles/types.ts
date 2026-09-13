@@ -140,6 +140,11 @@ export interface SubtitleSearchResult {
 	// Wired into SubtitleDownloadService as a fallback target when no explicit
 	// movieFileId option is supplied.
 	movieFileId?: string;
+
+	// Human-readable label of the originating movie file (basename of its
+	// relative path). Lets the interactive search group/label results when a
+	// movie has multiple files. Display-only; not used for download targeting.
+	movieFileName?: string;
 }
 
 /**

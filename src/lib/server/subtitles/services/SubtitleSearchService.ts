@@ -15,7 +15,7 @@ import {
 	subtitleBlacklist,
 	rootFolders
 } from '$lib/server/db/schema';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { eq, and } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
 
@@ -46,6 +46,12 @@ export interface SubtitleSearchOptions {
 	timeout?: number;
 	/** Whether to include blacklisted results (filtered by default) */
 	includeBlacklisted?: boolean;
+	/** Drop forced results when false (default: include) */
+	includeForced?: boolean;
+	/** Drop HI results when false (default: include) */
+	includeHearingImpaired?: boolean;
+	/** Drop HI results when true (default: keep) */
+	excludeHearingImpaired?: boolean;
 }
 
 /**
@@ -113,7 +119,10 @@ export class SubtitleSearchService {
 				year: movie[0].year || undefined,
 				imdbId: movie[0].imdbId || undefined,
 				tmdbId: movie[0].tmdbId,
-				languages
+				languages,
+				includeForced: options?.includeForced,
+				includeHearingImpaired: options?.includeHearingImpaired,
+				excludeHearingImpaired: options?.excludeHearingImpaired
 			};
 			return this.search(criteria, { movieId }, options);
 		}
@@ -137,15 +146,20 @@ export class SubtitleSearchService {
 				tmdbId: movie[0].tmdbId,
 				languages,
 				filePath,
-				fileSize: file.size || undefined
+				fileSize: file.size || undefined,
+				includeForced: options?.includeForced,
+				includeHearingImpaired: options?.includeHearingImpaired,
+				excludeHearingImpaired: options?.excludeHearingImpaired
 			};
 
 			try {
 				const batch = await this.search(criteria, { movieId }, options);
 
-				// Tag every result in this batch with the originating file id
+				// Tag every result in this batch with the originating file id and a
+				// display label so the interactive modal can group/label results.
 				for (const result of batch.results) {
 					result.movieFileId = file.id;
+					result.movieFileName = basename(file.relativePath);
 				}
 
 				allResults.push(...batch.results);
@@ -235,7 +249,10 @@ export class SubtitleSearchService {
 			tmdbId: seriesData[0].tmdbId,
 			languages,
 			filePath,
-			fileSize: file?.size || undefined
+			fileSize: file?.size || undefined,
+			includeForced: options?.includeForced,
+			includeHearingImpaired: options?.includeHearingImpaired,
+			excludeHearingImpaired: options?.excludeHearingImpaired
 		};
 
 		return this.search(criteria, { episodeId }, options);
@@ -415,8 +432,18 @@ export class SubtitleSearchService {
 			(r) => !blacklist.has(`${r.providerId}:${r.providerSubtitleId}`)
 		);
 
+		// Apply caller-supplied forced/HI preferences on the normalized results so
+		// the interactive filters work uniformly for providers that ignore the
+		// criteria flags. Flags are only meaningful when explicitly set.
+		const preferenceFiltered = filteredResults.filter((r) => {
+			if (criteria.includeForced === false && r.isForced) return false;
+			if (criteria.includeHearingImpaired === false && r.isHearingImpaired) return false;
+			if (criteria.excludeHearingImpaired === true && r.isHearingImpaired) return false;
+			return true;
+		});
+
 		// Deduplicate by provider+id
-		const uniqueResults = this.deduplicateResults(filteredResults);
+		const uniqueResults = this.deduplicateResults(preferenceFiltered);
 
 		// Sort by score
 		const rankedResults = scoringService.rank(uniqueResults);

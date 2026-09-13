@@ -231,14 +231,12 @@ export class BetaseriesProvider extends BaseSubtitleProvider implements ISubtitl
 			const subtitle = new GenericSubtitle('betaseries', sub.id.toString(), language, {
 				releaseInfo: sub.file,
 				pageLink: sub.url,
+				downloadUrl: sub.url,
 				format: 'srt'
 			});
 
 			subtitle.season = criteria.season;
 			subtitle.episode = criteria.episode;
-
-			// Store download URL
-			(subtitle as unknown as { _downloadUrl: string })._downloadUrl = sub.url;
 
 			results.push(subtitle.toSearchResult());
 		}
@@ -250,8 +248,12 @@ export class BetaseriesProvider extends BaseSubtitleProvider implements ISubtitl
 	 * Download a subtitle
 	 */
 	async download(result: SubtitleSearchResult): Promise<Buffer> {
+		// Prefer the explicit download URL carried on the search result, then the
+		// legacy stashed field (in-process providers), then the page link.
 		const downloadUrl =
-			(result as unknown as { _downloadUrl?: string })._downloadUrl ?? result.pageLink;
+			result.downloadUrl ??
+			(result as unknown as { _downloadUrl?: string })._downloadUrl ??
+			result.pageLink;
 
 		if (!downloadUrl) {
 			throw new Error('No download URL available');

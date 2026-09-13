@@ -1062,15 +1062,37 @@ export const subtitleSearchSchema = z.object({
 
 /**
  * Schema for subtitle download request.
+ *
+ * The interactive search modal submits the full selected search result (not
+ * just the provider ids) so the download service can forward provider-specific
+ * fields such as `downloadUrl`/`pageLink`/`releaseName` to the provider. The
+ * fields mirror `SubtitleSearchResult`; unknown keys are stripped by Zod.
  */
 export const subtitleDownloadSchema = z.object({
 	providerId: z.string().uuid(),
+	providerName: z.string().min(1),
 	providerSubtitleId: z.string().min(1),
 	movieId: z.string().uuid().optional(),
 	episodeId: z.string().uuid().optional(),
+	// Target movie file for multi-file movies (prevents cross-tier clobber).
+	movieFileId: z.string().uuid().optional(),
 	language: languageCodeSchema,
+	title: z.string().min(1),
+	releaseName: z.string().optional(),
+	fileName: z.string().optional(),
 	isForced: z.boolean().default(false),
-	isHearingImpaired: z.boolean().default(false)
+	isHearingImpaired: z.boolean().default(false),
+	format: z.enum(['srt', 'ass', 'sub', 'vtt', 'ssa', 'unknown']).default('srt'),
+	isHashMatch: z.boolean().default(false),
+	// Normalized 0-100 scoring scale shared by movies and episodes.
+	matchScore: z.number().min(0).max(100).default(0),
+	// Provider URLs are opaque; only require non-empty when present (some
+	// providers expose non-http download tokens in these fields).
+	downloadUrl: z.string().min(1).optional(),
+	pageLink: z.string().min(1).optional(),
+	fileSize: z.number().int().nonnegative().optional(),
+	uploadDate: z.string().optional(),
+	downloadCount: z.number().int().nonnegative().optional()
 });
 
 /**
