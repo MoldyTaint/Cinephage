@@ -451,9 +451,29 @@ export const CRITICAL_COLUMNS: Record<string, string[]> = {
 		'consecutive_failures'
 	],
 	root_folders: ['id', 'path', 'media_sub_type', 'read_only', 'preserve_symlinks'],
-	libraries: ['id', 'name', 'slug', 'media_type', 'media_sub_type', 'is_system'],
-	movies: ['id', 'tmdb_id', 'title', 'path', 'monitored', 'library_id'],
-	series: ['id', 'tmdb_id', 'title', 'path', 'monitored', 'library_id'],
+	libraries: ['id', 'name', 'slug', 'media_type', 'media_sub_type', 'is_system', 'language_profile_id'],
+	movies: [
+		'id',
+		'tmdb_id',
+		'title',
+		'path',
+		'monitored',
+		'library_id',
+		'original_language',
+		'metadata_language_mode',
+		'metadata_language_value'
+	],
+	series: [
+		'id',
+		'tmdb_id',
+		'title',
+		'path',
+		'monitored',
+		'library_id',
+		'original_language',
+		'metadata_language_mode',
+		'metadata_language_value'
+	],
 	episodes: ['id', 'series_id', 'season_number', 'episode_number'],
 	indexers: ['id', 'name', 'definition_id', 'enabled'],
 	scoring_profiles: ['id', 'name', 'is_default']

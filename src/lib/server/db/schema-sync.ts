@@ -144,6 +144,7 @@ import {
  * Version 137: Add allow_movies and allow_tv columns to download_clients for debrid content-type restriction
  * Version 138: Add arr_id_mappings table for the Radarr/Sonarr-compatible API layer's surrogate integer IDs
  * Version 139: Add arr_notification_configs table for arr-compat clients (Pulsarr, etc.) registering webhooks
+ * Version 137: Language system reset - v2 language profiles, language_settings singleton, metadata mode/value columns
  */
 export const CURRENT_SCHEMA_VERSION = 139;
 
@@ -329,6 +330,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"default_monitored" integer DEFAULT true NOT NULL,
 		"default_search_on_add" integer DEFAULT true NOT NULL,
 		"default_wants_subtitles" integer DEFAULT true NOT NULL,
+		"language_profile_id" text,
 		"sort_order" integer DEFAULT 0 NOT NULL,
 		"created_at" text,
 		"updated_at" text
@@ -345,12 +347,26 @@ const TABLE_DEFINITIONS: string[] = [
 	`CREATE TABLE IF NOT EXISTS "language_profiles" (
 		"id" text PRIMARY KEY NOT NULL,
 		"name" text NOT NULL,
-		"languages" text NOT NULL,
-		"cutoff_index" integer DEFAULT 0,
+		"audio" text NOT NULL,
+		"subtitles" text NOT NULL,
+		"cutoff_rank" integer,
+		"minimum_score" integer DEFAULT 70 NOT NULL,
 		"upgrades_allowed" integer DEFAULT true,
-		"minimum_score" integer DEFAULT 60,
-		"is_default" integer DEFAULT false,
 		"created_at" text,
+		"updated_at" text
+	)`,
+
+	// Language Settings - singleton row (id = 'singleton'); default_profile_id is
+	// the only default-profile authority (no is_default on language_profiles)
+	`CREATE TABLE IF NOT EXISTS "language_settings" (
+		"id" text PRIMARY KEY NOT NULL DEFAULT 'singleton',
+		"default_profile_id" text,
+		"metadata_locale" text DEFAULT 'en-US' NOT NULL,
+		"region" text DEFAULT 'US' NOT NULL,
+		"discover_original_filter" text,
+		"unknown_subtitle_policy" text DEFAULT 'und' NOT NULL,
+		"assumed_language" text,
+		"auto_sync_subtitles" integer DEFAULT true NOT NULL,
 		"updated_at" text
 	)`,
 
@@ -570,6 +586,9 @@ const TABLE_DEFINITIONS: string[] = [
 		"physical_release_date" text,
 		"availability_delay" integer NOT NULL DEFAULT 0,
 		"metadata_language" text,
+		"original_language" text,
+		"metadata_language_mode" text DEFAULT 'inherit' NOT NULL,
+		"metadata_language_value" text,
 		"prefer_original_title" integer DEFAULT 0
 	)`,
 
@@ -620,6 +639,9 @@ const TABLE_DEFINITIONS: string[] = [
 		"first_air_date" text,
 		"episode_group_id" text,
 		"metadata_language" text,
+		"original_language" text,
+		"metadata_language_mode" text DEFAULT 'inherit' NOT NULL,
+		"metadata_language_value" text,
 		"prefer_original_title" integer DEFAULT 0
 	)`,
 
@@ -924,7 +946,8 @@ const TABLE_DEFINITIONS: string[] = [
 		"size" integer,
 		"sync_offset" integer DEFAULT 0,
 		"was_synced" integer DEFAULT false,
-		"date_added" text
+		"date_added" text,
+		CHECK ((movie_id IS NOT NULL AND episode_id IS NULL) OR (movie_id IS NULL AND episode_id IS NOT NULL))
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "subtitle_history" (

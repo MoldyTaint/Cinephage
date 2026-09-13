@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import type { ProtocolSettings } from '$lib/server/indexers/types/index.js';
 import type { NewznabCategory } from '$lib/server/indexers/newznab/types.js';
 import type { DesiredQuality } from '$lib/types/library.js';
+import type { AudioPreference, SubtitleRequirement } from '$lib/shared/language-profile.js';
 
 // ============================================================================
 // Better Auth Tables
@@ -594,6 +595,8 @@ export const libraries = sqliteTable(
 		defaultWantsSubtitles: integer('default_wants_subtitles', { mode: 'boolean' })
 			.notNull()
 			.default(true),
+		// Language profile inherited by media added to this library (null = instance default)
+		languageProfileId: text('language_profile_id'),
 		sortOrder: integer('sort_order').notNull().default(0),
 		qualityProfileId: text('quality_profile_id').references(() => scoringProfiles.id, {
 			onDelete: 'set null'
@@ -704,6 +707,12 @@ export const movies = sqliteTable(
 		delayProfileId: text('delay_profile_id'),
 		// Metadata language override (null = inherit global, 'original' = use original_language)
 		metadataLanguage: text('metadata_language'),
+		// Canonical original language from metadata (e.g. 'en', 'ja') — basis for 'original' modes
+		originalLanguage: text('original_language'),
+		// Metadata language mode: 'inherit' (global setting) | 'original' | 'explicit'
+		metadataLanguageMode: text('metadata_language_mode').notNull().default('inherit'),
+		// Explicit TMDB locale used when metadataLanguageMode is 'explicit'
+		metadataLanguageValue: text('metadata_language_value'),
 		// Display flag: use originalTitle instead of title in all UI
 		preferOriginalTitle: integer('prefer_original_title', { mode: 'boolean' }).default(false)
 	},
@@ -832,6 +841,12 @@ export const series = sqliteTable(
 		delayProfileId: text('delay_profile_id'),
 		// Metadata language override (null = inherit global, 'original' = use original_language)
 		metadataLanguage: text('metadata_language'),
+		// Canonical original language from metadata (e.g. 'en', 'ja') — basis for 'original' modes
+		originalLanguage: text('original_language'),
+		// Metadata language mode: 'inherit' (global setting) | 'original' | 'explicit'
+		metadataLanguageMode: text('metadata_language_mode').notNull().default('inherit'),
+		// Explicit TMDB locale used when metadataLanguageMode is 'explicit'
+		metadataLanguageValue: text('metadata_language_value'),
 		// Display flag: use originalTitle instead of title in all UI
 		preferOriginalTitle: integer('prefer_original_title', { mode: 'boolean' }).default(false)
 	},
@@ -1746,7 +1761,27 @@ export const monitoringHistory = sqliteTable(
 // ============================================================================
 
 /**
- * Language Profile - Type definitions for JSON column
+ * Language Profile (v2) - Persisted row shape for the combined
+ * audio + subtitle preference model (see $lib/shared/language-profile).
+ */
+export interface LanguageProfileRow {
+	id: string;
+	name: string;
+	audio: AudioPreference;
+	subtitles: SubtitleRequirement[];
+	/** Stop acquiring after the requirement at this rank is satisfied (null = disabled) */
+	cutoffRank: number | null;
+	/** Normalized 0-100 threshold shared by movies and episodes */
+	minimumScore: number;
+	upgradesAllowed: boolean;
+	createdAt?: string;
+	updatedAt?: string;
+}
+
+/**
+ * @deprecated Legacy v1 preference shape. Kept only so pre-v2 consumers
+ * (LanguageProfileService, language-profile API routes) keep compiling until
+ * Phase 2 rewrites them on the v2 types above — remove once they land.
  */
 export interface LanguagePreference {
 	code: string; // ISO 639-1 code (e.g., 'en', 'es', 'fr')
@@ -1757,25 +1792,52 @@ export interface LanguagePreference {
 }
 
 /**
- * Language Profiles - Define ordered language preferences for subtitle searching
- * Each movie/series can be assigned a profile to determine which subtitles to search for
+ * Language Profiles (v2) - Audio preferences + ordered subtitle requirements.
+ * Each movie/series/library can be assigned a profile; the default profile is
+ * the single authority in language_settings.default_profile_id (no is_default).
  */
 export const languageProfiles = sqliteTable('language_profiles', {
 	id: text('id')
 		.primaryKey()
 		.$defaultFn(() => randomUUID()),
 	name: text('name').notNull(),
-	// Ordered list of language preferences with config
-	languages: text('languages', { mode: 'json' }).$type<LanguagePreference[]>().notNull(),
-	// Index in languages array where cutoff is satisfied (stop searching after this)
-	cutoffIndex: integer('cutoff_index').default(0),
+	// Audio preference: prefer original track + ordered fallback languages
+	audio: text('audio', { mode: 'json' }).$type<AudioPreference>().notNull(),
+	// Ordered subtitle requirements (order = priority)
+	subtitles: text('subtitles', { mode: 'json' }).$type<SubtitleRequirement[]>().notNull(),
+	// Stop acquiring after the requirement at this rank is satisfied (null = disabled)
+	cutoffRank: integer('cutoff_rank'),
+	// Minimum score threshold for auto-download (normalized 0-100 scale)
+	minimumScore: integer('minimum_score').notNull().default(70),
 	// Whether to upgrade existing subtitles with better matches
 	upgradesAllowed: integer('upgrades_allowed', { mode: 'boolean' }).default(true),
-	// Minimum score threshold for auto-download (0-100 for movies, 0-360 for episodes)
-	minimumScore: integer('minimum_score').default(60),
-	// Is this the default profile for new movies/shows
-	isDefault: integer('is_default', { mode: 'boolean' }).default(false),
 	createdAt: text('created_at').$defaultFn(() => new Date().toISOString()),
+	updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
+});
+
+/**
+ * Language Settings - Singleton row (id = 'singleton') with the global
+ * language configuration. default_profile_id is the only default-profile
+ * authority; metadata_locale/region feed TMDB requests.
+ */
+export const languageSettings = sqliteTable('language_settings', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => 'singleton'),
+	// Default profile applied when no library/media override exists (null = none)
+	defaultProfileId: text('default_profile_id'),
+	// TMDB metadata request locale (validated via Intl.getCanonicalLocales)
+	metadataLocale: text('metadata_locale').notNull().default('en-US'),
+	// ISO 3166-1 region for TMDB discover/release filtering
+	region: text('region').notNull().default('US'),
+	// Canonical TmdbLanguage origin filter for Discover; null = no filter
+	discoverOriginalFilter: text('discover_original_filter'),
+	// 'und' (never assume a language) | 'assume-language'
+	unknownSubtitlePolicy: text('unknown_subtitle_policy').notNull().default('und'),
+	// Language assumed for unknown subtitle tags when policy is 'assume-language'
+	assumedLanguage: text('assumed_language'),
+	// Whether subtitle search runs automatically for new/updated files
+	autoSyncSubtitles: integer('auto_sync_subtitles', { mode: 'boolean' }).notNull().default(true),
 	updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
 });
 

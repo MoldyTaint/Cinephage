@@ -757,3 +757,132 @@ describe('syncSchema Better Auth repair', () => {
 		]);
 	});
 });
+
+describe('syncSchema language system', () => {
+	it('creates the language_settings singleton table with all columns and defaults', () => {
+		const sqlite = createTestDatabase();
+
+		syncSchema(sqlite);
+
+		expect(tableExists(sqlite, 'language_settings')).toBe(true);
+		expect(getColumnNames(sqlite, 'language_settings')).toEqual(
+			expect.arrayContaining([
+				'id',
+				'default_profile_id',
+				'metadata_locale',
+				'region',
+				'discover_original_filter',
+				'unknown_subtitle_policy',
+				'assumed_language',
+				'auto_sync_subtitles',
+				'updated_at'
+			])
+		);
+
+		sqlite.prepare(`INSERT INTO "language_settings" ("id") VALUES ('singleton')`).run();
+		const settings = sqlite
+			.prepare(`SELECT * FROM "language_settings" WHERE "id" = 'singleton'`)
+			.get() as Record<string, unknown>;
+		expect(settings.default_profile_id).toBeNull();
+		expect(settings.metadata_locale).toBe('en-US');
+		expect(settings.region).toBe('US');
+		expect(settings.discover_original_filter).toBeNull();
+		expect(settings.unknown_subtitle_policy).toBe('und');
+		expect(settings.assumed_language).toBeNull();
+		expect(settings.auto_sync_subtitles).toBe(1);
+	});
+
+	it('creates language_profiles with the v2 shape and no is_default column', () => {
+		const sqlite = createTestDatabase();
+
+		syncSchema(sqlite);
+
+		expect(getColumnNames(sqlite, 'language_profiles')).toEqual(
+			expect.arrayContaining([
+				'id',
+				'name',
+				'audio',
+				'subtitles',
+				'cutoff_rank',
+				'minimum_score',
+				'upgrades_allowed',
+				'created_at',
+				'updated_at'
+			])
+		);
+		expect(getColumnNames(sqlite, 'language_profiles')).not.toContain('is_default');
+		expect(getColumnNames(sqlite, 'language_profiles')).not.toContain('languages');
+		expect(getColumnNames(sqlite, 'language_profiles')).not.toContain('cutoff_index');
+
+		sqlite
+			.prepare(
+				`INSERT INTO "language_profiles" ("id", "name", "audio", "subtitles")
+				 VALUES ('profile-1', 'Default', '{}', '[]')`
+			)
+			.run();
+		const profile = sqlite
+			.prepare(`SELECT * FROM "language_profiles" WHERE "id" = 'profile-1'`)
+			.get() as Record<string, unknown>;
+		expect(profile.minimum_score).toBe(70);
+		expect(profile.cutoff_rank).toBeNull();
+		expect(profile.upgrades_allowed).toBe(1);
+	});
+
+	it('adds language identity columns to movies/series and language_profile_id to libraries', () => {
+		const sqlite = createTestDatabase();
+
+		syncSchema(sqlite);
+
+		for (const table of ['movies', 'series']) {
+			expect(getColumnNames(sqlite, table)).toEqual(
+				expect.arrayContaining([
+					'original_language',
+					'metadata_language_mode',
+					'metadata_language_value'
+				])
+			);
+		}
+		expect(getColumnNames(sqlite, 'libraries')).toContain('language_profile_id');
+
+		sqlite
+			.prepare(
+				`INSERT INTO "movies" ("id", "tmdb_id", "title", "path") VALUES ('movie-1', 1, 'T', '/t')`
+			)
+			.run();
+		const movie = sqlite
+			.prepare(`SELECT * FROM "movies" WHERE "id" = 'movie-1'`)
+			.get() as Record<string, unknown>;
+		expect(movie.original_language).toBeNull();
+		expect(movie.metadata_language_mode).toBe('inherit');
+		expect(movie.metadata_language_value).toBeNull();
+	});
+
+	it('enforces the subtitle owner XOR check on fresh databases', () => {
+		const sqlite = createTestDatabase();
+
+		syncSchema(sqlite);
+
+		const subtitlesDdl = sqlite
+			.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'subtitles'`)
+			.get() as { sql: string };
+		expect(subtitlesDdl.sql).toContain(
+			'CHECK ((movie_id IS NOT NULL AND episode_id IS NULL) OR (movie_id IS NULL AND episode_id IS NOT NULL))'
+		);
+
+		sqlite.prepare(`INSERT INTO "movies" ("id", "tmdb_id", "title", "path") VALUES ('m1', 1, 'T', '/t')`).run();
+		sqlite
+			.prepare(
+				`INSERT INTO "subtitles" ("id", "movie_id", "relative_path", "language", "format")
+				 VALUES ('s1', 'm1', 't.en.srt', 'en', 'srt')`
+			)
+			.run();
+		expect(() =>
+			sqlite
+				.prepare(
+					`INSERT INTO "subtitles" ("id", "movie_id", "episode_id", "relative_path", "language", "format")
+					 VALUES ('s2', 'm1', 'e1', 't2.en.srt', 'en', 'srt')`
+				)
+				.run()
+		).toThrow(/CHECK/);
+	});
+});
