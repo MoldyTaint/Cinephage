@@ -278,3 +278,135 @@ describe('M3uProvider testConnection EPG checks', () => {
 		expect(result.profile?.epg?.status).toBe('not_configured');
 	});
 });
+
+// ============================================================================
+// Unicode-aware channel matching (Phase 5 Task 4)
+// ============================================================================
+
+describe('M3uProvider normalizeChannelLookupKey (Unicode-aware)', () => {
+	function normalize(value: string | undefined): string | null {
+		// @ts-expect-error accessing private method for testing
+		return new M3uProvider().normalizeChannelLookupKey(value);
+	}
+
+	it('keeps Latin diacritic handling unchanged', () => {
+		expect(normalize('Café TV')).toBe('cafetv');
+		expect(normalize('Café TV')).toBe(normalize('CAFE TV'));
+		expect(normalize('Críme+Investigation')).toBe('crimeinvestigation');
+	});
+
+	it('produces stable keys for CJK names', () => {
+		expect(normalize('央视')).toBe('央视');
+		expect(normalize('央 视！HD')).toBe('央视hd');
+	});
+
+	it('produces stable keys for Cyrillic names', () => {
+		// NFKD decomposes й into и + combining breve, which the marks-strip
+		// removes — the same trade-off Latin diacritics always had. The key is
+		// stable and non-null, which is what matching needs.
+		expect(normalize('Первый канал')).toBe('первыиканал');
+		expect(normalize('Первый')).toBe(normalize('ПЕРВЫЙ'));
+	});
+
+	it('produces stable keys for Arabic names', () => {
+		expect(normalize('الجزيرة')).toBe('الجزيرة');
+	});
+
+	it('keeps digits from mixed-script names', () => {
+		expect(normalize('频道5 HD')).toBe('频道5hd');
+	});
+
+	it('returns null for punctuation and emoji-only names', () => {
+		expect(normalize('!!!')).toBeNull();
+		expect(normalize('---')).toBeNull();
+		expect(normalize('★ ★ ★')).toBeNull();
+		expect(normalize('📺!!')).toBeNull();
+		expect(normalize('')).toBeNull();
+		expect(normalize(undefined)).toBeNull();
+	});
+});
+
+describe('M3uProvider Unicode channel matching', () => {
+	const UNICODE_XMLTV = `<?xml version="1.0" encoding="UTF-8"?>
+<tv>
+  <channel id="cctv-xml"><display-name>央视</display-name></channel>
+  <channel id="pervy-xml"><display-name>Первый</display-name></channel>
+  <channel id="punct-xml"><display-name>!!!</display-name></channel>
+  <programme start="20260913000000 +0000" stop="20260913010000 +0000" channel="cctv-xml">
+    <title>CJK news</title>
+  </programme>
+  <programme start="20260913000000 +0000" stop="20260913010000 +0000" channel="pervy-xml">
+    <title>Cyrillic news</title>
+  </programme>
+  <programme start="20260913000000 +0000" stop="20260913010000 +0000" channel="punct-xml">
+    <title>Should never match</title>
+  </programme>
+</tv>`;
+
+	beforeAll(() => {
+		testDb.db
+			.insert(livetvAccounts)
+			.values({ id: 'uni-account', name: 'Unicode M3U', providerType: 'm3u' })
+			.run();
+		const channels = [
+			{ id: 'chan-cjk', externalId: 'cctv-m3u', name: '央视新闻', tvgId: '央视' },
+			{ id: 'chan-cyr', externalId: 'pervy-m3u', name: 'Первый', tvgId: 'Первый' },
+			{ id: 'chan-punct', externalId: 'punct-m3u', name: '!!!', tvgId: '!!!' }
+		];
+		for (const channel of channels) {
+			testDb.db
+				.insert(livetvChannels)
+				.values({
+					id: channel.id,
+					accountId: 'uni-account',
+					providerType: 'm3u',
+					externalId: channel.externalId,
+					name: channel.name,
+					m3uData: { tvgId: channel.tvgId, url: 'http://example.com/stream.m3u8' }
+				})
+				.run();
+		}
+	});
+
+	async function fetchUnicodeEpg() {
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+			new Response(UNICODE_XMLTV, { headers: { 'content-type': 'application/xml' } })
+		);
+		const provider = new M3uProvider();
+		return provider.fetchEpg(
+			{
+				...createTestAccount('https://example.com/epg.xml'),
+				id: 'uni-account',
+				name: 'Unicode M3U'
+			},
+			new Date('2026-09-12T00:00:00Z'),
+			new Date('2026-09-14T00:00:00Z')
+		);
+	}
+
+	it('matches CJK channel names to XMLTV display names', async () => {
+		const programs = await fetchUnicodeEpg();
+
+		const cjk = programs.filter((program) => program.channelId === 'chan-cjk');
+		expect(cjk).toHaveLength(1);
+		expect(cjk[0].title).toBe('CJK news');
+	});
+
+	it('matches Cyrillic channel names to XMLTV display names', async () => {
+		const programs = await fetchUnicodeEpg();
+
+		const cyrillic = programs.filter((program) => program.channelId === 'chan-cyr');
+		expect(cyrillic).toHaveLength(1);
+		expect(cyrillic[0].title).toBe('Cyrillic news');
+	});
+
+	it('never matches two punctuation-only names', async () => {
+		const programs = await fetchUnicodeEpg();
+
+		// The XMLTV channel id normalizes to null exactly like the M3U tvg-id,
+		// and null keys are never entered into the lookup map — so the two
+		// punctuation-only names must not cross-match.
+		const punct = programs.filter((program) => program.channelId === 'chan-punct');
+		expect(punct).toHaveLength(0);
+	});
+});

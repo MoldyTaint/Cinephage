@@ -598,6 +598,9 @@ export class StalkerProvider implements LiveTvProvider {
 			deviceId2: config.deviceId2 ?? this.generateDeviceId(),
 			model: config.model ?? 'MAG254',
 			timezone: config.timezone ?? 'Europe/London',
+			// Portal UI language (stb_lang / Accept-Language); old configs without
+			// the field keep the previous hardcoded English behavior.
+			language: config.language ?? 'en',
 			token: config.token,
 			username: config.username,
 			password: config.password,

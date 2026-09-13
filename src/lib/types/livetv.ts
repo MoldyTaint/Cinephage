@@ -117,6 +117,8 @@ export interface StalkerConfig {
 	deviceId2?: string;
 	model?: string;
 	timezone?: string;
+	/** Portal UI language (stb_lang / Accept-Language), 2-letter code. Defaults to 'en'. */
+	language?: string;
 	token?: string;
 	username?: string;
 	password?: string;

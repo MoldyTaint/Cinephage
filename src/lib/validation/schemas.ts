@@ -1650,6 +1650,19 @@ export type StalkerPortalDetect = z.infer<typeof stalkerPortalDetectSchema>;
 // LiveTV Account Schema (multi-provider)
 // ============================================================================
 
+/**
+ * Stalker portal UI language (`stb_lang` cookie / `Accept-Language` header).
+ *
+ * Accepts any recognizable language tag ('en', 'pt-BR', 'ger', …), reduces it
+ * to the 2-letter base code Stalker portals expect, and falls back to English.
+ */
+export const stalkerLanguageSchema = z
+	.string()
+	.refine((value) => normalizeTmdbLanguage(value) !== null, {
+		message: 'Must be a valid language code'
+	})
+	.transform((value) => normalizeTmdbLanguage(value) ?? 'en');
+
 export const liveTvAccountCreateSchema = z.object({
 	name: z.string().min(1).max(100),
 	providerType: z.enum(['stalker', 'xstream', 'm3u', 'cinephage-iptv']),
@@ -1663,6 +1676,7 @@ export const liveTvAccountCreateSchema = z.object({
 			deviceId2: z.string().optional(),
 			model: z.string().optional(),
 			timezone: z.string().optional(),
+			language: stalkerLanguageSchema.default('en'),
 			username: z.string().optional(),
 			password: z.string().optional()
 		})

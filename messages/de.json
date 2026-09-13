@@ -1908,6 +1908,8 @@
 	"livetv_form_stalker_epgUrlHint": "URL für Electronic Program Guide-Daten (optional)",
 	"livetv_form_stalker_epgUrlLabel": "EPG-URL",
 	"livetv_form_stalker_epgUrlPlaceholder": "https://example.com/epg.xml",
+	"livetv_form_stalker_languageHint": "Oberflächensprache, die von Ihrem Stalker-Portal angefordert wird",
+	"livetv_form_stalker_languageLabel": "Sprache",
 	"livetv_form_stalker_macAddressHint": "Mit Ihrem Portal registrierte MAC-Adresse",
 	"livetv_form_stalker_macAddressLabel": "MAC-Adresse",
 	"livetv_form_stalker_macAddressPlaceholder": "00:1A:79:XX:XX:XX",

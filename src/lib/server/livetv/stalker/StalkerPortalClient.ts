@@ -196,10 +196,28 @@ export interface StalkerPortalConfig {
 	deviceId2: string;
 	model: string;
 	timezone: string;
+	/**
+	 * Portal UI language sent as the `stb_lang` cookie and `Accept-Language`
+	 * header. Expected as a 2-letter ISO 639-1 code; regional/script variants
+	 * are reduced to their base tag. Defaults to 'en'.
+	 */
+	language?: string;
 	token?: string;
 	username?: string;
 	password?: string;
 	endpoint?: string;
+}
+
+/** Language used when the account config does not specify one. */
+const DEFAULT_STALKER_LANGUAGE = 'en';
+
+/**
+ * Reduce a configured language to the 2-letter base code Stalker portals
+ * understand (`pt-BR` → `pt`), falling back to 'en' for anything unusable.
+ */
+function normalizeStalkerLanguage(value: string | undefined): string {
+	const base = value?.trim().toLowerCase().split('-')[0] ?? '';
+	return /^[a-z]{2}$/.test(base) ? base : DEFAULT_STALKER_LANGUAGE;
 }
 
 interface StalkerResponse<T> {
@@ -350,11 +368,17 @@ export class StalkerPortalClient {
 		this.config = {
 			...config,
 			portalUrl: config.portalUrl.replace(/\/+$/, ''),
-			macAddress: config.macAddress.toUpperCase()
+			macAddress: config.macAddress.toUpperCase(),
+			language: normalizeStalkerLanguage(config.language)
 		};
 
 		// Generate token if not provided
 		this.token = config.token || generateToken();
+	}
+
+	/** Portal UI language (stb_lang / Accept-Language), normalized to 2 letters. */
+	private get language(): string {
+		return this.config.language ?? DEFAULT_STALKER_LANGUAGE;
 	}
 
 	/**
@@ -439,7 +463,7 @@ export class StalkerPortalClient {
 		const parts = [
 			`sn=${encodeURIComponent(this.config.serialNumber)}`,
 			`mac=${encodeURIComponent(this.config.macAddress)}`,
-			'stb_lang=en',
+			`stb_lang=${this.language}`,
 			`timezone=${encodeURIComponent(this.config.timezone)}`
 		];
 		return parts.join('; ') + ';';
@@ -453,7 +477,7 @@ export class StalkerPortalClient {
 			'User-Agent': STB_USER_AGENT,
 			'X-User-Agent': `Model: ${this.config.model}; Link: Ethernet`,
 			Accept: '*/*',
-			'Accept-Language': 'en',
+			'Accept-Language': this.language,
 			Cookie: this.getCookie()
 		};
 	}
@@ -466,7 +490,7 @@ export class StalkerPortalClient {
 			'User-Agent': STB_USER_AGENT,
 			'X-User-Agent': `Model: ${this.config.model}; Link: Ethernet`,
 			Accept: '*/*',
-			'Accept-Language': 'en',
+			'Accept-Language': this.language,
 			Authorization: `Bearer ${this.token}`,
 			Cookie: this.getCookie()
 		};

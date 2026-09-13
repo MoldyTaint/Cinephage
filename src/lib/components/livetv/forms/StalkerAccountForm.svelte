@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { CheckCircle2, XCircle } from 'lucide-svelte';
 	import { SectionHeader } from '$lib/components/ui/modal';
+	import { ALL_LANGUAGE_OPTIONS } from '$lib/shared/languages';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
@@ -9,12 +10,14 @@
 		macAddress: string;
 		epgUrl: string;
 		enabled: boolean;
+		language: string;
 		mode: 'add' | 'edit';
 		onNameChange: (value: string) => void;
 		onPortalUrlChange: (value: string) => void;
 		onMacAddressChange: (value: string) => void;
 		onEpgUrlChange: (value: string) => void;
 		onEnabledChange: (value: boolean) => void;
+		onLanguageChange: (value: string) => void;
 	}
 
 	let {
@@ -23,12 +26,14 @@
 		macAddress,
 		epgUrl,
 		enabled,
+		language,
 		mode: _mode,
 		onNameChange,
 		onPortalUrlChange,
 		onMacAddressChange,
 		onEpgUrlChange,
-		onEnabledChange
+		onEnabledChange,
+		onLanguageChange
 	}: Props = $props();
 
 	const macRegex = /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/;
@@ -193,6 +198,25 @@
 			</div>
 			<div class="label py-1">
 				<span class="label-text-alt text-xs">{m.livetv_form_stalker_epgUrlHint()}</span>
+			</div>
+		</div>
+
+		<div class="form-control">
+			<label class="label py-1" for="stalker-language">
+				<span class="label-text">{m.livetv_form_stalker_languageLabel()}</span>
+			</label>
+			<select
+				id="stalker-language"
+				class="select-bordered select w-full select-sm"
+				value={language}
+				onchange={(e) => onLanguageChange(e.currentTarget.value)}
+			>
+				{#each ALL_LANGUAGE_OPTIONS as option (option.code)}
+					<option value={option.code}>{option.name}</option>
+				{/each}
+			</select>
+			<div class="label py-1">
+				<span class="label-text-alt text-xs">{m.livetv_form_stalker_languageHint()}</span>
 			</div>
 		</div>
 

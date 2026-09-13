@@ -913,13 +913,24 @@ export class M3uProvider implements LiveTvProvider {
 		return texts;
 	}
 
+	/**
+	 * Build a normalization key for matching M3U channels against XMLTV ones.
+	 *
+	 * NFKD-normalizes, strips combining marks, lower-cases, then keeps only
+	 * Unicode letters and numbers (`\p{L}`/`\p{N}`), so Latin diacritics
+	 * collapse ('Café' → 'cafe') while non-Latin scripts (CJK, Cyrillic,
+	 * Arabic, …) keep a stable key instead of collapsing to nothing. Returns
+	 * null when nothing usable remains — null keys are never entered into or
+	 * looked up in the lookup map, so two punctuation-only names can never
+	 * cross-match.
+	 */
 	private normalizeChannelLookupKey(value: string | undefined): string | null {
 		if (!value) return null;
 		const normalized = value
 			.normalize('NFKD')
 			.replace(/[\u0300-\u036f]/g, '')
 			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, '');
+			.replace(/[^\p{L}\p{N}]+/gu, '');
 		return normalized || null;
 	}
 

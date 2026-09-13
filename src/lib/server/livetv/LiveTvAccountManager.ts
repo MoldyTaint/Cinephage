@@ -13,6 +13,7 @@ import { toFriendlyLiveTvTestError } from '$lib/livetv/errorMessages';
 import { randomUUID } from 'node:crypto';
 import { getProvider, getProviderForAccount } from './providers';
 import { probeStalkerEndpoint } from './stalker/StalkerPortalClient';
+import { normalizeTmdbLanguage } from '$lib/server/languages/normalize.js';
 import { liveTvEvents } from './LiveTvEvents';
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
 import { ExternalServiceError } from '$lib/errors';
@@ -313,6 +314,8 @@ export class LiveTvAccountManager implements BackgroundService {
 				deviceId2: input.stalkerConfig.deviceId2 || generateDeviceId(),
 				model: input.stalkerConfig.model || 'MAG254',
 				timezone: input.stalkerConfig.timezone || 'Europe/London',
+				// 2-letter portal UI language (stb_lang); falls back to English.
+				language: normalizeTmdbLanguage(input.stalkerConfig.language) || 'en',
 				username: input.stalkerConfig.username,
 				password: input.stalkerConfig.password,
 				endpoint: await probeStalkerEndpoint(input.stalkerConfig.portalUrl)

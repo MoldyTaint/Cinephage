@@ -7,6 +7,10 @@
 	import type { FormData, TestConfig } from '$lib/components/livetv/LiveTvAccountModal.svelte';
 	import { createSSE } from '$lib/sse';
 	import { resolvePath } from '$lib/utils/routing';
+	import {
+		buildAccountRequestBody,
+		buildAccountTestRequestBody
+	} from '$lib/livetv/accountFormPayload';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import type { AccountStreamEvents } from '$lib/types/sse/events/livetv-account-events.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
@@ -135,50 +139,7 @@
 
 		try {
 			// Build request body based on provider type
-			const body: Record<string, unknown> = {
-				name: data.name,
-				providerType: data.providerType,
-				testFirst: false,
-				enabled: data.enabled
-			};
-
-			switch (data.providerType) {
-				case 'stalker':
-					body.stalkerConfig = {
-						portalUrl: data.portalUrl,
-						macAddress: data.macAddress,
-						epgUrl: data.epgUrl || undefined
-					};
-					break;
-				case 'xstream': {
-					const normalizedXstreamEpgUrl = data.epgUrl.trim();
-					body.xstreamConfig = {
-						baseUrl: data.baseUrl,
-						username: data.username,
-						password: data.password,
-						// In edit mode, send empty string to explicitly clear an existing EPG URL.
-						epgUrl: normalizedXstreamEpgUrl || (modalMode === 'edit' ? '' : undefined)
-					};
-					break;
-				}
-				case 'm3u':
-					{
-						const normalizedEpgUrl = data.epgUrl.trim();
-						body.m3uConfig = {
-							url: data.url || undefined,
-							fileContent: data.fileContent || undefined,
-							// In edit mode, send empty string to explicitly clear an existing EPG URL.
-							epgUrl: normalizedEpgUrl || (modalMode === 'edit' ? '' : undefined),
-							autoRefresh: data.autoRefresh
-						};
-					}
-					break;
-				case 'cinephage-iptv':
-					if (data.cinephageIptvConfig) {
-						body.cinephageIptvConfig = data.cinephageIptvConfig;
-					}
-					break;
-			}
+			const body = buildAccountRequestBody(data, modalMode);
 
 			if (modalMode === 'add') {
 				// @ts-expect-error body shape matches expected type at runtime
@@ -352,38 +313,7 @@
 	}
 
 	async function handleTestConfig(config: TestConfig): Promise<LiveTvAccountTestResult> {
-		const body: Record<string, unknown> = {
-			providerType: config.providerType
-		};
-
-		switch (config.providerType) {
-			case 'stalker':
-				body.stalkerConfig = {
-					portalUrl: config.portalUrl,
-					macAddress: config.macAddress
-				};
-				break;
-			case 'xstream':
-				body.xstreamConfig = {
-					baseUrl: config.baseUrl,
-					username: config.username,
-					password: config.password,
-					epgUrl: config.epgUrl
-				};
-				break;
-			case 'm3u':
-				body.m3uConfig = {
-					url: config.url,
-					fileContent: config.fileContent,
-					epgUrl: config.epgUrl
-				};
-				break;
-			case 'cinephage-iptv':
-				if (config.cinephageIptvConfig) {
-					body.cinephageIptvConfig = config.cinephageIptvConfig;
-				}
-				break;
-		}
+		const body = buildAccountTestRequestBody(config);
 
 		try {
 			const response = await testAccountConfig(body as Record<string, unknown>);

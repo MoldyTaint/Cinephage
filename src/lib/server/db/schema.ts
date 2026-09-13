@@ -3624,6 +3624,7 @@ export const livetvAccounts = sqliteTable(
 			deviceId2?: string;
 			model?: string;
 			timezone?: string;
+			language?: string; // Portal UI language (stb_lang), 2-letter code; 'en' when absent
 			token?: string;
 			username?: string;
 			password?: string;

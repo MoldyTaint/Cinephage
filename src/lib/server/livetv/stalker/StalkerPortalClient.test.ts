@@ -29,6 +29,15 @@ function mockFetch() {
 		);
 }
 
+function getHandshakeRequest(spy: ReturnType<typeof mockFetch>): {
+	url: string;
+	headers: Record<string, string>;
+} {
+	const url = spy.mock.calls[0]?.[0] as string;
+	const init = (spy.mock.calls[0]?.[1] ?? {}) as { headers?: Record<string, string> };
+	return { url, headers: init.headers ?? {} };
+}
+
 afterEach(() => {
 	vi.restoreAllMocks();
 });
@@ -218,5 +227,52 @@ describe('StalkerPortalClient endpoint URL generation', () => {
 
 		const lastUrl = spy.mock.calls[spy.mock.calls.length - 1]?.[0] as string;
 		expect(lastUrl).toContain('/stalker_portal/c/portal.php');
+	});
+});
+
+describe('StalkerPortalClient portal language', () => {
+	it('sends English stb_lang cookie and Accept-Language when not configured', async () => {
+		const spy = mockFetch();
+		const client = new StalkerPortalClient(createConfig());
+
+		await client.handshake();
+
+		const { headers } = getHandshakeRequest(spy);
+		expect(headers['Accept-Language']).toBe('en');
+		expect(headers.Cookie).toContain('stb_lang=en');
+	});
+
+	it('sends the configured language in the cookie and Accept-Language header', async () => {
+		const spy = mockFetch();
+		const client = new StalkerPortalClient(createConfig({ language: 'ru' }));
+
+		await client.handshake();
+
+		const { headers } = getHandshakeRequest(spy);
+		expect(headers['Accept-Language']).toBe('ru');
+		expect(headers.Cookie).toContain('stb_lang=ru');
+		expect(headers.Cookie).not.toContain('stb_lang=en');
+	});
+
+	it('reduces regional variants to the base 2-letter code', async () => {
+		const spy = mockFetch();
+		const client = new StalkerPortalClient(createConfig({ language: 'pt-BR' }));
+
+		await client.handshake();
+
+		const { headers } = getHandshakeRequest(spy);
+		expect(headers['Accept-Language']).toBe('pt');
+		expect(headers.Cookie).toContain('stb_lang=pt');
+	});
+
+	it('falls back to English for unusable language values', async () => {
+		const spy = mockFetch();
+		const client = new StalkerPortalClient(createConfig({ language: '42' }));
+
+		await client.handshake();
+
+		const { headers } = getHandshakeRequest(spy);
+		expect(headers['Accept-Language']).toBe('en');
+		expect(headers.Cookie).toContain('stb_lang=en');
 	});
 });
