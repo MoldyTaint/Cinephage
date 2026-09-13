@@ -124,10 +124,17 @@ export interface ParsedRelease {
 	episode?: EpisodeInfo;
 
 	// Additional metadata
-	/** Detected languages from title (ISO 639-1 codes) */
+	/**
+	 * Languages asserted by the release title (ISO 639-1 codes, plus the
+	 * pseudo-codes 'multi' and 'orig'). Empty when the title names no
+	 * language — absence of evidence is never expanded to 'en'.
+	 */
 	languages: string[];
 
-	/** Source indexer language (ISO 639-1 code) - where the release came from */
+	/**
+	 * Source indexer language (ISO 639-1 code) - where the release came from.
+	 * Source metadata only; never merged into `languages`.
+	 */
 	sourceLanguage?: string;
 
 	/** Detected streaming service tag (AMZN, NF, MA, etc.) */

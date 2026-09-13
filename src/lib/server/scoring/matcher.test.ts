@@ -10,6 +10,7 @@ import {
 	evaluateFormat,
 	matchFormats,
 	matchesFormat,
+	extractAttributes,
 	clearPatternCache
 } from './matcher';
 import type { ReleaseAttributes, CustomFormat, FormatCondition } from './types';
@@ -582,9 +583,57 @@ describe('Matcher', () => {
 			// First call
 			evaluateCondition(condition, createRelease({ title: 'CACHED_PATTERN' }));
 
-			// Second call with same pattern should use cache
-			const result = evaluateCondition(condition, createRelease({ title: 'CACHED_PATTERN' }));
-			expect(result.matches).toBe(true);
-		});
+		// Second call with same pattern should use cache
+		const result = evaluateCondition(condition, createRelease({ title: 'CACHED_PATTERN' }));
+		expect(result.matches).toBe(true);
 	});
+});
+
+describe('Language attribute bridging (honest parser output)', () => {
+	it('passes empty parsed languages through untouched', () => {
+		// The parser yields [] for untagged releases (no English assertion);
+		// the scoring bridge must preserve that instead of inventing values.
+		const attrs = extractAttributes({
+			originalTitle: 'Movie.2023.1080p.BluRay.x264-GROUP',
+			cleanTitle: 'Movie',
+			year: 2023,
+			resolution: '1080p',
+			source: 'bluray',
+			codec: 'h264',
+			hdr: null,
+			audioCodec: 'unknown',
+			audioChannels: 'unknown',
+			hasAtmos: false,
+			languages: [],
+			isRemux: false,
+			isRepack: false,
+			isProper: false,
+			is3d: false
+		});
+
+		expect(attrs.languages).toEqual([]);
+	});
+
+	it('passes the multi marker through without expanding it to English', () => {
+		const attrs = extractAttributes({
+			originalTitle: 'Movie.2023.MULTI.1080p.BluRay.x264-GROUP',
+			cleanTitle: 'Movie',
+			year: 2023,
+			resolution: '1080p',
+			source: 'bluray',
+			codec: 'h264',
+			hdr: null,
+			audioCodec: 'unknown',
+			audioChannels: 'unknown',
+			hasAtmos: false,
+			languages: ['multi'],
+			isRemux: false,
+			isRepack: false,
+			isProper: false,
+			is3d: false
+		});
+
+		expect(attrs.languages).toEqual(['multi']);
+	});
+});
 });

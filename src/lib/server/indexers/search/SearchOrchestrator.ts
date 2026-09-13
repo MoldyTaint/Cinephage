@@ -53,6 +53,7 @@ import {
 } from './russian-trackers';
 import { parseRelease } from '../parser';
 import { extractLanguages } from '../parser/patterns/language';
+import { normalizeLanguageCode } from '$lib/shared/languages';
 import { CloudflareProtectedError } from '../http/CloudflareDetection';
 import {
 	releaseEnricher,
@@ -598,11 +599,6 @@ export class SearchOrchestrator {
 			'[SearchOrchestrator] DEBUG: after ID/title filter'
 		);
 
-		// No language boost here: enrichment recomputes totalScore from scratch and
-		// runs protocol seeder checks, so inflating seeders pre-enrichment would
-		// bypass minimumSeeders/dead-torrent rejection with a synthetic number.
-		// See boostByLanguage (rank path only).
-
 		const afterFilteringCount = filtered.length;
 
 		// Enrich with quality scoring and optional TMDB matching
@@ -641,9 +637,15 @@ export class SearchOrchestrator {
 
 		const enrichResult = await releaseEnricher.enrich(filtered, enrichmentOpts);
 
+		// Preferred-language boost for the enhanced path: applied AFTER enrichment
+		// (protocol seeder checks during enrich saw the real seeders) as an
+		// explicit totalScore contribution, re-sorted by totalScore. Semantics
+		// match the rank path's boostByLanguage — see applyLanguageScoreBonus.
+		const languageBoosted = this.applyLanguageScoreBonus(enrichResult.releases, enrichedCriteria);
+
 		// Pass 2: Enhanced deduplication using Radarr-style preference logic
 		// Now that we have rejection counts, prefer releases with fewer rejections and higher indexer priority
-		const { releases: smartDeduped } = this.deduplicator.deduplicateEnhanced(enrichResult.releases);
+		const { releases: smartDeduped } = this.deduplicator.deduplicateEnhanced(languageBoosted);
 		const afterEnrichmentCount = smartDeduped.length;
 
 		logger.debug(
@@ -2532,7 +2534,50 @@ export class SearchOrchestrator {
 	}
 
 	/**
-	 * Boost releases that match the preferred audio language.
+	 * Normalize a preferred-language criterion to its comparable base tag.
+	 *
+	 * Both the criteria side ('en', 'EN-US', 'pt-BR') and the release-title
+	 * side (parsed codes like 'en'/'ru'/'multi') go through
+	 * normalizeLanguageCode, then reduce to the base subtag: release names
+	 * almost never carry a region, so an 'EN-US' preference must still match
+	 * a release tagged 'eng'/'en'. The 'multi' pseudo-code normalizes to
+	 * itself and therefore never matches a real language preference.
+	 */
+	private resolvePreferredLanguageBase(criteria: SearchCriteria): string | null {
+		const preferred = criteria.language?.trim();
+		if (!preferred) return null;
+		return normalizeLanguageCode(preferred).split('-')[0].toLowerCase();
+	}
+
+	/**
+	 * Shared skip rule for the language boost (rank + enhanced paths).
+	 *
+	 * A bare `en` preference (the ecosystem default) is a no-op: English
+	 * releases are the baseline, so boosting them would only add noise. An
+	 * explicit locale like 'en-US' is NOT skipped — after title matching is
+	 * base-normalized it boosts releases explicitly tagged english/eng, which
+	 * is what a user preferring that locale wants (untagged releases assert no
+	 * language at all, so they are never boosted).
+	 */
+	private isLanguageBoostDisabled(criteria: SearchCriteria): boolean {
+		const raw = criteria.language?.trim().toLowerCase();
+		return !raw || raw === 'en';
+	}
+
+	/**
+	 * Whether a release title asserts the preferred language.
+	 * Shared by both the rank and enhanced paths so language preference
+	 * behaves identically regardless of which pipeline scores the release.
+	 */
+	private titleMatchesPreferredLanguage(title: string, preferredBase: string): boolean {
+		const { languages } = extractLanguages(title);
+		return languages.some(
+			(code) => normalizeLanguageCode(code).split('-')[0].toLowerCase() === preferredBase
+		);
+	}
+
+	/**
+	 * Boost releases that match the preferred audio language (rank path).
 	 * Uses extractLanguages() to detect language from release titles.
 	 * Matching releases are returned as new copies with inflated seeders so the
 	 * ReleaseRanker (which weights seeders at 0.4) ranks them above non-matching
@@ -2542,21 +2587,19 @@ export class SearchOrchestrator {
 	 * are ranked below matching ones. This mirrors how Sonarr/Radarr handle
 	 * language preferences via custom format scoring.
 	 *
-	 * Intentionally only used by the plain search() rank path. The enhanced path
-	 * must not inflate seeders: enrichment runs protocol checks (minimumSeeders,
-	 * dead-torrent rejection) against release.seeders, and its totalScore is
-	 * recomputed from scratch, so a pre-enrichment boost is either a lie or dead.
+	 * Comparison is normalized on both sides (see resolvePreferredLanguageBase)
+	 * and the skip rule is shared with the enhanced path (see
+	 * isLanguageBoostDisabled).
 	 */
 	private boostByLanguage<T extends ReleaseResult>(releases: T[], criteria: SearchCriteria): T[] {
-		const preferredLanguage = criteria.language;
-		if (!preferredLanguage || preferredLanguage === 'en' || releases.length === 0) {
+		const preferredBase = this.resolvePreferredLanguageBase(criteria);
+		if (!preferredBase || this.isLanguageBoostDisabled(criteria) || releases.length === 0) {
 			return releases;
 		}
 
 		let boostedCount = 0;
 		const boosted = releases.map((release) => {
-			const { languages } = extractLanguages(release.title);
-			if (!languages.includes(preferredLanguage)) {
+			if (!this.titleMatchesPreferredLanguage(release.title, preferredBase)) {
 				return release;
 			}
 
@@ -2572,7 +2615,7 @@ export class SearchOrchestrator {
 		if (boostedCount > 0) {
 			logger.debug(
 				{
-					preferredLanguage,
+					preferredLanguage: criteria.language,
 					totalReleases: releases.length,
 					boostedCount
 				},
@@ -2581,6 +2624,68 @@ export class SearchOrchestrator {
 		}
 
 		return boosted;
+	}
+
+	/**
+	 * Boost releases that match the preferred audio language (enhanced path).
+	 *
+	 * Applied AFTER enrichment so protocol checks (minimumSeeders, dead-torrent
+	 * rejection) still see the real seeders, and expressed as an explicit
+	 * totalScore contribution instead of seeders inflation — enrichment
+	 * recomputes totalScore from scratch, so a pre-enrichment adjustment would
+	 * be silently discarded. +20 points mirrors the rank path's magnitude: the
+	 * 30x seeders multiplier at the ranker's 0.4 seeders weight is worth
+	 * roughly 0.17–0.19 on the ranker's 0–1 scale for typical seeder counts,
+	 * and matches the existing enhancementBonus (PROPER/REPACK) scale.
+	 *
+	 * Matching, normalization (normalizeLanguageCode on both sides) and the
+	 * bare-`en` skip rule are identical to boostByLanguage (see
+	 * isLanguageBoostDisabled), so both paths express the same preference.
+	 * Results are returned as new copies, re-sorted by totalScore, ready for
+	 * enhanced deduplication.
+	 */
+	private applyLanguageScoreBonus(
+		releases: EnhancedReleaseResult[],
+		criteria: SearchCriteria
+	): EnhancedReleaseResult[] {
+		const preferredBase = this.resolvePreferredLanguageBase(criteria);
+		if (!preferredBase || this.isLanguageBoostDisabled(criteria) || releases.length === 0) {
+			return releases;
+		}
+
+		const LANGUAGE_BONUS = 20;
+		let boostedCount = 0;
+		const boosted = releases.map((release) => {
+			if (!this.titleMatchesPreferredLanguage(release.title, preferredBase)) {
+				return release;
+			}
+
+			boostedCount += 1;
+			const components = release.scoreComponents as
+				| { languageBonus?: number; totalScore: number }
+				| undefined;
+			return {
+				...release,
+				totalScore: release.totalScore + LANGUAGE_BONUS,
+				scoreComponents: components
+					? { ...components, languageBonus: LANGUAGE_BONUS }
+					: components
+			};
+		});
+
+		if (boostedCount > 0) {
+			logger.debug(
+				{
+					preferredLanguage: criteria.language,
+					totalReleases: releases.length,
+					boostedCount,
+					bonus: LANGUAGE_BONUS
+				},
+				'[SearchOrchestrator] Language boost applied (enhanced path)'
+			);
+		}
+
+		return boosted.sort((a, b) => b.totalScore - a.totalScore);
 	}
 
 	/**

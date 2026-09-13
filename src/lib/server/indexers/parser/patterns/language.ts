@@ -2,7 +2,12 @@
  * Language Pattern Matching
  *
  * Extracts language information from release titles
- * Returns ISO 639-1 language codes
+ * Returns ISO 639-1 language codes, plus the pseudo-codes 'multi'
+ * (multi-language release) and 'orig' (original-audio marker).
+ *
+ * Honesty contract: absence of evidence is NOT English. Untagged releases
+ * yield `languages: []` and 'multi' is never expanded to 'en' — consumers
+ * must handle empty lists and pseudo-codes explicitly.
  */
 
 interface LanguageMatch {
@@ -218,17 +223,10 @@ export function extractLanguages(title: string): LanguageMatch {
 		}
 	}
 
-	// If no language detected and no "multi" marker, assume English
-	// This is a common convention for releases without language tags
-	if (languages.length === 0) {
-		return { languages: ['en'], matchedTexts: [] };
-	}
-
-	// If "multi" is present, ensure English is included
-	if (languages.includes('multi') && !languages.includes('en')) {
-		languages.push('en');
-	}
-
+	// No English assertion: an untagged release stays empty ([]), and a
+	// "multi"/"dual audio" release yields only the 'multi' marker — neither is
+	// evidence of English audio. The marker/empty contract is handled explicitly
+	// by consumers (language boost ignores 'multi'; naming renders `und`).
 	return { languages, matchedTexts };
 }
 

@@ -87,14 +87,24 @@ function createRelease(overrides: Partial<ReleaseResult> = {}): ReleaseResult {
 	};
 }
 
-function mockEnrichment() {
+function mockEnrichment(baseScores?: number[]) {
 	enrichMock.mockImplementation(async (releases: ReleaseResult[]) => ({
-		releases: releases.map((r, i) => ({
-			...r,
-			totalScore: 100 - i,
-			rejected: false,
-			rejections: []
-		})),
+		releases: releases.map((r, i) => {
+			const score = baseScores ? baseScores[i] : 100 - i;
+			return {
+				...r,
+				totalScore: score,
+				scoreComponents: {
+					qualityScore: score,
+					enhancementBonus: 0,
+					packBonus: 0,
+					hardcodedSubsPenalty: 0,
+					totalScore: score
+				},
+				rejected: false,
+				rejections: []
+			};
+		}),
 		rejectedCount: 0,
 		scoringProfile: { id: 'profile-a' },
 		enrichTimeMs: 1
@@ -174,6 +184,57 @@ describe('SearchOrchestrator language boost semantics', () => {
 		expect(result.releases[0].title).toContain('RUS');
 	});
 
+	it('matches normalized inputs in the rank path (EN-US criteria vs eng release)', async () => {
+		const releases = [
+			createRelease({ title: 'Example Movie 2023 1080p BluRay x264', seeders: 50 }),
+			createRelease({ title: 'Example Movie 2023 1080p BluRay eng x264', seeders: 50 })
+		];
+		const { indexer } = buildIndexer('torrent', releases);
+		const criteria: SearchCriteria = {
+			searchType: 'basic',
+			query: 'Example Movie',
+			language: 'EN-US'
+		};
+
+		const result = await orchestrator.search([indexer], criteria, { useCache: false });
+
+		// 'EN-US' normalizes to base 'en', which matches the 'eng' tag on the
+		// release side; the region variant is NOT the bare-'en' skip rule.
+		const eng = result.releases.find((r) => r.title.includes('eng'));
+		expect(result.releases[0].title).toContain('eng');
+		expect(eng?.seeders).toBe(50 * 30);
+	});
+
+	it('matches normalized criteria against region-less releases (EN-GB vs RUS is not a match)', async () => {
+		// Sanity from the other side: 'en-GB' must not match 'rus'/'ru' releases.
+		const releases = [createRelease({ title: 'Example Movie 2023 1080p BluRay RUS x264' })];
+		const { indexer } = buildIndexer('torrent', releases);
+		const criteria: SearchCriteria = {
+			searchType: 'basic',
+			query: 'Example Movie',
+			language: 'EN-GB'
+		};
+
+		const result = await orchestrator.search([indexer], criteria, { useCache: false });
+
+		expect(result.releases[0].seeders).toBe(10);
+	});
+
+	it('does not boost a multi release against a specific language preference', async () => {
+		const releases = [createRelease({ title: 'Example Movie 2023 MULTi 1080p BluRay x264' })];
+		const { indexer } = buildIndexer('torrent', releases);
+		const criteria: SearchCriteria = {
+			searchType: 'basic',
+			query: 'Example Movie',
+			language: 'ru'
+		};
+
+		const result = await orchestrator.search([indexer], criteria, { useCache: false });
+
+		// 'multi' is a marker, not Russian audio — no boost.
+		expect(result.releases[0].seeders).toBe(10);
+	});
+
 	it('does not inflate seeders seen by enrichment in the enhanced path', async () => {
 		mockEnrichment();
 		const releases = [
@@ -226,5 +287,115 @@ describe('SearchOrchestrator language boost semantics', () => {
 		const firstInput = enrichMock.mock.calls[0][0] as ReleaseResult[];
 		const secondInput = enrichMock.mock.calls[1][0] as ReleaseResult[];
 		expect(secondInput.map((r) => r.seeders)).toEqual(firstInput.map((r) => r.seeders));
+	});
+
+	it('applies the language boost in the enhanced path after enrichment', async () => {
+		// The non-matching release enriches 15 points higher pre-boost; the +20
+		// language bonus must flip the order.
+		mockEnrichment([115, 100]);
+		const releases = [
+			createRelease({ title: 'Example Movie 2023 1080p BluRay x264' }),
+			createRelease({ title: 'Example Movie 2023 1080p BluRay RUS x264' })
+		];
+		const { indexer } = buildIndexer('torrent', releases);
+		const criteria: SearchCriteria = {
+			searchType: 'basic',
+			query: 'Example Movie',
+			language: 'ru'
+		};
+
+		const result = await orchestrator.searchEnhanced([indexer], criteria, {
+			searchSource: 'interactive',
+			enrichment: { scoringProfileId: 'profile-a' }
+		});
+
+		const rus = result.releases.find((r) => r.title.includes('RUS'))!;
+		const plain = result.releases.find((r) => !r.title.includes('RUS'))!;
+		// Boosted release now outranks the higher-scoring non-match…
+		expect(result.releases[0].title).toContain('RUS');
+		expect(rus.totalScore).toBe(120);
+		// …via an explicit score contribution, not seeders inflation.
+		expect(rus.seeders).toBe(10);
+		expect(plain.totalScore).toBe(115);
+		expect(plain.seeders).toBe(10);
+		// Score transparency: the bonus is visible in the components.
+		expect(rus.scoreComponents).toMatchObject({ languageBonus: 20 });
+		expect(plain.scoreComponents).not.toHaveProperty('languageBonus');
+	});
+
+	it('does not apply the enhanced-path boost when the preferred language is en', async () => {
+		mockEnrichment();
+		const releases = [
+			createRelease({ title: 'Example Movie 2023 1080p BluRay English x264' }),
+			createRelease({ title: 'Example Movie 2023 1080p BluRay x264' })
+		];
+		const { indexer } = buildIndexer('torrent', releases);
+		const criteria: SearchCriteria = {
+			searchType: 'basic',
+			query: 'Example Movie',
+			language: 'en'
+		};
+
+		const result = await orchestrator.searchEnhanced([indexer], criteria, {
+			searchSource: 'interactive',
+			enrichment: { scoringProfileId: 'profile-a' }
+		});
+
+		// Bare-'en' preference is a no-op on both paths: scores stay as enriched.
+		expect(result.releases.map((r) => r.totalScore)).toEqual([100, 99]);
+		expect(result.releases.every((r) => r.seeders === 10)).toBe(true);
+	});
+
+	it('matches normalized inputs in the enhanced path (PT-BR criteria vs brazilian release)', async () => {
+		mockEnrichment();
+		const releases = [
+			createRelease({ title: 'Example Movie 2023 1080p BluRay x264' }),
+			createRelease({ title: 'Example Movie 2023 1080p BluRay BRAZILIAN x264' })
+		];
+		const { indexer } = buildIndexer('torrent', releases);
+		const criteria: SearchCriteria = {
+			searchType: 'basic',
+			query: 'Example Movie',
+			language: 'pt-BR'
+		};
+
+		const result = await orchestrator.searchEnhanced([indexer], criteria, {
+			searchSource: 'interactive',
+			enrichment: { scoringProfileId: 'profile-a' }
+		});
+
+		// 'pt-BR' reduces to base 'pt', matching the 'brazilian' → 'pt' tag.
+		expect(result.releases[0].title).toContain('BRAZILIAN');
+		expect(result.releases[0].totalScore).toBe(99 + 20);
+	});
+
+	it('does not compound the enhanced-path boost across cache hits', async () => {
+		mockEnrichment();
+		const releases = [
+			createRelease({ title: 'Example Movie 2023 1080p BluRay RUS x264' }),
+			createRelease({ title: 'Example Movie 2023 1080p BluRay x264' })
+		];
+		const { indexer } = buildIndexer('torrent', releases);
+		const criteria: SearchCriteria = {
+			searchType: 'basic',
+			query: 'Example Movie',
+			language: 'ru'
+		};
+
+		const first = await orchestrator.searchEnhanced([indexer], criteria, {
+			searchSource: 'interactive',
+			enrichment: { scoringProfileId: 'profile-a' }
+		});
+		const second = await orchestrator.searchEnhanced([indexer], criteria, {
+			searchSource: 'interactive',
+			enrichment: { scoringProfileId: 'profile-a' }
+		});
+
+		expect(second.fromCache).toBe(true);
+		const rusFirst = first.releases.find((r) => r.title.includes('RUS'))!.totalScore;
+		const rusSecond = second.releases.find((r) => r.title.includes('RUS'))!.totalScore;
+		// RUS enriches at 100 (input order), +20 bonus exactly once per request.
+		expect(rusFirst).toBe(120);
+		expect(rusSecond).toBe(rusFirst);
 	});
 });

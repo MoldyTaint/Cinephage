@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseRelease, extractExternalIds } from './ReleaseParser';
+import { extractLanguages } from './patterns/language';
 import { isTvRelease } from './patterns/episode';
 import { extractResolution } from './patterns/resolution';
 import { extractSource } from './patterns/source';
@@ -491,10 +492,23 @@ describe('ReleaseParser', () => {
 			expect(result.languages).toContain('de');
 		});
 
-		it('should detect multi-language releases', () => {
+		it('should detect multi-language releases as the multi marker only', () => {
 			const result = parseRelease('Movie.2023.MULTi.1080p.BluRay.x264-GROUP');
 
-			expect(result.languages).toContain('multi');
+			expect(result.languages).toEqual(['multi']);
+		});
+
+		it('should detect dual audio releases as the multi marker only', () => {
+			const result = parseRelease('Movie.2023.DUAL.AUDIO.1080p.BluRay.x264-GROUP');
+
+			expect(result.languages).toEqual(['multi']);
+		});
+
+		it('should keep the orig marker unchanged', () => {
+			const result = parseRelease('Movie.2023.1080p.BluRay.x264 + Original + RUS-GROUP');
+
+			expect(result.languages).toContain('orig');
+			expect(result.languages).toContain('ru');
 		});
 
 		it('should detect French with VFF tag', () => {
@@ -503,10 +517,11 @@ describe('ReleaseParser', () => {
 			expect(result.languages).toContain('fr');
 		});
 
-		it('should default to English when no language specified', () => {
+		it('should stay empty when the title names no language', () => {
 			const result = parseRelease('Movie.2023.1080p.BluRay.x264-GROUP');
 
-			expect(result.languages).toContain('en');
+			// No English assertion: untagged is unknown, not English.
+			expect(result.languages).toEqual([]);
 		});
 
 		it('should detect a bare ISO 639-1 code in the fan-release name slot', () => {
@@ -533,7 +548,59 @@ describe('ReleaseParser', () => {
 		it('should not detect codes embedded inside larger words', () => {
 			const result = parseRelease('Death.Watch.2023.1080p.BluRay.x264-GROUP');
 
-			expect(result.languages).toEqual(['en']);
+			expect(result.languages).toEqual([]);
+		});
+	});
+
+	describe('Language truth table (extractLanguages)', () => {
+		it('untagged titles parse to an empty list', () => {
+			expect(extractLanguages('Movie.2023.1080p.BluRay.x264-GROUP').languages).toEqual([]);
+		});
+
+		it('multi and dual audio parse to the multi marker only', () => {
+			expect(extractLanguages('Show.2023.MULTI.1080p.WEB-DL.DDP5.1-GROUP').languages).toEqual([
+				'multi'
+			]);
+			expect(extractLanguages('Show.2023.Dual.Audio.1080p-GROUP').languages).toEqual(['multi']);
+		});
+
+		it('explicit languages are kept as-is', () => {
+			expect(extractLanguages('Film.2023.German.French.1080p-GROUP').languages).toEqual([
+				'de',
+				'fr'
+			]);
+		});
+
+		it('the RuTracker original-audio marker stays orig', () => {
+			expect(extractLanguages('3 XX + Original + RUS').languages).toEqual(['orig', 'ru']);
+		});
+	});
+
+	describe('Source language is metadata, not audio evidence', () => {
+		it('does not merge the indexer definition language into languages', () => {
+			const result = parseRelease('Movie.2023.German.1080p.BluRay.x264-GROUP', {
+				sourceLanguage: 'ru'
+			});
+
+			expect(result.languages).toEqual(['de']);
+			expect(result.languages).not.toContain('ru');
+		});
+
+		it('keeps sourceLanguage available on the parsed release', () => {
+			const result = parseRelease('Movie.2023.German.1080p.BluRay.x264-GROUP', {
+				sourceLanguage: 'ru-RU'
+			});
+
+			expect(result.sourceLanguage).toBe('ru-RU');
+		});
+
+		it('does not let the definition language fill an untagged title', () => {
+			const result = parseRelease('Movie.2023.1080p.BluRay.x264-GROUP', {
+				sourceLanguage: 'en'
+			});
+
+			expect(result.languages).toEqual([]);
+			expect(result.sourceLanguage).toBe('en');
 		});
 	});
 
