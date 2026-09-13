@@ -1033,6 +1033,7 @@ export class MediaMatcherService {
 					imdbId: externalIds.imdb_id,
 					title: tmdbMovie.title,
 					originalTitle: tmdbMovie.original_title,
+					originalLanguage: tmdbMovie.original_language,
 					year: tmdbMovie.release_date ? parseInt(tmdbMovie.release_date.split('-')[0]) : undefined,
 					overview: tmdbMovie.overview,
 					posterPath: tmdbMovie.poster_path,
@@ -1192,6 +1193,7 @@ export class MediaMatcherService {
 					tvdbId: externalIds.tvdb_id,
 					title: tmdbSeries.name,
 					originalTitle: tmdbSeries.original_name,
+					originalLanguage: tmdbSeries.original_language,
 					year: tmdbSeries.first_air_date
 						? parseInt(tmdbSeries.first_air_date.split('-')[0])
 						: undefined,

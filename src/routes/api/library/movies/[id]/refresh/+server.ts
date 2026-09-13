@@ -110,6 +110,7 @@ export const POST: RequestHandler = async ({ params }) => {
 			.set({
 				title: tmdbMovie.title,
 				originalTitle: tmdbMovie.original_title,
+				originalLanguage: tmdbMovie.original_language,
 				overview: tmdbMovie.overview,
 				posterPath: tmdbMovie.poster_path,
 				backdropPath: tmdbMovie.backdrop_path,

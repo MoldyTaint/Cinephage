@@ -76,6 +76,7 @@ export async function executeMetadataRefreshTask(
 					.set({
 						title: tmdbMovie.title,
 						originalTitle: tmdbMovie.original_title,
+						originalLanguage: tmdbMovie.original_language,
 						overview: tmdbMovie.overview,
 						posterPath: tmdbMovie.poster_path,
 						backdropPath: tmdbMovie.backdrop_path,
@@ -137,6 +138,7 @@ export async function executeMetadataRefreshTask(
 					.set({
 						title: tmdbSeries.name,
 						originalTitle: tmdbSeries.original_name,
+						originalLanguage: tmdbSeries.original_language,
 						overview: tmdbSeries.overview,
 						posterPath: tmdbSeries.poster_path,
 						backdropPath: tmdbSeries.backdrop_path,

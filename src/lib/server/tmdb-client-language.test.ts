@@ -64,6 +64,23 @@ describe('tmdb client explicit language parameter', () => {
 		expect(capturedUrls[0].searchParams.get('language')).toBe('de');
 	});
 
+	it('getMovie forwards an explicit language to TMDB', async () => {
+		await seedApiKey();
+		await tmdb.getMovie(550, 'ja');
+		expect(capturedUrls).toHaveLength(1);
+		expect(capturedUrls[0].searchParams.get('language')).toBe('ja');
+		expect(capturedUrls[0].searchParams.get('append_to_response')).toBe(
+			'credits,videos,images,recommendations,similar,watch/providers,release_dates,keywords'
+		);
+	});
+
+	it('getMovie without a language keeps the defaults-only behavior', async () => {
+		await seedApiKey();
+		await tmdb.getMovie(550);
+		expect(capturedUrls).toHaveLength(1);
+		expect(capturedUrls[0].searchParams.has('language')).toBe(false);
+	});
+
 	it('getSeason forwards an explicit language to TMDB', async () => {
 		await seedApiKey();
 		await tmdb.getSeason(94997, 1, 'de');

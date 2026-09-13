@@ -86,11 +86,22 @@ export const POST: RequestHandler = async ({ params, request }) => {
 				// Honor the per-series metadata language so a manual full rebuild
 				// produces the same localized titles/overviews the background
 				// metadata refresh writes. Null keeps the global TMDB default.
+				// The persisted original_language avoids a TMDB probe; when it is
+				// unknown the probe result is written back (lazy backfill).
 				const fetchLanguage = await resolveLanguage(
 					seriesData.metadataLanguageMode,
 					seriesData.metadataLanguageValue,
-					seriesData.tmdbId,
-					`/tv/${seriesData.tmdbId}`
+					`/tv/${seriesData.tmdbId}`,
+					{
+						originalLanguage: seriesData.originalLanguage,
+						onProbed: async (probed) => {
+							await db.update(series).set({ originalLanguage: probed }).where(eq(series.id, id));
+							logger.info(
+								{ seriesId: id, originalLanguage: probed },
+								'[RefreshSeries] Backfilled series original_language'
+							);
+						}
+					}
 				);
 
 				// Fetch fresh data from TMDB (canonical identity/overview/genres)
@@ -157,6 +168,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 						providerRefs,
 						title: tmdbSeries.name,
 						originalTitle: tmdbSeries.original_name,
+						originalLanguage: tmdbSeries.original_language,
 						overview: tmdbSeries.overview,
 						year: tmdbSeries.first_air_date
 							? parseInt(tmdbSeries.first_air_date.split('-')[0], 10)

@@ -338,21 +338,31 @@ export const tmdb = {
 	async getMovieReleaseInfo(id: number): Promise<MovieReleaseInfo> {
 		return this.fetch(`/movie/${id}?append_to_response=release_dates`) as Promise<MovieReleaseInfo>;
 	},
-	async getMovie(id: number): Promise<MovieDetails> {
-		return this.fetch(
-			`/movie/${id}?append_to_response=credits,videos,images,recommendations,similar,watch/providers,release_dates,keywords&include_image_language=null,en`
-		) as Promise<MovieDetails>;
+	async getMovie(id: number, language?: string | null): Promise<MovieDetails> {
+		const params = new URLSearchParams({
+			append_to_response:
+				'credits,videos,images,recommendations,similar,watch/providers,release_dates,keywords',
+			include_image_language: 'null,en'
+		});
+		if (language) params.set('language', language);
+		return this.fetch(`/movie/${id}?${params.toString()}`) as Promise<MovieDetails>;
 	},
 	async getTVShow(id: number, language?: string | null): Promise<TVShowDetails> {
-		const languageQuery = language ? `language=${language}&` : '';
-		return this.fetch(
-			`/tv/${id}?${languageQuery}append_to_response=credits,videos,images,recommendations,similar,watch/providers,content_ratings,keywords&include_image_language=null,en`
-		) as Promise<TVShowDetails>;
+		const params = new URLSearchParams({
+			append_to_response:
+				'credits,videos,images,recommendations,similar,watch/providers,content_ratings,keywords',
+			include_image_language: 'null,en'
+		});
+		if (language) params.set('language', language);
+		return this.fetch(`/tv/${id}?${params.toString()}`) as Promise<TVShowDetails>;
 	},
 	async getSeason(tvId: number, seasonNumber: number, language?: string | null): Promise<Season> {
-		return this.fetch(
-			`/tv/${tvId}/season/${seasonNumber}${language ? `?language=${language}` : ''}`
-		) as Promise<Season>;
+		const base = `/tv/${tvId}/season/${seasonNumber}`;
+		if (!language) {
+			return this.fetch(base) as Promise<Season>;
+		}
+		const params = new URLSearchParams({ language });
+		return this.fetch(`${base}?${params.toString()}`) as Promise<Season>;
 	},
 	async getEpisodeGroups(tvId: number): Promise<EpisodeGroupsResponse> {
 		return this.fetch(`/tv/${tvId}/episode_groups`) as Promise<EpisodeGroupsResponse>;
