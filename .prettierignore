@@ -19,3 +19,4 @@ Cinephage-Streamer/
 
 # Auto-generated files
 /src/lib/paraglide/
+/src/lib/server/languages/iso-data.generated.ts

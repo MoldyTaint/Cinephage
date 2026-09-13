@@ -27,7 +27,9 @@ export default defineConfig(
 			// Browser extension asset shipped as-is (loaded by Camoufox, not app code)
 			'src/lib/server/captcha/browser/addon/**',
 			// Build artifacts
-			'.svelte-kit/**'
+			'.svelte-kit/**',
+			// Generated language data
+			'src/lib/server/languages/iso-data.generated.ts'
 		]
 	},
 	{

@@ -27,6 +27,7 @@
 		"fix:episode-file-links": "node scripts/repair-episode-file-links.js",
 		"library:backfill-release-metadata": "npx tsx scripts/backfill-release-metadata.ts",
 		"library:export-release-metadata-audit": "npx tsx scripts/export-release-metadata-audit.ts",
+		"generate:language-data": "npx tsx scripts/generate-language-data.ts",
 		"db:reset": "rm -f data/cinephage.db && echo 'Database deleted. Will be recreated on next startup.'",
 		"db:info": "sqlite3 data/cinephage.db \"SELECT value FROM settings WHERE key='schema_version'\" 2>/dev/null || echo 'No database found'"
 	},
@@ -55,6 +56,7 @@
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-plugin-svelte": "^3.22.0",
 		"globals": "^17.8.0",
+		"iso-639-3": "^3.0.1",
 		"jsdom": "^30.0.1",
 		"lucide-svelte": "^1.0.1",
 		"pino-pretty": "^13.1.3",
