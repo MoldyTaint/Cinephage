@@ -62,6 +62,12 @@ const { searchService, downloadService, providerManager, profileService, missing
 		const profileService = {
 			getDefaultProfile: vi.fn().mockResolvedValue(defaultProfile),
 			getProfile: vi.fn().mockResolvedValue(defaultProfile),
+			getEffectiveProfileForMovie: vi
+				.fn()
+				.mockResolvedValue({ profile: defaultProfile, source: 'movie' }),
+			getEffectiveProfileForSeries: vi
+				.fn()
+				.mockResolvedValue({ profile: defaultProfile, source: 'series' }),
 			getMovieSubtitleStatus: vi.fn().mockResolvedValue(defaultStatus),
 			getEpisodeSubtitleStatus: vi.fn().mockResolvedValue(defaultStatus),
 			getSeriesEpisodesMissingSubtitles: vi.fn(
@@ -281,6 +287,44 @@ describe('MissingSubtitlesTask monitored gating', () => {
 		expect(profileService.getSeriesEpisodesMissingSubtitles).toHaveBeenCalledWith(
 			monitoredSeriesId
 		);
+	});
+
+	it('resolves library-level profiles read-only for override-less items', async () => {
+		await testDb.db.insert(movies).values({
+			id: 'movie-inherit',
+			tmdbId: 10,
+			title: 'Inheriting Movie',
+			path: '/movies/inheriting',
+			hasFile: true,
+			wantsSubtitles: true,
+			monitored: true,
+			languageProfileId: null
+		});
+
+		// Effective resolution lands on the library level (no per-item override).
+		profileService.getEffectiveProfileForMovie.mockResolvedValue({
+			profile: {
+				id: 'profile-library',
+				name: 'Library',
+				audio: { preferOriginal: true, languages: [] },
+				subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
+				cutoffRank: 0,
+				upgradesAllowed: true,
+				minimumScore: 80
+			},
+			source: 'library'
+		});
+
+		const result = await executeMissingSubtitlesTask(null);
+
+		expect(result.itemsProcessed).toBe(1);
+		expect(searchService.searchForMovie).toHaveBeenCalledWith('movie-inherit', ['en'], {
+			requireHearingImpaired: false
+		});
+
+		// The resolved profile must NOT be persisted as an item override.
+		const [row] = testDb.db.select().from(movies).all();
+		expect(row.languageProfileId).toBeNull();
 	});
 });
 

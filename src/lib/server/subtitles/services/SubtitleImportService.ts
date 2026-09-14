@@ -136,35 +136,20 @@ async function searchForMovie(
 		return result;
 	}
 
-	let profileId = movie.languageProfileId ?? null;
-	if (!profileId) {
-		const defaultProfile = await profileService.getDefaultProfile();
-		if (defaultProfile) {
-			profileId = defaultProfile.id;
-			await db.update(movies).set({ languageProfileId: profileId }).where(eq(movies.id, movieId));
-		} else {
-			logger.debug(
-				{
-					movieId,
-					title: movie.title
-				},
-				'[SubtitleImportService] Movie has subtitles enabled but no profile'
-			);
-			return result;
-		}
-	}
-
-	const profile = await profileService.getProfile(profileId);
-	if (!profile) {
-		logger.warn(
+	// Effective profile (item override → library → instance default), resolved
+	// read-only — never persisted back onto the item.
+	const effective = await profileService.getEffectiveProfileForMovie(movieId);
+	if (!effective) {
+		logger.debug(
 			{
 				movieId,
-				profileId
+				title: movie.title
 			},
-			'[SubtitleImportService] Language profile not found'
+			'[SubtitleImportService] Movie has subtitles enabled but no effective profile'
 		);
 		return result;
 	}
+	const profile = effective.profile;
 
 	const languages = profileLanguages(profile);
 	if (languages.length === 0) {
@@ -335,40 +320,21 @@ async function searchForEpisode(
 		return result;
 	}
 
-	let profileId = seriesData.languageProfileId ?? null;
-	if (!profileId) {
-		const defaultProfile = await profileService.getDefaultProfile();
-		if (defaultProfile) {
-			profileId = defaultProfile.id;
-			await db
-				.update(series)
-				.set({ languageProfileId: profileId })
-				.where(eq(series.id, seriesData.id));
-		} else {
-			logger.debug(
-				{
-					episodeId,
-					seriesId: seriesData.id,
-					seriesTitle: seriesData.title
-				},
-				'[SubtitleImportService] Series has subtitles enabled but no profile'
-			);
-			return result;
-		}
-	}
-
-	const profile = await profileService.getProfile(profileId);
-	if (!profile) {
-		logger.warn(
+	// Effective profile (series override → library → instance default), resolved
+	// read-only — never persisted back onto the series.
+	const effective = await profileService.getEffectiveProfileForSeries(seriesData.id);
+	if (!effective) {
+		logger.debug(
 			{
 				episodeId,
 				seriesId: seriesData.id,
-				profileId
+				seriesTitle: seriesData.title
 			},
-			'[SubtitleImportService] Language profile not found for series'
+			'[SubtitleImportService] Series has subtitles enabled but no effective profile'
 		);
 		return result;
 	}
+	const profile = effective.profile;
 
 	const languages = profileLanguages(profile);
 	if (languages.length === 0) {

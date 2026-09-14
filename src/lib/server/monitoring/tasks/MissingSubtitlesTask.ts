@@ -279,26 +279,12 @@ async function searchMissingMovieSubtitles(
 
 		await Promise.all(
 			batch.map(async (movie, batchIndex) => {
-				const isMonitored = await isMovieMonitored({ movie });
-				if (!isMonitored) {
-					return;
-				}
+			const isMonitored = await isMovieMonitored({ movie });
+			if (!isMonitored) {
+				return;
+			}
 
-				let profileId = movie.languageProfileId ?? null;
-				if (!profileId) {
-					const defaultProfile = await profileService.getDefaultProfile();
-					if (defaultProfile) {
-						profileId = defaultProfile.id;
-						await db
-							.update(movies)
-							.set({ languageProfileId: profileId })
-							.where(eq(movies.id, movie.id));
-					} else {
-						return;
-					}
-				}
-
-				// Stagger searches within batch
+			// Stagger searches within batch
 				if (batchIndex > 0) {
 					await sleep(SEARCH_DELAY_MS * batchIndex);
 				}
@@ -316,9 +302,11 @@ async function searchMissingMovieSubtitles(
 						return;
 					}
 
-					// Get profile for minimum score
-					const profile = await profileService.getProfile(profileId);
-					if (!profile) return;
+					// Effective profile (item override → library → instance default),
+					// resolved read-only — never persisted back onto the item.
+					const effective = await profileService.getEffectiveProfileForMovie(movie.id);
+					if (!effective) return;
+					const profile = effective.profile;
 
 					const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
 
@@ -495,21 +483,12 @@ async function searchMissingEpisodeSubtitles(
 			break;
 		}
 
-		let profileId = show.languageProfileId ?? null;
-		if (!profileId) {
-			const defaultProfile = await profileService.getDefaultProfile();
-			if (defaultProfile) {
-				profileId = defaultProfile.id;
-				await db.update(series).set({ languageProfileId: profileId }).where(eq(series.id, show.id));
-			} else {
-				continue;
-			}
-		}
-
 		try {
-			// Get profile for minimum score
-			const profile = await profileService.getProfile(profileId);
-			if (!profile) continue;
+			// Effective profile (item override → library → instance default),
+			// resolved read-only — never persisted back onto the series.
+			const effective = await profileService.getEffectiveProfileForSeries(show.id);
+			if (!effective) continue;
+			const profile = effective.profile;
 
 			const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
 

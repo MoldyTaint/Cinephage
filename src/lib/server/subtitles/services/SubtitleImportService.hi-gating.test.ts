@@ -28,6 +28,8 @@ const { searchService, downloadService, profileService } = vi.hoisted(() => {
 	const profileService = {
 		getDefaultProfile: vi.fn().mockResolvedValue(profile),
 		getProfile: vi.fn().mockResolvedValue(profile),
+		getEffectiveProfileForMovie: vi.fn().mockResolvedValue({ profile, source: 'movie' }),
+		getEffectiveProfileForSeries: vi.fn().mockResolvedValue({ profile, source: 'series' }),
 		getMovieSubtitleStatus: vi.fn().mockResolvedValue({ satisfied: false, missing: [], existing: [] }),
 		getEpisodeSubtitleStatus: vi.fn().mockResolvedValue({ satisfied: false, missing: [], existing: [] })
 	};
