@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
 	audioPreferenceSchema,
+	episodeUpdateSchema,
 	languageProfileV2CreateSchema,
 	languageProfileV2UpdateSchema,
-	subtitleRequirementSchema
+	movieUpdateSchema,
+	seriesUpdateSchema,
+	subtitleRequirementSchema,
+	subtitleRequirementsOverrideSchema
 } from './schemas.js';
 
 describe('subtitleRequirementSchema', () => {
@@ -74,6 +78,66 @@ describe('languageProfileV2UpdateSchema', () => {
 	it('accepts partial updates', () => {
 		expect(languageProfileV2UpdateSchema.parse({ minimumScore: 50 })).toMatchObject({
 			minimumScore: 50
+		});
+	});
+});
+
+describe('subtitleRequirementsOverrideSchema', () => {
+	it('canonicalizes tags and applies requirement defaults', () => {
+		expect(subtitleRequirementsOverrideSchema.parse([{ tag: 'FRE' }])).toEqual([
+			{ tag: 'fr', variant: 'regular', accessibility: 'any' }
+		]);
+	});
+
+	it('rejects an empty override (use the wants-subtitles gate instead)', () => {
+		expect(() => subtitleRequirementsOverrideSchema.parse([])).toThrow();
+	});
+
+	it('rejects more than 10 requirements', () => {
+		const requirements = Array.from({ length: 11 }, (_, i) => ({
+			tag: ['en', 'fr', 'de', 'ja', 'es', 'it', 'pt', 'ru', 'ko', 'zh', 'nl'][i]
+		}));
+		expect(() => subtitleRequirementsOverrideSchema.parse(requirements)).toThrow();
+	});
+
+	it('rejects duplicate requirement tuples', () => {
+		expect(() =>
+			subtitleRequirementsOverrideSchema.parse([{ tag: 'en' }, { tag: 'eng' }])
+		).toThrow();
+	});
+
+	it('rejects unknown language codes', () => {
+		expect(() => subtitleRequirementsOverrideSchema.parse([{ tag: 'qq' }])).toThrow();
+	});
+});
+
+describe('per-item override fields in update schemas', () => {
+	it('episode: accepts an override and null to clear', () => {
+		expect(
+			episodeUpdateSchema.parse({ subtitleRequirementsOverride: [{ tag: 'ja' }] })
+		).toMatchObject({ subtitleRequirementsOverride: [{ tag: 'ja', variant: 'regular', accessibility: 'any' }] });
+		expect(episodeUpdateSchema.parse({ subtitleRequirementsOverride: null })).toMatchObject({
+			subtitleRequirementsOverride: null
+		});
+	});
+
+	it('episode: rejects an empty override list', () => {
+		expect(() =>
+			episodeUpdateSchema.parse({ subtitleRequirementsOverride: [] })
+		).toThrow();
+	});
+
+	it('episode: still requires at least one field', () => {
+		expect(() => episodeUpdateSchema.parse({})).toThrow();
+	});
+
+	it('movie and series accept nullable overrides', () => {
+		const payload = { subtitleRequirementsOverride: [{ tag: 'de', variant: 'both' }] };
+		expect(movieUpdateSchema.parse(payload)).toMatchObject({
+			subtitleRequirementsOverride: [{ tag: 'de', variant: 'both', accessibility: 'any' }]
+		});
+		expect(seriesUpdateSchema.parse({ subtitleRequirementsOverride: null })).toMatchObject({
+			subtitleRequirementsOverride: null
 		});
 	});
 });

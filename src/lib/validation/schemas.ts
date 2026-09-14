@@ -949,6 +949,31 @@ export const languageProfileV2UpdateSchema = languageProfileV2BaseSchema.partial
 export type LanguageProfileV2Create = z.infer<typeof languageProfileV2CreateSchema>;
 export type LanguageProfileV2Update = z.infer<typeof languageProfileV2UpdateSchema>;
 
+/**
+ * Per-item subtitle requirement override (movies, series, episodes).
+ *
+ * Replaces ONLY the requirement list of the effective profile — audio,
+ * scoring, and upgrade policy still come from the profile chain. An explicit
+ * list means "acquire exactly these": empty arrays are rejected (turn the
+ * wants-subtitles gate off instead) and duplicates are rejected (identity is
+ * the tag|variant|accessibility tuple).
+ */
+export const subtitleRequirementsOverrideSchema = z
+	.array(subtitleRequirementSchema)
+	.min(1, 'At least one subtitle language is required')
+	.max(10, 'At most 10 subtitle languages are allowed')
+	.refine(
+		(requirements) => {
+			const keys = requirements.map(
+				(requirement) => `${requirement.tag}|${requirement.variant}|${requirement.accessibility}`
+			);
+			return new Set(keys).size === keys.length;
+		},
+		{ message: 'Duplicate subtitle requirements are not allowed', path: ['subtitles'] }
+	);
+
+export type SubtitleRequirementsOverride = z.infer<typeof subtitleRequirementsOverrideSchema>;
+
 /** Canonical BCP-47 metadata locale (canonicalized via Intl). */
 const languageMetadataLocaleSchema = z
 	.string()
@@ -1760,11 +1785,18 @@ export const libraryStatusSchema = z.object({
 export const episodeUpdateSchema = z
 	.object({
 		monitored: z.boolean().optional(),
-		wantsSubtitlesOverride: z.union([z.boolean(), z.null()]).optional()
+		wantsSubtitlesOverride: z.union([z.boolean(), z.null()]).optional(),
+		subtitleRequirementsOverride: subtitleRequirementsOverrideSchema.nullable().optional()
 	})
-	.refine((data) => data.monitored !== undefined || data.wantsSubtitlesOverride !== undefined, {
-		message: 'No valid fields to update'
-	});
+	.refine(
+		(data) =>
+			data.monitored !== undefined ||
+			data.wantsSubtitlesOverride !== undefined ||
+			data.subtitleRequirementsOverride !== undefined,
+		{
+			message: 'No valid fields to update'
+		}
+	);
 
 /**
  * Per-item TMDB metadata language override mode:
@@ -1902,6 +1934,8 @@ export const movieUpdateSchema = z
 		moveFilesOnRootChange: z.boolean().optional(),
 		wantsSubtitles: z.boolean().optional(),
 		languageProfileId: z.string().nullable().optional(),
+		/** Per-item subtitle requirement override; null clears (inherit). */
+		subtitleRequirementsOverride: subtitleRequirementsOverrideSchema.nullable().optional(),
 		delayProfileId: z.string().nullable().optional(),
 		/** Edit-only: opt-in removal of files for resolutions no longer in
 		 *  desiredQualities. Server recomputes the redundant set authoritatively. */
@@ -1938,6 +1972,8 @@ export const seriesUpdateSchema = z
 		rootFolderId: z.string().optional(),
 		wantsSubtitles: z.boolean().optional(),
 		languageProfileId: z.string().nullable().optional(),
+		/** Per-item subtitle requirement override; null clears (inherit). */
+		subtitleRequirementsOverride: subtitleRequirementsOverrideSchema.nullable().optional(),
 		delayProfileId: z.string().nullable().optional(),
 		/** Relative folder name within the root folder. Used to correct a drifted DB path. */
 		folderPath: z
