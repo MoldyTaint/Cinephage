@@ -1242,7 +1242,7 @@ describe('countProfileUsage (delete impact preview)', () => {
 			id: 'sl-usage',
 			name: 'List',
 			mediaType: 'movie',
-			filters: '{}',
+			filters: {},
 			languageProfileId: PROFILE_OVERRIDE
 		});
 		await testDb.db
