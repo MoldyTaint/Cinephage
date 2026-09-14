@@ -2,7 +2,8 @@
  * Language Class - Based on Bazarr/Subliminal architecture
  *
  * Rich language representation with forced/HI as first-class attributes.
- * Supports language equivalence and per-provider converters.
+ * Language conversion to provider-specific codes lives inside each provider
+ * adapter (see src/lib/server/subtitles/providers/*).
  */
 
 import {
@@ -202,177 +203,12 @@ export interface LanguageOptions {
 }
 
 /**
- * Language equivalence system - treat certain language pairs as equal
- *
- * Based on Bazarr's _LanguageEquals pattern
- */
-export class LanguageEquivalence {
-	private equivalences: Map<string, Set<string>> = new Map();
-
-	constructor(pairs: LanguageEquivalencePair[] = []) {
-		for (const pair of pairs) {
-			this.addEquivalence(pair.from, pair.to);
-		}
-	}
-
-	/**
-	 * Add an equivalence between two language codes
-	 */
-	addEquivalence(from: string, to: string): void {
-		const fromNorm = from.toLowerCase();
-		const toNorm = to.toLowerCase();
-
-		if (!this.equivalences.has(fromNorm)) {
-			this.equivalences.set(fromNorm, new Set());
-		}
-		this.equivalences.get(fromNorm)!.add(toNorm);
-	}
-
-	/**
-	 * Get all equivalent languages for a given code
-	 */
-	getEquivalent(code: string): string[] {
-		const normalized = code.toLowerCase();
-		const equivalents = this.equivalences.get(normalized);
-		if (equivalents) {
-			return [normalized, ...equivalents];
-		}
-		return [normalized];
-	}
-
-	/**
-	 * Check if two language codes are equivalent
-	 */
-	areEquivalent(code1: string, code2: string): boolean {
-		const norm1 = code1.toLowerCase();
-		const norm2 = code2.toLowerCase();
-
-		if (norm1 === norm2) return true;
-
-		// Check if code2 is equivalent to code1
-		const equivs1 = this.equivalences.get(norm1);
-		if (equivs1?.has(norm2)) return true;
-
-		// Check reverse
-		const equivs2 = this.equivalences.get(norm2);
-		if (equivs2?.has(norm1)) return true;
-
-		return false;
-	}
-
-	/**
-	 * Expand a set of languages to include all equivalents
-	 */
-	expandLanguages(languages: Language[]): Language[] {
-		const result: Language[] = [...languages];
-		const seenCodes = new Set(languages.map((l) => l.code));
-
-		for (const lang of languages) {
-			const equivalents = this.getEquivalent(lang.code);
-			for (const equiv of equivalents) {
-				if (!seenCodes.has(equiv)) {
-					seenCodes.add(equiv);
-					result.push(
-						lang.rebuild({ country: equiv.includes('-') ? equiv.split('-')[1] : undefined })
-					);
-				}
-			}
-		}
-
-		return result;
-	}
-}
-
-/**
  * Language equivalence pair
+ *
+ * Shape used by the subtitle pool to treat certain language pairs as equal
+ * (e.g. `pt-br` ↔ `pt`).
  */
 export interface LanguageEquivalencePair {
 	from: string;
 	to: string;
-}
-
-/**
- * Default language equivalences (common mappings)
- */
-export const DEFAULT_LANGUAGE_EQUIVALENCES: LanguageEquivalencePair[] = [
-	// Portuguese variants
-	{ from: 'pt-br', to: 'pt' },
-	{ from: 'pt', to: 'pt-br' },
-	// Spanish variants
-	{ from: 'es-la', to: 'es' },
-	{ from: 'es', to: 'es-la' },
-	// Chinese variants
-	{ from: 'zh-cn', to: 'zh' },
-	{ from: 'zh-tw', to: 'zh' },
-	// French variants
-	{ from: 'fr-ca', to: 'fr' },
-	{ from: 'fr', to: 'fr-ca' }
-];
-
-/**
- * Provider-specific language converter
- *
- * Maps internal language codes to provider-specific codes
- */
-export class LanguageConverter {
-	private readonly toProvider: Map<string, string> = new Map();
-	private readonly fromProvider: Map<string, string> = new Map();
-
-	constructor(mappings: LanguageMapping[]) {
-		for (const mapping of mappings) {
-			this.toProvider.set(mapping.internal.toLowerCase(), mapping.provider);
-			this.fromProvider.set(mapping.provider.toLowerCase(), mapping.internal);
-		}
-	}
-
-	/**
-	 * Convert internal code to provider code
-	 */
-	convertTo(internalCode: string): string {
-		return this.toProvider.get(internalCode.toLowerCase()) ?? internalCode;
-	}
-
-	/**
-	 * Convert provider code to internal code
-	 */
-	convertFrom(providerCode: string): string {
-		return this.fromProvider.get(providerCode.toLowerCase()) ?? providerCode;
-	}
-}
-
-/**
- * Language mapping for provider conversion
- */
-export interface LanguageMapping {
-	internal: string;
-	provider: string;
-}
-
-/**
- * Pre-built converters for common providers
- */
-export const PROVIDER_LANGUAGE_CONVERTERS = {
-	opensubtitles: new LanguageConverter([
-		{ internal: 'pt-br', provider: 'pob' },
-		{ internal: 'zh-cn', provider: 'zhs' },
-		{ internal: 'zh-tw', provider: 'zht' }
-	]),
-	addic7ed: new LanguageConverter([
-		{ internal: 'pt-br', provider: 'Portuguese (Brazilian)' },
-		{ internal: 'es-la', provider: 'Spanish (Latin America)' }
-	])
-};
-
-/**
- * Helper: Create Language from legacy LanguageCode string
- */
-export function languageFromCode(code: LanguageCode, forced = false, hi = false): Language {
-	return Language.parse(code).rebuild({ forced, hi });
-}
-
-/**
- * Helper: Convert Language to legacy LanguageCode string
- */
-export function languageToCode(language: Language): LanguageCode {
-	return language.code;
 }

@@ -34,17 +34,6 @@ describe('GenericSubtitle.toSearchResult', () => {
 		expect(result.pageLink).toBe('https://provider.test/page/1');
 	});
 
-	it('survives a provider stashing _downloadUrl (BetaSeries legacy field)', () => {
-		const subtitle = makeSubtitle({ pageLink: 'https://provider.test/page/1' });
-		(subtitle as unknown as { _downloadUrl: string })._downloadUrl =
-			'https://provider.test/direct/1';
-
-		const result = subtitle.toSearchResult();
-
-		expect(result.downloadUrl).toBe('https://provider.test/direct/1');
-		expect(result.pageLink).toBe('https://provider.test/page/1');
-	});
-
 	it('includes the fields the manual download path needs', () => {
 		const result = makeSubtitle({
 			releaseInfo: 'Movie.2024.1080p',

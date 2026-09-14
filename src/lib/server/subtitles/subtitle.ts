@@ -327,11 +327,6 @@ export abstract class Subtitle {
 	 * Convert to legacy SubtitleSearchResult format (backwards compatibility)
 	 */
 	toSearchResult(): LegacySubtitleSearchResult {
-		// Providers historically stashed a direct download URL on `_downloadUrl`
-		// (BetaSeries). Prefer the explicit field, then that legacy stash, then
-		// fall back to `pageLink` so the manual download path always receives a
-		// usable URL.
-		const stashedDownloadUrl = (this as unknown as { _downloadUrl?: string })._downloadUrl;
 		return {
 			providerId: this.providerName,
 			providerName: this.providerName,
@@ -345,7 +340,7 @@ export abstract class Subtitle {
 			format: this.format,
 			isHashMatch: this.isHashMatch || this.matches.has('hash'),
 			matchScore: 0, // Will be computed by scoring service
-			downloadUrl: this.downloadUrl ?? stashedDownloadUrl ?? this.pageLink,
+			downloadUrl: this.downloadUrl ?? this.pageLink,
 			pageLink: this.pageLink,
 			downloadCount: this.downloadCount,
 			rating: this.rating,

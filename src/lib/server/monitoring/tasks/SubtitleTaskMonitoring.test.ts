@@ -39,8 +39,8 @@ const { searchService, downloadService, providerManager, profileService, missing
 			getEnabledProviders: vi.fn().mockResolvedValue([{ name: 'TestProvider' }])
 		};
 
-		// v2 profile shape (LanguageProfileRow) — the tasks bridge it to the
-		// legacy preference list through the real toLegacyPreferences adapter.
+		// v2 profile shape (LanguageProfileRow) — the tasks consume the
+		// subtitles requirements directly (no legacy adapter anymore).
 		const defaultProfile = {
 			id: 'profile-1',
 			name: 'Default',

@@ -3,9 +3,9 @@ import type { RequestHandler } from './$types';
 import { getSubtitleSearchService } from '$lib/server/subtitles/services/SubtitleSearchService';
 import {
 	LanguageProfileService,
-	toLegacyPreferences,
 	type LanguageProfile
 } from '$lib/server/subtitles/services/LanguageProfileService';
+import { normalizeLanguageCode } from '$lib/shared/languages';
 import {
 	selectBestCandidate,
 	type CandidateRejectionReason,
@@ -23,6 +23,23 @@ interface RejectionSummary {
 	effectiveMinimumScore?: number;
 	bestRejectedScore?: number;
 	bestRejectedReason?: CandidateRejectionReason;
+}
+
+/**
+ * Search languages for the effective profile: the canonicalized tags of its
+ * subtitle requirements, deduped in requirement order (v2 shape — there is no
+ * v1 preference list anymore).
+ */
+function profileSearchLanguages(profile: LanguageProfile): string[] {
+	const seen = new Set<string>();
+	const languages: string[] = [];
+	for (const requirement of profile.subtitles) {
+		const code = normalizeLanguageCode(requirement.tag);
+		if (code === '' || seen.has(code)) continue;
+		seen.add(code);
+		languages.push(code);
+	}
+	return languages;
 }
 
 /**
@@ -89,7 +106,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const profile = await profileService.getProfileForMovie(validated.movieId);
 		let languages = validated.languages || [];
 		if (languages.length === 0 && profile) {
-			languages = toLegacyPreferences(profile).languages.map((l) => l.code);
+			languages = profileSearchLanguages(profile);
 		}
 		if (languages.length === 0) {
 			languages = ['en']; // Default to English
@@ -131,7 +148,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const profile = await profileService.getProfileForSeries(seriesData.id);
 		let languages = validated.languages || [];
 		if (languages.length === 0 && profile) {
-			languages = toLegacyPreferences(profile).languages.map((l) => l.code);
+			languages = profileSearchLanguages(profile);
 		}
 		if (languages.length === 0) {
 			languages = ['en']; // Default to English

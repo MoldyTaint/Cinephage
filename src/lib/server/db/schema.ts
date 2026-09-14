@@ -687,15 +687,12 @@ export const movies = sqliteTable(
 		hasFile: integer('has_file', { mode: 'boolean' }).default(false),
 		// Whether to search for subtitles for this movie
 		wantsSubtitles: integer('wants_subtitles', { mode: 'boolean' }).default(true),
-		// Last time this movie was searched for releases (ISO timestamp)
+		// Last time this movie was searched for releases (ISO timestamp).
+		// Still actively read/written by the release-search cooldown
+		// (CooldownStage / SearchCooldownSpecification) — intentionally NOT
+		// dropped by migration 142, unlike the per-item adaptive subtitle
+		// columns that used to sit beside it.
 		lastSearchTime: text('last_search_time'),
-		// DEPRECATED (migration 138): superseded by per-requirement state in
-		// subtitle_search_state. Retained for now; scheduled for removal in Phase 7.
-		// Adaptive subtitle searching: consecutive failed subtitle search count
-		failedSubtitleAttempts: integer('failed_subtitle_attempts').default(0),
-		// DEPRECATED (migration 138): superseded by subtitle_search_state.first_search_at.
-		// Adaptive subtitle searching: when subtitle searching first began (ISO timestamp)
-		firstSubtitleSearchAt: text('first_subtitle_search_at'),
 		tmdbCollectionId: integer('tmdb_collection_id'),
 		collectionName: text('collection_name'),
 		releaseDate: text('release_date'),
@@ -915,15 +912,12 @@ export const episodes = sqliteTable(
 		hasFile: integer('has_file', { mode: 'boolean' }).default(false),
 		// Override series-level subtitle preference (null = inherit from series)
 		wantsSubtitlesOverride: integer('wants_subtitles_override', { mode: 'boolean' }),
-		// Last time this episode was searched for releases (ISO timestamp)
-		lastSearchTime: text('last_search_time'),
-		// DEPRECATED (migration 138): superseded by per-requirement state in
-		// subtitle_search_state. Retained for now; scheduled for removal in Phase 7.
-		// Adaptive subtitle searching: consecutive failed subtitle search count
-		failedSubtitleAttempts: integer('failed_subtitle_attempts').default(0),
-		// DEPRECATED (migration 138): superseded by subtitle_search_state.first_search_at.
-		// Adaptive subtitle searching: when subtitle searching first began (ISO timestamp)
-		firstSubtitleSearchAt: text('first_subtitle_search_at')
+		// Last time this episode was searched for releases (ISO timestamp).
+		// Still actively read/written by the release-search cooldown
+		// (CooldownStage / SearchCooldownSpecification) — intentionally NOT
+		// dropped by migration 142, unlike the per-item adaptive subtitle
+		// columns that used to sit beside it.
+		lastSearchTime: text('last_search_time')
 	},
 	(table) => [
 		index('idx_episodes_series_season').on(table.seriesId, table.seasonNumber),
@@ -1938,7 +1932,7 @@ export const subtitles = sqliteTable(
  * Subtitle Search State - per-requirement adaptive backoff (migration 138).
  *
  * Replaces the old per-media-item columns (movies/episodes.failed_subtitle_attempts,
- * first_subtitle_search_at), which are deprecated and slated for removal in Phase 7.
+ * first_subtitle_search_at), which were dropped by migration 142.
  * `requirement_key` is the stable `tag|variant|accessibility` tuple so one failing
  * requirement no longer gates the others for the same owner.
  */

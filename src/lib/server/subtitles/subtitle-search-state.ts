@@ -2,8 +2,9 @@
  * Per-requirement subtitle search backoff.
  *
  * Replaces the old per-media-item adaptive state (movies/episodes
- * `failed_subtitle_attempts`, `first_subtitle_search_at`, `last_search_time`)
- * with one row per `(owner, requirement)` in `subtitle_search_state`. Granularity
+ * `failed_subtitle_attempts`, `first_subtitle_search_at` — dropped by migration
+ * 142; `last_search_time` remains for release-search cooldowns) with one row
+ * per `(owner, requirement)` in `subtitle_search_state`. Granularity
  * is the point: a failing `en|forced|any` requirement no longer gates the
  * `en|regular|any` requirement for the same movie/episode, and a success on one
  * requirement does not reset the backoff of the others.

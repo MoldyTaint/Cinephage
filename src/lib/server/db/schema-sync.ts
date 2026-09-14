@@ -140,11 +140,10 @@ import {
  * Version 133: Add import_failed and backfill canonical info hashes on download queue rows
  * Version 134: Store canonical info hashes on download history rows
  * Version 135: Deduplicate active download queue rows by client and info hash
- * Version 142: Allow AniList/MAL title variants in alternate_titles (source CHECK extended, table rebuilt)
- * Version 143: Media-server stats language normalization - raw language provenance columns + canonicalized arrays on media_server_synced_items; epg_programs title_i18n/description_i18n/category_i18n JSON columns
  * Version 144: Add language_settings.prefer_original_title instance default (boolean, default 0)
+ * Version 145: Drop deprecated per-item adaptive subtitle columns (movies/episodes failed_subtitle_attempts, first_subtitle_search_at)
  */
-export const CURRENT_SCHEMA_VERSION = 144;
+export const CURRENT_SCHEMA_VERSION = 145;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -574,8 +573,6 @@ const TABLE_DEFINITIONS: string[] = [
 		"has_file" integer DEFAULT false,
 		"wants_subtitles" integer DEFAULT true,
 		"last_search_time" text,
-		"failed_subtitle_attempts" integer DEFAULT 0,
-		"first_subtitle_search_at" text,
 		"tmdb_collection_id" integer,
 		"collection_name" text,
 		"release_date" text,

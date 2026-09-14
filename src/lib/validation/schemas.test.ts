@@ -8,7 +8,6 @@ import {
 	nntpServerUpdateSchema,
 	libraryUpdateSchema,
 	rootFolderUpdateSchema,
-	languageProfileUpdateSchema,
 	mediaBrowserServerUpdateSchema,
 	mediaBrowserServerTestSchema,
 	movieUpdateSchema,
@@ -141,7 +140,6 @@ describe('update schemas do not backfill defaults', () => {
 		['nntpServerUpdateSchema', nntpServerUpdateSchema, { enabled: false }],
 		['libraryUpdateSchema', libraryUpdateSchema, { isDefault: false }],
 		['rootFolderUpdateSchema', rootFolderUpdateSchema, { isDefault: false }],
-		['languageProfileUpdateSchema', languageProfileUpdateSchema, { isDefault: false }],
 		['mediaBrowserServerUpdateSchema', mediaBrowserServerUpdateSchema, { enabled: false }]
 	])('%s does not synthesize defaults for absent keys', (_name, schema, input) => {
 		expectOnlyProvidedKeys(schema as Parsable, input as Record<string, unknown>);

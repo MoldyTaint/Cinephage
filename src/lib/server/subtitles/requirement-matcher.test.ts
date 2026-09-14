@@ -7,8 +7,6 @@ import type {
 import {
 	languageSatisfies,
 	matchesRequirement,
-	requirementSatisfied,
-	unsatisfiedRequirements,
 	type SubtitleLike
 } from './requirement-matcher.js';
 
@@ -180,37 +178,3 @@ describe('null/undefined flags are treated as false', () => {
 	});
 });
 
-describe('requirementSatisfied / unsatisfiedRequirements', () => {
-	it('is false for an empty subtitle list', () => {
-		expect(requirementSatisfied(req('en', 'regular', 'any'), [])).toBe(false);
-	});
-
-	it('accepts when any subtitle in the list satisfies the requirement', () => {
-		expect(
-			requirementSatisfied(req('fr', 'regular', 'any'), [sub('en'), sub('fr'), sub('de')])
-		).toBe(true);
-	});
-
-	it('preserves requirement order and drops satisfied entries', () => {
-		const requirements = [
-			req('en', 'regular', 'any'),
-			req('fr', 'regular', 'any'),
-			req('de', 'regular', 'any')
-		];
-		expect(unsatisfiedRequirements(requirements, [sub('en')])).toEqual([
-			req('fr', 'regular', 'any'),
-			req('de', 'regular', 'any')
-		]);
-	});
-
-	it('returns all requirements in order when nothing matches', () => {
-		const requirements = [
-			req('pt-BR', 'forced', 'require-hi'),
-			req('en', 'regular', 'any'),
-			req('zh-Hant', 'both', 'exclude-hi')
-		];
-		expect(unsatisfiedRequirements(requirements, [sub('pt'), sub('zh-Hans'), sub('und')])).toEqual(
-			requirements
-		);
-	});
-});

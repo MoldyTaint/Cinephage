@@ -98,19 +98,3 @@ export function matchesRequirement(
 		accessibilitySatisfies(isHearingImpaired, requirement.accessibility)
 	);
 }
-
-/** True when any subtitle in the list satisfies the requirement. */
-export function requirementSatisfied(
-	requirement: SubtitleRequirement,
-	subtitles: SubtitleLike[]
-): boolean {
-	return subtitles.some((subtitle) => matchesRequirement(subtitle, requirement));
-}
-
-/** Requirements not satisfied by any of the given subtitles, input order preserved. */
-export function unsatisfiedRequirements(
-	requirements: SubtitleRequirement[],
-	subtitles: SubtitleLike[]
-): SubtitleRequirement[] {
-	return requirements.filter((requirement) => !requirementSatisfied(requirement, subtitles));
-}

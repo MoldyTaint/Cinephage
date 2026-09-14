@@ -29,7 +29,6 @@ vi.mock('$lib/server/db', () => ({
 const {
 	LanguageProfileService,
 	getLanguageProfileService,
-	toLegacyPreferences,
 	parseAudioPreference,
 	parseSubtitleRequirements
 } = await import('./LanguageProfileService');
@@ -262,104 +261,6 @@ describe('LanguageProfileService', () => {
 			await expect(profileService.updateProfile(created.id, { cutoffRank: 3 })).rejects.toThrow(
 				'Cutoff rank must reference a subtitle requirement'
 			);
-		});
-	});
-
-	describe('toLegacyPreferences (v2 → v1 status adapter)', () => {
-		it('should map a regular requirement and disable the cutoff when cutoffRank is null', () => {
-			const legacy = toLegacyPreferences(makeProfile());
-
-			expect(legacy.languages).toEqual([
-				{ code: 'en', forced: false, hearingImpaired: false, excludeHi: false, isCutoff: false }
-			]);
-			expect(legacy.cutoffIndex).toBe(-1);
-		});
-
-		it('should map a forced requirement to forced: true', () => {
-			const legacy = toLegacyPreferences(
-				makeProfile({ subtitles: [{ tag: 'en', variant: 'forced', accessibility: 'any' }] })
-			);
-
-			expect(legacy.languages).toHaveLength(1);
-			expect(legacy.languages[0].forced).toBe(true);
-		});
-
-		it('should expand a both requirement into a regular and a forced entry', () => {
-			const legacy = toLegacyPreferences(
-				makeProfile({
-					subtitles: [{ tag: 'es', variant: 'both', accessibility: 'exclude-hi' }]
-				})
-			);
-
-			expect(legacy.languages).toEqual([
-				{ code: 'es', forced: false, hearingImpaired: false, excludeHi: true, isCutoff: false },
-				{ code: 'es', forced: true, hearingImpaired: false, excludeHi: true, isCutoff: false }
-			]);
-		});
-
-		it('should map accessibility policies to legacy HI flags', () => {
-			const legacy = toLegacyPreferences(
-				makeProfile({
-					subtitles: [
-						{ tag: 'en', variant: 'regular', accessibility: 'require-hi' },
-						{ tag: 'es', variant: 'regular', accessibility: 'exclude-hi' },
-						{ tag: 'fr', variant: 'regular', accessibility: 'prefer-hi' },
-						{ tag: 'de', variant: 'regular', accessibility: 'any' }
-					]
-				})
-			);
-
-			expect(legacy.languages[0].hearingImpaired).toBe(true);
-			expect(legacy.languages[0].excludeHi).toBe(false);
-			expect(legacy.languages[1].excludeHi).toBe(true);
-			expect(legacy.languages[1].hearingImpaired).toBe(false);
-			expect(legacy.languages[2].hearingImpaired).toBe(false);
-			expect(legacy.languages[2].excludeHi).toBe(false);
-			expect(legacy.languages[3].hearingImpaired).toBe(false);
-			expect(legacy.languages[3].excludeHi).toBe(false);
-		});
-
-		it('should normalize language tags to canonical codes', () => {
-			const legacy = toLegacyPreferences(
-				makeProfile({
-					subtitles: [
-						{ tag: 'ENG', variant: 'regular', accessibility: 'any' },
-						{ tag: 'zh-Hans', variant: 'regular', accessibility: 'any' }
-					]
-				})
-			);
-
-			expect(legacy.languages[0].code).toBe('en');
-			expect(legacy.languages[1].code).toBe('zh-Hans');
-		});
-
-		it('should mark the cutoff requirement and point cutoffIndex at its last expanded entry', () => {
-			// 'both' at rank 0 expands to two entries; the cutoff must require both.
-			const legacy = toLegacyPreferences(
-				makeProfile({
-					subtitles: [
-						{ tag: 'en', variant: 'both', accessibility: 'any' },
-						{ tag: 'es', variant: 'regular', accessibility: 'any' }
-					],
-					cutoffRank: 0
-				})
-			);
-
-			expect(legacy.languages.map((l) => l.isCutoff)).toEqual([false, true, false]);
-			expect(legacy.cutoffIndex).toBe(1);
-
-			const regularCutoff = toLegacyPreferences(
-				makeProfile({
-					subtitles: [
-						{ tag: 'en', variant: 'regular', accessibility: 'any' },
-						{ tag: 'es', variant: 'regular', accessibility: 'any' }
-					],
-					cutoffRank: 1
-				})
-			);
-			expect(regularCutoff.cutoffIndex).toBe(1);
-			expect(regularCutoff.languages[1].isCutoff).toBe(true);
-			expect(regularCutoff.languages[0].isCutoff).toBe(false);
 		});
 	});
 

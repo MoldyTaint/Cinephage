@@ -248,12 +248,9 @@ export class BetaseriesProvider extends BaseSubtitleProvider implements ISubtitl
 	 * Download a subtitle
 	 */
 	async download(result: SubtitleSearchResult): Promise<Buffer> {
-		// Prefer the explicit download URL carried on the search result, then the
-		// legacy stashed field (in-process providers), then the page link.
-		const downloadUrl =
-			result.downloadUrl ??
-			(result as unknown as { _downloadUrl?: string })._downloadUrl ??
-			result.pageLink;
+		// Prefer the explicit download URL carried on the search result, then
+		// the page link.
+		const downloadUrl = result.downloadUrl ?? result.pageLink;
 
 		if (!downloadUrl) {
 			throw new Error('No download URL available');

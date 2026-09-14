@@ -876,24 +876,6 @@ import {
 import { CAPTURED_LOG_LEVELS, CAPTURED_LOG_DOMAINS } from '$lib/logging/log-capture';
 
 /**
- * Schema for language preference in a profile.
- * Validates language codes against the centralized SUPPORTED_LANGUAGES list.
- */
-export const languagePreferenceSchema = z.object({
-	code: z
-		.string()
-		.min(2)
-		.max(10)
-		.refine((code) => isValidLanguageCode(code), {
-			message: 'Invalid language code. Please use a valid ISO 639-1 code (e.g., en, es, pt-br)'
-		}),
-	forced: z.boolean().default(false),
-	hearingImpaired: z.boolean().default(false),
-	excludeHi: z.boolean().default(false),
-	isCutoff: z.boolean().default(false)
-});
-
-/**
  * Schema for validating a language code
  */
 export const languageCodeSchema = z
@@ -903,23 +885,6 @@ export const languageCodeSchema = z
 	.refine((code) => isValidLanguageCode(code), {
 		message: 'Invalid language code'
 	});
-
-/**
- * Schema for creating a language profile.
- */
-export const languageProfileCreateSchema = z.object({
-	name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or less'),
-	languages: z.array(languagePreferenceSchema).min(1, 'At least one language is required'),
-	cutoffIndex: z.number().int().min(0).default(0),
-	upgradesAllowed: z.boolean().default(true),
-	minimumScore: z.number().int().min(0).max(360).default(60),
-	isDefault: z.boolean().default(false)
-});
-
-/**
- * Schema for updating a language profile.
- */
-export const languageProfileUpdateSchema = languageProfileCreateSchema.required().partial();
 
 /**
  * Canonical language tag input. Canonicalizes aliases before validation so
@@ -1189,9 +1154,6 @@ export type SubtitleProviderImplementation = z.infer<typeof subtitleProviderImpl
 export type SubtitleProviderCreate = z.infer<typeof subtitleProviderCreateSchema>;
 export type SubtitleProviderUpdate = z.infer<typeof subtitleProviderUpdateSchema>;
 export type SubtitleProviderTest = z.infer<typeof subtitleProviderTestSchema>;
-export type LanguagePreference = z.infer<typeof languagePreferenceSchema>;
-export type LanguageProfileCreate = z.infer<typeof languageProfileCreateSchema>;
-export type LanguageProfileUpdate = z.infer<typeof languageProfileUpdateSchema>;
 export type SubtitleSearchRequest = z.infer<typeof subtitleSearchSchema>;
 export type SubtitleDownloadRequest = z.infer<typeof subtitleDownloadSchema>;
 export type SubtitleSyncRequest = z.infer<typeof subtitleSyncSchema>;
