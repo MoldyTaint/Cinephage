@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { goto, beforeNavigate, afterNavigate } from '$app/navigation';
+	import { goto, beforeNavigate, afterNavigate, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { resolvePath } from '$lib/utils/routing';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -9,6 +9,7 @@
 	import LibraryDrawer from '$lib/components/library/LibraryDrawer.svelte';
 	import LibraryBulkActionBar from '$lib/components/library/LibraryBulkActionBar.svelte';
 	import BulkQualityProfileModal from '$lib/components/library/BulkQualityProfileModal.svelte';
+	import BulkLanguageProfileModal from '$lib/components/library/BulkLanguageProfileModal.svelte';
 	import BulkDeleteModal from '$lib/components/library/BulkDeleteModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import { MediaSearchModal } from '$lib/components/search';
@@ -242,6 +243,14 @@
 			bulkLoading = false;
 			currentBulkAction = null;
 		}
+	}
+
+	let isLanguageModalOpen = $state(false);
+
+	async function handleBulkLanguageApplied(updated: number) {
+		selectedMovies.clear();
+		toasts.success(m.toast_library_movies_qualityUpdatedCount({ count: updated }));
+		await invalidateAll();
 	}
 
 	async function handleBulkDelete(deleteFiles: boolean, removeFromLibrary: boolean) {
@@ -1036,6 +1045,7 @@
 	onMonitor={() => handleBulkMonitor(true)}
 	onUnmonitor={() => handleBulkMonitor(false)}
 	onChangeQuality={() => (isQualityModalOpen = true)}
+	onLanguage={() => (isLanguageModalOpen = true)}
 	onDelete={() => (isDeleteModalOpen = true)}
 	onClear={clearSelection}
 />
@@ -1049,6 +1059,15 @@
 	mediaType="movie"
 	onSave={handleBulkQualityChange}
 	onCancel={() => (isQualityModalOpen = false)}
+/>
+
+<!-- Bulk Language Profile Modal -->
+<BulkLanguageProfileModal
+	open={isLanguageModalOpen}
+	mediaType="movie"
+	selectedIds={[...selectedMovies]}
+	onClose={() => (isLanguageModalOpen = false)}
+	onApplied={handleBulkLanguageApplied}
 />
 
 <!-- Single Item Delete Modal -->
