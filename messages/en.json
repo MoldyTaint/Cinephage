@@ -4799,5 +4799,9 @@
 	"library_subtitleRequirements_missing": "Missing",
 	"library_subtitleRequirements_help": "These languages apply to this item only. Audio and quality policy still come from the language profile.",
 	"library_subtitleProfile_help": "Per-item subtitle languages are edited on the details page.",
-	"library_add_noDefaultProfileWarningLink": "Open language settings"
+	"library_add_noDefaultProfileWarningLink": "Open language settings",
+	"library_languageProfile_applyConfirmTitle": "Apply to existing items?",
+	"library_languageProfile_applyConfirmBody": "This library's default language profile changed. Assign it to all existing items in this library and clear their custom subtitle choices?",
+	"library_languageProfile_applyConfirmAction": "Apply to existing items",
+	"library_languageProfile_applySkip": "Keep items as they are"
 }

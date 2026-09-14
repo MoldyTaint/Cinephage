@@ -79,6 +79,10 @@
 		languageProfileId: ''
 	});
 	let librarySaving = $state(false);
+	let editingLibraryLanguageProfileId = '';
+	let showApplyConfirm = $state(false);
+	let pendingApplyProfileId: string | null = null;
+	let applyingToItems = $state(false);
 	let librarySaveError = $state<string | null>(null);
 	let availableProfiles = $state<ProfileRef[]>([]);
 	let availableLanguageProfiles = $state<ProfileRef[]>([]);
@@ -158,6 +162,7 @@
 					qualityProfileId: library.qualityProfileId ?? null,
 					languageProfileId: library.languageProfileId ?? ''
 				};
+				editingLibraryLanguageProfileId = libraryForm.languageProfileId;
 				librarySaveError = null;
 			}
 		}
@@ -182,12 +187,54 @@
 				toasts.success(m.settings_general_libraryUpdated());
 			}
 			await invalidateAll();
+
+			// Offer to apply the new library default to existing items when the
+			// profile assignment CHANGED (edit mode only).
+			const previous = editingLibraryLanguageProfileId;
+			const next = libraryForm.languageProfileId || '';
+			if (!isCreateMode && previous !== next) {
+				pendingApplyProfileId = next || null;
+				showApplyConfirm = true;
+				return; // keep the modal open until the user decides
+			}
 			onClose();
 		} catch (error) {
 			librarySaveError =
 				error instanceof Error ? error.message : m.settings_general_failedToSaveLibrary();
 		} finally {
 			librarySaving = false;
+		}
+	}
+
+	async function applyToExistingItems(): Promise<void> {
+		if (!libraryId || !pendingApplyProfileId) {
+			showApplyConfirm = false;
+			onClose();
+			return;
+		}
+		applyingToItems = true;
+		try {
+			const response = await fetch('/api/subtitles/language-profiles/bulk-assign', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					mediaType: libraryForm.mediaType === 'tv' ? 'series' : 'movie',
+					libraryId,
+					languageProfileId: pendingApplyProfileId || null,
+					clearOverrides: true
+				})
+			});
+			if (!response.ok) {
+				const body = (await response.json().catch(() => ({}))) as { error?: string };
+				throw new Error(body.error ?? 'Bulk assignment failed');
+			}
+			toasts.success(m.settings_general_libraryUpdated());
+			showApplyConfirm = false;
+			onClose();
+		} catch (error) {
+			toasts.error(error instanceof Error ? error.message : 'Bulk assignment failed');
+		} finally {
+			applyingToItems = false;
 		}
 	}
 </script>
@@ -370,4 +417,40 @@
 		saveLabel={m.settings_general_saveLibrary()}
 		saveDisabled={!libraryForm.name.trim()}
 	/>
+
+	{#if showApplyConfirm}
+		<div class="modal modal-open">
+			<div class="modal-box max-w-md">
+				<h3 class="text-lg font-bold">{m.library_languageProfile_applyConfirmTitle()}</h3>
+				<p class="mt-2 text-sm text-base-content/70">
+					{m.library_languageProfile_applyConfirmBody()}
+				</p>
+				<div class="modal-action">
+					<button
+						class="btn btn-ghost btn-sm"
+						onclick={() => {
+							showApplyConfirm = false;
+							onClose();
+						}}
+					>
+						{m.library_languageProfile_applySkip()}
+					</button>
+					<button class="btn btn-primary btn-sm" onclick={applyToExistingItems} disabled={applyingToItems}>
+						{#if applyingToItems}
+							<span class="loading loading-spinner loading-xs"></span>
+						{/if}
+						{m.library_languageProfile_applyConfirmAction()}
+					</button>
+				</div>
+			</div>
+			<button
+				class="modal-backdrop cursor-default"
+				aria-label="Close"
+				onclick={() => {
+					showApplyConfirm = false;
+					onClose();
+				}}
+			></button>
+		</div>
+	{/if}
 </ModalWrapper>
