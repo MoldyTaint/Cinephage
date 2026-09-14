@@ -4788,7 +4788,7 @@
 	"library_metadata_locale": "Locale",
 	"library_metadata_preferOriginalTitle": "Prefer Original Title",
 	"library_add_subtitleProfileLine": "Subtitles: {name} (Inherited: {source})",
-	"library_add_noDefaultProfileWarning": "Auto-download subtitles is on, but no default subtitle profile is configured. New items will not download subtitles until one is set in Settings > Languages & Localization.",
+	"library_add_noDefaultProfileWarning": "Auto-download subtitles is on, but no default language profile is configured. New items will not download subtitles until one is set.",
 	"library_subtitleRequirements_title": "Subtitle languages",
 	"library_subtitleRequirements_customized": "Customized for this item",
 	"library_subtitleRequirements_reset": "Reset to inherited",
@@ -4803,5 +4803,6 @@
 	"library_subtitleRequirements_met": "Available",
 	"library_subtitleRequirements_missing": "Missing",
 	"library_subtitleRequirements_help": "These languages apply to this item only. Audio and quality policy still come from the language profile.",
-	"library_subtitleProfile_help": "Per-item subtitle languages are edited on the details page."
+	"library_subtitleProfile_help": "Per-item subtitle languages are edited on the details page.",
+	"library_add_noDefaultProfileWarningLink": "Open language settings"
 }

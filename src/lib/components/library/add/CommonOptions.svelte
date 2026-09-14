@@ -265,6 +265,11 @@
 {#if wantsSubtitles && effectiveSubtitleProfile === null}
 	<div class="alert text-sm alert-warning" role="status">
 		<TriangleAlert class="h-4 w-4 shrink-0" />
-		<span>{m.library_add_noDefaultProfileWarning()}</span>
+		<span>
+			{m.library_add_noDefaultProfileWarning()}
+			<a href={resolve('/settings/library/languages')} class="link">
+				{m.library_add_noDefaultProfileWarningLink()}
+			</a>
+		</span>
 	</div>
 {/if}

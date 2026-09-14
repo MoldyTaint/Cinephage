@@ -72,7 +72,7 @@ describe('CommonOptions effective subtitle profile display (add flow)', () => {
 		await fireEvent.click(toggles[1]);
 
 		const status = await screen.findByRole('status');
-		expect(status.textContent).toMatch(/no default subtitle profile is configured/i);
+		expect(status.textContent).toMatch(/no default language profile is configured/i);
 	});
 
 	it('renders neither the line nor the warning while the endpoint is still loading', () => {
