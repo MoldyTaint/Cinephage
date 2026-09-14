@@ -28,7 +28,6 @@ import { ValidationError } from '$lib/errors';
 import {
 	validateRootFolder,
 	getEffectiveScoringProfileId,
-	getLanguageProfileId,
 	fetchMovieDetails,
 	fetchMovieExternalIds,
 	fetchSeriesDetails,
@@ -848,7 +847,9 @@ export class SmartListService {
 					collectionName: movieDetails.belongs_to_collection?.name ?? undefined
 				} as MediaNamingInfo);
 
-				const languageProfileId = await getLanguageProfileId(wantsSubtitles, item.tmdbId);
+				// Honor the list's language profile; otherwise inherit (NULL) — the
+				// instance default is resolved at read time, never stamped here.
+				const languageProfileId = wantsSubtitles ? (list.languageProfileId ?? null) : null;
 				const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
 					list.rootFolderId,
 					'movie'
@@ -953,7 +954,9 @@ export class SmartListService {
 					imdbId
 				} as MediaNamingInfo);
 
-				const languageProfileId = await getLanguageProfileId(wantsSubtitles, item.tmdbId);
+				// Honor the list's language profile; otherwise inherit (NULL) — the
+				// instance default is resolved at read time, never stamped here.
+				const languageProfileId = wantsSubtitles ? (list.languageProfileId ?? null) : null;
 				const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
 					list.rootFolderId,
 					'tv'
@@ -1484,7 +1487,9 @@ export class SmartListService {
 				} as MediaNamingInfo);
 
 				// Get the language profile if subtitles wanted
-				const languageProfileId = await getLanguageProfileId(wantsSubtitles, item.tmdbId);
+				// Honor the list's language profile; otherwise inherit (NULL) — the
+				// instance default is resolved at read time, never stamped here.
+				const languageProfileId = wantsSubtitles ? (list.languageProfileId ?? null) : null;
 				const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
 					list.rootFolderId!,
 					'movie'
@@ -1645,7 +1650,9 @@ export class SmartListService {
 				} as MediaNamingInfo);
 
 				// Get the language profile if subtitles wanted
-				const languageProfileId = await getLanguageProfileId(wantsSubtitles, item.tmdbId);
+				// Honor the list's language profile; otherwise inherit (NULL) — the
+				// instance default is resolved at read time, never stamped here.
+				const languageProfileId = wantsSubtitles ? (list.languageProfileId ?? null) : null;
 				const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
 					list.rootFolderId!,
 					'tv'

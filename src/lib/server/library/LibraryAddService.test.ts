@@ -70,7 +70,6 @@ vi.mock('$lib/logging', () => ({
 
 import {
 	getEffectiveScoringProfileId,
-	getLanguageProfileId,
 	validateRootFolder
 } from './LibraryAddService.js';
 import { ValidationError } from '$lib/errors';
@@ -139,27 +138,6 @@ describe('validateRootFolder', () => {
 				mediaSubType: 'standard'
 			}
 		);
-	});
-});
-
-describe('getLanguageProfileId', () => {
-	it('returns null without resolving a profile when subtitles are not wanted', async () => {
-		await expect(getLanguageProfileId(false, 42)).resolves.toBeNull();
-		expect(mocks.getDefaultLanguageProfile).not.toHaveBeenCalled();
-	});
-
-	it('returns the default profile id resolved through language settings', async () => {
-		mocks.getDefaultLanguageProfile.mockResolvedValue({ id: 'profile-default' });
-
-		await expect(getLanguageProfileId(true, 42)).resolves.toBe('profile-default');
-		expect(mocks.getDefaultLanguageProfile).toHaveBeenCalledTimes(1);
-	});
-
-	it('warns and returns null when no default profile is configured', async () => {
-		mocks.getDefaultLanguageProfile.mockResolvedValue(undefined);
-
-		await expect(getLanguageProfileId(true, 42)).resolves.toBeNull();
-		expect(mocks.logWarn).toHaveBeenCalled();
 	});
 });
 

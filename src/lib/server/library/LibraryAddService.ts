@@ -14,7 +14,6 @@ import { rootFolders, series } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { qualityFilter } from '$lib/server/quality/index.js';
-import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { searchOnAdd } from './searchOnAdd.js';
 import { SearchWorker, workerManager } from '$lib/server/workers/index.js';
 import { ValidationError, NotFoundError, ExternalServiceError } from '$lib/errors';
@@ -147,33 +146,6 @@ export async function getEffectiveScoringProfileId(
 
 	const defaultProfile = await qualityFilter.getDefaultScoringProfile();
 	return defaultProfile.id;
-}
-
-/**
- * Get the default language profile ID if subtitles are wanted
- */
-export async function getLanguageProfileId(
-	wantsSubtitles: boolean,
-	tmdbId: number
-): Promise<string | null> {
-	if (!wantsSubtitles) {
-		return null;
-	}
-
-	// language_settings.default_profile_id is the single default authority
-	const defaultLanguageProfile = await LanguageProfileService.getInstance().getDefaultProfile();
-
-	if (!defaultLanguageProfile) {
-		logger.warn(
-			{
-				tmdbId
-			},
-			'[LibraryAddService] No default language profile found for subtitle preferences'
-		);
-		return null;
-	}
-
-	return defaultLanguageProfile.id;
 }
 
 /**
