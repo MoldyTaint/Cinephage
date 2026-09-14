@@ -1,13 +1,5 @@
 <script lang="ts">
-	import {
-		DatabaseSearch,
-		Download,
-		Server,
-		Captions,
-		Languages,
-		Monitor,
-		Archive
-	} from 'lucide-svelte';
+	import { DatabaseSearch, Download, Server, Captions, Monitor, Archive } from 'lucide-svelte';
 	import { SettingsTabNav } from '$lib/components/settings';
 	import * as m from '$lib/paraglide/messages.js';
 
@@ -33,11 +25,6 @@
 			href: '/settings/integrations/subtitle-providers',
 			label: m.nav_subtitleProviders(),
 			icon: Captions
-		},
-		{
-			href: '/settings/integrations/language-profiles',
-			label: m.nav_languageProfiles(),
-			icon: Languages
 		},
 		{
 			href: '/settings/integrations/media-browsers',

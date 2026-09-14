@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, within } from '@testing-library/svelte';
-import LanguageProfilesPage from '../../../routes/settings/integrations/language-profiles/+page.svelte';
-import type { PageData } from '../../../routes/settings/integrations/language-profiles/$types';
+import LanguageProfilesManager from './languages/LanguageProfilesManager.svelte';
 
-const { updateLanguageSettings, createLanguageProfile, invalidateAll } = vi.hoisted(() => ({
-	updateLanguageSettings: vi.fn().mockResolvedValue({}),
+const { createLanguageProfile, invalidateAll } = vi.hoisted(() => ({
 	createLanguageProfile: vi.fn().mockResolvedValue({ success: true }),
 	invalidateAll: vi.fn().mockResolvedValue(undefined)
 }));
@@ -16,7 +14,6 @@ vi.mock('$lib/api', () => ({
 	createLanguageProfile,
 	updateLanguageProfile: vi.fn().mockResolvedValue({ success: true }),
 	deleteLanguageProfile: vi.fn().mockResolvedValue({ success: true }),
-	updateLanguageSettings,
 	ApiError: class ApiError extends Error {}
 }));
 
@@ -45,12 +42,11 @@ const profiles = [
 	}
 ];
 
-function renderPage(defaultProfileId: string | null) {
-	const data = { profiles, defaultProfileId } as unknown as PageData;
-	return render(LanguageProfilesPage, { props: { data } });
+function renderManager(defaultProfileId: string | null) {
+	return render(LanguageProfilesManager, { props: { profiles, defaultProfileId } });
 }
 
-describe('language profiles settings page', () => {
+describe('language profiles manager', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
@@ -59,30 +55,11 @@ describe('language profiles settings page', () => {
 		cleanup();
 	});
 
-	it('writes the selected default profile via the language-settings endpoint', async () => {
-		renderPage('p1');
+	it('marks the default profile via the defaultProfileId prop', () => {
+		renderManager('p2');
 
-		const select = screen.getByRole('combobox', {
-			name: /default profile/i
-		}) as HTMLSelectElement;
-		await fireEvent.change(select, { target: { value: 'p2' } });
-		await fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
-
-		expect(updateLanguageSettings).toHaveBeenCalledTimes(1);
-		expect(updateLanguageSettings).toHaveBeenCalledWith({ defaultProfileId: 'p2' });
-		expect(invalidateAll).toHaveBeenCalled();
-	});
-
-	it('writes a null default profile when none is selected', async () => {
-		renderPage('p1');
-
-		const select = screen.getByRole('combobox', {
-			name: /default profile/i
-		}) as HTMLSelectElement;
-		await fireEvent.change(select, { target: { value: '' } });
-		await fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
-
-		expect(updateLanguageSettings).toHaveBeenCalledWith({ defaultProfileId: null });
+		const badge = screen.getByText('Default');
+		expect(badge.closest('h3')?.textContent).toContain('French');
 	});
 });
 
@@ -96,7 +73,7 @@ describe('language profile editor payload', () => {
 	});
 
 	it('creates a profile with the v2 audio/subtitles shape', async () => {
-		renderPage(null);
+		renderManager(null);
 
 		await fireEvent.click(screen.getByRole('button', { name: /add profile/i }));
 		await fireEvent.input(screen.getByLabelText(/profile name/i), {
@@ -128,7 +105,7 @@ describe('language profile editor labels via paraglide keys', () => {
 	});
 
 	it('renders variant/accessibility select options from message keys', async () => {
-		renderPage(null);
+		renderManager(null);
 
 		await fireEvent.click(screen.getByRole('button', { name: /add profile/i }));
 
@@ -150,7 +127,7 @@ describe('language profile editor labels via paraglide keys', () => {
 	});
 
 	it('labels the requirement selects via aria-label keys', async () => {
-		renderPage(null);
+		renderManager(null);
 
 		await fireEvent.click(screen.getByRole('button', { name: /add profile/i }));
 
@@ -160,7 +137,7 @@ describe('language profile editor labels via paraglide keys', () => {
 	});
 
 	it('renders the cutoff strings from message keys', async () => {
-		renderPage(null);
+		renderManager(null);
 
 		await fireEvent.click(screen.getByRole('button', { name: /add profile/i }));
 
@@ -171,7 +148,7 @@ describe('language profile editor labels via paraglide keys', () => {
 	});
 
 	it('labels the reorder buttons via aria-label keys', async () => {
-		renderPage(null);
+		renderManager(null);
 
 		await fireEvent.click(screen.getByRole('button', { name: /add profile/i }));
 
@@ -180,7 +157,7 @@ describe('language profile editor labels via paraglide keys', () => {
 	});
 
 	it('renders the audio section strings from message keys', async () => {
-		renderPage(null);
+		renderManager(null);
 
 		await fireEvent.click(screen.getByRole('button', { name: /add profile/i }));
 
@@ -196,7 +173,7 @@ describe('language profile editor labels via paraglide keys', () => {
 	});
 
 	it('renders the profile card summary from message keys', () => {
-		renderPage('p2');
+		renderManager('p2');
 
 		// p2 has fallback audio languages, so the summary line renders:
 		// "<Audio:> <prefer original> · French".

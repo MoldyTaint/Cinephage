@@ -10,10 +10,10 @@ import { TMDB } from '$lib/config/constants.js';
 // TMDB content-filter settings (genre exclusions etc.), not disk scanning - 'system' fits better than 'scans'.
 const logger = createChildLogger({ module: 'LibraryFiltersSettingsPage', logDomain: 'system' });
 
-// Language/region localization is edited in the Languages & Localization hub
-// (/settings/languages); this loader only supplies the remaining content
-// filters. Stored language/region values still ride along in `filters` so the
-// PUT payload keeps its shape (the filters API mirrors them, harmless).
+// Language/region localization is edited in the Library > Languages tab
+// (/settings/library/languages); this loader only supplies the remaining
+// content filters. Stored language/region values still ride along in `filters`
+// so the PUT payload keeps its shape (the filters API mirrors them, harmless).
 export const load: PageServerLoad = async () => {
 	// Fetch current settings
 	const settingsData = await db.query.settings.findFirst({

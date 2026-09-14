@@ -62,10 +62,10 @@
 		</div>
 	{/if}
 
-	<!-- Language/region localization moved to the Languages & Localization hub -->
+	<!-- Language/region localization moved to the Library > Languages tab -->
 	<div class="rounded-lg border border-base-300 px-4 py-3 text-sm">
 		{m.settings_filters_languageSettingsMoved()}
-		<a class="link link-primary" href={resolve('/settings/languages')}>
+		<a class="link link-primary" href={resolve('/settings/library/languages')}>
 			{m.settings_filters_languageSettingsLink()}
 		</a>
 	</div>

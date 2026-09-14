@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/svelte';
-import LanguagesPage from '../../../routes/settings/languages/+page.svelte';
-import type { PageData } from '../../../routes/settings/languages/$types';
+import LanguageSettingsForm from './languages/LanguageSettingsForm.svelte';
 
 const { updateLanguageSettings } = vi.hoisted(() => ({
 	updateLanguageSettings: vi.fn().mockResolvedValue({})
@@ -19,7 +18,7 @@ vi.mock('$lib/stores/toast.svelte', () => ({
 	toasts: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 }));
 
-interface HubSettings {
+interface FormSettings {
 	defaultProfileId: string | null;
 	metadataLocale: string;
 	region: string;
@@ -30,7 +29,7 @@ interface HubSettings {
 	preferOriginalTitle: boolean;
 }
 
-const baseSettings: HubSettings = {
+const baseSettings: FormSettings = {
 	defaultProfileId: 'p1',
 	metadataLocale: 'en-US',
 	region: 'US',
@@ -46,25 +45,29 @@ const profiles = [
 	{ id: 'p2', name: 'French' }
 ];
 
-function renderPage(overrides: Partial<HubSettings> = {}) {
-	const data = {
-		settings: { ...baseSettings, ...overrides },
-		profiles,
-		countries: [
-			{ code: 'US', name: 'United States' },
-			{ code: 'DE', name: 'Germany' }
-		],
-		languages: [
-			{ code: 'de', name: 'German' },
-			{ code: 'en', name: 'English' },
-			{ code: 'pt-BR', name: 'Portuguese (Brazil)' }
-		],
-		tmdbConfigured: true
-	} as unknown as PageData;
-	return render(LanguagesPage, { props: { data } });
+const countries = [
+	{ code: 'US', name: 'United States' },
+	{ code: 'DE', name: 'Germany' }
+];
+
+const languages = [
+	{ code: 'de', name: 'German' },
+	{ code: 'en', name: 'English' },
+	{ code: 'pt-BR', name: 'Portuguese (Brazil)' }
+];
+
+function renderForm(overrides: Partial<FormSettings> = {}) {
+	return render(LanguageSettingsForm, {
+		props: {
+			settings: { ...baseSettings, ...overrides },
+			profiles,
+			countries,
+			languages
+		}
+	});
 }
 
-describe('languages & localization hub', () => {
+describe('language settings form', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
@@ -74,7 +77,7 @@ describe('languages & localization hub', () => {
 	});
 
 	it('renders all sections with the loaded settings values', async () => {
-		const { container } = renderPage({ preferOriginalTitle: true });
+		const { container } = renderForm({ preferOriginalTitle: true });
 
 		// Interface section embeds the per-user LanguageSelector
 		expect(container.querySelector('.language-selector')).toBeTruthy();
@@ -111,7 +114,7 @@ describe('languages & localization hub', () => {
 	});
 
 	it('only sends the changed fields on save', async () => {
-		renderPage();
+		renderForm();
 
 		const region = screen.getByRole('combobox', { name: /^region$/i }) as HTMLSelectElement;
 		await fireEvent.change(region, { target: { value: 'DE' } });
@@ -122,19 +125,42 @@ describe('languages & localization hub', () => {
 	});
 
 	it('sends an empty patch when nothing changed', async () => {
-		renderPage();
+		renderForm();
 
 		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
 
 		expect(updateLanguageSettings).toHaveBeenCalledWith({});
 	});
 
-	it('shows the assumed-language select only for the assume-language policy', async () => {
-		const { container } = renderPage();
+	it('sends the changed default profile on save', async () => {
+		renderForm();
 
-		expect(
-			screen.queryByRole('combobox', { name: /assumed language/i })
-		).toBeNull();
+		const defaultProfile = screen.getByRole('combobox', {
+			name: /default profile/i
+		}) as HTMLSelectElement;
+		await fireEvent.change(defaultProfile, { target: { value: 'p2' } });
+		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+		expect(updateLanguageSettings).toHaveBeenCalledTimes(1);
+		expect(updateLanguageSettings).toHaveBeenCalledWith({ defaultProfileId: 'p2' });
+	});
+
+	it('sends a null default profile when none is selected', async () => {
+		renderForm();
+
+		const defaultProfile = screen.getByRole('combobox', {
+			name: /default profile/i
+		}) as HTMLSelectElement;
+		await fireEvent.change(defaultProfile, { target: { value: '' } });
+		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+		expect(updateLanguageSettings).toHaveBeenCalledWith({ defaultProfileId: null });
+	});
+
+	it('shows the assumed-language select only for the assume-language policy', async () => {
+		const { container } = renderForm();
+
+		expect(screen.queryByRole('combobox', { name: /assumed language/i })).toBeNull();
 
 		const policy = screen.getByRole('combobox', {
 			name: /unknown subtitle language/i
@@ -158,7 +184,7 @@ describe('languages & localization hub', () => {
 	});
 
 	it('clears the stored assumed language when switching back to the und policy', async () => {
-		renderPage({ unknownSubtitlePolicy: 'assume-language', assumedLanguage: 'fr' });
+		renderForm({ unknownSubtitlePolicy: 'assume-language', assumedLanguage: 'fr' });
 
 		const policy = screen.getByRole('combobox', {
 			name: /unknown subtitle language/i
@@ -175,17 +201,13 @@ describe('languages & localization hub', () => {
 		});
 	});
 
-	it('links to language profiles, subtitle providers and naming settings', () => {
-		renderPage();
+	it('links to subtitle providers only (profiles and naming live in sibling tabs)', () => {
+		renderForm();
 
-		expect(
-			screen.getByRole('link', { name: /language profiles/i }).getAttribute('href')
-		).toBe('/settings/integrations/language-profiles');
-		expect(
-			screen.getByRole('link', { name: /subtitle providers/i }).getAttribute('href')
-		).toBe('/settings/integrations/subtitle-providers');
-		expect(screen.getByRole('link', { name: /^naming$/i }).getAttribute('href')).toBe(
-			'/settings/library/naming'
+		expect(screen.getByRole('link', { name: /subtitle providers/i }).getAttribute('href')).toBe(
+			'/settings/integrations/subtitle-providers'
 		);
+		expect(screen.queryByRole('link', { name: /language profiles/i })).toBeNull();
+		expect(screen.queryByRole('link', { name: /^naming$/i })).toBeNull();
 	});
 });
