@@ -28,6 +28,12 @@
 		parts: CollectionPart[];
 	}
 
+	/** The subtitle profile a new item will inherit, plus the level it came from. */
+	interface EffectiveSubtitleProfileInfo {
+		profile: { id: string; name: string };
+		source: 'movie' | 'series' | 'library' | 'default';
+	}
+
 	interface Props {
 		title: string;
 		year?: number;
@@ -39,6 +45,8 @@
 		selectedScoringProfile: string;
 		searchOnAdd: boolean;
 		wantsSubtitles: boolean;
+		/** Resolved subtitle profile for a NEW item; undefined while loading, null when unset. */
+		effectiveSubtitleProfile?: EffectiveSubtitleProfileInfo | null;
 		minimumAvailability: MinimumAvailability;
 		availabilityDelay: number;
 		monitored: boolean;
@@ -64,6 +72,7 @@
 		selectedScoringProfile = $bindable(),
 		searchOnAdd = $bindable(),
 		wantsSubtitles = $bindable(),
+		effectiveSubtitleProfile,
 		minimumAvailability = $bindable(),
 		availabilityDelay = $bindable(),
 		monitored = $bindable(),
@@ -124,6 +133,7 @@
 		{rootFolders}
 		{scoringProfiles}
 		{requiredMediaSubType}
+		{effectiveSubtitleProfile}
 		{onSearchOnAddInput}
 		{onWantsSubtitlesInput}
 		bind:selectedRootFolder

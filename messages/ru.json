@@ -4742,5 +4742,22 @@
 	"settings_system_backup_db_errorBackup": "Ошибка резервного копирования",
 	"settings_system_backup_db_settingsSaved": "Настройки сохранены",
 	"settings_system_backup_db_backupCreated": "Резервная копия успешно создана",
-	"unmatched_filters_reprocessQueued": "Сопоставление поставлено в очередь. Файлы будут обработаны в фоне."
+	"unmatched_filters_reprocessQueued": "Сопоставление поставлено в очередь. Файлы будут обработаны в фоне.",
+	"settings_general_subtitleProfile": "Subtitle Profile",
+	"settings_general_subtitleProfileInherit": "Inherit (instance default)",
+	"library_subtitleProfile_label": "Subtitle Profile",
+	"library_subtitleProfile_inherit": "Inherit",
+	"library_subtitleProfile_inherited": "Inherited: {name} ({source})",
+	"library_subtitleProfile_sourceLibrary": "library",
+	"library_subtitleProfile_sourceDefault": "default",
+	"library_subtitleProfile_sourceItem": "this item",
+	"library_metadata_section": "Metadata",
+	"library_metadata_languageLabel": "Metadata Language",
+	"library_metadata_inheritGlobal": "Inherit Global",
+	"library_metadata_originalLanguage": "Content Original Language",
+	"library_metadata_explicitLocale": "Explicit Locale",
+	"library_metadata_locale": "Locale",
+	"library_metadata_preferOriginalTitle": "Prefer Original Title",
+	"library_add_subtitleProfileLine": "Subtitles: {name} (Inherited: {source})",
+	"library_add_noDefaultProfileWarning": "Auto-download subtitles is on, but no default subtitle profile is configured. New items will not download subtitles until one is set in Settings > Languages & Localization."
 }

@@ -89,6 +89,8 @@ export interface LibraryMoviePageData {
 	subtitleStatus: SubtitleStatus;
 	/** The profile governing the movie plus the level it was resolved from. */
 	effectiveLanguageProfile: EffectiveLanguageProfile | null;
+	/** Language profiles available for the per-item subtitle profile override. */
+	languageProfiles: Array<{ id: string; name: string }>;
 	/** Instance default for original-title display (language_settings.prefer_original_title). */
 	preferOriginalTitleDefault: boolean;
 }
@@ -269,6 +271,12 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 		maxResolution: p.maxResolution ?? null
 	}));
 
+	// Language profiles for the edit modal's subtitle-profile override select.
+	const languageProfiles = (await profileService.getProfiles()).map((p) => ({
+		id: p.id,
+		name: p.name
+	}));
+
 	// Fetch movie root folders for the edit modal
 	const folders = await db
 		.select({
@@ -413,6 +421,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 		collection,
 		subtitleStatus,
 		effectiveLanguageProfile,
+		languageProfiles,
 		preferOriginalTitleDefault
 	};
 };

@@ -6,6 +6,7 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { createLibrary, updateLibrary, getScoringProfiles } from '$lib/api/settings.js';
+	import { getLanguageProfiles } from '$lib/api/subtitles.js';
 	import type { LibraryCreate, LibraryUpdate } from '$lib/validation/schemas.js';
 	import type { RootFolderMediaType, RootFolderMediaSubType } from '$lib/types/downloadClient';
 
@@ -27,6 +28,8 @@
 		defaultSearchOnAdd?: boolean | null;
 		defaultWantsSubtitles?: boolean | null;
 		qualityProfileId?: string | null;
+		/** Library-wide subtitle language profile; null = inherit instance default */
+		languageProfileId?: string | null;
 	};
 
 	type RootFolderRef = {
@@ -51,6 +54,8 @@
 		defaultSearchOnAdd: boolean;
 		defaultWantsSubtitles: boolean;
 		qualityProfileId: string | null;
+		/** '' = inherit the instance default; persisted as null */
+		languageProfileId: string;
 	};
 
 	interface Props {
@@ -70,11 +75,13 @@
 		rootFolderIds: [],
 		defaultSearchOnAdd: true,
 		defaultWantsSubtitles: false,
-		qualityProfileId: null
+		qualityProfileId: null,
+		languageProfileId: ''
 	});
 	let librarySaving = $state(false);
 	let librarySaveError = $state<string | null>(null);
 	let availableProfiles = $state<ProfileRef[]>([]);
+	let availableLanguageProfiles = $state<ProfileRef[]>([]);
 
 	onMount(() => {
 		void (async () => {
@@ -89,6 +96,17 @@
 				}));
 			} catch {
 				availableProfiles = [];
+			}
+		})();
+		void (async () => {
+			try {
+				const profiles = (await getLanguageProfiles()) as unknown as Array<{
+					id: string;
+					name: string;
+				}>;
+				availableLanguageProfiles = (profiles ?? []).map((p) => ({ id: p.id, name: p.name }));
+			} catch {
+				availableLanguageProfiles = [];
 			}
 		})();
 	});
@@ -123,7 +141,8 @@
 				rootFolderIds: [],
 				defaultSearchOnAdd: true,
 				defaultWantsSubtitles: false,
-				qualityProfileId: null
+				qualityProfileId: null,
+				languageProfileId: ''
 			};
 			librarySaveError = null;
 		} else if (libraryId) {
@@ -136,7 +155,8 @@
 					rootFolderIds: library.rootFolders?.map((f) => f.id) ?? [],
 					defaultSearchOnAdd: library.defaultSearchOnAdd ?? true,
 					defaultWantsSubtitles: library.defaultWantsSubtitles ?? false,
-					qualityProfileId: library.qualityProfileId ?? null
+					qualityProfileId: library.qualityProfileId ?? null,
+					languageProfileId: library.languageProfileId ?? ''
 				};
 				librarySaveError = null;
 			}
@@ -147,12 +167,18 @@
 		librarySaving = true;
 		librarySaveError = null;
 
+		// '' (inherit the instance default) is persisted as null.
+		const payload = {
+			...libraryForm,
+			languageProfileId: libraryForm.languageProfileId || null
+		};
+
 		try {
 			if (isCreateMode) {
-				await createLibrary(libraryForm as LibraryCreate);
+				await createLibrary(payload as LibraryCreate);
 				toasts.success(m.settings_general_libraryCreated());
 			} else if (libraryId) {
-				await updateLibrary(libraryId, libraryForm as LibraryUpdate);
+				await updateLibrary(libraryId, payload as LibraryUpdate);
 				toasts.success(m.settings_general_libraryUpdated());
 			}
 			await invalidateAll();
@@ -241,6 +267,22 @@
 				>
 					<option value={null}>{defaultProfileName}</option>
 					{#each availableProfiles.filter((p) => !p.isDefault) as profile (profile.id)}
+						<option value={profile.id}>{profile.name}</option>
+					{/each}
+				</select>
+			</div>
+
+			<div class="form-control">
+				<label class="label py-1" for="status-library-language-profile">
+					<span class="label-text">{m.settings_general_subtitleProfile()}</span>
+				</label>
+				<select
+					id="status-library-language-profile"
+					class="select-bordered select select-sm"
+					bind:value={libraryForm.languageProfileId}
+				>
+					<option value="">{m.settings_general_subtitleProfileInherit()}</option>
+					{#each availableLanguageProfiles as profile (profile.id)}
 						<option value={profile.id}>{profile.name}</option>
 					{/each}
 				</select>

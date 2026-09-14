@@ -98,6 +98,8 @@ export interface LibraryMovie {
 	monitored: boolean | null;
 	minimumAvailability: string | null;
 	wantsSubtitles: boolean | null;
+	/** Subtitle language profile override; null = inherit (library/instance default). */
+	languageProfileId?: string | null;
 	tmdbStatus?: string | null;
 	releaseDate?: string | null;
 	downloadReleaseDate?: string | null;
@@ -144,6 +146,8 @@ export interface LibrarySeries {
 	partiallyMonitored?: boolean;
 	seasonFolder: boolean | null;
 	wantsSubtitles: boolean | null;
+	/** Subtitle language profile override; null = inherit (library/instance default). */
+	languageProfileId?: string | null;
 	added: string;
 	episodeCount: number | null;
 	episodeFileCount: number | null;

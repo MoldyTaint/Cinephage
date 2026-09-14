@@ -36,11 +36,29 @@
 		name: string;
 	}
 
+	/** Entry for the subtitle-profile override select. */
+	interface LanguageProfileOption {
+		id: string;
+		name: string;
+	}
+
+	/**
+	 * The profile governing the item and the level it was resolved from
+	 * (per-item override > owning library > instance default), as returned by
+	 * the movie loader's `effectiveLanguageProfile`.
+	 */
+	interface EffectiveLanguageProfileInfo {
+		profile: { id: string; name: string };
+		source: 'movie' | 'series' | 'library' | 'default';
+	}
+
 	interface Props {
 		open: boolean;
 		movie: LibraryMovie;
 		qualityProfiles: QualityProfileOption[];
 		delayProfiles: DelayProfileOption[];
+		languageProfiles?: LanguageProfileOption[];
+		effectiveLanguageProfile?: EffectiveLanguageProfileInfo | null;
 		rootFolders: RootFolder[];
 		saving: boolean;
 		onClose: () => void;
@@ -57,6 +75,8 @@
 		minimumAvailability: string;
 		availabilityDelay: number;
 		wantsSubtitles: boolean;
+		/** Subtitle language profile override; null clears the override (inherit). */
+		languageProfileId: string | null;
 		folderPath?: string;
 		removeUnwantedFiles?: boolean;
 		tmdbCollectionId?: number | null;
@@ -66,8 +86,18 @@
 		preferOriginalTitle?: boolean;
 	}
 
-	let { open, movie, qualityProfiles, delayProfiles, rootFolders, saving, onClose, onSave }: Props =
-		$props();
+	let {
+		open,
+		movie,
+		qualityProfiles,
+		delayProfiles,
+		languageProfiles = [],
+		effectiveLanguageProfile = null,
+		rootFolders,
+		saving,
+		onClose,
+		onSave
+	}: Props = $props();
 
 	// Form state (defaults only, effect syncs from props)
 	let monitored = $state(true);
@@ -97,6 +127,8 @@
 	let metadataLanguageMode = $state<'inherit' | 'original' | 'explicit'>('inherit');
 	let metadataLanguageValue = $state<string | null>('en-US');
 	let preferOriginalTitle = $state(false);
+	/** Subtitle profile override; '' = inherit (no per-item override). */
+	let languageProfileOverride = $state('');
 
 	const LOCALE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
 		{ value: 'ar-SA', label: 'Arabic' },
@@ -233,6 +265,7 @@
 			metadataLanguageMode = resolvedMetadataLanguage.mode;
 			metadataLanguageValue = resolvedMetadataLanguage.value;
 			preferOriginalTitle = movie.preferOriginalTitle === true;
+			languageProfileOverride = movie.languageProfileId ?? '';
 			void loadAnimeRoutingContext(movie.tmdbId);
 		}
 	});
@@ -304,6 +337,22 @@
 	// Get profile data for labels/description
 	let defaultProfile = $derived(qualityProfiles.find((p) => p.isDefault));
 	let nonDefaultProfiles = $derived(qualityProfiles.filter((p) => p.id !== defaultProfile?.id));
+
+	// Subtitle profile inheritance: when no per-item override is selected the
+	// loader-resolved effective profile applies; surface where it came from.
+	const subtitleProfileHelper = $derived.by(() => {
+		if (languageProfileOverride || !effectiveLanguageProfile) return null;
+		const source =
+			effectiveLanguageProfile.source === 'library'
+				? m.library_subtitleProfile_sourceLibrary()
+				: effectiveLanguageProfile.source === 'default'
+					? m.library_subtitleProfile_sourceDefault()
+					: m.library_subtitleProfile_sourceItem();
+		return m.library_subtitleProfile_inherited({
+			name: effectiveLanguageProfile.profile.name,
+			source
+		});
+	});
 
 	// --- Multi-quality resolution picker ---
 	const profileForGating = $derived(
@@ -377,6 +426,7 @@
 			minimumAvailability,
 			availabilityDelay,
 			wantsSubtitles,
+			languageProfileId: languageProfileOverride || null,
 			...(folderPathChanged && folderPath.trim() ? { folderPath: folderPath.trim() } : {}),
 			...(showRemoveUnwantedFiles && removeUnwantedFiles ? { removeUnwantedFiles: true } : {}),
 			tmdbCollectionId: collectionId,
@@ -463,6 +513,26 @@
 								<option value={profile.id}>{profile.name}</option>
 							{/each}
 						</select>
+					</div>
+					<div class="form-control w-full">
+						<label class="label py-0.5" for="movie-language-profile">
+							<span class="label-text text-xs text-base-content/80"
+								>{m.library_subtitleProfile_label()}</span
+							>
+						</label>
+						<select
+							id="movie-language-profile"
+							bind:value={languageProfileOverride}
+							class="select-bordered select w-full select-sm"
+						>
+							<option value="">{m.library_subtitleProfile_inherit()}</option>
+							{#each languageProfiles as profile (profile.id)}
+								<option value={profile.id}>{profile.name}</option>
+							{/each}
+						</select>
+						{#if subtitleProfileHelper}
+							<p class="mt-1 text-xs text-base-content/60">{subtitleProfileHelper}</p>
+						{/if}
 					</div>
 					<div class="form-control w-full">
 						<div class="label py-0.5">
@@ -767,26 +837,30 @@
 			<h4
 				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold tracking-wider text-base-content/50 uppercase"
 			>
-				Metadata
+				{m.library_metadata_section()}
 			</h4>
 			<div class="grid grid-cols-2 gap-3">
 				<div class="form-control w-full">
 					<label class="label py-0.5" for="movie-metadata-language-mode">
-						<span class="label-text text-xs text-base-content/80">Language</span>
+						<span class="label-text text-xs text-base-content/80"
+							>{m.library_metadata_languageLabel()}</span
+						>
 					</label>
 					<select
 						id="movie-metadata-language-mode"
 						bind:value={metadataLanguageMode}
 						class="select-bordered select w-full select-sm"
 					>
-						<option value="inherit">Inherit Global</option>
-						<option value="original">Original Language</option>
-						<option value="explicit">Explicit Locale</option>
+						<option value="inherit">{m.library_metadata_inheritGlobal()}</option>
+						<option value="original">{m.library_metadata_originalLanguage()}</option>
+						<option value="explicit">{m.library_metadata_explicitLocale()}</option>
 					</select>
 				</div>
 				<div class="form-control w-full">
 					<label class="label py-0.5" for="movie-metadata-language-value">
-						<span class="label-text text-xs text-base-content/80">Locale</span>
+						<span class="label-text text-xs text-base-content/80"
+							>{m.library_metadata_locale()}</span
+						>
 					</label>
 					<select
 						id="movie-metadata-language-value"
@@ -800,7 +874,9 @@
 					</select>
 				</div>
 				<label class="label cursor-pointer">
-					<span class="label-text text-xs text-base-content/80">Prefer Original Title</span>
+					<span class="label-text text-xs text-base-content/80"
+						>{m.library_metadata_preferOriginalTitle()}</span
+					>
 					<input
 						type="checkbox"
 						class="toggle toggle-primary toggle-sm"

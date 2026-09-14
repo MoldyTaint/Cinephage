@@ -116,6 +116,32 @@ export async function updateLanguageSettings(
 	return apiPut<LanguageSettingsValues>('/api/subtitles/language-settings', payload);
 }
 
+/**
+ * Where an effective subtitle profile was resolved from. The add-flow
+ * endpoint only resolves the instance default for NEW items; existing items
+ * can also resolve from the item override or the library.
+ */
+export type EffectiveSubtitleProfileSource = 'movie' | 'series' | 'library' | 'default';
+
+/** The subtitle profile a new library item will inherit, plus its source. */
+export interface EffectiveSubtitleProfile {
+	profile: { id: string; name: string };
+	source: EffectiveSubtitleProfileSource;
+}
+
+/**
+ * Resolve the effective subtitle profile for a NEW library item
+ * (?mediaType=movie|series). Returns null when no default profile is
+ * configured — the add flow surfaces this as a warning.
+ */
+export async function getEffectiveSubtitleProfile(
+	mediaType: 'movie' | 'series'
+): Promise<EffectiveSubtitleProfile | null> {
+	return apiGet<EffectiveSubtitleProfile | null>(
+		`/api/subtitles/language-settings/effective?mediaType=${mediaType}`
+	);
+}
+
 export async function getSubtitleProviders() {
 	return apiGet('/api/subtitles/providers');
 }

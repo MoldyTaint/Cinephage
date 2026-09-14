@@ -701,6 +701,7 @@
 			series.seasonFolder = editData.seasonFolder;
 			series.seriesType = editData.seriesType;
 			series.wantsSubtitles = editData.wantsSubtitles;
+			series.languageProfileId = editData.languageProfileId;
 
 			if (episodeGroupChanged) {
 				series.episodeGroupId = editData.episodeGroupId ?? null;
@@ -1831,6 +1832,8 @@
 	{series}
 	qualityProfiles={data.qualityProfiles}
 	delayProfiles={data.delayProfiles}
+	languageProfiles={data.languageProfiles}
+	effectiveLanguageProfile={data.effectiveLanguageProfile}
 	rootFolders={data.rootFolders}
 	saving={isSaving}
 	onClose={handleEditClose}

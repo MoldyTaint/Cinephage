@@ -138,6 +138,7 @@ export interface LibrarySeriesPageData {
 		seasonFolder: boolean | null;
 		seriesType: string | null;
 		wantsSubtitles: boolean | null;
+		languageProfileId: string | null;
 		added: string;
 		episodeCount: number | null;
 		episodeFileCount: number | null;
@@ -177,6 +178,8 @@ export interface LibrarySeriesPageData {
 	libraryName: string | null;
 	/** The profile governing the series plus the level it was resolved from. */
 	effectiveLanguageProfile: EffectiveLanguageProfile | null;
+	/** Language profiles available for the per-item subtitle profile override. */
+	languageProfiles: Array<{ id: string; name: string }>;
 	/** Instance default for original-title display (language_settings.prefer_original_title). */
 	preferOriginalTitleDefault: boolean;
 }
@@ -382,6 +385,12 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 		isDefault: p.id === resolvedDefaultId
 	}));
 
+	// Language profiles for the edit modal's subtitle-profile override select.
+	const languageProfiles = (await profileService.getProfiles()).map((p) => ({
+		id: p.id,
+		name: p.name
+	}));
+
 	// Fetch TV root folders
 	const folders = await db
 		.select({
@@ -476,6 +485,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 		librarySlug,
 		libraryName,
 		effectiveLanguageProfile,
+		languageProfiles,
 		preferOriginalTitleDefault
 	};
 };

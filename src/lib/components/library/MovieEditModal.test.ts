@@ -39,6 +39,7 @@ function makeMovie(overrides: Partial<LibraryMovie> = {}): LibraryMovie {
 		monitored: true,
 		minimumAvailability: 'released',
 		wantsSubtitles: true,
+		languageProfileId: null,
 		availabilityDelay: 0,
 		tmdbCollectionId: null,
 		collectionName: null,
@@ -56,12 +57,28 @@ const qualityProfiles = [
 	{ id: 'hq', name: 'HQ', description: '', isBuiltIn: false, isDefault: false }
 ];
 
-function renderModal(movie: LibraryMovie, onSave: (data: MovieEditData) => void) {
+const languageProfiles = [
+	{ id: 'lp-en', name: 'English Only' },
+	{ id: 'lp-jp', name: 'Japanese + English' }
+];
+
+function renderModal(
+	movie: LibraryMovie,
+	onSave: (data: MovieEditData) => void,
+	options: {
+		effectiveLanguageProfile?: {
+			profile: { id: string; name: string };
+			source: 'movie' | 'series' | 'library' | 'default';
+		} | null;
+	} = {}
+) {
 	return render(MovieEditModal, {
 		props: {
 			open: true,
 			movie,
 			qualityProfiles,
+			languageProfiles,
+			effectiveLanguageProfile: options.effectiveLanguageProfile ?? null,
 			delayProfiles: [],
 			rootFolders: [],
 			saving: false,
@@ -120,7 +137,9 @@ describe('MovieEditModal metadata language mode/value', () => {
 			onSave
 		);
 
-		const modeSelect = screen.getByRole('combobox', { name: /^language$/i }) as HTMLSelectElement;
+		const modeSelect = screen.getByRole('combobox', {
+			name: /^metadata language$/i
+		}) as HTMLSelectElement;
 		const localeSelect = screen.getByRole('combobox', { name: /^locale$/i }) as HTMLSelectElement;
 
 		expect(modeSelect.value).toBe('inherit');
@@ -139,7 +158,9 @@ describe('MovieEditModal metadata language mode/value', () => {
 			onSave
 		);
 
-		const modeSelect = screen.getByRole('combobox', { name: /^language$/i }) as HTMLSelectElement;
+		const modeSelect = screen.getByRole('combobox', {
+			name: /^metadata language$/i
+		}) as HTMLSelectElement;
 		const localeSelect = screen.getByRole('combobox', { name: /^locale$/i }) as HTMLSelectElement;
 
 		await fireEvent.change(modeSelect, { target: { value: 'explicit' } });
@@ -160,7 +181,9 @@ describe('MovieEditModal metadata language mode/value', () => {
 			onSave
 		);
 
-		const modeSelect = screen.getByRole('combobox', { name: /^language$/i }) as HTMLSelectElement;
+		const modeSelect = screen.getByRole('combobox', {
+			name: /^metadata language$/i
+		}) as HTMLSelectElement;
 		await fireEvent.change(modeSelect, { target: { value: 'original' } });
 		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
 
@@ -179,7 +202,9 @@ describe('MovieEditModal metadata language mode/value', () => {
 			onSave
 		);
 
-		const modeSelect = screen.getByRole('combobox', { name: /^language$/i }) as HTMLSelectElement;
+		const modeSelect = screen.getByRole('combobox', {
+			name: /^metadata language$/i
+		}) as HTMLSelectElement;
 		const localeSelect = screen.getByRole('combobox', { name: /^locale$/i }) as HTMLSelectElement;
 
 		expect(modeSelect.value).toBe('explicit');
@@ -191,5 +216,80 @@ describe('MovieEditModal metadata language mode/value', () => {
 		expect(onSave).toHaveBeenCalledWith(
 			expect.objectContaining({ metadataLanguageMode: 'explicit', metadataLanguageValue: 'ja-JP' })
 		);
+	});
+});
+
+describe('MovieEditModal subtitle profile inheritance', () => {
+	let onSave: (data: MovieEditData) => void;
+
+	beforeEach(() => {
+		onSave = vi.fn<(data: MovieEditData) => void>();
+	});
+
+	afterEach(() => {
+		cleanup();
+	});
+
+	it('shows the inherited effective profile and its source when no override is set', async () => {
+		renderModal(makeMovie(), onSave, {
+			effectiveLanguageProfile: {
+				profile: { id: 'lp-en', name: 'English Only' },
+				source: 'library'
+			}
+		});
+
+		expect(await screen.findByText(/Inherited: English Only \(library\)/)).toBeTruthy();
+
+		const select = screen.getByRole('combobox', {
+			name: /subtitle profile/i
+		}) as HTMLSelectElement;
+		expect(select.value).toBe('');
+	});
+
+	it('shows "(default)" as the source when resolved from the instance default', async () => {
+		renderModal(makeMovie(), onSave, {
+			effectiveLanguageProfile: {
+				profile: { id: 'lp-en', name: 'English Only' },
+				source: 'default'
+			}
+		});
+
+		expect(await screen.findByText(/Inherited: English Only \(default\)/)).toBeTruthy();
+	});
+
+	it('saves the selected profile id as the languageProfileId override', async () => {
+		renderModal(makeMovie(), onSave, {
+			effectiveLanguageProfile: {
+				profile: { id: 'lp-en', name: 'English Only' },
+				source: 'library'
+			}
+		});
+
+		const select = screen.getByRole('combobox', {
+			name: /subtitle profile/i
+		}) as HTMLSelectElement;
+		await fireEvent.change(select, { target: { value: 'lp-jp' } });
+		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+		expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ languageProfileId: 'lp-jp' }));
+	});
+
+	it('sends null (clear override) when inherit stays selected', async () => {
+		renderModal(makeMovie({ languageProfileId: 'lp-jp' }), onSave, {
+			effectiveLanguageProfile: {
+				profile: { id: 'lp-en', name: 'English Only' },
+				source: 'library'
+			}
+		});
+
+		const select = screen.getByRole('combobox', {
+			name: /subtitle profile/i
+		}) as HTMLSelectElement;
+		expect(select.value).toBe('lp-jp');
+
+		await fireEvent.change(select, { target: { value: '' } });
+		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+		expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ languageProfileId: null }));
 	});
 });

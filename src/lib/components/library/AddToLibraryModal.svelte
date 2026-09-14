@@ -17,6 +17,7 @@
 		getScoringProfiles,
 		getLibraryClassificationSettings
 	} from '$lib/api/settings.js';
+	import { getEffectiveSubtitleProfile } from '$lib/api/subtitles.js';
 	import { getLibraryStatus, createMovie, createSeries, bulkAddMovies } from '$lib/api/library.js';
 	import { getTmdb } from '$lib/api/discover.js';
 
@@ -50,6 +51,12 @@
 		isDefault?: boolean;
 		minResolution?: string | null;
 		maxResolution?: string | null;
+	}
+
+	/** The subtitle profile a new item will inherit, plus the level it came from. */
+	interface EffectiveSubtitleProfileInfo {
+		profile: { id: string; name: string };
+		source: 'movie' | 'series' | 'library' | 'default';
 	}
 
 	interface Season {
@@ -97,6 +104,8 @@
 	let rootFolders = $state<RootFolder[]>([]);
 	let libraries = $state<LibraryEntity[]>([]);
 	let scoringProfiles = $state<ScoringProfile[]>([]);
+	/** Resolved subtitle profile for a NEW item; null once the endpoint reports no default. */
+	let effectiveSubtitleProfile = $state<EffectiveSubtitleProfileInfo | null>(null);
 	let seasons = $state<Season[]>([]);
 	let isLoading = $state(false);
 	let isSubmitting = $state(false);
@@ -216,6 +225,7 @@
 			monitoredTouched = false;
 			searchOnAddTouched = false;
 			wantsSubtitlesTouched = false;
+			effectiveSubtitleProfile = null;
 
 			loadData();
 		}
@@ -339,24 +349,34 @@
 		try {
 			const tmdbPromise = mediaType === 'tv' ? getTmdb(`tv/${tmdbId}`) : getTmdb(`movie/${tmdbId}`);
 
-			const [foldersData, librariesData, profilesData, classificationData, tmdbRes] =
-				(await Promise.all([
-					getRootFolders(),
-					getLibraries({ mediaType }),
-					getScoringProfiles(),
-					getLibraryClassificationSettings(),
-					tmdbPromise
-				])) as unknown as [
-					{ folders?: RootFolder[] } | RootFolder[],
-					{ libraries?: LibraryEntity[] },
-					{ profiles?: ScoringProfile[]; defaultProfileId?: string },
-					{ enforceAnimeSubtype?: boolean },
-					unknown
-				];
+			const [
+				foldersData,
+				librariesData,
+				profilesData,
+				classificationData,
+				subtitleProfileData,
+				tmdbRes
+			] = (await Promise.all([
+				getRootFolders(),
+				getLibraries({ mediaType }),
+				getScoringProfiles(),
+				getLibraryClassificationSettings(),
+				// Non-critical: powers the effective-profile line + warning on the add form.
+				getEffectiveSubtitleProfile(mediaType === 'tv' ? 'series' : 'movie').catch(() => undefined),
+				tmdbPromise
+			])) as unknown as [
+				{ folders?: RootFolder[] } | RootFolder[],
+				{ libraries?: LibraryEntity[] },
+				{ profiles?: ScoringProfile[]; defaultProfileId?: string },
+				{ enforceAnimeSubtype?: boolean },
+				EffectiveSubtitleProfileInfo | null | undefined,
+				unknown
+			];
 
 			rootFolders = Array.isArray(foldersData) ? foldersData : (foldersData.folders ?? []);
 			libraries = librariesData.libraries ?? [];
 			scoringProfiles = profilesData.profiles ?? [];
+			effectiveSubtitleProfile = subtitleProfileData ?? null;
 			enforceAnimeSubtype = classificationData?.enforceAnimeSubtype === true;
 
 			if (mediaType === 'tv' && tmdbRes) {
@@ -596,6 +616,7 @@
 				{enforceAnimeSubtype}
 				{error}
 				{collection}
+				{effectiveSubtitleProfile}
 				onMonitoredInput={handleMonitoredInput}
 				onSearchOnAddInput={handleSearchOnAddInput}
 				onWantsSubtitlesInput={handleWantsSubtitlesInput}
@@ -621,6 +642,7 @@
 				{error}
 				{seasons}
 				{monitoredSeasons}
+				{effectiveSubtitleProfile}
 				onMonitoredInput={handleMonitoredInput}
 				onSearchOnAddInput={handleSearchOnAddInput}
 				onWantsSubtitlesInput={handleWantsSubtitlesInput}

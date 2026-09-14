@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { FolderOpen, BarChart3, Search, Captions } from 'lucide-svelte';
+	import { FolderOpen, BarChart3, Search, Captions, TriangleAlert } from 'lucide-svelte';
 	import { resolve } from '$app/paths';
 	import { getWritableRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import * as m from '$lib/paraglide/messages.js';
@@ -16,6 +16,12 @@
 		maxResolution?: string | null;
 	}
 
+	/** The subtitle profile a new item will inherit, plus the level it came from. */
+	interface EffectiveSubtitleProfileInfo {
+		profile: { id: string; name: string };
+		source: 'movie' | 'series' | 'library' | 'default';
+	}
+
 	interface Props {
 		mediaType: 'movie' | 'tv';
 		rootFolders: RootFolder[];
@@ -24,6 +30,8 @@
 		selectedScoringProfile: string;
 		searchOnAdd: boolean;
 		wantsSubtitles: boolean;
+		/** Resolved subtitle profile for a NEW item; undefined while loading, null when unset. */
+		effectiveSubtitleProfile?: EffectiveSubtitleProfileInfo | null;
 		requiredMediaSubType?: 'standard' | 'anime';
 		onSearchOnAddInput?: () => void;
 		onWantsSubtitlesInput?: () => void;
@@ -37,6 +45,7 @@
 		selectedScoringProfile = $bindable(),
 		searchOnAdd = $bindable(),
 		wantsSubtitles = $bindable(),
+		effectiveSubtitleProfile,
 		requiredMediaSubType,
 		onSearchOnAddInput,
 		onWantsSubtitlesInput
@@ -49,6 +58,14 @@
 		filteredRootFolders.find((f) => f.id === selectedRootFolder)
 	);
 	const selectedProfileObj = $derived(scoringProfiles.find((p) => p.id === selectedScoringProfile));
+
+	const effectiveSubtitleSource = $derived(
+		effectiveSubtitleProfile?.source === 'default'
+			? m.library_subtitleProfile_sourceDefault()
+			: effectiveSubtitleProfile?.source === 'library'
+				? m.library_subtitleProfile_sourceLibrary()
+				: m.library_subtitleProfile_sourceItem()
+	);
 </script>
 
 <!-- Root Folder Select -->
@@ -173,5 +190,20 @@
 				? m.library_add_autoDownloadSubtitlesYes()
 				: m.library_add_autoDownloadSubtitlesNo()}
 		</p>
+		{#if wantsSubtitles && effectiveSubtitleProfile}
+			<p class="mt-1 text-xs text-base-content/60">
+				{m.library_add_subtitleProfileLine({
+					name: effectiveSubtitleProfile.profile.name,
+					source: effectiveSubtitleSource
+				})}
+			</p>
+		{/if}
 	</div>
 </label>
+
+{#if wantsSubtitles && effectiveSubtitleProfile === null}
+	<div class="alert text-sm alert-warning" role="status">
+		<TriangleAlert class="h-4 w-4 shrink-0" />
+		<span>{m.library_add_noDefaultProfileWarning()}</span>
+	</div>
+{/if}

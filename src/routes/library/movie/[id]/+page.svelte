@@ -552,6 +552,7 @@
 			movie.minimumAvailability = editData.minimumAvailability;
 			movie.availabilityDelay = editData.availabilityDelay;
 			movie.wantsSubtitles = editData.wantsSubtitles;
+			movie.languageProfileId = editData.languageProfileId;
 			movie.tmdbCollectionId = editData.tmdbCollectionId ?? null;
 			movie.collectionName = editData.collectionName ?? null;
 
@@ -1530,6 +1531,8 @@
 	{movie}
 	qualityProfiles={data.qualityProfiles}
 	delayProfiles={data.delayProfiles}
+	languageProfiles={data.languageProfiles}
+	effectiveLanguageProfile={data.effectiveLanguageProfile}
 	rootFolders={data.rootFolders}
 	saving={isSaving}
 	onClose={handleEditClose}
