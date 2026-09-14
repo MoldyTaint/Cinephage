@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveSubtitleProgress } from './subtitle-status-display.js';
+import { deriveSeriesSubtitleProgress, deriveSubtitleProgress } from './subtitle-status-display.js';
 import type { SubtitleStatusSummary } from './subtitle-status-display.js';
 import type { LanguageProfileV2 } from '$lib/shared/language-profile.js';
 
@@ -88,5 +88,47 @@ describe('deriveSubtitleProgress', () => {
 	it('clamps the cutoff rank to the requirement list length', () => {
 		const progress = deriveSubtitleProgress(status(0, true), { ...profile, cutoffRank: 7 });
 		expect(progress).toMatchObject({ satisfiedCount: 3, totalCount: 3, satisfiedViaCutoff: false });
+	});
+});
+
+describe('deriveSeriesSubtitleProgress', () => {
+	it('sums counts across episodes with counts', () => {
+		const progress = deriveSeriesSubtitleProgress([
+			{ subtitleCounts: { satisfiedCount: 1, totalRequirements: 2 } },
+			{ subtitleCounts: { satisfiedCount: 2, totalRequirements: 2 } },
+			{ subtitleCounts: null }
+		]);
+		expect(progress).toEqual({
+			satisfiedCount: 3,
+			totalCount: 4,
+			satisfiedViaCutoff: false,
+			state: 'partial'
+		});
+	});
+
+	it('returns satisfied only when every counted requirement is met', () => {
+		const progress = deriveSeriesSubtitleProgress([
+			{ subtitleCounts: { satisfiedCount: 2, totalRequirements: 2 } },
+			{ subtitleCounts: { satisfiedCount: 1, totalRequirements: 1 } }
+		]);
+		expect(progress?.state).toBe('satisfied');
+	});
+
+	it('returns null when no episode has counts', () => {
+		expect(deriveSeriesSubtitleProgress([{ subtitleCounts: null }, {}])).toBeNull();
+		expect(deriveSeriesSubtitleProgress([])).toBeNull();
+	});
+
+	it('ignores zero-requirement entries', () => {
+		const progress = deriveSeriesSubtitleProgress([
+			{ subtitleCounts: { satisfiedCount: 0, totalRequirements: 0 } },
+			{ subtitleCounts: { satisfiedCount: 0, totalRequirements: 3 } }
+		]);
+		expect(progress).toEqual({
+			satisfiedCount: 0,
+			totalCount: 3,
+			satisfiedViaCutoff: false,
+			state: 'missing'
+		});
 	});
 });

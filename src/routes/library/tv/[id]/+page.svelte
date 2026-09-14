@@ -12,6 +12,7 @@
 	import { SubtitleSearchModal } from '$lib/components/subtitles';
 	import SubtitleSyncModal from '$lib/components/subtitles/SubtitleSyncModal.svelte';
 	import SubtitleRequirementsSection from '$lib/components/subtitles/SubtitleRequirementsSection.svelte';
+	import { deriveSeriesSubtitleProgress } from '$lib/utils/subtitle-status-display.js';
 	import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
@@ -1513,6 +1514,12 @@
 	}
 
 	// Per-series subtitle auto-search (all missing)
+	const seriesSubtitleProgress = $derived(
+		deriveSeriesSubtitleProgress(
+			data.seasons.flatMap((season) => season.episodes)
+		)
+	);
+
 	let savingRequirements = $state(false);
 
 	async function handleEpisodeGateChange(episodeId: string, value: boolean | null) {
@@ -1749,6 +1756,7 @@
 		{missingSearchProgress}
 		{missingSearchResult}
 		{partiallyMonitored}
+		subtitleProgress={seriesSubtitleProgress}
 		onMonitorToggle={handleMonitorToggle}
 		onSearch={handleSearch}
 		onSearchMissing={handleSearchMissing}

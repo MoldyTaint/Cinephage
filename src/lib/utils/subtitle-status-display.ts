@@ -72,3 +72,36 @@ export function deriveSubtitleProgress(
 
 	return { satisfiedCount, totalCount, satisfiedViaCutoff, state };
 }
+
+/**
+ * Aggregate requirement progress across a series' episodes (file-bearing
+ * episodes with counts only — absent counts mean no effective requirements
+ * for that episode and are excluded). Returns null when NO episode has
+ * counts, so the badge hides exactly like the per-episode one. A series-level
+ * cutoff marker is meaningless (episodes resolve independently), so
+ * `satisfiedViaCutoff` is always false.
+ */
+export function deriveSeriesSubtitleProgress(
+	episodes: Array<{
+		subtitleCounts?: { satisfiedCount: number; totalRequirements: number } | null;
+	}>
+): SubtitleRequirementProgress | null {
+	let satisfiedCount = 0;
+	let totalCount = 0;
+	let counted = false;
+
+	for (const episode of episodes) {
+		const counts = episode.subtitleCounts;
+		if (!counts || counts.totalRequirements <= 0) continue;
+		counted = true;
+		satisfiedCount += counts.satisfiedCount;
+		totalCount += counts.totalRequirements;
+	}
+
+	if (!counted || totalCount === 0) return null;
+
+	const state =
+		satisfiedCount === 0 ? 'missing' : satisfiedCount < totalCount ? 'partial' : 'satisfied';
+
+	return { satisfiedCount, totalCount, satisfiedViaCutoff: false, state };
+}
