@@ -142,6 +142,7 @@ import { migration_v142 } from './142-allow-anilist-mal-alternate-title-sources.
 import { migration_v143 } from './143-media-server-language-normalization.js';
 import { migration_v144 } from './144-language-settings-prefer-original-title.js';
 import { migration_v145 } from './145-drop-deprecated-adaptive-subtitle-columns.js';
+import { migration_v146 } from './146-subtitle-requirement-overrides.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -286,5 +287,6 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v142,
 	migration_v143,
 	migration_v144,
-	migration_v145
+	migration_v145,
+	migration_v146
 ];

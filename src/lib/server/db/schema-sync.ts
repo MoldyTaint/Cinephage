@@ -140,10 +140,19 @@ import {
  * Version 133: Add import_failed and backfill canonical info hashes on download queue rows
  * Version 134: Store canonical info hashes on download history rows
  * Version 135: Deduplicate active download queue rows by client and info hash
+ * Version 136: Add storage_items indexes on episode_file_id and movie_file_id
+ * Version 137: Add allow_movies and allow_tv columns to download_clients for debrid content-type restriction
+ * Version 138: Add arr_id_mappings table for the Radarr/Sonarr-compatible API layer's surrogate integer IDs
+ * Version 139: Add arr_notification_configs table for arr-compat clients (Pulsarr, etc.) registering webhooks
+ * Version 140: Language system reset - v2 language profiles, language_settings singleton, metadata mode/value columns
+ * Version 141: Subtitle reconciliation/backoff - subtitles.last_checked_at, subtitle_search_state table, episode path-base rewrite
+ * Version 142: Allow AniList/MAL title variants in alternate_titles (source CHECK extended, table rebuilt)
+ * Version 143: Media-server stats language normalization - raw language provenance columns + canonicalized arrays on media_server_synced_items; epg_programs title_i18n/description_i18n/category_i18n JSON columns
  * Version 144: Add language_settings.prefer_original_title instance default (boolean, default 0)
  * Version 145: Drop deprecated per-item adaptive subtitle columns (movies/episodes failed_subtitle_attempts, first_subtitle_search_at)
+ * Version 146: Per-item subtitle requirement overrides on movies/series/episodes + inheritance repair
  */
-export const CURRENT_SCHEMA_VERSION = 145;
+export const CURRENT_SCHEMA_VERSION = 146;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -567,6 +576,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"scoring_profile_id" text REFERENCES "scoring_profiles"("id") ON DELETE SET NULL,
 		"desired_qualities" text,
 		"language_profile_id" text,
+		"subtitle_requirements_override" text,
 		"monitored" integer DEFAULT true,
 		"minimum_availability" text DEFAULT 'released',
 		"added" text,
@@ -623,6 +633,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"root_folder_id" text REFERENCES "root_folders"("id") ON DELETE SET NULL,
 		"scoring_profile_id" text REFERENCES "scoring_profiles"("id") ON DELETE SET NULL,
 		"language_profile_id" text,
+		"subtitle_requirements_override" text,
 		"monitored" integer DEFAULT true,
 		"monitor_new_items" text DEFAULT 'all',
 		"monitor_specials" integer DEFAULT false,
@@ -670,8 +681,9 @@ const TABLE_DEFINITIONS: string[] = [
 		"monitored" integer DEFAULT true,
 		"has_file" integer DEFAULT false,
 		"wants_subtitles_override" integer,
+		"subtitle_requirements_override" text,
 		"last_search_time" text
-	)`,
+)`,
 
 	`CREATE TABLE IF NOT EXISTS "episode_files" (
 		"id" text PRIMARY KEY NOT NULL,

@@ -678,6 +678,11 @@ export const movies = sqliteTable(
 		desiredQualities: text('desired_qualities', { mode: 'json' }).$type<DesiredQuality[]>(),
 		// Language profile for subtitle preferences (deferred reference - languageProfiles defined later)
 		languageProfileId: text('language_profile_id'),
+		// Per-item subtitle requirement override (null = inherit from the
+		// profile chain); replaces only the profile's requirement list.
+		subtitleRequirementsOverride: text('subtitle_requirements_override', {
+			mode: 'json'
+		}).$type<SubtitleRequirement[]>(),
 		// Whether to monitor for upgrades
 		monitored: integer('monitored', { mode: 'boolean' }).default(true),
 		// Minimum availability before searching (announced, inCinemas, released)
@@ -817,6 +822,11 @@ export const series = sqliteTable(
 		}),
 		// Language profile for subtitle preferences (deferred reference - languageProfiles defined later)
 		languageProfileId: text('language_profile_id'),
+		// Per-item subtitle requirement override (null = inherit from the
+		// profile chain); replaces only the profile's requirement list.
+		subtitleRequirementsOverride: text('subtitle_requirements_override', {
+			mode: 'json'
+		}).$type<SubtitleRequirement[]>(),
 		// Whether to monitor for new episodes
 		monitored: integer('monitored', { mode: 'boolean' }).default(true),
 		// How to handle new seasons/episodes added after initial add: 'all' | 'none'
@@ -912,6 +922,12 @@ export const episodes = sqliteTable(
 		hasFile: integer('has_file', { mode: 'boolean' }).default(false),
 		// Override series-level subtitle preference (null = inherit from series)
 		wantsSubtitlesOverride: integer('wants_subtitles_override', { mode: 'boolean' }),
+		// Per-episode subtitle requirement override (null = inherit via series).
+		// Episodes still have no language profile of their own — only the
+		// requirement list can vary from the series-level resolution.
+		subtitleRequirementsOverride: text('subtitle_requirements_override', {
+			mode: 'json'
+		}).$type<SubtitleRequirement[]>(),
 		// Last time this episode was searched for releases (ISO timestamp).
 		// Still actively read/written by the release-search cooldown
 		// (CooldownStage / SearchCooldownSpecification) — intentionally NOT

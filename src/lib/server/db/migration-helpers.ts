@@ -461,7 +461,8 @@ export const CRITICAL_COLUMNS: Record<string, string[]> = {
 		'library_id',
 		'original_language',
 		'metadata_language_mode',
-		'metadata_language_value'
+		'metadata_language_value',
+		'subtitle_requirements_override'
 	],
 	series: [
 		'id',
@@ -472,9 +473,10 @@ export const CRITICAL_COLUMNS: Record<string, string[]> = {
 		'library_id',
 		'original_language',
 		'metadata_language_mode',
-		'metadata_language_value'
+		'metadata_language_value',
+		'subtitle_requirements_override'
 	],
-	episodes: ['id', 'series_id', 'season_number', 'episode_number'],
+	episodes: ['id', 'series_id', 'season_number', 'episode_number', 'subtitle_requirements_override'],
 	subtitles: ['id', 'relative_path', 'language', 'format', 'last_checked_at'],
 	indexers: ['id', 'name', 'definition_id', 'enabled'],
 	scoring_profiles: ['id', 'name', 'is_default']
