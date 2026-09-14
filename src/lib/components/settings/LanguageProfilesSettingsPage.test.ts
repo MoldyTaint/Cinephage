@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/svelte';
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/svelte';
 import LanguageProfilesPage from '../../../routes/settings/integrations/language-profiles/+page.svelte';
 import type { PageData } from '../../../routes/settings/integrations/language-profiles/$types';
 
@@ -115,5 +115,92 @@ describe('language profile editor payload', () => {
 				upgradesAllowed: true
 			})
 		);
+	});
+});
+
+describe('language profile editor labels via paraglide keys', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	afterEach(() => {
+		cleanup();
+	});
+
+	it('renders variant/accessibility select options from message keys', async () => {
+		renderPage(null);
+
+		await fireEvent.click(screen.getByRole('button', { name: /add profile/i }));
+
+		const variantSelect = screen.getByRole('combobox', {
+			name: 'Subtitle variant'
+		}) as HTMLSelectElement;
+		const variantOptions = within(variantSelect)
+			.getAllByRole('option')
+			.map((o) => o.textContent);
+		expect(variantOptions).toEqual(['Regular', 'Forced', 'Both (regular + forced)']);
+
+		const accessibilitySelect = screen.getByRole('combobox', {
+			name: 'Subtitle accessibility'
+		}) as HTMLSelectElement;
+		const accessibilityOptions = within(accessibilitySelect)
+			.getAllByRole('option')
+			.map((o) => o.textContent);
+		expect(accessibilityOptions).toEqual(['Any', 'Prefer HI', 'Require HI', 'Exclude HI']);
+	});
+
+	it('labels the requirement selects via aria-label keys', async () => {
+		renderPage(null);
+
+		await fireEvent.click(screen.getByRole('button', { name: /add profile/i }));
+
+		expect(screen.getByRole('combobox', { name: 'Subtitle language' })).not.toBeNull();
+		expect(screen.getByRole('combobox', { name: 'Subtitle variant' })).not.toBeNull();
+		expect(screen.getByRole('combobox', { name: 'Subtitle accessibility' })).not.toBeNull();
+	});
+
+	it('renders the cutoff strings from message keys', async () => {
+		renderPage(null);
+
+		await fireEvent.click(screen.getByRole('button', { name: /add profile/i }));
+
+		expect(
+			screen.getByRole('radio', { name: 'No cutoff (acquire all requirements)' })
+		).not.toBeNull();
+		expect(screen.getByRole('radio', { name: 'Stop after this' })).not.toBeNull();
+	});
+
+	it('labels the reorder buttons via aria-label keys', async () => {
+		renderPage(null);
+
+		await fireEvent.click(screen.getByRole('button', { name: /add profile/i }));
+
+		expect(screen.getByRole('button', { name: 'Move subtitle requirement up' })).not.toBeNull();
+		expect(screen.getByRole('button', { name: 'Move subtitle requirement down' })).not.toBeNull();
+	});
+
+	it('renders the audio section strings from message keys', async () => {
+		renderPage(null);
+
+		await fireEvent.click(screen.getByRole('button', { name: /add profile/i }));
+
+		expect(screen.getByText('Audio')).not.toBeNull();
+		expect(screen.getByText('Prefer original audio track')).not.toBeNull();
+		expect(screen.getByRole('button', { name: 'Add fallback language' })).not.toBeNull();
+		// No fallback rows yet: the per-row controls appear only after adding one.
+		await fireEvent.click(screen.getByRole('button', { name: 'Add fallback language' }));
+		expect(screen.getByRole('combobox', { name: 'Fallback audio language' })).not.toBeNull();
+		expect(screen.getByRole('button', { name: 'Move audio language up' })).not.toBeNull();
+		expect(screen.getByRole('button', { name: 'Move audio language down' })).not.toBeNull();
+		expect(screen.getByRole('button', { name: 'Remove fallback audio language' })).not.toBeNull();
+	});
+
+	it('renders the profile card summary from message keys', () => {
+		renderPage('p2');
+
+		// p2 has fallback audio languages, so the summary line renders:
+		// "<Audio:> <prefer original> · French".
+		const summary = screen.getByText(/prefer original/);
+		expect(summary.textContent).toContain('Audio:');
 	});
 });

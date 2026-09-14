@@ -10,6 +10,8 @@
 	import StatusIndicator from './StatusIndicator.svelte';
 	import QualityBadge from './QualityBadge.svelte';
 	import ScoreBadge from './ScoreBadge.svelte';
+	import SubtitleRequirementBadge from './SubtitleRequirementBadge.svelte';
+	import type { SubtitleRequirementProgress } from '$lib/utils/subtitle-status-display.js';
 	import { getMovieAvailabilityLevel } from '$lib/utils/movieAvailability';
 	import {
 		Search,
@@ -86,6 +88,8 @@
 		autoSearchResult?: AutoSearchResult | null;
 		scoreInfo?: ScoreInfo | null;
 		scoreLoading?: boolean;
+		/** Requirement-aware subtitle progress from the movie loader (null when no effective profile). */
+		subtitleProgress?: SubtitleRequirementProgress | null;
 		onMonitorToggle?: (newValue: boolean) => void;
 		onAutoSearch?: () => void;
 		onSearch?: () => void;
@@ -108,6 +112,7 @@
 		autoSearchResult: _autoSearchResult = null,
 		scoreInfo = null,
 		scoreLoading = false,
+		subtitleProgress = null,
 		onMonitorToggle,
 		onAutoSearch,
 		onSearch,
@@ -626,6 +631,9 @@
 										onclick={onScoreClick}
 									/>
 								{/if}
+							{/if}
+							{#if subtitleProgress}
+								<SubtitleRequirementBadge progress={subtitleProgress} size="md" showCutoff={true} />
 							{/if}
 						</div>
 						<div

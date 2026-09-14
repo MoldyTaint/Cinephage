@@ -46,6 +46,7 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
 	import { getLibraryDetailBackHref } from '$lib/utils/libraryReturnNavigation';
+	import { deriveSubtitleProgress } from '$lib/utils/subtitle-status-display.js';
 	import { createDynamicSSE } from '$lib/sse';
 	import { getFileName } from '$lib/utils/format.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
@@ -63,6 +64,12 @@
 	let lastMovieId = $state<string | null>(null);
 	const movie = $derived(movieState ?? data.movie);
 	const queueItem = $derived(queueItemState === undefined ? data.queueItem : queueItemState);
+
+	// Requirement-aware subtitle badge view-model. Null when the movie has no
+	// effective profile (the loader then returns a trivially-satisfied status).
+	const subtitleRequirementProgress = $derived(
+		deriveSubtitleProgress(data.subtitleStatus, data.effectiveLanguageProfile?.profile ?? null)
+	);
 
 	// Back link target: the validated returnTo URL carries the exact filtered
 	// list state from the page the user navigated from (issue #515). It stays
@@ -872,6 +879,7 @@
 		{autoSearchResult}
 		{scoreInfo}
 		{scoreLoading}
+		subtitleProgress={subtitleRequirementProgress}
 	/>
 
 	<!-- Main Content -->
@@ -899,6 +907,7 @@
 				<MovieFilesTab
 					files={movie.files}
 					subtitles={movie.subtitles}
+					subtitleProgress={subtitleRequirementProgress}
 					{isStreamerProfile}
 					onDeleteFile={handleDeleteFile}
 					onSearch={handleSearch}
