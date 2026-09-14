@@ -17,6 +17,7 @@ import { getSubtitleSearchService } from './services/SubtitleSearchService.js';
 import { getSubtitleDownloadService } from './services/SubtitleDownloadService.js';
 import { LanguageProfileService } from './services/LanguageProfileService.js';
 import { selectBestCandidate, type CandidateRejectionReason } from './acquisition.js';
+import { filterSearchEligible, recordSearchFailure, resetSearchFailure } from './subtitle-search-state.js';
 import { DEFAULT_MINIMUM_SCORE, requirementKey } from '$lib/shared/language-profile.js';
 import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
 import type { SubtitleDownloadResult, SubtitleSearchResult } from './types.js';
@@ -159,16 +160,22 @@ export async function autoSearchMovie(
 	const languages = profileLanguages(profile, options.languages);
 	if (languages.length === 0) return emptyResult('movie', movie.id, movie.title, 'no_profile');
 
+	// Per-requirement backoff: attempt only requirements whose window is open.
+	const activeMissing = await filterSearchEligible('movie', movie.id, status.missing);
+	if (activeMissing.length === 0) {
+		return { ownerType: 'movie', ownerId: movie.id, title: movie.title, searched: false, outcomes: [], downloaded: 0 };
+	}
+
 	const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
 	const searchResults = await getSubtitleSearchService().searchForMovie(movie.id, languages, {
-		requireHearingImpaired: status.missing.some((r) => r.accessibility === 'require-hi')
+		requireHearingImpaired: activeMissing.some((r) => r.accessibility === 'require-hi')
 	});
 
 	return acquireRequirements(
 		'movie',
 		movie.id,
 		movie.title,
-		status.missing,
+		activeMissing,
 		searchResults.results,
 		minScore
 	);
@@ -203,16 +210,22 @@ export async function autoSearchEpisode(
 	const languages = profileLanguages(profile, options.languages);
 	if (languages.length === 0) return emptyResult('episode', episode.id, title, 'no_profile');
 
+	// Per-requirement backoff: attempt only requirements whose window is open.
+	const activeMissing = await filterSearchEligible('episode', episode.id, status.missing);
+	if (activeMissing.length === 0) {
+		return { ownerType: 'episode', ownerId: episode.id, title, searched: false, outcomes: [], downloaded: 0 };
+	}
+
 	const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
 	const searchResults = await getSubtitleSearchService().searchForEpisode(episode.id, languages, {
-		requireHearingImpaired: status.missing.some((r) => r.accessibility === 'require-hi')
+		requireHearingImpaired: activeMissing.some((r) => r.accessibility === 'require-hi')
 	});
 
 	return acquireRequirements(
 		'episode',
 		episode.id,
 		title,
-		status.missing,
+		activeMissing,
 		searchResults.results,
 		minScore
 	);
@@ -251,6 +264,7 @@ async function acquireRequirements(
 		// Reserve "no results" for genuinely zero provider results.
 		if (noResults) {
 			outcomes.push({ ...base, reason: 'no_results' });
+			await recordSearchFailure(ownerType, ownerId, base.requirementKey);
 			continue;
 		}
 
@@ -262,6 +276,7 @@ async function acquireRequirements(
 				bestRejectedScore: selection.bestRejected?.result.matchScore,
 				bestRejectedReason: selection.bestRejected?.reason
 			});
+			await recordSearchFailure(ownerType, ownerId, base.requirementKey);
 			continue;
 		}
 
@@ -274,6 +289,7 @@ async function acquireRequirements(
 
 			downloaded++;
 			if (!firstDownload) firstDownload = result;
+			await resetSearchFailure(ownerType, ownerId, base.requirementKey);
 
 			outcomes.push({
 				...base,
@@ -291,6 +307,7 @@ async function acquireRequirements(
 				'[SubtitleAutoSearch] Download failed'
 			);
 			outcomes.push({ ...base, reason: 'error', error: message });
+			await recordSearchFailure(ownerType, ownerId, base.requirementKey);
 		}
 	}
 

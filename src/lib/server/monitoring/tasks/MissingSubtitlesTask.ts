@@ -24,8 +24,7 @@ import { getSubtitleProviderManager } from '$lib/server/subtitles/services/Subti
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { selectBestCandidate } from '$lib/server/subtitles/acquisition.js';
 import {
-	getSearchStates,
-	isSearchActive,
+	filterSearchEligible,
 	recordSearchFailure,
 	resetSearchFailure
 } from '$lib/server/subtitles/subtitle-search-state.js';
@@ -312,10 +311,7 @@ async function searchMissingMovieSubtitles(
 
 					// Per-requirement backoff: attempt only requirements whose
 					// individual window is open.
-					const states = await getSearchStates('movie', movie.id);
-					const activeMissing = status.missing.filter((requirement) =>
-						isSearchActive(states.get(requirementKey(requirement)))
-					);
+					const activeMissing = await filterSearchEligible('movie', movie.id, status.missing);
 					if (activeMissing.length === 0) return;
 
 					processed++;
@@ -550,9 +546,10 @@ async function searchMissingEpisodeSubtitles(
 							const status = await profileService.getEpisodeSubtitleStatus(episodeId);
 
 							// Per-requirement backoff.
-							const states = await getSearchStates('episode', episodeId);
-							const activeMissing = status.missing.filter((requirement) =>
-								isSearchActive(states.get(requirementKey(requirement)))
+							const activeMissing = await filterSearchEligible(
+								'episode',
+								episodeId,
+								status.missing
 							);
 							if (activeMissing.length === 0) return;
 

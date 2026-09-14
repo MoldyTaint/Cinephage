@@ -22,7 +22,7 @@ vi.mock('$lib/logging/index.js', () => {
 const {
 	isSearchActive,
 	getSearchStates,
-	getSearchState,
+	filterSearchEligible,
 	recordSearchFailure,
 	resetSearchFailure,
 	ADAPTIVE_SEARCH_DELAY_DAYS,
@@ -126,7 +126,7 @@ describe('per-requirement DB state', () => {
 		await recordSearchFailure('movie', 'movie-2', KEY_A, first);
 		await recordSearchFailure('movie', 'movie-2', KEY_A, second);
 
-		expect(await getSearchState('movie', 'movie-2', KEY_A)).toEqual({
+		expect((await getSearchStates('movie', 'movie-2')).get(KEY_A)).toEqual({
 			failedAttempts: 2,
 			firstSearchAt: first.toISOString(),
 			lastSearchAt: second.toISOString()
@@ -139,6 +139,39 @@ describe('per-requirement DB state', () => {
 
 		expect((await getSearchStates('movie', 'movie-3')).size).toBe(1);
 		expect((await getSearchStates('episode', 'movie-3')).size).toBe(1);
-		expect(await getSearchState('episode', 'unknown', KEY_A)).toBeNull();
+		expect((await getSearchStates('episode', 'unknown')).size).toBe(0);
+	});
+});
+
+describe('filterSearchEligible', () => {
+	const REQ_A = { tag: 'en', variant: 'regular' as const, accessibility: 'any' as const };
+	const REQ_B = { tag: 'en', variant: 'forced' as const, accessibility: 'any' as const };
+
+	it('passes through requirements with no recorded state', async () => {
+		const eligible = await filterSearchEligible('movie', 'movie-x', [REQ_A, REQ_B]);
+		expect(eligible).toEqual([REQ_A, REQ_B]);
+	});
+
+	it('drops requirements whose extended backoff window is closed', async () => {
+		const old = new Date(NOW - (ADAPTIVE_SEARCH_DELAY_DAYS + 30) * DAY);
+		const recent = new Date(NOW - 1 * DAY);
+		// REQ_A: long-failing and searched recently → window closed.
+		await recordSearchFailure('movie', 'movie-y', KEY_A, old);
+		await recordSearchFailure('movie', 'movie-y', KEY_A, recent);
+		// REQ_B: failing but still inside the grace window → active.
+		await recordSearchFailure('movie', 'movie-y', KEY_B, new Date(NOW - 2 * DAY));
+
+		const eligible = await filterSearchEligible('movie', 'movie-y', [REQ_A, REQ_B]);
+		expect(eligible).toEqual([REQ_B]);
+	});
+
+	it('keeps requirements reset by a successful download', async () => {
+		const old = new Date(NOW - (ADAPTIVE_SEARCH_DELAY_DAYS + 30) * DAY);
+		await recordSearchFailure('episode', 'ep-z', KEY_A, old);
+		await recordSearchFailure('episode', 'ep-z', KEY_A, old);
+		await resetSearchFailure('episode', 'ep-z', KEY_A);
+
+		const eligible = await filterSearchEligible('episode', 'ep-z', [REQ_A]);
+		expect(eligible).toEqual([REQ_A]);
 	});
 });

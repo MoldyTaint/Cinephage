@@ -13,7 +13,12 @@ import { getSubtitleSearchService } from './SubtitleSearchService.js';
 import { getSubtitleDownloadService } from './SubtitleDownloadService.js';
 import { LanguageProfileService, type LanguageProfile } from './LanguageProfileService.js';
 import { selectBestCandidate } from '../acquisition.js';
-import { DEFAULT_MINIMUM_SCORE } from '$lib/shared/language-profile.js';
+import {
+	filterSearchEligible,
+	recordSearchFailure,
+	resetSearchFailure
+} from '../subtitle-search-state.js';
+import { DEFAULT_MINIMUM_SCORE, requirementKey } from '$lib/shared/language-profile.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
@@ -169,10 +174,20 @@ async function searchForMovie(
 		return result;
 	}
 
+	// Per-requirement backoff (shared gate): skip requirements whose window is closed.
+	const activeMissing = await filterSearchEligible('movie', movieId, status.missing);
+	if (activeMissing.length === 0) {
+		logger.debug(
+			{ movieId, title: movie.title },
+			'[SubtitleImportService] All missing movie requirements are in backoff'
+		);
+		return result;
+	}
+
 	// Search for subtitles. Gate providers that cannot verify HI when any missing
 	// requirement is `require-hi`, otherwise such a requirement could hit a
 	// provider that cannot prove HI status.
-	const requireHearingImpaired = status.missing.some((r) => r.accessibility === 'require-hi');
+	const requireHearingImpaired = activeMissing.some((r) => r.accessibility === 'require-hi');
 	const searchResults = await searchService.searchForMovie(movieId, languages, {
 		requireHearingImpaired
 	});
@@ -182,7 +197,7 @@ async function searchForMovie(
 		{
 			movieId,
 			title: movie.title,
-			missingLanguages: status.missing.map((m) => m.tag),
+			missingLanguages: activeMissing.map((m) => m.tag),
 			resultsFound: searchResults.results.length,
 			minScore
 		},
@@ -190,7 +205,7 @@ async function searchForMovie(
 	);
 
 	// Download best match for each missing requirement
-	for (const requirement of status.missing) {
+	for (const requirement of activeMissing) {
 		const selection = selectBestCandidate(searchResults.results, requirement, minScore);
 		const bestMatch = selection.best;
 
@@ -213,6 +228,7 @@ async function searchForMovie(
 			try {
 				await downloadService.downloadForMovie(movieId, bestMatch);
 				result.downloaded++;
+				await resetSearchFailure('movie', movieId, requirementKey(requirement));
 
 				// History is owned by SubtitleDownloadService (single write).
 				const normalizedLanguage = normalizeLanguageCode(bestMatch.language);
@@ -239,7 +255,10 @@ async function searchForMovie(
 					},
 					'[SubtitleImportService] Failed to download subtitle for movie'
 				);
+				await recordSearchFailure('movie', movieId, requirementKey(requirement));
 			}
+		} else {
+			await recordSearchFailure('movie', movieId, requirementKey(requirement));
 		}
 	}
 
@@ -356,10 +375,20 @@ async function searchForEpisode(
 		return result;
 	}
 
+	// Per-requirement backoff (shared gate): skip requirements whose window is closed.
+	const activeMissing = await filterSearchEligible('episode', episodeId, status.missing);
+	if (activeMissing.length === 0) {
+		logger.debug(
+			{ episodeId, seriesTitle: seriesData.title },
+			'[SubtitleImportService] All missing episode requirements are in backoff'
+		);
+		return result;
+	}
+
 	// Search for subtitles. Gate providers that cannot verify HI when any missing
 	// requirement is `require-hi`, otherwise such a requirement could hit a
 	// provider that cannot prove HI status.
-	const requireHearingImpaired = status.missing.some((r) => r.accessibility === 'require-hi');
+	const requireHearingImpaired = activeMissing.some((r) => r.accessibility === 'require-hi');
 	const searchResults = await searchService.searchForEpisode(episodeId, languages, {
 		requireHearingImpaired
 	});
@@ -371,7 +400,7 @@ async function searchForEpisode(
 			seriesTitle: seriesData.title,
 			season: episode.seasonNumber,
 			episode: episode.episodeNumber,
-			missingLanguages: status.missing.map((m) => m.tag),
+			missingLanguages: activeMissing.map((m) => m.tag),
 			resultsFound: searchResults.results.length,
 			minScore
 		},
@@ -379,7 +408,7 @@ async function searchForEpisode(
 	);
 
 	// Download best match for each missing requirement
-	for (const requirement of status.missing) {
+	for (const requirement of activeMissing) {
 		const selection = selectBestCandidate(searchResults.results, requirement, minScore);
 		const bestMatch = selection.best;
 
@@ -404,6 +433,7 @@ async function searchForEpisode(
 			try {
 				await downloadService.downloadForEpisode(episodeId, bestMatch);
 				result.downloaded++;
+				await resetSearchFailure('episode', episodeId, requirementKey(requirement));
 
 				// History is owned by SubtitleDownloadService (single write).
 				const normalizedLanguage = normalizeLanguageCode(bestMatch.language);
@@ -434,7 +464,10 @@ async function searchForEpisode(
 					},
 					'[SubtitleImportService] Failed to download subtitle for episode'
 				);
+				await recordSearchFailure('episode', episodeId, requirementKey(requirement));
 			}
+		} else {
+			await recordSearchFailure('episode', episodeId, requirementKey(requirement));
 		}
 	}
 

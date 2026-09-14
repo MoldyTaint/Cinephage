@@ -22,6 +22,8 @@ import { subtitleSearchState } from '$lib/server/db/schema.js';
 import { and, eq } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging/index.js';
+import { requirementKey } from '$lib/shared/language-profile.js';
+import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
 
 const logger = createChildLogger({ module: 'SubtitleSearchState', logDomain: 'subtitles' });
 
@@ -84,6 +86,23 @@ export function isSearchActive(
 	return lastSearchTimestamp + ADAPTIVE_SEARCH_DELTA_DAYS * DAY_MS <= now;
 }
 
+/**
+ * Filter requirements down to those whose backoff window is open.
+ *
+ * The single eligibility gate shared by every search path (scheduled task,
+ * auto-search single/batch, import triggers): requirements with no recorded
+ * state are always eligible; failures within the grace window stay active;
+ * extended-mode requirements only re-search after the weekly delta.
+ */
+export async function filterSearchEligible(
+	ownerType: SubtitleSearchOwnerType,
+	ownerId: string,
+	requirements: SubtitleRequirement[]
+): Promise<SubtitleRequirement[]> {
+	const states = await getSearchStates(ownerType, ownerId);
+	return requirements.filter((requirement) => isSearchActive(states.get(requirementKey(requirement))));
+}
+
 /** All requirement states for an owner, keyed by requirement key. */
 export async function getSearchStates(
 	ownerType: SubtitleSearchOwnerType,
@@ -106,33 +125,6 @@ export async function getSearchStates(
 			} satisfies SubtitleSearchState
 		])
 	);
-}
-
-/** State for a single owner + requirement, or null when none recorded. */
-export async function getSearchState(
-	ownerType: SubtitleSearchOwnerType,
-	ownerId: string,
-	requirementKey: string
-): Promise<SubtitleSearchState | null> {
-	const rows = await db
-		.select()
-		.from(subtitleSearchState)
-		.where(
-			and(
-				eq(subtitleSearchState.ownerType, ownerType),
-				eq(subtitleSearchState.ownerId, ownerId),
-				eq(subtitleSearchState.requirementKey, requirementKey)
-			)
-		)
-		.limit(1);
-
-	const row = rows[0];
-	if (!row) return null;
-	return {
-		failedAttempts: row.failedAttempts,
-		firstSearchAt: row.firstSearchAt,
-		lastSearchAt: row.lastSearchAt
-	};
 }
 
 /**
