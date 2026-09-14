@@ -15,6 +15,7 @@ import {
 	type AutoSearchItemResult,
 	type AutoSearchReason
 } from '$lib/server/subtitles/auto-search.js';
+import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
 
 const logger = createChildLogger({ module: 'SubtitleAutoSearchBatchApi', logDomain: 'subtitles' });
 
@@ -144,7 +145,10 @@ async function resolveMovieItems(body: SubtitleBatchAutoSearchRequest): Promise<
 }
 
 /** Load the owned rows an episode batch item needs, then run the shared orchestration. */
-async function autoSearchEpisodeItem(item: EpisodeBatchItem): Promise<AutoSearchItemResult> {
+async function autoSearchEpisodeItem(
+	item: EpisodeBatchItem,
+	requirement?: SubtitleRequirement
+): Promise<AutoSearchItemResult> {
 	const episode = await db.query.episodes.findFirst({ where: eq(episodes.id, item.id) });
 	if (!episode) {
 		return {
@@ -169,11 +173,14 @@ async function autoSearchEpisodeItem(item: EpisodeBatchItem): Promise<AutoSearch
 			downloaded: 0
 		};
 	}
-	return autoSearchEpisode(episode, seriesData);
+	return autoSearchEpisode(episode, seriesData, { requirement });
 }
 
 /** Load the movie row a batch item needs, then run the shared orchestration. */
-async function autoSearchMovieItem(item: MovieBatchItem): Promise<AutoSearchItemResult> {
+async function autoSearchMovieItem(
+	item: MovieBatchItem,
+	requirement?: SubtitleRequirement
+): Promise<AutoSearchItemResult> {
 	const movie = await db.query.movies.findFirst({ where: eq(movies.id, item.id) });
 	if (!movie) {
 		return {
@@ -186,7 +193,7 @@ async function autoSearchMovieItem(item: MovieBatchItem): Promise<AutoSearchItem
 			downloaded: 0
 		};
 	}
-	return autoSearchMovie(movie);
+	return autoSearchMovie(movie, { requirement });
 }
 
 /** Map a result to the progress status the client renders. */
@@ -257,8 +264,8 @@ export const POST: RequestHandler = async ({ request }) => {
 
 					try {
 						const result = isEpisode
-							? await autoSearchEpisodeItem(item)
-							: await autoSearchMovieItem(item);
+							? await autoSearchEpisodeItem(item, body.requirement)
+							: await autoSearchMovieItem(item, body.requirement);
 						const reason = resultStatus(result);
 						reasons[reason] = (reasons[reason] ?? 0) + 1;
 

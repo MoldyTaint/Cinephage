@@ -69,6 +69,12 @@ export interface AutoSearchItemResult {
 export interface AutoSearchOptions {
 	/** Explicit language override; defaults to the profile's requirement tags. */
 	languages?: string[];
+	/**
+	 * Target ONE requirement row ("Search now" from details pages). Manual
+	 * intent: the backoff eligibility gate is bypassed for this requirement,
+	 * but outcomes still record/reset state for scheduled paths.
+	 */
+	requirement?: SubtitleRequirement;
 }
 
 /** Structural media shapes (full drizzle rows satisfy these). */
@@ -160,11 +166,18 @@ export async function autoSearchMovie(
 		};
 	}
 
+	// Manual per-requirement intent skips the backoff gate for that row.
+	const missing = options.requirement
+		? status.missing.filter((r) => requirementKey(r) === requirementKey(options.requirement!))
+		: status.missing;
+
 	const languages = profileLanguages(profile, options.languages);
 	if (languages.length === 0) return emptyResult('movie', movie.id, movie.title, 'no_profile');
 
 	// Per-requirement backoff: attempt only requirements whose window is open.
-	const activeMissing = await filterSearchEligible('movie', movie.id, status.missing);
+	const activeMissing = options.requirement
+		? missing
+		: await filterSearchEligible('movie', movie.id, missing);
 	if (activeMissing.length === 0) {
 		return { ownerType: 'movie', ownerId: movie.id, title: movie.title, searched: false, outcomes: [], downloaded: 0 };
 	}
@@ -210,11 +223,18 @@ export async function autoSearchEpisode(
 		};
 	}
 
+	// Manual per-requirement intent skips the backoff gate for that row.
+	const missing = options.requirement
+		? status.missing.filter((r) => requirementKey(r) === requirementKey(options.requirement!))
+		: status.missing;
+
 	const languages = profileLanguages(profile, options.languages);
 	if (languages.length === 0) return emptyResult('episode', episode.id, title, 'no_profile');
 
 	// Per-requirement backoff: attempt only requirements whose window is open.
-	const activeMissing = await filterSearchEligible('episode', episode.id, status.missing);
+	const activeMissing = options.requirement
+		? missing
+		: await filterSearchEligible('episode', episode.id, missing);
 	if (activeMissing.length === 0) {
 		return { ownerType: 'episode', ownerId: episode.id, title, searched: false, outcomes: [], downloaded: 0 };
 	}

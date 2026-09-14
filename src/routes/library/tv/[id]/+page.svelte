@@ -1521,6 +1521,7 @@
 	);
 
 	let savingRequirements = $state(false);
+	let searchingRequirements = $state(false);
 
 	async function handleEpisodeGateChange(episodeId: string, value: boolean | null) {
 		try {
@@ -1533,6 +1534,26 @@
 			await invalidateAll();
 		} catch (error) {
 			showActionError(m.toast_library_tvDetail_failedToUpdateMonitor(), error);
+		}
+	}
+
+	async function handleRequirementSearch(requirement: SubtitleRequirement) {
+		searchingRequirements = true;
+		try {
+			const response = await fetch('/api/subtitles/auto-search/batch', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ type: 'series', seriesId: seriesForDisplay.id, requirement })
+			});
+			if (!response.ok) {
+				const body = (await response.json().catch(() => ({}))) as { error?: string };
+				throw new Error(body.error ?? 'Search failed');
+			}
+			await invalidateAll();
+		} catch (error) {
+			showActionError(m.toast_library_tvDetail_failedToUpdateMonitor(), error);
+		} finally {
+			searchingRequirements = false;
 		}
 	}
 
@@ -1774,8 +1795,9 @@
 		source={data.effectiveSubtitleRequirements?.source ?? null}
 		profileName={data.effectiveLanguageProfile?.profile.name ?? null}
 		editable
-		saving={savingRequirements}
+		saving={savingRequirements || searchingRequirements}
 		onSave={handleRequirementsSave}
+		onSearch={handleRequirementSearch}
 	/>
 
 	<!-- Main Content -->

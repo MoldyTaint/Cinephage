@@ -4,6 +4,7 @@ import { db } from '$lib/server/db';
 import { movies, episodes, series } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { subtitleRequirementSchema } from '$lib/validation/schemas.js';
 import { createChildLogger } from '$lib/logging';
 import { parseBody, assertFound } from '$lib/server/api/validate.js';
 import {
@@ -20,7 +21,9 @@ const autoSearchSchema = z
 	.object({
 		movieId: z.string().uuid().optional(),
 		episodeId: z.string().uuid().optional(),
-		languages: z.array(z.string()).optional()
+		languages: z.array(z.string()).optional(),
+		/** Target a single requirement row ("Search now" from details pages). */
+		requirement: subtitleRequirementSchema.optional()
 	})
 	.refine((data) => data.movieId || data.episodeId, {
 		message: 'Either movieId or episodeId is required'
@@ -75,7 +78,10 @@ export const POST: RequestHandler = async ({ request }) => {
 			validated.movieId
 		);
 
-		const result = await autoSearchMovie(movie, { languages: validated.languages });
+		const result = await autoSearchMovie(movie, {
+			languages: validated.languages,
+			requirement: validated.requirement
+		});
 
 		logger.info(
 			{
@@ -104,7 +110,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		);
 
 		const result = await autoSearchEpisode(episode, seriesData, {
-			languages: validated.languages
+			languages: validated.languages,
+			requirement: validated.requirement
 		});
 
 		logger.info(

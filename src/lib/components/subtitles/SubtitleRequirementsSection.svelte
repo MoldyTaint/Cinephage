@@ -49,6 +49,7 @@
 
 	// Working copy for editing; initialized from props so SSR renders the
 	// requirement rows ($effect below never runs server-side).
+	// svelte-ignore state_referenced_locally
 	let list = $state<SubtitleRequirement[]>(requirements.map((requirement) => ({ ...requirement })));
 	let dirty = $state(false);
 

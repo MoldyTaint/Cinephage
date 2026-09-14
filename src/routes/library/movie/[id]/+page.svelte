@@ -500,6 +500,23 @@
 		}
 	}
 
+	async function handleRequirementSearch(requirement: SubtitleRequirement) {
+		try {
+			const response = await fetch('/api/subtitles/auto-search', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ movieId: movie.id, requirement })
+			});
+			if (!response.ok) {
+				const body = (await response.json().catch(() => ({}))) as { error?: string };
+				throw new Error(body.error ?? 'Search failed');
+			}
+			await invalidateAll();
+		} catch (error) {
+			toasts.error(error instanceof Error ? error.message : 'Subtitle search failed');
+		}
+	}
+
 	const searchProgress = createSearchProgress();
 
 	function handleImport() {
@@ -917,6 +934,7 @@
 		editable
 		saving={savingRequirements}
 		onSave={handleRequirementsSave}
+		onSearch={handleRequirementSearch}
 	/>
 
 	<!-- Main Content -->

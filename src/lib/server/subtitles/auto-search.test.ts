@@ -280,3 +280,66 @@ describe('episode wantsSubtitles tri-state gate', () => {
 		).toBe(expected);
 	});
 });
+
+describe('requirement-targeted search (Search now)', () => {
+	const REQ_EN = { tag: 'en', variant: 'regular' as const, accessibility: 'any' as const };
+	const REQ_DE = { tag: 'de', variant: 'regular' as const, accessibility: 'any' as const };
+
+	beforeEach(async () => {
+		// State persists across tests in the shared backing DB — start clean.
+		const { subtitleSearchState } = await import('$lib/server/db/schema.js');
+		const { db } = await import('$lib/server/db/index.js');
+		db.delete(subtitleSearchState).run();
+		profileState.profile = {
+			id: 'p1',
+			name: 'P',
+			audio: { preferOriginal: true, languages: [] },
+			subtitles: [REQ_EN, REQ_DE],
+			cutoffRank: null,
+			minimumScore: 70,
+			upgradesAllowed: true
+		};
+	});
+
+	it('targets only the requested requirement and records its outcome', async () => {
+		profileState.movieStatus = { satisfied: false, missing: [REQ_EN, REQ_DE], existing: [] };
+		searchService.searchForMovie.mockResolvedValue({ results: [] });
+
+		const result = await autoSearchMovie(baseMovie, { requirement: REQ_DE });
+
+		// Only the requested requirement appears in outcomes.
+		expect(result.outcomes.map((o) => o.tag)).toEqual(['de']);
+		expect(result.outcomes[0].reason).toBe('no_results');
+		// Manual intent: the requirement's outcome still records backoff state.
+		const { getSearchStates } = await import('./subtitle-search-state.js');
+		const states = await getSearchStates('movie', baseMovie.id);
+		expect(states.get('de|regular|any')?.failedAttempts).toBe(1);
+		expect(states.get('en|regular|any')).toBeUndefined();
+	});
+
+	it('bypasses a closed backoff window for the targeted requirement', async () => {
+		profileState.movieStatus = { satisfied: false, missing: [REQ_EN, REQ_DE], existing: [] };
+		const { recordSearchFailure } = await import('./subtitle-search-state.js');
+		// Put de deep into the extended backoff window.
+		const old = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+		const recent = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000);
+		await recordSearchFailure('movie', baseMovie.id, 'de|regular|any', old);
+		await recordSearchFailure('movie', baseMovie.id, 'de|regular|any', recent);
+		searchService.searchForMovie.mockResolvedValue({
+			results: [candidate({ language: 'de', matchScore: 90 })]
+		});
+
+		const result = await autoSearchMovie(baseMovie, { requirement: REQ_DE });
+
+		// Backoff would have filtered de out for scheduled paths; manual intent searches anyway.
+		expect(result.searched).toBe(true);
+		expect(result.downloaded).toBe(1);
+	});
+
+	it('returns satisfied-style result when the targeted requirement is already met', async () => {
+		profileState.movieStatus = { satisfied: false, missing: [REQ_DE], existing: [] };
+		const result = await autoSearchMovie(baseMovie, { requirement: REQ_EN });
+		expect(result.searched).toBe(false);
+		expect(result.outcomes).toEqual([]);
+	});
+});

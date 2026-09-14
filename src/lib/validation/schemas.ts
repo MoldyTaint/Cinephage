@@ -1179,19 +1179,23 @@ export const subtitleBatchAutoSearchSchema = z.discriminatedUnion('type', [
 	z.object({
 		type: z.literal('season'),
 		seriesId: z.string().uuid(),
-		seasonNumber: z.number().int().min(0)
+		seasonNumber: z.number().int().min(0),
+		requirement: subtitleRequirementSchema.optional()
 	}),
 	z.object({
 		type: z.literal('series'),
-		seriesId: z.string().uuid()
+		seriesId: z.string().uuid(),
+		requirement: subtitleRequirementSchema.optional()
 	}),
 	z.object({
 		type: z.literal('collection'),
-		collectionId: z.number().int().positive()
+		collectionId: z.number().int().positive(),
+		requirement: subtitleRequirementSchema.optional()
 	}),
 	z.object({
 		type: z.literal('episodes'),
-		episodeIds: z.array(z.string().uuid()).min(1).max(500)
+		episodeIds: z.array(z.string().uuid()).min(1).max(500),
+		requirement: subtitleRequirementSchema.optional()
 	})
 ]);
 export type SubtitleBatchAutoSearchRequest = z.infer<typeof subtitleBatchAutoSearchSchema>;
