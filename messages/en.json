@@ -3248,7 +3248,7 @@
 	"settings_integrations_languageProfiles_maxChars": "Max {max} characters",
 	"settings_integrations_languageProfiles_minScore": "Min Score",
 	"settings_integrations_languageProfiles_minimumScore": "Minimum Score",
-	"settings_integrations_languageProfiles_minimumScoreHelp": "Minimum subtitle match score (0-100) required before a subtitle is accepted.",
+	"settings_integrations_languageProfiles_minimumScoreHelp": "How closely a subtitle must match before it's accepted. 100 means a perfect hash match; the default of 70 accepts good title/episode matches.",
 	"settings_integrations_languageProfiles_nameAndLanguageRequired": "Profile name and at least one language are required",
 	"settings_integrations_languageProfiles_nameTooLong": "Profile name must be {max} characters or less",
 	"settings_integrations_languageProfiles_noProfiles": "No language profiles configured",

@@ -571,14 +571,16 @@
 			<div class="form-control">
 				<label class="label" for="minimumScore">
 					<span class="label-text">{m.settings_integrations_languageProfiles_minimumScore()}</span>
+					<span class="label-text-alt font-mono">{formMinimumScore ?? 70} / 100</span>
 				</label>
 				<input
 					id="minimumScore"
-					type="number"
-					class="input-bordered input"
+					type="range"
+					class="range range-primary range-sm"
 					bind:value={formMinimumScore}
 					min="0"
 					max="100"
+					step="5"
 				/>
 				<p class="label">
 					<span class="label-text-alt wrap-break-word whitespace-normal">
