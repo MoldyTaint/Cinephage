@@ -230,7 +230,6 @@ async function searchMovieSubtitleUpgrades(
 			and(
 				isNotNull(subtitles.movieId),
 				isNotNull(subtitles.matchScore),
-				isNotNull(movies.languageProfileId),
 				eq(movies.monitored, true),
 				eq(movies.hasFile, true),
 				eq(movies.wantsSubtitles, true)
@@ -289,8 +288,6 @@ async function searchMovieSubtitleUpgrades(
 
 		await Promise.all(
 			batch.map(async ({ movie, subtitles: movieSubs }) => {
-				if (!movie.languageProfileId) return;
-
 				const isMonitored = await isMovieMonitored({ movie });
 				if (!isMonitored) return;
 
@@ -300,21 +297,26 @@ async function searchMovieSubtitleUpgrades(
 				let newScore: number | undefined;
 
 				try {
-					// Get profile and check if upgrades are allowed
-					const profile = await profileService.getProfile(movie.languageProfileId);
-					if (!profile || !profile.upgradesAllowed) {
+					// Effective requirements (movie override → library → instance
+					// default); upgrades need the policy profile.
+					const effective = await profileService.getEffectiveSubtitleRequirements({
+						movieId: movie.id
+					});
+					const profile = effective?.profile;
+					const requirements = effective?.requirements ?? [];
+					if (!profile || !profile.upgradesAllowed || requirements.length === 0) {
 						return;
 					}
 
 					processed++;
 
-					const languages = [...new Set(profile.subtitles.map((l) => l.tag))];
+					const languages = [...new Set(requirements.map((l) => l.tag))];
 					if (languages.length === 0) return;
 
 					// Search for subtitles. Gate providers that cannot verify HI when
-					// the profile requires HI; otherwise an upgrade candidate could
+					// the requirements include HI; otherwise an upgrade candidate could
 					// not verify the accessibility of the subtitle it replaces.
-					const requireHearingImpaired = profile.subtitles.some(
+					const requireHearingImpaired = requirements.some(
 						(r) => r.accessibility === 'require-hi'
 					);
 					const results = await searchService.searchForMovie(movie.id, languages, {
@@ -323,7 +325,7 @@ async function searchMovieSubtitleUpgrades(
 
 					// Check each existing subtitle for upgrades
 					for (const existingSub of movieSubs) {
-						const requirement = requirementForSubtitle(profile.subtitles, existingSub);
+						const requirement = requirementForSubtitle(requirements, existingSub);
 						if (!requirement) continue;
 
 						const currentScore = existingSub.matchScore ?? 0;
@@ -452,10 +454,14 @@ async function searchEpisodeSubtitleUpgrades(
 				isNotNull(subtitles.matchScore),
 				eq(episodes.monitored, true),
 				eq(episodes.hasFile, true),
-				or(isNull(episodes.wantsSubtitlesOverride), eq(episodes.wantsSubtitlesOverride, true)),
-				eq(series.monitored, true),
-				eq(series.wantsSubtitles, true),
-				isNotNull(series.languageProfileId)
+				// Tri-state subtitle gate: the episode override wins when set
+				// (true forces subtitles on against a series-level opt-out);
+				// otherwise the series flag applies.
+				or(
+					and(isNull(episodes.wantsSubtitlesOverride), eq(series.wantsSubtitles, true)),
+					eq(episodes.wantsSubtitlesOverride, true)
+				),
+				eq(series.monitored, true)
 			)
 		)
 		.orderBy(asc(subtitles.lastCheckedAt), asc(subtitles.id))
@@ -489,7 +495,7 @@ async function searchEpisodeSubtitleUpgrades(
 		}
 	}
 
-	// Series rows already joined above (monitored + profile present).
+	// Series rows already joined above (monitored + gate passed).
 	const seriesMap = new Map(episodeSubtitles.map((row) => [row.series.id, row.series]));
 
 	// Get provider manager for per-batch health checks
@@ -515,7 +521,10 @@ async function searchEpisodeSubtitleUpgrades(
 		await Promise.all(
 			batch.map(async ({ episode, subtitles: episodeSubs }) => {
 				const seriesRow = seriesMap.get(episode.seriesId);
-				if (!seriesRow?.languageProfileId) return;
+				if (!seriesRow) return;
+
+				// Tri-state gate (defense in depth — the SQL prefilter enforces it too).
+				if ((episode.wantsSubtitlesOverride ?? seriesRow.wantsSubtitles) === false) return;
 
 				let episodeUpgraded = 0;
 				let episodeError: string | undefined;
@@ -524,23 +533,27 @@ async function searchEpisodeSubtitleUpgrades(
 
 				try {
 					if (!episode.monitored || !episode.hasFile) return;
-					if (episode.wantsSubtitlesOverride === false) return;
 
-					// Get profile and check if upgrades are allowed
-					const profile = await profileService.getProfile(seriesRow.languageProfileId);
-					if (!profile || !profile.upgradesAllowed) {
+					// Effective requirements (episode override → series override →
+					// library → instance default); upgrades need the policy profile.
+					const effective = await profileService.getEffectiveSubtitleRequirements({
+						episodeId: episode.id
+					});
+					const profile = effective?.profile;
+					const requirements = effective?.requirements ?? [];
+					if (!profile || !profile.upgradesAllowed || requirements.length === 0) {
 						return;
 					}
 
 					processed++;
 
-					const languages = [...new Set(profile.subtitles.map((l) => l.tag))];
+					const languages = [...new Set(requirements.map((l) => l.tag))];
 					if (languages.length === 0) return;
 
 					// Search for subtitles. Gate providers that cannot verify HI when
-					// the profile requires HI; otherwise an upgrade candidate could
+					// the requirements include HI; otherwise an upgrade candidate could
 					// not verify the accessibility of the subtitle it replaces.
-					const requireHearingImpaired = profile.subtitles.some(
+					const requireHearingImpaired = requirements.some(
 						(r) => r.accessibility === 'require-hi'
 					);
 					const results = await searchService.searchForEpisode(episode.id, languages, {
@@ -549,7 +562,7 @@ async function searchEpisodeSubtitleUpgrades(
 
 					// Check each existing subtitle for upgrades
 					for (const existingSub of episodeSubs) {
-						const requirement = requirementForSubtitle(profile.subtitles, existingSub);
+						const requirement = requirementForSubtitle(requirements, existingSub);
 						if (!requirement) continue;
 
 						const currentScore = existingSub.matchScore ?? 0;

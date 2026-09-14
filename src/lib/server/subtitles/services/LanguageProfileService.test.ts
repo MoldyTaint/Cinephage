@@ -207,23 +207,23 @@ async function calculate(
 	exists: (path: string) => boolean
 ): Promise<SubtitleStatus> {
 	// @ts-expect-error accessing private async method for testing
-	return service.calculateStatus(profile, rows, exists);
+	return service.calculateStatus(
+		profile.subtitles,
+		rows,
+		{ rank: profile.cutoffRank, applies: true },
+		exists
+	);
 }
 
 describe('LanguageProfileService', () => {
 	let profileService: ReturnType<typeof LanguageProfileService.getInstance>;
 	let settingsService: ReturnType<typeof LanguageSettingsService.getInstance>;
-
 	beforeEach(() => {
 		profileService = LanguageProfileService.getInstance();
 		settingsService = LanguageSettingsService.getInstance();
 		for (const table of TABLES_TO_CLEAR) {
 			testDb.sqlite.prepare(`DELETE FROM ${table}`).run();
 		}
-	});
-
-	afterAll(() => {
-		destroyTestDb(testDb);
 	});
 
 	describe('Singleton pattern', () => {
@@ -641,9 +641,9 @@ describe('LanguageProfileService', () => {
 				(path) => !path.includes('gone')
 			);
 
-			expect(counts.get('ep-counts-1')).toEqual({ satisfiedCount: 1, totalRequirements: 2 });
-			expect(counts.get('ep-counts-2')).toEqual({ satisfiedCount: 1, totalRequirements: 2 });
-			expect(counts.get('ep-counts-3')).toEqual({ satisfiedCount: 0, totalRequirements: 2 });
+			expect(counts.get('ep-counts-1')).toEqual({ satisfiedCount: 1, totalRequirements: 2, satisfiedViaCutoff: false });
+			expect(counts.get('ep-counts-2')).toEqual({ satisfiedCount: 1, totalRequirements: 2, satisfiedViaCutoff: false });
+			expect(counts.get('ep-counts-3')).toEqual({ satisfiedCount: 0, totalRequirements: 2, satisfiedViaCutoff: false });
 		});
 
 		it('uses cutoffRank + 1 as the denominator and ignores requirements beyond the cutoff', async () => {
@@ -679,9 +679,9 @@ describe('LanguageProfileService', () => {
 				() => true
 			);
 
-			expect(counts.get('ep-counts-1')).toEqual({ satisfiedCount: 2, totalRequirements: 2 });
-			expect(counts.get('ep-counts-2')).toEqual({ satisfiedCount: 1, totalRequirements: 2 });
-			expect(counts.get('ep-counts-3')).toEqual({ satisfiedCount: 0, totalRequirements: 2 });
+			expect(counts.get('ep-counts-1')).toEqual({ satisfiedCount: 2, totalRequirements: 2, satisfiedViaCutoff: true });
+			expect(counts.get('ep-counts-2')).toEqual({ satisfiedCount: 1, totalRequirements: 2, satisfiedViaCutoff: false });
+			expect(counts.get('ep-counts-3')).toEqual({ satisfiedCount: 0, totalRequirements: 2, satisfiedViaCutoff: false });
 		});
 
 		it('does not count embedded subtitle rows', async () => {
@@ -706,7 +706,7 @@ describe('LanguageProfileService', () => {
 				() => true
 			);
 
-			expect(counts.get('ep-counts-1')).toEqual({ satisfiedCount: 0, totalRequirements: 1 });
+			expect(counts.get('ep-counts-1')).toEqual({ satisfiedCount: 0, totalRequirements: 1, satisfiedViaCutoff: false });
 		});
 	});
 
@@ -1052,4 +1052,135 @@ describe('LanguageProfileService', () => {
 			expect(profile.audio.languages).toEqual(['ja', 'en']);
 		});
 	});
+});
+
+describe('getEffectiveSubtitleRequirements (per-item overrides)', () => {
+	let profileService: ReturnType<typeof LanguageProfileService.getInstance>;
+	let settingsService: ReturnType<typeof LanguageSettingsService.getInstance>;
+
+	beforeEach(async () => {
+		for (const table of TABLES_TO_CLEAR) {
+			testDb.sqlite.prepare(`DELETE FROM ${table}`).run();
+		}
+		profileService = LanguageProfileService.getInstance();
+		settingsService = LanguageSettingsService.getInstance();
+		await seedProfile(PROFILE_OVERRIDE, 'Override');
+		await seedProfile(PROFILE_DEFAULT, 'Default');
+		await settingsService.update({ defaultProfileId: PROFILE_DEFAULT });
+	});
+
+	async function setMovieOverride(movieId: string, override: unknown): Promise<void> {
+		await testDb.db
+			.update(movies)
+			.set({ subtitleRequirementsOverride: override as never })
+			.where(eq(movies.id, movieId));
+	}
+
+	it('movie override replaces the requirement list and disables the cutoff', async () => {
+		seedMovieFixture('movie-ovr');
+		await testDb.db
+			.update(movies)
+			.set({
+				languageProfileId: PROFILE_OVERRIDE,
+				subtitleRequirementsOverride: [
+					{ tag: 'fr', variant: 'regular', accessibility: 'any' },
+					{ tag: 'de', variant: 'forced', accessibility: 'any' }
+				] as never
+			})
+			.where(eq(movies.id, 'movie-ovr'));
+
+		const effective = await profileService.getEffectiveSubtitleRequirements({
+			movieId: 'movie-ovr'
+		});
+
+		expect(effective).not.toBeNull();
+		expect(effective!.source).toBe('movie');
+		expect(effective!.cutoffApplies).toBe(false);
+		expect(effective!.requirements.map((r) => r.tag)).toEqual(['fr', 'de']);
+		// Policy still comes from the profile chain.
+		expect(effective!.profile?.id).toBe(PROFILE_OVERRIDE);
+	});
+
+	it('override requirements are acquired in full even when the profile sets a cutoff', async () => {
+		seedMovieFixture('movie-ovr-cutoff');
+		// Profile with cutoffRank 0 (only the first requirement counts).
+		await testDb.db
+			.update(languageProfiles)
+			.set({ cutoffRank: 0 })
+			.where(eq(languageProfiles.id, PROFILE_DEFAULT));
+		await setMovieOverride('movie-ovr-cutoff', [
+			{ tag: 'fr', variant: 'regular', accessibility: 'any' },
+			{ tag: 'de', variant: 'regular', accessibility: 'any' }
+		]);
+
+		const status = await profileService.getMovieSubtitleStatus('movie-ovr-cutoff');
+		// No truncation: both override requirements are missing.
+		expect(status.missing.map((m) => m.tag)).toEqual(['fr', 'de']);
+	});
+
+	it('without an override the profile chain applies with cutoff semantics', async () => {
+		seedMovieFixture('movie-inherit');
+		await testDb.db
+			.update(languageProfiles)
+			.set({
+				cutoffRank: 0,
+				subtitles: [
+					{ tag: 'en', variant: 'regular', accessibility: 'any' },
+					{ tag: 'fr', variant: 'regular', accessibility: 'any' }
+				]
+			})
+			.where(eq(languageProfiles.id, PROFILE_DEFAULT));
+
+		const status = await profileService.getMovieSubtitleStatus('movie-inherit');
+		// Cutoff truncation: only rank 0 counts while nothing is downloaded.
+		expect(status.missing.map((m) => m.tag)).toEqual(['en']);
+	});
+
+	it('episode override wins over the series resolution', async () => {
+		const seriesId = await seedSeries('series-ovr');
+		await testDb.db
+			.update(series)
+			.set({ languageProfileId: PROFILE_DEFAULT })
+			.where(eq(series.id, seriesId));
+		seedEpisode('ep-ovr', seriesId, 1);
+		await testDb.db
+			.update(episodes)
+			.set({
+				subtitleRequirementsOverride: [
+					{ tag: 'ja', variant: 'both', accessibility: 'prefer-hi' }
+				] as never
+			})
+			.where(eq(episodes.id, 'ep-ovr'));
+
+		const effective = await profileService.getEffectiveSubtitleRequirements({
+			episodeId: 'ep-ovr'
+		});
+
+		expect(effective).not.toBeNull();
+		expect(effective!.source).toBe('episode');
+		expect(effective!.cutoffApplies).toBe(false);
+		expect(effective!.requirements.map((r) => r.tag)).toEqual(['ja']);
+	});
+
+	it('episode without an override inherits the series profile', async () => {
+		const seriesId = await seedSeries('series-inh');
+		await testDb.db
+			.update(series)
+			.set({ languageProfileId: PROFILE_OVERRIDE })
+			.where(eq(series.id, seriesId));
+		seedEpisode('ep-inh', seriesId, 1);
+
+		const effective = await profileService.getEffectiveSubtitleRequirements({
+			episodeId: 'ep-inh'
+		});
+
+		expect(effective).not.toBeNull();
+		expect(effective!.source).toBe('series');
+		expect(effective!.cutoffApplies).toBe(true);
+		expect(effective!.requirements.map((r) => r.tag)).toEqual(['en']);
+	});
+});
+
+afterAll(() => {
+	destroyTestDb(testDb);
 });

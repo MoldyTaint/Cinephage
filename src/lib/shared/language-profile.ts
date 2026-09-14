@@ -51,14 +51,28 @@ export interface EffectiveLanguageProfile {
 }
 
 /**
- * Cutoff-aware requirement progress for one episode: how many of the counted
- * requirements are satisfied. When the profile sets cutoffRank, only ranks
- * 0..cutoffRank count (denominator = cutoffRank + 1); otherwise every
- * requirement counts.
+ * The subtitle requirements actually in force for an item, plus where they
+ * came from and the policy profile that still governs audio/score/upgrades.
+ *
+ * Resolution: item override ('movie'/'series'/'episode') replaces ONLY the
+ * requirement list — cutoff never applies to an override — otherwise the
+ * profile chain's subtitles with cutoff semantics.
  */
+export interface EffectiveSubtitleRequirements {
+	requirements: SubtitleRequirement[];
+	source: EffectiveLanguageProfileSource | 'episode';
+	/** Policy in force (audio preference, minimumScore, upgradesAllowed). */
+	profile: LanguageProfileV2 | null;
+	/** False when the requirements came from a per-item override. */
+	cutoffApplies: boolean;
+}
+
+/** Per-episode cutoff-aware requirement progress for a series page. */
 export interface EpisodeSubtitleCounts {
 	satisfiedCount: number;
 	totalRequirements: number;
+	/** True when the cutoff-rank requirement itself is satisfied. */
+	satisfiedViaCutoff: boolean;
 }
 
 export const DEFAULT_MINIMUM_SCORE = 70;

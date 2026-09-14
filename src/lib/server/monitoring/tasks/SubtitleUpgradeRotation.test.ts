@@ -42,10 +42,19 @@ const { searchService, downloadService, providerManager, profileService, profile
 				minimumScore: 70,
 				upgradesAllowed: true
 			})),
+			getEffectiveSubtitleRequirements: vi.fn(
+				async (): Promise<unknown> => ({
+					requirements: profileState.subtitles,
+					source: 'default',
+					profile: await profileServiceMocks.getProfile(),
+					cutoffApplies: true
+				})
+			),
 			getMovieSubtitleStatus: vi.fn(),
 			getEpisodeSubtitleStatus: vi.fn(),
 			getSeriesEpisodesMissingSubtitles: vi.fn().mockResolvedValue([])
 		};
+		const profileServiceMocks = { getProfile: profileService.getProfile };
 
 		return { searchService, downloadService, providerManager, profileService, profileState };
 	}

@@ -533,8 +533,13 @@ async function searchMissingEpisodeSubtitles(
 								where: eq(episodes.id, episodeId)
 							});
 
-							// Preflight: file present, not opted out, monitored.
-							if (!episodeData?.hasFile || episodeData.wantsSubtitlesOverride === false) {
+							// Preflight: file present, not opted out (tri-state override
+							// wins over the series flag), monitored.
+							if (!episodeData?.hasFile) {
+								return;
+							}
+
+							if ((episodeData.wantsSubtitlesOverride ?? show.wantsSubtitles) === false) {
 								return;
 							}
 

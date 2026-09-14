@@ -301,7 +301,9 @@ async function searchForEpisode(
 		where: eq(series.id, episode.seriesId)
 	});
 
-	// Skip if series doesn't exist, doesn't want subtitles, or has no language profile
+	// Skip if series doesn't exist or doesn't want subtitles (tri-state: the
+	// episode override above forces subtitles on when set to true, so a series
+	// opt-out only applies when the episode inherits).
 	if (!seriesData) {
 		logger.debug(
 			{
@@ -313,7 +315,7 @@ async function searchForEpisode(
 		return result;
 	}
 
-	if (seriesData.wantsSubtitles === false) {
+	if ((episode.wantsSubtitlesOverride ?? seriesData.wantsSubtitles) === false) {
 		logger.debug(
 			{
 				episodeId,
@@ -321,7 +323,7 @@ async function searchForEpisode(
 				seriesTitle: seriesData.title,
 				wantsSubtitles: seriesData.wantsSubtitles
 			},
-			'[SubtitleImportService] Series does not want subtitles'
+			'[SubtitleImportService] Subtitles are gated off for this episode'
 		);
 		return result;
 	}

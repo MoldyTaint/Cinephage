@@ -120,7 +120,10 @@ export function episodePreflightReason(
 ): AutoSearchSkipReason | null {
 	if (!episode.hasFile) return 'no_file';
 	if (!episode.monitored || !series.monitored) return 'not_monitored';
-	if (episode.wantsSubtitlesOverride === false || series.wantsSubtitles === false) return 'opted_out';
+	// Tri-state: episode override wins when set (true forces subtitles on
+	// against a series-level opt-out), otherwise inherit the series flag.
+	const wantsSubtitles = episode.wantsSubtitlesOverride ?? series.wantsSubtitles;
+	if (wantsSubtitles === false) return 'opted_out';
 	return null;
 }
 

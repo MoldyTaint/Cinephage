@@ -259,3 +259,24 @@ describe('autoSearchEpisode outcomes', () => {
 		expect(downloadService.downloadForEpisode).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('episode wantsSubtitles tri-state gate', () => {
+	// baseEpisode has a file and is monitored; baseSeries is monitored.
+	const cases: Array<[boolean | null, boolean | undefined, string | null]> = [
+		[null, true, null],
+		[null, false, 'opted_out'],
+		[true, true, null],
+		[true, false, null], // force-on against a series-level opt-out
+		[false, true, 'opted_out'],
+		[false, false, 'opted_out']
+	];
+
+	it.each(cases)('override %s + series %s → %s', (override, seriesFlag, expected) => {
+		expect(
+			episodePreflightReason(
+				{ ...baseEpisode, wantsSubtitlesOverride: override },
+				{ ...baseSeries, wantsSubtitles: seriesFlag }
+			)
+		).toBe(expected);
+	});
+});

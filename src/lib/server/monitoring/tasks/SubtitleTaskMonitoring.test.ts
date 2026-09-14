@@ -62,6 +62,15 @@ const { searchService, downloadService, providerManager, profileService, missing
 		const profileService = {
 			getDefaultProfile: vi.fn().mockResolvedValue(defaultProfile),
 			getProfile: vi.fn().mockResolvedValue(defaultProfile),
+			getEffectiveSubtitleRequirements: vi.fn(async () => {
+				const profile = await profileService.getProfile();
+				return {
+					requirements: profile.subtitles,
+					source: 'default',
+					profile,
+					cutoffApplies: true
+				};
+			}),
 			getEffectiveProfileForMovie: vi
 				.fn()
 				.mockResolvedValue({ profile: defaultProfile, source: 'movie' }),
