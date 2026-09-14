@@ -2091,7 +2091,10 @@ export const addMovieSchema = z.object({
 	minimumAvailability: z.enum(['announced', 'inCinemas', 'released']).default('released'),
 	availabilityDelay: z.number().int().min(0).max(365).default(0),
 	searchOnAdd: z.boolean().default(true),
-	wantsSubtitles: z.boolean().default(true)
+	wantsSubtitles: z.boolean().default(true),
+	/** Optional per-item language profile + subtitle requirement override at add time. */
+	languageProfileId: z.string().uuid().nullable().optional(),
+	subtitleRequirementsOverride: subtitleRequirementsOverrideSchema.nullable().optional()
 });
 
 /**
@@ -2121,7 +2124,10 @@ export const addSeriesSchema = z.object({
 	monitorSpecials: z.boolean().default(false),
 	monitoredSeasons: z.array(z.number().int()).optional(),
 	searchOnAdd: z.boolean().default(true),
-	wantsSubtitles: z.boolean().default(true)
+	wantsSubtitles: z.boolean().default(true),
+	/** Optional per-item language profile + subtitle requirement override at add time. */
+	languageProfileId: z.string().uuid().nullable().optional(),
+	subtitleRequirementsOverride: subtitleRequirementsOverrideSchema.nullable().optional()
 });
 
 /**

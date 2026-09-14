@@ -1,5 +1,6 @@
 <script lang="ts">
 	import CommonOptions from './add/CommonOptions.svelte';
+	import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
 	import MovieAddOptions, { type MinimumAvailability } from './add/MovieAddOptions.svelte';
 	import type { RootFolderWithSpaceAndDefault as RootFolder } from '$lib/types/downloadClient.js';
 	import type { DesiredQuality } from '$lib/types/library.js';
@@ -47,6 +48,14 @@
 		wantsSubtitles: boolean;
 		/** Resolved subtitle profile for a NEW item; undefined while loading, null when unset. */
 		effectiveSubtitleProfile?: EffectiveSubtitleProfileInfo | null;
+		/** Language profiles for the add-time picker. */
+		languageProfiles?: Array<{ id: string; name: string }>;
+		/** Effective requirements seeding the customize editor. */
+		effectiveSubtitleRequirements?: SubtitleRequirement[] | null;
+		/** Add-time language profile override ('' = inherit). */
+		selectedLanguageProfile?: string;
+		/** Add-time per-item subtitle requirement override (null = inherit). */
+		subtitleRequirementsOverride?: SubtitleRequirement[] | null;
 		minimumAvailability: MinimumAvailability;
 		availabilityDelay: number;
 		monitored: boolean;
@@ -73,6 +82,10 @@
 		searchOnAdd = $bindable(),
 		wantsSubtitles = $bindable(),
 		effectiveSubtitleProfile,
+		languageProfiles = [],
+		effectiveSubtitleRequirements = null,
+		selectedLanguageProfile = $bindable(''),
+		subtitleRequirementsOverride = $bindable<SubtitleRequirement[] | null>(null),
 		minimumAvailability = $bindable(),
 		availabilityDelay = $bindable(),
 		monitored = $bindable(),

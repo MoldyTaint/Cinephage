@@ -107,7 +107,12 @@ export type EffectiveSubtitleProfileSource = 'movie' | 'series' | 'library' | 'd
 
 /** The subtitle profile a new library item will inherit, plus its source. */
 export interface EffectiveSubtitleProfile {
-	profile: { id: string; name: string };
+	profile: {
+		id: string;
+		name: string;
+		/** Requirement list used to seed the add-flow customize editor. */
+		subtitles?: Array<{ tag: string; variant: string; accessibility: string }>;
+	};
 	source: EffectiveSubtitleProfileSource;
 }
 
@@ -117,10 +122,12 @@ export interface EffectiveSubtitleProfile {
  * configured — the add flow surfaces this as a warning.
  */
 export async function getEffectiveSubtitleProfile(
-	mediaType: 'movie' | 'series'
+	mediaType: 'movie' | 'series',
+	libraryId?: string
 ): Promise<EffectiveSubtitleProfile | null> {
+	const libraryParam = libraryId ? `&libraryId=${encodeURIComponent(libraryId)}` : '';
 	return apiGet<EffectiveSubtitleProfile | null>(
-		`/api/subtitles/language-settings/effective?mediaType=${mediaType}`
+		`/api/subtitles/language-settings/effective?mediaType=${mediaType}${libraryParam}`
 	);
 }
 

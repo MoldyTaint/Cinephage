@@ -5,6 +5,7 @@ import { series, seasons, episodes, rootFolders } from '$lib/server/db/schema.js
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { addSeriesSchema } from '$lib/validation/schemas.js';
+import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import {
 	fetchSeriesDetails,
 	fetchSeriesExternalIds,
@@ -153,8 +154,21 @@ export const POST: RequestHandler = async (event) => {
 			monitorSpecials,
 			monitoredSeasons: selectedSeasons,
 			searchOnAdd: shouldSearch,
-			wantsSubtitles
+			wantsSubtitles,
+			languageProfileId,
+			subtitleRequirementsOverride
 		} = result.data;
+
+		// A client-provided language profile must exist.
+		if (languageProfileId) {
+			const languageProfile = await getLanguageProfileService().getProfile(languageProfileId);
+			if (!languageProfile) {
+				return json(
+					{ success: false, error: `Language profile not found: ${languageProfileId}` },
+					{ status: 400 }
+				);
+			}
+		}
 
 		// Check if series already exists
 		const existingSeries = await db
@@ -257,6 +271,8 @@ export const POST: RequestHandler = async (event) => {
 				episodeCount: totalEpisodes,
 				episodeFileCount: 0,
 				wantsSubtitles,
+				languageProfileId: languageProfileId ?? null,
+				subtitleRequirementsOverride: subtitleRequirementsOverride ?? null,
 				episodeGroupId
 			})
 			.returning();

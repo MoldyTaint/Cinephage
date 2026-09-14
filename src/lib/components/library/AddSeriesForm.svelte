@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
 	import CommonOptions from './add/CommonOptions.svelte';
+	import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
 	import SeriesAddOptions, {
 		type MonitorType,
 		type MonitorNewItems,
@@ -42,6 +43,14 @@
 		wantsSubtitles: boolean;
 		/** Resolved subtitle profile for a NEW item; undefined while loading, null when unset. */
 		effectiveSubtitleProfile?: EffectiveSubtitleProfileInfo | null;
+		/** Language profiles for the add-time picker. */
+		languageProfiles?: Array<{ id: string; name: string }>;
+		/** Effective requirements seeding the customize editor. */
+		effectiveSubtitleRequirements?: SubtitleRequirement[] | null;
+		/** Add-time language profile override ('' = inherit). */
+		selectedLanguageProfile?: string;
+		/** Add-time per-item subtitle requirement override (null = inherit). */
+		subtitleRequirementsOverride?: SubtitleRequirement[] | null;
 		monitorType: MonitorType;
 		monitorNewItems: MonitorNewItems;
 		monitorSpecials: boolean;
@@ -69,6 +78,10 @@
 		searchOnAdd = $bindable(),
 		wantsSubtitles = $bindable(),
 		effectiveSubtitleProfile,
+		languageProfiles = [],
+		effectiveSubtitleRequirements = null,
+		selectedLanguageProfile = $bindable(''),
+		subtitleRequirementsOverride = $bindable<SubtitleRequirement[] | null>(null),
 		monitorType = $bindable(),
 		monitorNewItems = $bindable(),
 		monitorSpecials = $bindable(),

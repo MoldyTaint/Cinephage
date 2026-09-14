@@ -17,7 +17,8 @@
 		getScoringProfiles,
 		getLibraryClassificationSettings
 	} from '$lib/api/settings.js';
-	import { getEffectiveSubtitleProfile } from '$lib/api/subtitles.js';
+	import { getEffectiveSubtitleProfile, getLanguageProfiles } from '$lib/api/subtitles.js';
+	import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
 	import { getLibraryStatus, createMovie, createSeries, bulkAddMovies } from '$lib/api/library.js';
 	import { getTmdb } from '$lib/api/discover.js';
 
@@ -55,7 +56,11 @@
 
 	/** The subtitle profile a new item will inherit, plus the level it came from. */
 	interface EffectiveSubtitleProfileInfo {
-		profile: { id: string; name: string };
+		profile: {
+			id: string;
+			name: string;
+			subtitles?: SubtitleRequirement[];
+		};
 		source: 'movie' | 'series' | 'library' | 'default';
 	}
 
@@ -121,6 +126,12 @@
 	let selectedScoringProfile = $state('');
 	let searchOnAdd = $state(true);
 	let wantsSubtitles = $state(true);
+	/** Add-time language profile override ('' = inherit). */
+	let selectedLanguageProfile = $state('');
+	/** Add-time per-item subtitle requirement override (null = inherit). */
+	let subtitleRequirementsOverride = $state<SubtitleRequirement[] | null>(null);
+	/** Language profiles available for the add-time picker. */
+	let languageProfiles = $state<Array<{ id: string; name: string }>>([]);
 	let monitoredTouched = $state(false);
 	let searchOnAddTouched = $state(false);
 	let wantsSubtitlesTouched = $state(false);
@@ -206,6 +217,8 @@
 			monitored = true;
 			searchOnAdd = true;
 			wantsSubtitles = true;
+			selectedLanguageProfile = '';
+			subtitleRequirementsOverride = null;
 			minimumAvailability = 'released';
 			availabilityDelay = 0;
 			desiredQualities = [];
@@ -355,7 +368,8 @@
 				profilesData,
 				classificationData,
 				subtitleProfileData,
-				tmdbRes
+				tmdbRes,
+				languageProfilesData
 			] = (await Promise.all([
 				getRootFolders(),
 				getLibraries({ mediaType }),
@@ -363,6 +377,8 @@
 				getLibraryClassificationSettings(),
 				// Non-critical: powers the effective-profile line + warning on the add form.
 				getEffectiveSubtitleProfile(mediaType === 'tv' ? 'series' : 'movie').catch(() => undefined),
+				// Non-critical: powers the add-time language profile picker.
+				getLanguageProfiles().catch(() => ({ profiles: [] })),
 				tmdbPromise
 			])) as unknown as [
 				{ folders?: RootFolder[] } | RootFolder[],
@@ -370,12 +386,14 @@
 				{ profiles?: ScoringProfile[]; defaultProfileId?: string },
 				{ enforceAnimeSubtype?: boolean },
 				EffectiveSubtitleProfileInfo | null | undefined,
-				unknown
+				unknown,
+				{ profiles?: Array<{ id: string; name: string }> }
 			];
 
 			rootFolders = Array.isArray(foldersData) ? foldersData : (foldersData.folders ?? []);
 			libraries = librariesData.libraries ?? [];
 			scoringProfiles = profilesData.profiles ?? [];
+			languageProfiles = languageProfilesData?.profiles ?? [];
 			effectiveSubtitleProfile = subtitleProfileData ?? null;
 			enforceAnimeSubtype = classificationData?.enforceAnimeSubtype === true;
 
@@ -475,7 +493,9 @@
 				scoringProfileId: selectedScoringProfile || undefined,
 				monitored: willBeMonitored,
 				searchOnAdd: willSearchOnAdd,
-				wantsSubtitles
+				wantsSubtitles,
+				languageProfileId: selectedLanguageProfile || null,
+				subtitleRequirementsOverride
 			};
 
 			const result = (mediaType === 'movie'
@@ -617,6 +637,10 @@
 				{error}
 				{collection}
 				{effectiveSubtitleProfile}
+				{languageProfiles}
+				effectiveSubtitleRequirements={effectiveSubtitleProfile?.profile.subtitles ?? null}
+				bind:selectedLanguageProfile
+				bind:subtitleRequirementsOverride
 				onMonitoredInput={handleMonitoredInput}
 				onSearchOnAddInput={handleSearchOnAddInput}
 				onWantsSubtitlesInput={handleWantsSubtitlesInput}
@@ -643,6 +667,10 @@
 				{seasons}
 				{monitoredSeasons}
 				{effectiveSubtitleProfile}
+				{languageProfiles}
+				effectiveSubtitleRequirements={effectiveSubtitleProfile?.profile.subtitles ?? null}
+				bind:selectedLanguageProfile
+				bind:subtitleRequirementsOverride
 				onMonitoredInput={handleMonitoredInput}
 				onSearchOnAddInput={handleSearchOnAddInput}
 				onWantsSubtitlesInput={handleWantsSubtitlesInput}
