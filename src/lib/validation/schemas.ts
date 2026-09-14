@@ -784,6 +784,8 @@ export const libraryCreateSchema = z.object({
 	defaultSearchOnAdd: z.boolean().default(true),
 	defaultWantsSubtitles: z.boolean().default(true),
 	qualityProfileId: z.string().nullable().optional(),
+	/** Library-wide default language profile; null/omitted = inherit the instance default */
+	languageProfileId: z.string().nullable().optional(),
 	sortOrder: z.number().int().min(0).default(100),
 	scanMode: z.enum(['manual', 'scheduled', 'scheduled_daily', 'watch']).default('scheduled'),
 	scanConfig: z
@@ -982,6 +984,37 @@ export const languageProfileV2UpdateSchema = languageProfileV2BaseSchema.partial
 export type LanguageProfileV2Create = z.infer<typeof languageProfileV2CreateSchema>;
 export type LanguageProfileV2Update = z.infer<typeof languageProfileV2UpdateSchema>;
 
+/** Canonical BCP-47 metadata locale (canonicalized via Intl). */
+const languageMetadataLocaleSchema = z
+	.string()
+	.refine(
+		(value) => {
+			try {
+				Intl.getCanonicalLocales(value);
+				return true;
+			} catch {
+				return false;
+			}
+		},
+		{ message: 'Invalid metadata locale' }
+	)
+	.transform((value) => Intl.getCanonicalLocales(value)[0] ?? value);
+
+/** Two-letter country code, upper-cased. */
+const languageRegionSchema = z
+	.string()
+	.regex(/^[A-Za-z]{2}$/, 'Region must be a two-letter country code')
+	.transform((value) => value.toUpperCase());
+
+/** Canonical base language tag or null (canonicalized via the TMDB normalizer). */
+const languageDiscoverOriginalFilterSchema = z
+	.string()
+	.nullable()
+	.refine((value) => value === null || normalizeTmdbLanguage(value) !== null, {
+		message: 'Must be a resolvable language tag or null'
+	})
+	.transform((value) => (value === null ? null : normalizeTmdbLanguage(value)));
+
 /**
  * Language settings singleton (camelCase view of the language_settings row).
  * defaultProfileId is the single default-profile authority; metadataLocale
@@ -991,38 +1024,35 @@ export type LanguageProfileV2Update = z.infer<typeof languageProfileV2UpdateSche
  */
 export const languageSettingsSchema = z.object({
 	defaultProfileId: z.string().uuid().nullable().default(null),
-	metadataLocale: z
-		.string()
-		.refine(
-			(value) => {
-				try {
-					Intl.getCanonicalLocales(value);
-					return true;
-				} catch {
-					return false;
-				}
-			},
-			{ message: 'Invalid metadata locale' }
-		)
-		.transform((value) => Intl.getCanonicalLocales(value)[0] ?? value),
-	region: z
-		.string()
-		.regex(/^[A-Za-z]{2}$/, 'Region must be a two-letter country code')
-		.transform((value) => value.toUpperCase()),
-	discoverOriginalFilter: z
-		.string()
-		.nullable()
-		.refine((value) => value === null || normalizeTmdbLanguage(value) !== null, {
-			message: 'Must be a resolvable language tag or null'
-		})
-		.transform((value) => (value === null ? null : normalizeTmdbLanguage(value))),
+	metadataLocale: languageMetadataLocaleSchema,
+	region: languageRegionSchema,
+	discoverOriginalFilter: languageDiscoverOriginalFilterSchema,
 	unknownSubtitlePolicy: z.enum(['und', 'assume-language']).default('und'),
 	assumedLanguage: z.string().min(1).nullable().optional(),
-	autoSyncSubtitles: z.boolean().default(true)
+	autoSyncSubtitles: z.boolean().default(true),
+	/** Instance default: display originalTitle when a per-item flag is unset */
+	preferOriginalTitle: z.boolean().default(false)
 });
 
-/** Partial update payload for the language settings singleton. */
-export const languageSettingsUpdateSchema = languageSettingsSchema.partial();
+/**
+ * Partial update payload for the language settings singleton.
+ *
+ * NOTE: this is NOT `languageSettingsSchema.partial()`. In zod v4 `.partial()`
+ * still applies field defaults for absent keys, which would silently reset
+ * every omitted field (e.g. defaultProfileId) to its default on each partial
+ * write. Every field here is genuinely optional so the service only persists
+ * the keys the caller actually sent.
+ */
+export const languageSettingsUpdateSchema = z.object({
+	defaultProfileId: z.string().uuid().nullable().optional(),
+	metadataLocale: languageMetadataLocaleSchema.optional(),
+	region: languageRegionSchema.optional(),
+	discoverOriginalFilter: languageDiscoverOriginalFilterSchema.optional(),
+	unknownSubtitlePolicy: z.enum(['und', 'assume-language']).optional(),
+	assumedLanguage: z.string().min(1).nullable().optional(),
+	autoSyncSubtitles: z.boolean().optional(),
+	preferOriginalTitle: z.boolean().optional()
+});
 
 export type LanguageSettingsValues = z.infer<typeof languageSettingsSchema>;
 export type LanguageSettingsUpdateInput = z.input<typeof languageSettingsUpdateSchema>;

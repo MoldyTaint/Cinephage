@@ -37,6 +37,30 @@ export interface LanguageProfileV2 {
 	upgradesAllowed: boolean;
 }
 
+/**
+ * Where an effective profile was resolved from, in resolution order:
+ * per-item override ('movie'/'series') > owning library default > instance
+ * default (language_settings.default_profile_id).
+ */
+export type EffectiveLanguageProfileSource = 'movie' | 'series' | 'library' | 'default';
+
+/** The profile that governs an item plus the level it was resolved from. */
+export interface EffectiveLanguageProfile {
+	profile: LanguageProfileV2;
+	source: EffectiveLanguageProfileSource;
+}
+
+/**
+ * Cutoff-aware requirement progress for one episode: how many of the counted
+ * requirements are satisfied. When the profile sets cutoffRank, only ranks
+ * 0..cutoffRank count (denominator = cutoffRank + 1); otherwise every
+ * requirement counts.
+ */
+export interface EpisodeSubtitleCounts {
+	satisfiedCount: number;
+	totalRequirements: number;
+}
+
 export const DEFAULT_MINIMUM_SCORE = 70;
 
 /** Create a complete default profile body (id is assigned by persistence). */

@@ -19,6 +19,10 @@ import { isMovieSearching } from '$lib/server/library/ActiveSearchTracker.js';
 import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
+import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
+import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService.js';
+import type { SubtitleStatus } from '$lib/server/subtitles/types.js';
+import type { EffectiveLanguageProfile } from '$lib/shared/language-profile.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ module: 'LibraryMoviePage', logDomain: 'scans' });
@@ -81,6 +85,12 @@ export interface LibraryMoviePageData {
 		mal: boolean;
 	};
 	collection: CollectionInfo | null;
+	/** Requirement-aware subtitle status for the movie (effective profile applied). */
+	subtitleStatus: SubtitleStatus;
+	/** The profile governing the movie plus the level it was resolved from. */
+	effectiveLanguageProfile: EffectiveLanguageProfile | null;
+	/** Instance default for original-title display (language_settings.prefer_original_title). */
+	preferOriginalTitleDefault: boolean;
 }
 
 function isAnimeMovieSignal(input: {
@@ -135,6 +145,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			librarySlug: libraries.slug,
 			libraryName: libraries.name,
 			libraryIsDefault: libraries.isDefault,
+			languageProfileId: movies.languageProfileId,
 			metadataLanguageMode: movies.metadataLanguageMode,
 			metadataLanguageValue: movies.metadataLanguageValue,
 			metadataLanguage: movies.metadataLanguage,
@@ -151,46 +162,54 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 
 	const movie = movieResult[0];
 
-	const [files, movieSubtitles, releaseInfo, tmdbDetails] = await Promise.all([
-		db.select().from(movieFiles).where(eq(movieFiles.movieId, id)),
-		db
-			.select({
-				id: subtitles.id,
-				language: subtitles.language,
-				isForced: subtitles.isForced,
-				isHearingImpaired: subtitles.isHearingImpaired,
-				format: subtitles.format,
-				matchScore: subtitles.matchScore,
-				providerId: subtitles.providerId,
-				dateAdded: subtitles.dateAdded,
-				wasSynced: subtitles.wasSynced,
-				syncOffset: subtitles.syncOffset
-			})
-			.from(subtitles)
-			.where(eq(subtitles.movieId, id)),
-		tmdb.getMovieReleaseInfo(movie.tmdbId).catch((err) => {
-			logger.warn(
-				{
-					movieId: id,
-					tmdbId: movie.tmdbId,
-					error: err instanceof Error ? err.message : String(err)
-				},
-				'[LibraryMovie] Failed to fetch TMDB release info'
-			);
-			return null;
-		}),
-		tmdb.getMovie(movie.tmdbId).catch((err) => {
-			logger.warn(
-				{
-					movieId: id,
-					tmdbId: movie.tmdbId,
-					error: err instanceof Error ? err.message : String(err)
-				},
-				'[LibraryMovie] Failed to fetch TMDB movie details'
-			);
-			return null;
-		})
-	]);
+	const profileService = getLanguageProfileService();
+	const [files, movieSubtitles, releaseInfo, tmdbDetails, subtitleStatus, effectiveLanguageProfile] =
+		await Promise.all([
+			db.select().from(movieFiles).where(eq(movieFiles.movieId, id)),
+			db
+				.select({
+					id: subtitles.id,
+					language: subtitles.language,
+					isForced: subtitles.isForced,
+					isHearingImpaired: subtitles.isHearingImpaired,
+					format: subtitles.format,
+					matchScore: subtitles.matchScore,
+					providerId: subtitles.providerId,
+					dateAdded: subtitles.dateAdded,
+					wasSynced: subtitles.wasSynced,
+					syncOffset: subtitles.syncOffset
+				})
+				.from(subtitles)
+				.where(eq(subtitles.movieId, id)),
+			tmdb.getMovieReleaseInfo(movie.tmdbId).catch((err) => {
+				logger.warn(
+					{
+						movieId: id,
+						tmdbId: movie.tmdbId,
+						error: err instanceof Error ? err.message : String(err)
+					},
+					'[LibraryMovie] Failed to fetch TMDB release info'
+				);
+				return null;
+			}),
+			tmdb.getMovie(movie.tmdbId).catch((err) => {
+				logger.warn(
+					{
+						movieId: id,
+						tmdbId: movie.tmdbId,
+						error: err instanceof Error ? err.message : String(err)
+					},
+					'[LibraryMovie] Failed to fetch TMDB movie details'
+				);
+				return null;
+			}),
+			// Same computation as GET /api/library/movies/[id] — reuse the service
+			// directly instead of self-fetching the API.
+			profileService.getMovieSubtitleStatus(id),
+			profileService.getEffectiveProfileForMovie(id)
+		]);
+	const languageSettings = await getLanguageSettingsService().get();
+	const preferOriginalTitleDefault = languageSettings.preferOriginalTitle;
 
 	const movieWithFiles: LibraryMovie = {
 		...movie,
@@ -391,6 +410,9 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 		queueItem,
 		isSearching,
 		configuredMetadataProviders,
-		collection
+		collection,
+		subtitleStatus,
+		effectiveLanguageProfile,
+		preferOriginalTitleDefault
 	};
 };

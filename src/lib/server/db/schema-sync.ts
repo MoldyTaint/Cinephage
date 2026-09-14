@@ -142,8 +142,9 @@ import {
  * Version 135: Deduplicate active download queue rows by client and info hash
  * Version 142: Allow AniList/MAL title variants in alternate_titles (source CHECK extended, table rebuilt)
  * Version 143: Media-server stats language normalization - raw language provenance columns + canonicalized arrays on media_server_synced_items; epg_programs title_i18n/description_i18n/category_i18n JSON columns
+ * Version 144: Add language_settings.prefer_original_title instance default (boolean, default 0)
  */
-export const CURRENT_SCHEMA_VERSION = 143;
+export const CURRENT_SCHEMA_VERSION = 144;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -364,6 +365,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"unknown_subtitle_policy" text DEFAULT 'und' NOT NULL,
 		"assumed_language" text,
 		"auto_sync_subtitles" integer DEFAULT true NOT NULL,
+		"prefer_original_title" integer DEFAULT 0 NOT NULL,
 		"updated_at" text
 	)`,
 

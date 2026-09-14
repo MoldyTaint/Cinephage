@@ -59,8 +59,8 @@ describe('LanguageSettingsService', () => {
 		it('should coerce malformed stored values defensively', async () => {
 			testDb.sqlite
 				.prepare(
-					`INSERT INTO language_settings (id, metadata_locale, region, unknown_subtitle_policy, assumed_language, auto_sync_subtitles)
-					 VALUES ('singleton', 'garbage!!', 'usa', 'bogus', NULL, 1)`
+					`INSERT INTO language_settings (id, metadata_locale, region, unknown_subtitle_policy, assumed_language, auto_sync_subtitles, prefer_original_title)
+					 VALUES ('singleton', 'garbage!!', 'usa', 'bogus', NULL, 1, 1)`
 				)
 				.run();
 
@@ -73,6 +73,8 @@ describe('LanguageSettingsService', () => {
 			expect(settings.autoSyncSubtitles).toBe(true);
 			expect(settings.defaultProfileId).toBeNull();
 			expect(settings.discoverOriginalFilter).toBeNull();
+			// Raw 0/1 storage is surfaced as a boolean.
+			expect(settings.preferOriginalTitle).toBe(true);
 		});
 	});
 
@@ -112,6 +114,19 @@ describe('LanguageSettingsService', () => {
 			expect(settings.unknownSubtitlePolicy).toBe('und');
 		});
 
+		it('should persist the preferOriginalTitle instance default', async () => {
+			// Defaults to false (show localized title).
+			expect((await settingsService.get()).preferOriginalTitle).toBe(false);
+
+			const updated = await settingsService.update({ preferOriginalTitle: true });
+			expect(updated.preferOriginalTitle).toBe(true);
+			expect((await settingsService.get()).preferOriginalTitle).toBe(true);
+
+			// Untouched keys keep their values; other keys are unaffected by this one.
+			await settingsService.update({ region: 'de' });
+			expect((await settingsService.get()).preferOriginalTitle).toBe(true);
+		});
+
 		it('should allow clearing nullable values with null', async () => {
 			await settingsService.update({ discoverOriginalFilter: 'fre' });
 			expect((await settingsService.get()).discoverOriginalFilter).toBe('fr');
@@ -147,6 +162,13 @@ describe('LanguageSettingsService', () => {
 
 		it('should reject an unresolvable discover filter', async () => {
 			await expect(settingsService.update({ discoverOriginalFilter: '!!' })).rejects.toThrow();
+		});
+
+		it('should reject a non-boolean preferOriginalTitle', async () => {
+			await expect(
+				// @ts-expect-error intentionally invalid value for the runtime schema
+				settingsService.update({ preferOriginalTitle: 'yes' })
+			).rejects.toThrow();
 		});
 	});
 

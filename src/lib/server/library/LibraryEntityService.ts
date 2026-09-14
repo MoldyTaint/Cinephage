@@ -4,6 +4,7 @@ import { db } from '$lib/server/db/index.js';
 import {
 	libraries,
 	libraryRootFolders,
+	languageProfiles,
 	movies,
 	rootFolders,
 	series
@@ -36,6 +37,8 @@ export interface LibraryEntity {
 	defaultSearchOnAdd: boolean;
 	defaultWantsSubtitles: boolean;
 	qualityProfileId: string | null;
+	/** Library-wide default language profile; null = inherit the instance default */
+	languageProfileId: string | null;
 	sortOrder: number;
 	scanMode?: string | null;
 	createdAt: string;
@@ -51,6 +54,8 @@ export interface CreateLibraryInput {
 	defaultSearchOnAdd?: boolean;
 	defaultWantsSubtitles?: boolean;
 	qualityProfileId?: string | null;
+	/** Library-wide default language profile; null = inherit the instance default */
+	languageProfileId?: string | null;
 	sortOrder?: number;
 	scanMode?: string;
 	scanConfig?: Record<string, unknown> | null;
@@ -309,6 +314,7 @@ export class LibraryEntityService {
 				defaultSearchOnAdd: libraries.defaultSearchOnAdd,
 				defaultWantsSubtitles: libraries.defaultWantsSubtitles,
 				qualityProfileId: libraries.qualityProfileId,
+				languageProfileId: libraries.languageProfileId,
 				sortOrder: libraries.sortOrder,
 				scanMode: libraries.scanMode,
 				createdAt: libraries.createdAt,
@@ -381,6 +387,7 @@ export class LibraryEntityService {
 				defaultSearchOnAdd: row.defaultSearchOnAdd ?? true,
 				defaultWantsSubtitles: row.defaultWantsSubtitles ?? true,
 				qualityProfileId: row.qualityProfileId ?? null,
+				languageProfileId: row.languageProfileId ?? null,
 				sortOrder: row.sortOrder ?? 0,
 				createdAt: row.createdAt ?? '',
 				updatedAt: row.updatedAt ?? ''
@@ -736,6 +743,7 @@ export class LibraryEntityService {
 		const mediaSubType = input.mediaSubType ?? 'standard';
 		const rootFolderIds = uniqueStringArray(input.rootFolderIds);
 		await ensureRootFoldersMatchLibrary(rootFolderIds, input.mediaType, mediaSubType);
+		const languageProfileId = await this.resolveLibraryLanguageProfileId(input.languageProfileId);
 
 		const now = new Date().toISOString();
 		const id = randomUUID();
@@ -770,6 +778,7 @@ export class LibraryEntityService {
 			defaultSearchOnAdd: input.defaultSearchOnAdd ?? true,
 			defaultWantsSubtitles: input.defaultWantsSubtitles ?? true,
 			qualityProfileId: input.qualityProfileId || null,
+			languageProfileId,
 			sortOrder: nextSortOrder,
 			scanMode: input.scanMode ?? 'scheduled',
 			scanConfig: input.scanConfig ?? null,
@@ -849,6 +858,11 @@ export class LibraryEntityService {
 		}
 		if (updates.qualityProfileId !== undefined) {
 			updateData.qualityProfileId = updates.qualityProfileId || null;
+		}
+		if (updates.languageProfileId !== undefined) {
+			updateData.languageProfileId = await this.resolveLibraryLanguageProfileId(
+				updates.languageProfileId
+			);
 		}
 		if (updates.sortOrder !== undefined) {
 			updateData.sortOrder = updates.sortOrder;
@@ -930,6 +944,26 @@ export class LibraryEntityService {
 
 		await db.delete(libraryRootFolders).where(eq(libraryRootFolders.libraryId, id));
 		await db.delete(libraries).where(eq(libraries.id, id));
+	}
+
+	/**
+	 * Validate a library language profile reference. Empty/undefined values
+	 * normalize to null (= inherit the instance default); a non-empty value
+	 * must reference an existing language profile.
+	 */
+	private async resolveLibraryLanguageProfileId(
+		value: string | null | undefined
+	): Promise<string | null> {
+		if (!value) return null;
+		const [profile] = await db
+			.select({ id: languageProfiles.id })
+			.from(languageProfiles)
+			.where(eq(languageProfiles.id, value))
+			.limit(1);
+		if (!profile) {
+			throw new ValidationError(`Language profile not found: ${value}`);
+		}
+		return value;
 	}
 
 	private async buildUniqueSlug(

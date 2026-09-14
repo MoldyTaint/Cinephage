@@ -104,22 +104,25 @@ export const GET: RequestHandler = async ({ params }) => {
 			return json({ success: false, error: 'Movie not found' }, { status: 404 });
 		}
 
-		const [files, existingSubtitles, subtitleStatus, releaseInfo] = await Promise.all([
-			db.select().from(movieFiles).where(eq(movieFiles.movieId, movie.id)),
-			db.select().from(subtitles).where(eq(subtitles.movieId, movie.id)),
-			getLanguageProfileService().getMovieSubtitleStatus(movie.id),
-			tmdb.getMovieReleaseInfo(movie.tmdbId).catch((err) => {
-				logger.warn(
-					{
-						movieId: movie.id,
-						tmdbId: movie.tmdbId,
-						error: err instanceof Error ? err.message : String(err)
-					},
-					'[API] Failed to fetch movie release info'
-				);
-				return null;
-			})
-		]);
+		const profileService = getLanguageProfileService();
+		const [files, existingSubtitles, subtitleStatus, effectiveLanguageProfile, releaseInfo] =
+			await Promise.all([
+				db.select().from(movieFiles).where(eq(movieFiles.movieId, movie.id)),
+				db.select().from(subtitles).where(eq(subtitles.movieId, movie.id)),
+				profileService.getMovieSubtitleStatus(movie.id),
+				profileService.getEffectiveProfileForMovie(movie.id),
+				tmdb.getMovieReleaseInfo(movie.tmdbId).catch((err) => {
+					logger.warn(
+						{
+							movieId: movie.id,
+							tmdbId: movie.tmdbId,
+							error: err instanceof Error ? err.message : String(err)
+						},
+						'[API] Failed to fetch movie release info'
+					);
+					return null;
+				})
+			]);
 		const providerConfig = await getMetadataProviderConfig();
 		const enrichedProviderRefs = await resolveMissingAnimeProviderRefs({
 			title: movie.title,
@@ -180,7 +183,10 @@ export const GET: RequestHandler = async ({ params }) => {
 					satisfied: subtitleStatus.satisfied,
 					missing: subtitleStatus.missing,
 					existing: subtitleStatus.existing
-				}
+				},
+				// The profile governing this movie plus where it was resolved
+				// from (movie override > library default > instance default).
+				effectiveLanguageProfile: effectiveLanguageProfile ?? null
 			}
 		});
 	} catch (error) {
@@ -242,6 +248,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		.where(eq(movies.id, params.id));
 
 	const updateData: Record<string, unknown> = {};
+	// Track fields applied outside updateData (via service calls) so the
+	// "no valid fields" guard below stays accurate.
+	let appliedSideEffectFields = 0;
 	let moveRequest:
 		| {
 				mediaId: string;
@@ -350,8 +359,22 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	if (typeof wantsSubtitles === 'boolean') {
 		updateData.wantsSubtitles = wantsSubtitles;
 	}
+	// Language profile override: a string must reference an existing profile
+	// and is applied through the service; null clears the override so the
+	// movie inherits (library default → instance default).
 	if (languageProfileId !== undefined) {
-		updateData.languageProfileId = languageProfileId;
+		const profileService = getLanguageProfileService();
+		if (languageProfileId !== null) {
+			const profile = await profileService.getProfile(languageProfileId);
+			if (!profile) {
+				return json(
+					{ success: false, error: `Language profile not found: ${languageProfileId}` },
+					{ status: 400 }
+				);
+			}
+		}
+		await profileService.assignToMovie(params.id, languageProfileId);
+		appliedSideEffectFields++;
 	}
 	if (folderPath !== undefined) {
 		const trimmed = folderPath.trim();
@@ -411,7 +434,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		updateData.preferOriginalTitle = preferOriginalTitle;
 	}
 
-	if (Object.keys(updateData).length === 0 && !moveRequest) {
+	if (Object.keys(updateData).length === 0 && !moveRequest && appliedSideEffectFields === 0) {
 		return json({ success: false, error: 'No valid fields to update' }, { status: 400 });
 	}
 

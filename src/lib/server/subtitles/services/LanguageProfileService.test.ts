@@ -1,7 +1,16 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../test/db-helper';
 import { eq } from 'drizzle-orm';
-import { libraries, movies, rootFolders } from '$lib/server/db/schema';
+import {
+	episodes,
+	episodeFiles,
+	languageProfiles,
+	libraries,
+	movies,
+	rootFolders,
+	series,
+	subtitles
+} from '$lib/server/db/schema';
 import type { LanguageProfile } from './LanguageProfileService';
 import type { SubtitleStatus } from '../types';
 
@@ -38,6 +47,91 @@ const TABLES_TO_CLEAR = [
 	'episodes',
 	'root_folders'
 ];
+
+/**
+ * Fixed profile ids (UUID-shaped: languageSettingsSchema validates
+ * defaultProfileId as a uuid, and migration 137 gives the profile reference
+ * columns real FKs). Insert profiles BEFORE rows that reference them.
+ */
+const PROFILE_OVERRIDE = 'a0000000-0000-4000-8000-000000000001';
+const PROFILE_LIBRARY = 'a0000000-0000-4000-8000-000000000002';
+const PROFILE_DEFAULT = 'a0000000-0000-4000-8000-000000000003';
+const PROFILE_SERIES = 'a0000000-0000-4000-8000-000000000004';
+const PROFILE_COUNTS = 'a0000000-0000-4000-8000-000000000005';
+const PROFILE_CUTOFF = 'a0000000-0000-4000-8000-000000000006';
+const PROFILE_EMBEDDED = 'a0000000-0000-4000-8000-000000000007';
+
+/** Insert a profile row directly (bypasses create validation, keeps ids fixed). */
+async function seedProfile(id: string, name: string): Promise<void> {
+	await testDb.db.insert(languageProfiles).values({
+		id,
+		name,
+		audio: { preferOriginal: true, languages: [] },
+		subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
+		cutoffRank: null,
+		minimumScore: 70,
+		upgradesAllowed: true
+	});
+}
+
+/** Seed a library row with an optional language profile assignment. */
+async function seedLibrary(id: string, languageProfileId: string | null = null): Promise<void> {
+	await testDb.db
+		.insert(libraries)
+		.values({ id, name: `L-${id}`, slug: `lib-${id}`, mediaType: 'movie', languageProfileId })
+		.run();
+}
+
+/** Seed a series + root folder; returns the series id. */
+async function seedSeries(
+	seriesId: string,
+	libraryId: string | null = null,
+	languageProfileId: string | null = null
+): Promise<string> {
+	await testDb.db
+		.insert(rootFolders)
+		.values({ id: `rf-${seriesId}`, name: 'TV', path: `/media/${seriesId}`, mediaType: 'tv' })
+		.run();
+	await testDb.db
+		.insert(series)
+		.values({
+			id: seriesId,
+			tmdbId: 5000,
+			title: 'Series',
+			path: 'Series',
+			rootFolderId: `rf-${seriesId}`,
+			libraryId,
+			languageProfileId
+		})
+		.run();
+	return seriesId;
+}
+
+/** Seed an episode (and an episode file so subtitle rows resolve to a path). */
+async function seedEpisode(
+	episodeId: string,
+	seriesId: string,
+	episodeNumber: number
+): Promise<void> {
+	await testDb.db
+		.insert(episodes)
+		.values({
+			id: episodeId,
+			seriesId,
+			tmdbId: 6000 + episodeNumber,
+			seasonNumber: 1,
+			episodeNumber,
+			title: `E${episodeNumber}`
+		})
+		.run();
+	await testDb.db.insert(episodeFiles).values({
+		id: `file-${episodeId}`,
+		seriesId,
+		seasonNumber: 1,
+		relativePath: `Season 1/s01e${String(episodeNumber).padStart(2, '0')}.mkv`,
+		episodeIds: [episodeId]
+	});
+}
 
 /** Complete v2 profile fixture with overrides. */
 function makeProfile(overrides: Partial<LanguageProfile> = {}): LanguageProfile {
@@ -416,6 +510,302 @@ describe('LanguageProfileService', () => {
 			await profileService.assignToLibrary('lib-2', null);
 			library = (await testDb.db.select().from(libraries).where(eq(libraries.id, 'lib-2')))[0];
 			expect(library.languageProfileId).toBeNull();
+		});
+	});
+
+	describe('Effective profile resolution with source', () => {
+		it('returns null for a nonexistent movie', async () => {
+			expect(await profileService.getEffectiveProfileForMovie('no-such-movie')).toBeNull();
+		});
+
+		it('returns null for an existing movie when nothing is configured at any level', async () => {
+			await testDb.db
+				.insert(movies)
+				.values({ id: 'movie-eff-1', tmdbId: 201, title: 'M', path: '/m' })
+				.run();
+
+			const effective = await profileService.getEffectiveProfileForMovie('movie-eff-1');
+			expect(effective).toBeNull();
+			// Legacy accessor keeps returning undefined in the same situation.
+			expect(await profileService.getProfileForMovie('movie-eff-1')).toBeUndefined();
+		});
+
+		it('prefers the movie override over library and instance defaults', async () => {
+			await seedProfile(PROFILE_OVERRIDE, 'Override');
+			await seedProfile(PROFILE_LIBRARY, 'Library');
+			await seedProfile(PROFILE_DEFAULT, 'Default');
+			await seedLibrary('lib-eff', PROFILE_LIBRARY);
+			await testDb.db
+				.insert(movies)
+				.values({
+					id: 'movie-eff-2',
+					tmdbId: 202,
+					title: 'M',
+					path: '/m',
+					libraryId: 'lib-eff',
+					languageProfileId: PROFILE_OVERRIDE
+				})
+				.run();
+			await settingsService.update({ defaultProfileId: PROFILE_DEFAULT });
+
+			const effective = await profileService.getEffectiveProfileForMovie('movie-eff-2');
+
+			expect(effective?.source).toBe('movie');
+			expect(effective?.profile.id).toBe(PROFILE_OVERRIDE);
+			expect((await profileService.getProfileForMovie('movie-eff-2'))?.id).toBe(PROFILE_OVERRIDE);
+		});
+
+		it('falls back to the owning library default when there is no item override', async () => {
+			await seedProfile(PROFILE_LIBRARY, 'Library');
+			await seedProfile(PROFILE_DEFAULT, 'Default');
+			await seedLibrary('lib-eff-2', PROFILE_LIBRARY);
+			await testDb.db
+				.insert(movies)
+				.values({ id: 'movie-eff-3', tmdbId: 203, title: 'M', path: '/m', libraryId: 'lib-eff-2' })
+				.run();
+			await settingsService.update({ defaultProfileId: PROFILE_DEFAULT });
+
+			const effective = await profileService.getEffectiveProfileForMovie('movie-eff-3');
+
+			expect(effective?.source).toBe('library');
+			expect(effective?.profile.id).toBe(PROFILE_LIBRARY);
+		});
+
+		it('falls back to the instance default for an item with no library', async () => {
+			await seedProfile(PROFILE_DEFAULT, 'Default');
+			await testDb.db
+				.insert(movies)
+				.values({ id: 'movie-eff-4', tmdbId: 204, title: 'M', path: '/m', libraryId: null })
+				.run();
+			await settingsService.update({ defaultProfileId: PROFILE_DEFAULT });
+
+			const effective = await profileService.getEffectiveProfileForMovie('movie-eff-4');
+
+			expect(effective?.source).toBe('default');
+			expect(effective?.profile.id).toBe(PROFILE_DEFAULT);
+		});
+
+		it('falls back to the instance default when the library has no assignment', async () => {
+			await seedProfile(PROFILE_DEFAULT, 'Default');
+			await seedLibrary('lib-eff-3', null);
+			await testDb.db
+				.insert(movies)
+				.values({ id: 'movie-eff-5', tmdbId: 205, title: 'M', path: '/m', libraryId: 'lib-eff-3' })
+				.run();
+			await settingsService.update({ defaultProfileId: PROFILE_DEFAULT });
+
+			const effective = await profileService.getEffectiveProfileForMovie('movie-eff-5');
+
+			expect(effective?.source).toBe('default');
+		});
+
+		it('falls through a dangling item override to the library default', async () => {
+			await seedProfile(PROFILE_LIBRARY, 'Library');
+			await seedLibrary('lib-eff-4', PROFILE_LIBRARY);
+			await testDb.db
+				.insert(movies)
+				.values({ id: 'movie-eff-6', tmdbId: 206, title: 'M', path: '/m', libraryId: 'lib-eff-4' })
+				.run();
+
+			// Simulate an out-of-band profile deletion that left a dangling
+			// reference (real deletes null references; FKs would also block this).
+			testDb.sqlite.pragma('foreign_keys = OFF');
+			testDb.sqlite
+				.prepare(`UPDATE movies SET language_profile_id = 'deleted-profile' WHERE id = ?`)
+				.run('movie-eff-6');
+			testDb.sqlite.pragma('foreign_keys = ON');
+
+			const effective = await profileService.getEffectiveProfileForMovie('movie-eff-6');
+
+			expect(effective?.source).toBe('library');
+			expect(effective?.profile.id).toBe(PROFILE_LIBRARY);
+		});
+
+		it('resolves series with the same order (override > library > default)', async () => {
+			await seedProfile(PROFILE_SERIES, 'SeriesOverride');
+			await seedProfile(PROFILE_LIBRARY, 'Library');
+			await seedProfile(PROFILE_DEFAULT, 'Default');
+			await seedSeries('series-eff-1', null, PROFILE_SERIES);
+			await settingsService.update({ defaultProfileId: PROFILE_DEFAULT });
+
+			let effective = await profileService.getEffectiveProfileForSeries('series-eff-1');
+			expect(effective?.source).toBe('series');
+			expect(effective?.profile.id).toBe(PROFILE_SERIES);
+
+			await profileService.assignToSeries('series-eff-1', null);
+			effective = await profileService.getEffectiveProfileForSeries('series-eff-1');
+			expect(effective?.source).toBe('default');
+			expect(effective?.profile.id).toBe(PROFILE_DEFAULT);
+
+			// Library level kicks in when the series has no override of its own.
+			await seedLibrary('lib-series', PROFILE_LIBRARY);
+			await testDb.db
+				.insert(series)
+				.values({
+					id: 'series-eff-2',
+					tmdbId: 5001,
+					title: 'S2',
+					path: 'S2',
+					libraryId: 'lib-series'
+				})
+				.run();
+			effective = await profileService.getEffectiveProfileForSeries('series-eff-2');
+			expect(effective?.source).toBe('library');
+			expect(effective?.profile.id).toBe(PROFILE_LIBRARY);
+
+			expect(await profileService.getEffectiveProfileForSeries('no-such-series')).toBeNull();
+		});
+	});
+
+	describe('getSeriesEpisodeSubtitleCounts (batch, cutoff-aware)', () => {
+		async function seedSeriesWithTwoEpisodes(): Promise<string> {
+			await seedSeries('series-counts');
+			await seedEpisode('ep-counts-1', 'series-counts', 1);
+			await seedEpisode('ep-counts-2', 'series-counts', 2);
+			await seedEpisode('ep-counts-3', 'series-counts', 3);
+			return 'series-counts';
+		}
+
+		async function seedEpisodeSubtitle(
+			id: string,
+			episodeId: string,
+			language: string,
+			overrides: Record<string, unknown> = {}
+		): Promise<void> {
+			await testDb.db.insert(subtitles).values({
+				id,
+				episodeId,
+				language,
+				relativePath: `${id}.srt`,
+				format: 'srt',
+				isForced: false,
+				isHearingImpaired: false,
+				...overrides
+			});
+		}
+
+		function groupRowsByEpisode(
+			rows: Array<typeof subtitles.$inferSelect>
+		): Map<string, Array<typeof subtitles.$inferSelect>> {
+			const map = new Map<string, Array<typeof subtitles.$inferSelect>>();
+			for (const row of rows) {
+				if (row.episodeId) {
+					const list = map.get(row.episodeId) ?? [];
+					list.push(row);
+					map.set(row.episodeId, list);
+				}
+			}
+			return map;
+		}
+
+		it('returns an empty map when the series has no effective profile', async () => {
+			await seedSeriesWithTwoEpisodes();
+			const rows = await testDb.db.select().from(subtitles);
+
+			const counts = await profileService.getSeriesEpisodeSubtitleCounts(
+				'series-counts',
+				groupRowsByEpisode(rows)
+			);
+
+			expect(counts.size).toBe(0);
+		});
+
+		it('counts satisfied requirements per episode and skips rows whose file is gone', async () => {
+			const seriesId = await seedSeriesWithTwoEpisodes();
+			await seedProfile(PROFILE_COUNTS, 'Counts');
+			await settingsService.update({ defaultProfileId: PROFILE_COUNTS });
+			await profileService.updateProfile(PROFILE_COUNTS, {
+				subtitles: [
+					{ tag: 'en', variant: 'regular', accessibility: 'any' },
+					{ tag: 'es', variant: 'regular', accessibility: 'any' }
+				]
+			});
+
+			await seedEpisodeSubtitle('sub-counts-en', 'ep-counts-1', 'en');
+			await seedEpisodeSubtitle('sub-counts-gone', 'ep-counts-1', 'es', {
+				relativePath: 'gone.es.srt'
+			});
+			await seedEpisodeSubtitle('sub-counts-es', 'ep-counts-2', 'es');
+
+			const rows = await testDb.db.select().from(subtitles);
+			const grouped = groupRowsByEpisode(rows);
+			// Seed every episode (even without rows) so each gets an entry.
+			for (const epId of ['ep-counts-1', 'ep-counts-2', 'ep-counts-3']) {
+				if (!grouped.has(epId)) grouped.set(epId, []);
+			}
+
+			const counts = await profileService.getSeriesEpisodeSubtitleCounts(
+				seriesId,
+				grouped,
+				(path) => !path.includes('gone')
+			);
+
+			expect(counts.get('ep-counts-1')).toEqual({ satisfiedCount: 1, totalRequirements: 2 });
+			expect(counts.get('ep-counts-2')).toEqual({ satisfiedCount: 1, totalRequirements: 2 });
+			expect(counts.get('ep-counts-3')).toEqual({ satisfiedCount: 0, totalRequirements: 2 });
+		});
+
+		it('uses cutoffRank + 1 as the denominator and ignores requirements beyond the cutoff', async () => {
+			const seriesId = await seedSeriesWithTwoEpisodes();
+			await seedProfile(PROFILE_CUTOFF, 'Cutoff');
+			await settingsService.update({ defaultProfileId: PROFILE_CUTOFF });
+			await profileService.updateProfile(PROFILE_CUTOFF, {
+				subtitles: [
+					{ tag: 'en', variant: 'regular', accessibility: 'any' },
+					{ tag: 'es', variant: 'regular', accessibility: 'any' },
+					{ tag: 'fr', variant: 'regular', accessibility: 'any' }
+				],
+				cutoffRank: 1
+			});
+
+			// Episode 1 has the cutoff requirement (es) satisfied; fr beyond cutoff
+			// is present too but must not inflate the count.
+			await seedEpisodeSubtitle('sub-cutoff-en', 'ep-counts-1', 'en');
+			await seedEpisodeSubtitle('sub-cutoff-es', 'ep-counts-1', 'es');
+			await seedEpisodeSubtitle('sub-cutoff-fr', 'ep-counts-1', 'fr');
+			// Episode 2 only satisfies the first requirement.
+			await seedEpisodeSubtitle('sub-cutoff-en-2', 'ep-counts-2', 'en');
+
+			const rows = await testDb.db.select().from(subtitles);
+			const grouped = groupRowsByEpisode(rows);
+			for (const epId of ['ep-counts-1', 'ep-counts-2', 'ep-counts-3']) {
+				if (!grouped.has(epId)) grouped.set(epId, []);
+			}
+
+			const counts = await profileService.getSeriesEpisodeSubtitleCounts(
+				seriesId,
+				grouped,
+				() => true
+			);
+
+			expect(counts.get('ep-counts-1')).toEqual({ satisfiedCount: 2, totalRequirements: 2 });
+			expect(counts.get('ep-counts-2')).toEqual({ satisfiedCount: 1, totalRequirements: 2 });
+			expect(counts.get('ep-counts-3')).toEqual({ satisfiedCount: 0, totalRequirements: 2 });
+		});
+
+		it('does not count embedded subtitle rows', async () => {
+			const seriesId = await seedSeriesWithTwoEpisodes();
+			await seedProfile(PROFILE_EMBEDDED, 'Embedded');
+			await settingsService.update({ defaultProfileId: PROFILE_EMBEDDED });
+
+			await seedEpisodeSubtitle('sub-embedded', 'ep-counts-1', 'en', {
+				relativePath: 'embedded:en',
+				format: 'embedded'
+			});
+
+			const rows = await testDb.db.select().from(subtitles);
+			const grouped = groupRowsByEpisode(rows);
+			for (const epId of ['ep-counts-1', 'ep-counts-2', 'ep-counts-3']) {
+				if (!grouped.has(epId)) grouped.set(epId, []);
+			}
+
+			const counts = await profileService.getSeriesEpisodeSubtitleCounts(
+				seriesId,
+				grouped,
+				() => true
+			);
+
+			expect(counts.get('ep-counts-1')).toEqual({ satisfiedCount: 0, totalRequirements: 1 });
 		});
 	});
 

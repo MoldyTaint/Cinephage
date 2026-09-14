@@ -3,6 +3,7 @@
  */
 
 import { pickBestMovieFile } from '$lib/shared/best-file.js';
+import { displayTitle as sharedDisplayTitle } from '$lib/shared/title-display.js';
 
 /** Desired quality tiers selectable for multi-quality mode. */
 export type DesiredQuality = '2160p' | '1080p' | '720p' | '480p';
@@ -220,11 +221,16 @@ export interface QualityProfileSummary {
 	maxResolution?: string | null;
 }
 
-export function displayTitle(item: {
-	title: string;
-	originalTitle?: string | null;
-	preferOriginalTitle?: boolean | null;
-}): string {
-	if (item.preferOriginalTitle && item.originalTitle) return item.originalTitle;
-	return item.title;
+export function displayTitle(
+	item: {
+		title: string;
+		originalTitle?: string | null;
+		preferOriginalTitle?: boolean | null;
+	},
+	instanceDefault?: boolean | null
+): string {
+	// Delegates to the shared resolver: per-item flag wins, the instance
+	// default (language_settings.prefer_original_title) only fills the unset
+	// case, so existing per-item behavior is unchanged.
+	return sharedDisplayTitle(item, instanceDefault);
 }

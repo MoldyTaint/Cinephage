@@ -190,7 +190,10 @@ export const GET: RequestHandler = async ({ params }) => {
 
 		// Get overall series subtitle status (episodes missing subtitles)
 		const profileService = getLanguageProfileService();
-		const episodesMissingSubs = await profileService.getSeriesEpisodesMissingSubtitles(params.id);
+		const [episodesMissingSubs, effectiveLanguageProfile] = await Promise.all([
+			profileService.getSeriesEpisodesMissingSubtitles(params.id),
+			profileService.getEffectiveProfileForSeries(params.id)
+		]);
 
 			return json({
 				success: true,
@@ -211,7 +214,10 @@ export const GET: RequestHandler = async ({ params }) => {
 					episodesMissingSubtitles: episodesMissingSubs.length,
 					totalSubtitles: allSubtitles.length,
 					languages: [...new Set(allSubtitles.map((s) => s.language))]
-				}
+				},
+				// The profile governing this series plus where it was resolved
+				// from (series override > library default > instance default).
+				effectiveLanguageProfile: effectiveLanguageProfile ?? null
 			}
 		});
 	} catch (error) {
@@ -284,6 +290,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		const seriesHasFiles = (currentSeries?.episodeFileCount ?? 0) > 0;
 
 		const updateData: Record<string, unknown> = {};
+		// Track fields applied outside updateData (via service calls) so the
+		// "no valid fields" guard below stays accurate.
+		let appliedSideEffectFields = 0;
 		let moveRequest:
 			| {
 					mediaId: string;
@@ -389,8 +398,22 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		if (wantsSubtitles !== undefined) {
 			updateData.wantsSubtitles = wantsSubtitles;
 		}
+		// Language profile override: a string must reference an existing profile
+		// and is applied through the service; null clears the override so the
+		// series inherits (library default → instance default).
 		if (languageProfileId !== undefined) {
-			updateData.languageProfileId = languageProfileId;
+			const profileService = getLanguageProfileService();
+			if (languageProfileId !== null) {
+				const profile = await profileService.getProfile(languageProfileId);
+				if (!profile) {
+					return json(
+						{ success: false, error: `Language profile not found: ${languageProfileId}` },
+						{ status: 400 }
+					);
+				}
+			}
+			await profileService.assignToSeries(params.id, languageProfileId);
+			appliedSideEffectFields++;
 		}
 		if (folderPath !== undefined) {
 			const trimmed = folderPath.trim();
@@ -445,7 +468,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			updateData.preferOriginalTitle = preferOriginalTitle;
 		}
 
-		if (Object.keys(updateData).length === 0 && !moveRequest && episodeGroupId === undefined) {
+		if (
+			Object.keys(updateData).length === 0 &&
+			!moveRequest &&
+			episodeGroupId === undefined &&
+			appliedSideEffectFields === 0
+		) {
 			return json({ success: false, error: 'No valid fields to update' }, { status: 400 });
 		}
 

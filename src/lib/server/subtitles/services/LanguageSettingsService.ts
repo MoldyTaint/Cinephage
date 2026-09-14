@@ -45,6 +45,11 @@ export interface LanguageSettingsData {
 	assumedLanguage: string | null;
 	/** Whether subtitle search runs automatically for new/updated files */
 	autoSyncSubtitles: boolean;
+	/**
+	 * Instance default for display: show originalTitle instead of the
+	 * localized title when a movie/series has no explicit per-item preference
+	 */
+	preferOriginalTitle: boolean;
 }
 
 /** Defaults mirroring the language_settings column defaults. */
@@ -55,7 +60,8 @@ export const DEFAULT_LANGUAGE_SETTINGS: LanguageSettingsData = {
 	discoverOriginalFilter: null,
 	unknownSubtitlePolicy: 'und',
 	assumedLanguage: null,
-	autoSyncSubtitles: true
+	autoSyncSubtitles: true,
+	preferOriginalTitle: false
 };
 
 const REGION_PATTERN = /^[A-Za-z]{2}$/;
@@ -160,7 +166,8 @@ export class LanguageSettingsService {
 			unknownSubtitlePolicy:
 				row.unknownSubtitlePolicy === 'assume-language' ? 'assume-language' : 'und',
 			assumedLanguage: row.assumedLanguage ?? null,
-			autoSyncSubtitles: row.autoSyncSubtitles ?? true
+			autoSyncSubtitles: row.autoSyncSubtitles ?? true,
+			preferOriginalTitle: row.preferOriginalTitle === true
 		};
 	}
 }

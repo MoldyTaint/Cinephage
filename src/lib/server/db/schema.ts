@@ -1833,6 +1833,11 @@ export const languageSettings = sqliteTable('language_settings', {
 	assumedLanguage: text('assumed_language'),
 	// Whether subtitle search runs automatically for new/updated files
 	autoSyncSubtitles: integer('auto_sync_subtitles', { mode: 'boolean' }).notNull().default(true),
+	// Instance default for display: show originalTitle instead of the localized
+	// title when a movie/series has no explicit per-item preference
+	preferOriginalTitle: integer('prefer_original_title', { mode: 'boolean' })
+		.notNull()
+		.default(false),
 	updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
 });
 

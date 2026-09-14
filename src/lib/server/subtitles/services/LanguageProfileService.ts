@@ -36,6 +36,8 @@ import type { SubtitleStatus } from '../types';
 import { normalizeLanguageCode } from '$lib/shared/languages';
 import type {
 	AudioPreference,
+	EffectiveLanguageProfile,
+	EpisodeSubtitleCounts,
 	SubtitleAccessibility,
 	SubtitleRequirement
 } from '$lib/shared/language-profile.js';
@@ -351,31 +353,102 @@ export class LanguageProfileService {
 	// =========================================================================
 
 	/**
-	 * Get profile for a movie (or default)
+	 * Get profile for a movie (item override → library default → instance
+	 * default). Delegates to getEffectiveProfileForMovie and discards the
+	 * source.
 	 */
 	async getProfileForMovie(movieId: string): Promise<LanguageProfile | undefined> {
-		const movie = await db.select().from(movies).where(eq(movies.id, movieId)).limit(1);
-		if (!movie[0]) return undefined;
-
-		if (movie[0].languageProfileId) {
-			return this.getProfile(movie[0].languageProfileId);
-		}
-
-		return this.getDefaultProfile();
+		return (await this.getEffectiveProfileForMovie(movieId))?.profile;
 	}
 
 	/**
-	 * Get profile for a series (or default)
+	 * Get profile for a series (item override → library default → instance
+	 * default). Delegates to getEffectiveProfileForSeries and discards the
+	 * source.
 	 */
 	async getProfileForSeries(seriesId: string): Promise<LanguageProfile | undefined> {
-		const show = await db.select().from(series).where(eq(series.id, seriesId)).limit(1);
-		if (!show[0]) return undefined;
+		return (await this.getEffectiveProfileForSeries(seriesId))?.profile;
+	}
 
-		if (show[0].languageProfileId) {
-			return this.getProfile(show[0].languageProfileId);
+	/**
+	 * Resolve the effective profile for a movie WITH its source. Resolution
+	 * order: the movie's own override → the owning library's
+	 * language_profile_id → language_settings.default_profile_id. Returns null
+	 * when the movie does not exist or no profile is configured at any level.
+	 *
+	 * A dangling override/library id (e.g. a profile deleted out-of-band)
+	 * falls through to the next level instead of resolving to nothing.
+	 */
+	async getEffectiveProfileForMovie(movieId: string): Promise<EffectiveLanguageProfile | null> {
+		const [movie] = await db
+			.select({
+				languageProfileId: movies.languageProfileId,
+				libraryId: movies.libraryId
+			})
+			.from(movies)
+			.where(eq(movies.id, movieId))
+			.limit(1);
+		if (!movie) return null;
+
+		return this.resolveEffectiveProfile(movie.languageProfileId ?? null, 'movie', movie.libraryId ?? null);
+	}
+
+	/**
+	 * Resolve the effective profile for a series WITH its source. Same
+	 * resolution order as getEffectiveProfileForMovie.
+	 */
+	async getEffectiveProfileForSeries(seriesId: string): Promise<EffectiveLanguageProfile | null> {
+		const [show] = await db
+			.select({
+				languageProfileId: series.languageProfileId,
+				libraryId: series.libraryId
+			})
+			.from(series)
+			.where(eq(series.id, seriesId))
+			.limit(1);
+		if (!show) return null;
+
+		return this.resolveEffectiveProfile(
+			show.languageProfileId ?? null,
+			'series',
+			show.libraryId ?? null
+		);
+	}
+
+	/**
+	 * Shared resolution: first defined profile among item override → library
+	 * default → instance default wins.
+	 */
+	private async resolveEffectiveProfile(
+		overrideProfileId: string | null,
+		itemSource: 'movie' | 'series',
+		libraryId: string | null
+	): Promise<EffectiveLanguageProfile | null> {
+		if (overrideProfileId) {
+			const profile = await this.getProfile(overrideProfileId);
+			if (profile) return { profile, source: itemSource };
+			logger.warn(
+				{ profileId: overrideProfileId, itemSource, libraryId },
+				'Dangling language profile override; falling through to lower precedence'
+			);
 		}
 
-		return this.getDefaultProfile();
+		if (libraryId) {
+			const [library] = await db
+				.select({ languageProfileId: libraries.languageProfileId })
+				.from(libraries)
+				.where(eq(libraries.id, libraryId))
+				.limit(1);
+			if (library?.languageProfileId) {
+				const profile = await this.getProfile(library.languageProfileId);
+				if (profile) return { profile, source: 'library' };
+			}
+		}
+
+		const defaultProfile = await this.getDefaultProfile();
+		if (defaultProfile) return { profile: defaultProfile, source: 'default' };
+
+		return null;
 	}
 
 	/**
@@ -507,42 +580,22 @@ export class LanguageProfileService {
 	): Promise<SubtitleStatus> {
 		const external = existingSubtitles.filter((sub) => this.isExternalSubtitleRecord(sub));
 		const resolvedPaths = await resolveStoredSubtitlePaths(external);
-
-		// Stat each distinct resolved path once for the whole call.
-		const existsByPath = new Map<string, boolean>();
-		for (const sub of external) {
-			const path = resolvedPaths.get(sub.id) ?? null;
-			if (path && !existsByPath.has(path)) {
-				existsByPath.set(path, exists(path));
-			}
-		}
+		const existsByPath = this.buildExistsByPath(external, resolvedPaths, exists);
 
 		const requirements = profile.subtitles;
-		const satisfiedFlags = requirements.map((requirement) =>
-			external.some((sub) => {
-				const path = resolvedPaths.get(sub.id) ?? null;
-				if (!path || existsByPath.get(path) !== true) return false;
-				return matchesRequirement(
-					{
-						language: sub.language,
-						isForced: sub.isForced,
-						isHearingImpaired: sub.isHearingImpaired
-					},
-					requirement
-				);
-			})
+		const satisfiedFlags = this.computeSatisfiedFlags(
+			requirements,
+			external,
+			resolvedPaths,
+			existsByPath
 		);
 
-		const cutoffIndex =
-			profile.cutoffRank !== null && profile.cutoffRank < requirements.length
-				? profile.cutoffRank
-				: null;
-
-		// Requirements are ordered by priority; the cutoff truncates the missing
-		// list after the cutoff requirement.
-		const limit = cutoffIndex === null ? requirements.length : cutoffIndex + 1;
+		const limit = this.requirementLimit(profile);
 		const missing = requirements.slice(0, limit).filter((_, index) => !satisfiedFlags[index]);
-		const satisfied = cutoffIndex === null ? missing.length === 0 : satisfiedFlags[cutoffIndex];
+		const satisfied =
+			profile.cutoffRank !== null && profile.cutoffRank < requirements.length
+				? satisfiedFlags[profile.cutoffRank]
+				: missing.length === 0;
 
 		const existing: SubtitleStatus['existing'] = external.map((sub) => {
 			const matched = requirements.find((requirement) =>
@@ -567,6 +620,116 @@ export class LanguageProfileService {
 		});
 
 		return { satisfied, missing, existing };
+	}
+
+	/**
+	 * Batch per-episode requirement progress for a whole series, cutoff-aware.
+	 *
+	 * Designed for library page loads: callers pass the series' subtitle rows
+	 * (already fetched) grouped by episode id, and the series' effective
+	 * profile is resolved once. All path resolution happens in a single batched
+	 * pass (resolveStoredSubtitlePaths is N+1-free) and each distinct resolved
+	 * path is stat'ed at most once, so the cost is O(1) queries regardless of
+	 * episode count — safe for 12k-episode libraries, unlike per-episode
+	 * getEpisodeSubtitleStatus calls.
+	 *
+	 * Returns an empty map when the series has no effective profile (callers
+	 * then fall back to language-agnostic badge behavior). Episodes seeded in
+	 * the input map always get an entry; requirements beyond the cutoff rank
+	 * are excluded from both counts.
+	 *
+	 * @param seriesId - The series whose effective profile governs all episodes
+	 * @param subtitlesByEpisode - Subtitle rows grouped by episode id (seed
+	 *   every episode — even with an empty array — to get a counts entry)
+	 * @param exists - File-existence predicate (defaults to fs.existsSync)
+	 */
+	async getSeriesEpisodeSubtitleCounts(
+		seriesId: string,
+		subtitlesByEpisode: Map<string, Array<typeof subtitles.$inferSelect>>,
+		exists: (path: string) => boolean = existsSync
+	): Promise<Map<string, EpisodeSubtitleCounts>> {
+		const result = new Map<string, EpisodeSubtitleCounts>();
+		const effective = await this.getEffectiveProfileForSeries(seriesId);
+		if (!effective) return result;
+
+		const requirements = effective.profile.subtitles;
+		const allExternal = [...subtitlesByEpisode.values()]
+			.flat()
+			.filter((sub) => this.isExternalSubtitleRecord(sub));
+		const resolvedPaths = await resolveStoredSubtitlePaths(allExternal);
+		const existsByPath = this.buildExistsByPath(allExternal, resolvedPaths, exists);
+
+		const limit = this.requirementLimit(effective.profile);
+		for (const [episodeId, rows] of subtitlesByEpisode) {
+			const external = rows.filter((sub) => this.isExternalSubtitleRecord(sub));
+			const satisfiedFlags = this.computeSatisfiedFlags(
+				requirements,
+				external,
+				resolvedPaths,
+				existsByPath
+			);
+			result.set(episodeId, {
+				satisfiedCount: satisfiedFlags.slice(0, limit).filter(Boolean).length,
+				totalRequirements: limit
+			});
+		}
+
+		return result;
+	}
+
+	/**
+	 * Stat each distinct resolved path at most once (shared by single-item and
+	 * batch status computation).
+	 */
+	private buildExistsByPath(
+		external: Array<typeof subtitles.$inferSelect>,
+		resolvedPaths: Map<string, string | null>,
+		exists: (path: string) => boolean
+	): Map<string, boolean> {
+		const existsByPath = new Map<string, boolean>();
+		for (const sub of external) {
+			const path = resolvedPaths.get(sub.id) ?? null;
+			if (path && !existsByPath.has(path)) {
+				existsByPath.set(path, exists(path));
+			}
+		}
+		return existsByPath;
+	}
+
+	/** Match every requirement against the episode/item's external rows. */
+	private computeSatisfiedFlags(
+		requirements: SubtitleRequirement[],
+		external: Array<typeof subtitles.$inferSelect>,
+		resolvedPaths: Map<string, string | null>,
+		existsByPath: Map<string, boolean>
+	): boolean[] {
+		return requirements.map((requirement) =>
+			external.some((sub) => {
+				const path = resolvedPaths.get(sub.id) ?? null;
+				if (!path || existsByPath.get(path) !== true) return false;
+				return matchesRequirement(
+					{
+						language: sub.language,
+						isForced: sub.isForced,
+						isHearingImpaired: sub.isHearingImpaired
+					},
+					requirement
+				);
+			})
+		);
+	}
+
+	/**
+	 * Number of requirements that count toward progress: ranks 0..cutoffRank
+	 * when a valid cutoffRank is set, else all requirements.
+	 */
+	private requirementLimit(profile: LanguageProfile): number {
+		const requirements = profile.subtitles;
+		const cutoffIndex =
+			profile.cutoffRank !== null && profile.cutoffRank < requirements.length
+				? profile.cutoffRank
+				: null;
+		return cutoffIndex === null ? requirements.length : cutoffIndex + 1;
 	}
 
 	/**

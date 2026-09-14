@@ -21,6 +21,9 @@ import type { TVShowDetails } from '$lib/types/tmdb';
 import { tmdb } from '$lib/server/tmdb.js';
 import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
+import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
+import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService.js';
+import type { EffectiveLanguageProfile, EpisodeSubtitleCounts } from '$lib/shared/language-profile.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ module: 'LibraryTvPage', logDomain: 'scans' });
@@ -67,6 +70,8 @@ export interface EpisodeWithFile {
 	hasFile: boolean | null;
 	file: EpisodeFileInfo | null;
 	subtitles?: SubtitleInfo[];
+	/** Cutoff-aware requirement progress; null when the series has no effective profile. */
+	subtitleCounts?: EpisodeSubtitleCounts | null;
 }
 
 export interface EpisodeFileInfo {
@@ -170,6 +175,10 @@ export interface LibrarySeriesPageData {
 	};
 	librarySlug: string | null;
 	libraryName: string | null;
+	/** The profile governing the series plus the level it was resolved from. */
+	effectiveLanguageProfile: EffectiveLanguageProfile | null;
+	/** Instance default for original-title display (language_settings.prefer_original_title). */
+	preferOriginalTitleDefault: boolean;
 }
 
 export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPageData> => {
@@ -208,6 +217,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 			librarySlug: libraries.slug,
 			libraryName: libraries.name,
 			libraryIsDefault: libraries.isDefault,
+			languageProfileId: series.languageProfileId,
 			metadataLanguageMode: series.metadataLanguageMode,
 			metadataLanguageValue: series.metadataLanguageValue,
 			metadataLanguage: series.metadataLanguage,
@@ -269,48 +279,36 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 		}
 	}
 
-	// Fetch subtitles for all episodes in this series
+	// Fetch subtitles for all episodes in this series. Full rows are loaded so
+	// the batch requirement-count pass can resolve on-disk paths for each row.
 	const episodeIds = allEpisodes.map((ep) => ep.id);
 	const allSubtitles =
 		episodeIds.length > 0
-			? await db
-					.select({
-						id: subtitles.id,
-						episodeId: subtitles.episodeId,
-						language: subtitles.language,
-						isForced: subtitles.isForced,
-						isHearingImpaired: subtitles.isHearingImpaired,
-						format: subtitles.format,
-						matchScore: subtitles.matchScore,
-						providerId: subtitles.providerId,
-						dateAdded: subtitles.dateAdded,
-						wasSynced: subtitles.wasSynced,
-						syncOffset: subtitles.syncOffset
-					})
-					.from(subtitles)
-					.where(inArray(subtitles.episodeId, episodeIds))
+			? await db.select().from(subtitles).where(inArray(subtitles.episodeId, episodeIds))
 			: [];
 
-	// Create a map of episode ID to subtitles
-	const episodeIdToSubtitles = new Map<string, SubtitleInfo[]>();
+	// Group subtitles by episode id, seeding every episode (even without rows)
+	// so each one gets a requirement-count entry.
+	const subtitlesByEpisode = new Map<string, Array<typeof subtitles.$inferSelect>>();
+	for (const ep of allEpisodes) {
+		subtitlesByEpisode.set(ep.id, []);
+	}
 	for (const sub of allSubtitles) {
 		if (sub.episodeId) {
-			const existing = episodeIdToSubtitles.get(sub.episodeId) || [];
-			existing.push({
-				id: sub.id,
-				language: sub.language,
-				isForced: sub.isForced ?? undefined,
-				isHearingImpaired: sub.isHearingImpaired ?? undefined,
-				format: sub.format ?? undefined,
-				matchScore: sub.matchScore,
-				providerId: sub.providerId,
-				dateAdded: sub.dateAdded,
-				wasSynced: sub.wasSynced ?? undefined,
-				syncOffset: sub.syncOffset
-			});
-			episodeIdToSubtitles.set(sub.episodeId, existing);
+			subtitlesByEpisode.get(sub.episodeId)?.push(sub);
 		}
 	}
+
+	// Cutoff-aware per-episode requirement progress, computed server-side in
+	// ONE batched pass over the already-fetched rows + the series' effective
+	// profile (constant query count — safe for very large libraries).
+	const profileService = getLanguageProfileService();
+	const [effectiveLanguageProfile, episodeSubtitleCounts] = await Promise.all([
+		profileService.getEffectiveProfileForSeries(id),
+		profileService.getSeriesEpisodeSubtitleCounts(id, subtitlesByEpisode)
+	]);
+	const languageSettings = await getLanguageSettingsService().get();
+	const preferOriginalTitleDefault = languageSettings.preferOriginalTitle;
 
 	// Build seasons with episodes
 	const seasonsWithEpisodes: SeasonWithEpisodes[] = allSeasons.map((season) => {
@@ -330,7 +328,21 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 				monitored: ep.monitored,
 				hasFile: ep.hasFile,
 				file: episodeIdToFile.get(ep.id) || null,
-				subtitles: episodeIdToSubtitles.get(ep.id) || []
+				subtitles: (subtitlesByEpisode.get(ep.id) || []).map(
+					(sub): SubtitleInfo => ({
+						id: sub.id,
+						language: sub.language,
+						isForced: sub.isForced ?? undefined,
+						isHearingImpaired: sub.isHearingImpaired ?? undefined,
+						format: sub.format ?? undefined,
+						matchScore: sub.matchScore,
+						providerId: sub.providerId,
+						dateAdded: sub.dateAdded,
+						wasSynced: sub.wasSynced ?? undefined,
+						syncOffset: sub.syncOffset
+					})
+				),
+				subtitleCounts: episodeSubtitleCounts.get(ep.id) ?? null
 			}));
 
 		return {
@@ -462,6 +474,8 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 		isSearching,
 		configuredMetadataProviders,
 		librarySlug,
-		libraryName
+		libraryName,
+		effectiveLanguageProfile,
+		preferOriginalTitleDefault
 	};
 };
