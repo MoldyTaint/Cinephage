@@ -7,6 +7,7 @@
 	import type { GlobalTmdbFilters } from '$lib/types/tmdb';
 	import type { PageData } from './$types';
 	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import { TMDB } from '$lib/config/constants.js';
 
 	let { data }: { data: PageData } = $props();
@@ -19,9 +20,6 @@
 		excluded_genre_ids: []
 	});
 	let saving = $state(false);
-
-	let languages = $derived(data.languages);
-	let regions = $derived(data.countries);
 
 	function toggleExcludedGenre(genreId: number, checked: boolean) {
 		if (checked) {
@@ -63,6 +61,14 @@
 			<TmdbConfigRequired message={m.settings_filters_tmdbRequired()} />
 		</div>
 	{/if}
+
+	<!-- Language/region localization moved to the Languages & Localization hub -->
+	<div class="rounded-lg border border-base-300 px-4 py-3 text-sm">
+		{m.settings_filters_languageSettingsMoved()}
+		<a class="link link-primary" href={resolve('/settings/languages')}>
+			{m.settings_filters_languageSettingsLink()}
+		</a>
+	</div>
 
 	<!-- Content Settings -->
 	<SettingsSection title={m.settings_filters_contentPreferences()}>
@@ -109,38 +115,6 @@
 					bind:value={filtersState.min_vote_count}
 					class="input-bordered input w-full"
 				/>
-			</div>
-		</div>
-	</SettingsSection>
-
-	<!-- Localization -->
-	<SettingsSection title={m.settings_filters_localization()}>
-		<div class="grid gap-6 md:grid-cols-2">
-			<div class="form-control">
-				<label class="label" for="language">
-					<span class="label-text">{m.settings_filters_preferredLanguage()}</span>
-				</label>
-				<select
-					id="language"
-					class="select-bordered select w-full"
-					bind:value={filtersState.language}
-				>
-					<option value="">{m.settings_filters_anyPreference()}</option>
-					{#each languages as lang (lang.code)}
-						<option value={lang.code}>{lang.name}</option>
-					{/each}
-				</select>
-			</div>
-			<div class="form-control">
-				<label class="label" for="region">
-					<span class="label-text">{m.settings_filters_preferredRegion()}</span>
-				</label>
-				<select id="region" class="select-bordered select w-full" bind:value={filtersState.region}>
-					<option value="">{m.settings_filters_anyPreference()}</option>
-					{#each regions as region (region.code)}
-						<option value={region.code}>{region.name}</option>
-					{/each}
-				</select>
 			</div>
 		</div>
 	</SettingsSection>

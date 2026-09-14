@@ -41,6 +41,7 @@
 		FolderCog,
 		Ban,
 		Globe,
+		Earth,
 		Palette,
 		Pin
 	} from 'lucide-svelte';
@@ -295,6 +296,12 @@
 						label: m.nav_integrations,
 						icon: Puzzle,
 						match: (url: URL) => url.pathname.startsWith('/settings/integrations')
+					},
+					{
+						href: '/settings/languages',
+						label: m.nav_languagesLocalization,
+						icon: Earth,
+						match: (url: URL) => url.pathname.startsWith('/settings/languages')
 					},
 					{
 						href: '/settings/system/general',
