@@ -118,14 +118,20 @@ export class ResponseParser {
 
 	/**
 	 * Determine response type from path config or content.
+	 *
+	 * The Cardigann convention (used by most bundled definitions) declares
+	 * `response.type` as a sibling of `paths`/`rows`/`fields` on the shared
+	 * search block, not per-path - so a per-path override is checked first,
+	 * then the search-block-level declaration, before falling back to
+	 * content-sniffing for definitions that don't declare either.
 	 */
 	private getResponseType(
 		searchPath: SearchPathBlock | undefined,
 		content: string
 	): 'json' | 'html' | 'xml' {
-		// Check path-specific response type
-		if (searchPath?.response?.type) {
-			return searchPath.response.type;
+		const declaredType = searchPath?.response?.type ?? this.definition.search?.response?.type;
+		if (declaredType) {
+			return declaredType;
 		}
 
 		// Auto-detect from content

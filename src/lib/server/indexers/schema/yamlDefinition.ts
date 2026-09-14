@@ -489,6 +489,7 @@ export const searchBlockSchema = z.object({
 	preprocessingfilters: z.array(filterBlockSchema).optional(),
 	rows: rowsBlockSchema.optional(),
 	fields: z.record(z.string(), fieldDefinitionSchema).optional(),
+	response: responseBlockSchema.optional(),
 
 	// Database query configuration (for streaming protocol with dataSource: 'database')
 	movieQuery: databaseQuerySchema.optional(),
