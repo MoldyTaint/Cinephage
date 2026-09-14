@@ -46,9 +46,3 @@ export {
 } from './SubtitleImportService';
 
 export { SubtitleScannerService, getSubtitleScannerService } from './SubtitleScannerService';
-
-export {
-	SubtitleSettingsService,
-	getSubtitleSettingsService,
-	type SubtitleSettingsData
-} from './SubtitleSettingsService';

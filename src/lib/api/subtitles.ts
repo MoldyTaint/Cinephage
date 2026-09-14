@@ -51,24 +51,6 @@ export async function downloadSubtitle(payload: {
 	return apiPost('/api/subtitles/download', payload);
 }
 
-export async function getSubtitleSettings() {
-	return apiGet('/api/subtitles/settings');
-}
-
-/**
- * @deprecated Subtitle settings no longer carry language defaults; use the
- * language-settings endpoint instead. The payload is accepted as a loose
- * record so legacy callers keep compiling until the UI is rewired (Task 6);
- * the server schema strips the removed keys.
- */
-export async function updateSubtitleSettings(payload: Record<string, unknown>) {
-	return apiPut('/api/subtitles/settings', payload);
-}
-
-export async function resetSubtitleSettings() {
-	return apiDelete('/api/subtitles/settings');
-}
-
 export async function syncSubtitle(
 	subtitleId: string,
 	options?: {

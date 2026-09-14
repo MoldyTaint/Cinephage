@@ -2011,20 +2011,17 @@ export const subtitleBlacklist = sqliteTable('subtitle_blacklist', {
 });
 
 /**
- * Subtitle Settings - Global configuration for subtitle system
+ * Subtitle Settings - Legacy key-value store.
+ *
+ * Empty since the language-system reset (migration 137): all subtitle
+ * defaults moved to `language_settings` (the single authority) and provider
+ * settings to `subtitle_providers`. No keys are read or written by the app;
+ * the table is kept only so existing databases don't need a drop migration.
  */
 export const subtitleSettings = sqliteTable('subtitle_settings', {
 	key: text('key').primaryKey(),
 	value: text('value').notNull()
 });
-
-// Default subtitle settings keys:
-// - 'search_interval_hours': How often to search for missing subtitles (default: 6)
-// - 'upgrade_interval_hours': How often to search for upgrades (default: 24)
-// - 'search_on_import': Whether to auto-search when new media is imported (default: true)
-// - 'embed_subtitles': Whether to embed subs in media files - future (default: false)
-// - 'default_language_profile_id': Default profile for new media
-// - 'subtitle_folder': Where to place subtitles ('alongside' or relative path)
 
 // ============================================================================
 // SYSTEM TASKS TABLE

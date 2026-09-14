@@ -1138,17 +1138,6 @@ export const subtitleBlacklistSchema = z.object({
 // Subtitle Settings Schemas
 // ============================================================
 
-/**
- * Schema for updating subtitle settings.
- *
- * NOTE: Scheduling-related settings (searchOnImport, searchTrigger, intervals)
- * have been consolidated into MonitoringScheduler settings. The language
- * defaults (defaultLanguageProfileId / defaultFallbackLanguage) moved to the
- * language_settings singleton (PUT /api/subtitles/language-settings); this
- * schema intentionally has no fields so legacy payloads are silently stripped.
- */
-export const subtitleSettingsUpdateSchema = z.object({});
-
 // Subtitle Type Exports
 export type SubtitleProviderImplementation = z.infer<typeof subtitleProviderImplementationSchema>;
 export type SubtitleProviderCreate = z.infer<typeof subtitleProviderCreateSchema>;
@@ -1181,8 +1170,6 @@ export const subtitleBatchAutoSearchSchema = z.discriminatedUnion('type', [
 	})
 ]);
 export type SubtitleBatchAutoSearchRequest = z.infer<typeof subtitleBatchAutoSearchSchema>;
-
-export type SubtitleSettingsUpdate = z.infer<typeof subtitleSettingsUpdateSchema>;
 
 // ============================================================
 // Naming Settings Schemas
