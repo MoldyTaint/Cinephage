@@ -33,7 +33,8 @@ export type ArrEntityType =
 	| 'language'
 	| 'languageProfile'
 	| 'downloadClient'
-	| 'notification';
+	| 'notification'
+	| 'blockedMedia';
 
 /**
  * Get (or assign, on first use) the surrogate integer ID for a single entity.
