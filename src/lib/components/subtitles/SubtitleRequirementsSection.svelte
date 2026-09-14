@@ -47,13 +47,16 @@
 	const VARIANT_OPTIONS = ['regular', 'forced', 'both'] as const;
 	const ACCESSIBILITY_OPTIONS = ['any', 'prefer-hi', 'require-hi', 'exclude-hi'] as const;
 
-	// Working copy for editing; synced from props when not dirty.
-	let list = $state<SubtitleRequirement[]>([]);
+	// Working copy for editing; initialized from props so SSR renders the
+	// requirement rows ($effect below never runs server-side).
+	let list = $state<SubtitleRequirement[]>(requirements.map((requirement) => ({ ...requirement })));
 	let dirty = $state(false);
 
 	$effect(() => {
 		// Re-sync the working copy whenever the server-provided list changes
 		// (after save or prop refresh) — but never clobber in-flight edits.
+		// Reads `requirements` so prop changes re-run this effect.
+		requirements;
 		if (!dirty) {
 			list = requirements.map((requirement) => ({ ...requirement }));
 		}
