@@ -16,7 +16,6 @@ import {
 	validateRootFolder,
 	getAnimeSubtypeEnforcement,
 	getEffectiveScoringProfileId,
-	getLanguageProfileId,
 	fetchMovieDetails,
 	fetchMovieExternalIds,
 	triggerMovieSearch
@@ -149,7 +148,6 @@ export const POST: RequestHandler = async (event) => {
 			);
 
 			const { imdbId } = await fetchMovieExternalIds(part.id);
-			const languageProfileId = await getLanguageProfileId(true, part.id);
 
 			const [newMovie] = await db
 				.insert(movies)
@@ -173,7 +171,6 @@ export const POST: RequestHandler = async (event) => {
 					availabilityDelay: 0,
 					hasFile: false,
 					wantsSubtitles: true,
-					languageProfileId,
 					tmdbCollectionId: collectionData?.id ?? tmdbCollectionId,
 					collectionName: collectionData?.name ?? collection.name,
 					releaseDate: movieDetails.release_date ?? null

@@ -11,7 +11,6 @@ import {
 	validateRootFolder,
 	getAnimeSubtypeEnforcement,
 	getEffectiveScoringProfileId,
-	getLanguageProfileId,
 	triggerSeriesSearch
 } from '$lib/server/library/LibraryAddService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
@@ -224,9 +223,6 @@ export const POST: RequestHandler = async (event) => {
 		// Get the effective scoring profile (shared logic)
 		const effectiveProfileId = await getEffectiveScoringProfileId(scoringProfileId, owningLibrary);
 
-		// Get the language profile if subtitles wanted (shared logic)
-		const languageProfileId = await getLanguageProfileId(wantsSubtitles, tmdbId);
-
 		// Auto-select episode group for correct season ordering (e.g. TVDB order for anime)
 		const { group: episodeGroup, selectedGroupId: episodeGroupId } = await getEffectiveEpisodeGroup(
 			tmdbId,
@@ -261,7 +257,6 @@ export const POST: RequestHandler = async (event) => {
 				episodeCount: totalEpisodes,
 				episodeFileCount: 0,
 				wantsSubtitles,
-				languageProfileId,
 				episodeGroupId
 			})
 			.returning();
