@@ -217,7 +217,7 @@ describe('migration v140 — epg_programs i18n columns (Phase 5 Task 3)', () => 
 	it('adds the nullable i18n JSON columns', () => {
 		const sqlite = createPreMigrationDatabase();
 
-		migration_v140.apply(sqlite);
+		migration_v143.apply(sqlite);
 
 		const columns = getColumnNames(sqlite, 'epg_programs');
 		expect(columns).toContain('title_i18n');
@@ -228,7 +228,7 @@ describe('migration v140 — epg_programs i18n columns (Phase 5 Task 3)', () => 
 	it('keeps existing rows with NULL i18n columns and intact plain text', () => {
 		const sqlite = createPreMigrationDatabase();
 
-		migration_v140.apply(sqlite);
+		migration_v143.apply(sqlite);
 
 		const row = sqlite
 			.prepare(
@@ -253,10 +253,10 @@ describe('migration v140 — epg_programs i18n columns (Phase 5 Task 3)', () => 
 
 	it('is idempotent for the epg_programs columns', () => {
 		const sqlite = createPreMigrationDatabase();
-		migration_v140.apply(sqlite);
+		migration_v143.apply(sqlite);
 		const afterFirst = sqlite.prepare('SELECT * FROM epg_programs').all();
 
-		expect(() => migration_v140.apply(sqlite)).not.toThrow();
+		expect(() => migration_v143.apply(sqlite)).not.toThrow();
 		expect(sqlite.prepare('SELECT * FROM epg_programs').all()).toEqual(afterFirst);
 		expect(getColumnNames(sqlite, 'epg_programs').filter((c) => c.endsWith('_i18n'))).toEqual([
 			'title_i18n',
@@ -270,7 +270,7 @@ describe('migration v140 — epg_programs i18n columns (Phase 5 Task 3)', () => 
 		databases.push(sqlite);
 		sqlite.exec(PRE_MIGRATION_DDL);
 
-		expect(() => migration_v140.apply(sqlite)).not.toThrow();
+		expect(() => migration_v143.apply(sqlite)).not.toThrow();
 		const tables = (
 			sqlite.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all() as Array<{
 				name: string;
