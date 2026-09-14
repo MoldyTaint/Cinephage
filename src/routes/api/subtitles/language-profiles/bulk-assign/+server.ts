@@ -26,7 +26,9 @@ const bulkAssignSchema = z.object({
 	/** Language profile ID to assign (null to remove profile) */
 	languageProfileId: z.string().uuid().nullable(),
 	/** Whether to enable subtitle searching for these items */
-	wantsSubtitles: z.boolean().optional()
+	wantsSubtitles: z.boolean().optional(),
+	/** Also clear per-item subtitle requirement overrides so items inherit */
+	clearOverrides: z.boolean().optional()
 });
 
 /**
@@ -34,10 +36,8 @@ const bulkAssignSchema = z.object({
  * Assign a language profile to multiple movies or series at once.
  */
 export const POST: RequestHandler = async ({ request }) => {
-	const { mediaType, mediaIds, languageProfileId, wantsSubtitles } = await parseBody(
-		request,
-		bulkAssignSchema
-	);
+	const { mediaType, mediaIds, languageProfileId, wantsSubtitles, clearOverrides } =
+		await parseBody(request, bulkAssignSchema);
 
 	// Validate profile exists if provided
 	if (languageProfileId) {
@@ -49,6 +49,10 @@ export const POST: RequestHandler = async ({ request }) => {
 	const updateData: Record<string, unknown> = {
 		languageProfileId
 	};
+
+	if (clearOverrides) {
+		updateData.subtitleRequirementsOverride = null;
+	}
 
 	// If wantsSubtitles is explicitly set, include it
 	if (wantsSubtitles !== undefined) {

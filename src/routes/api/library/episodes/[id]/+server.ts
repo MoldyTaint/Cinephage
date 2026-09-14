@@ -19,7 +19,7 @@ const logger = createChildLogger({ module: 'LibraryEpisodeByIdApi', logDomain: '
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	try {
 		const body = await request.json();
-		const { monitored, wantsSubtitlesOverride } = body;
+		const { monitored, wantsSubtitlesOverride, subtitleRequirementsOverride } = body;
 
 		// Validate episode exists
 		const [episode] = await db.select().from(episodes).where(eq(episodes.id, params.id)).limit(1);
@@ -38,8 +38,13 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			updateData.monitored = monitored;
 		}
 		if (wantsSubtitlesOverride !== undefined) {
-			// Can be true, false, or null (to inherit from series)
+			// Tri-state: true forces subtitles on, false opts out, null inherits
+			// from the series.
 			updateData.wantsSubtitlesOverride = wantsSubtitlesOverride;
+		}
+		if (subtitleRequirementsOverride !== undefined) {
+			// Validated requirement list or null to clear (inherit via series).
+			updateData.subtitleRequirementsOverride = subtitleRequirementsOverride;
 		}
 
 		if (Object.keys(updateData).length === 0) {

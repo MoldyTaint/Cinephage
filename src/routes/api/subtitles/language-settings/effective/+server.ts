@@ -1,24 +1,27 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
+import { db } from '$lib/server/db';
+import { libraries } from '$lib/server/db/schema';
+import { eq } from 'drizzle-orm';
 
 /**
- * GET /api/subtitles/language-settings/effective?mediaType=movie|series
+ * GET /api/subtitles/language-settings/effective?mediaType=movie|series&libraryId=...
  *
  * Resolve the effective subtitle language profile for a NEW library item,
  * i.e. one that has not been added yet (add flow: discover, import,
  * calendar, TMDB hero).
  *
- * Documented simplification: a new item has no per-item override and no
- * owning library yet, so the only applicable resolution level is the
- * instance default (language_settings.default_profile_id) — source is
- * therefore always 'default', and the response is `null` when no default
- * profile is configured. The `mediaType` query parameter is validated for
- * forward compatibility but does not change resolution today: movies and
- * series share the same instance default. Full resolution
+ * Resolution for a new item: per-item override cannot exist yet, so when the
+ * add flow knows the destination library (`libraryId`), the library default
+ * (libraries.language_profile_id) applies; otherwise the instance default
+ * (language_settings.default_profile_id) is the only applicable level. The
+ * response is `null` when neither resolves. The `mediaType` query parameter
+ * is validated for forward compatibility but does not change resolution:
+ * movies and series share the same defaults. Full resolution
  * (override > library > default) for EXISTING items is exposed by
  * GET /api/library/movies/[id] and GET /api/library/series/[id] via
- * `effectiveLanguageProfile`.
+ * `effectiveSubtitleRequirements` / `effectiveLanguageProfile`.
  *
  * Read-only like GET /api/subtitles/language-settings: authentication is
  * enforced by the global hooks, no admin gate (non-admin users see the add
@@ -30,7 +33,25 @@ export const GET: RequestHandler = async (event) => {
 		return json({ error: 'mediaType must be "movie" or "series"' }, { status: 400 });
 	}
 
-	const defaultProfile = await getLanguageProfileService().getDefaultProfile();
+	const profileService = getLanguageProfileService();
+
+	const libraryId = event.url.searchParams.get('libraryId');
+	if (libraryId) {
+		const [library] = await db
+			.select({ languageProfileId: libraries.languageProfileId })
+			.from(libraries)
+			.where(eq(libraries.id, libraryId))
+			.limit(1);
+
+		if (library?.languageProfileId) {
+			const profile = await profileService.getProfile(library.languageProfileId);
+			if (profile) {
+				return json({ profile, source: 'library' });
+			}
+		}
+	}
+
+	const defaultProfile = await profileService.getDefaultProfile();
 	if (!defaultProfile) {
 		return json(null);
 	}

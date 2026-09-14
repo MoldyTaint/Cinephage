@@ -190,9 +190,10 @@ export const GET: RequestHandler = async ({ params }) => {
 
 		// Get overall series subtitle status (episodes missing subtitles)
 		const profileService = getLanguageProfileService();
-		const [episodesMissingSubs, effectiveLanguageProfile] = await Promise.all([
+		const [episodesMissingSubs, effectiveLanguageProfile, effectiveSubtitleRequirements] = await Promise.all([
 			profileService.getSeriesEpisodesMissingSubtitles(params.id),
-			profileService.getEffectiveProfileForSeries(params.id)
+			profileService.getEffectiveProfileForSeries(params.id),
+			profileService.getEffectiveSubtitleRequirements({ seriesId: params.id })
 		]);
 
 			return json({
@@ -217,7 +218,8 @@ export const GET: RequestHandler = async ({ params }) => {
 				},
 				// The profile governing this series plus where it was resolved
 				// from (series override > library default > instance default).
-				effectiveLanguageProfile: effectiveLanguageProfile ?? null
+				effectiveLanguageProfile: effectiveLanguageProfile ?? null,
+				effectiveSubtitleRequirements: effectiveSubtitleRequirements ?? null
 			}
 		});
 	} catch (error) {
@@ -253,6 +255,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			rootFolderId,
 			wantsSubtitles,
 			languageProfileId,
+			subtitleRequirementsOverride,
 			delayProfileId,
 			folderPath,
 			episodeGroupId,
@@ -276,6 +279,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				scoringProfileId: series.scoringProfileId,
 				wantsSubtitles: series.wantsSubtitles,
 				languageProfileId: series.languageProfileId,
+				subtitleRequirementsOverride: series.subtitleRequirementsOverride,
 				episodeGroupId: series.episodeGroupId,
 				monitorSpecials: series.monitorSpecials,
 				metadataLanguageMode: series.metadataLanguageMode,
@@ -397,6 +401,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		}
 		if (wantsSubtitles !== undefined) {
 			updateData.wantsSubtitles = wantsSubtitles;
+		}
+		// Per-item subtitle requirement override: validated list or null to
+		// clear (inherit from the profile chain). Replaces only the list.
+		if (subtitleRequirementsOverride !== undefined) {
+			updateData.subtitleRequirementsOverride = subtitleRequirementsOverride;
+			appliedSideEffectFields++;
 		}
 		// Language profile override: a string must reference an existing profile
 		// and is applied through the service; null clears the override so the
@@ -720,16 +730,21 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			);
 		}
 
-		// Check if subtitle monitoring was just enabled
+		// Check if subtitle monitoring was just enabled, or the requirement
+		// override changed while the gate is on. Requirements may come from the
+		// profile chain (library/instance default), so the gate alone enables.
 		if (currentSeries) {
-			const wasSubtitlesEnabled =
-				currentSeries.wantsSubtitles === true && currentSeries.languageProfileId;
+			const wasSubtitlesEnabled = currentSeries.wantsSubtitles === true;
 			const newWantsSubtitles = wantsSubtitles ?? currentSeries.wantsSubtitles;
-			const newProfileId = languageProfileId ?? currentSeries.languageProfileId;
-			const isNowSubtitlesEnabled = newWantsSubtitles === true && newProfileId;
+			const isNowSubtitlesEnabled = newWantsSubtitles === true;
+			const overrideChanged =
+				subtitleRequirementsOverride !== undefined &&
+				JSON.stringify(subtitleRequirementsOverride) !==
+					JSON.stringify(currentSeries.subtitleRequirementsOverride ?? null);
 
-			// Trigger subtitle search for all episodes with files if just enabled
-			if (!wasSubtitlesEnabled && isNowSubtitlesEnabled) {
+			// Trigger subtitle search for all episodes with files if just
+			// enabled or the requirements changed while enabled.
+			if (isNowSubtitlesEnabled && (!wasSubtitlesEnabled || overrideChanged)) {
 				const settings = await monitoringScheduler.getSettings();
 
 				if (settings.subtitleSearchOnImportEnabled) {
