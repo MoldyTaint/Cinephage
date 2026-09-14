@@ -203,17 +203,20 @@ describe('library/tv/[id] page loader', () => {
 		// ep1 satisfies both counted requirements (fr is beyond the cutoff).
 		expect(byId.get('ep-loader-1')?.subtitleCounts).toEqual({
 			satisfiedCount: 2,
-			totalRequirements: 2
+			totalRequirements: 2,
+			satisfiedViaCutoff: true
 		});
 		// ep2 satisfies only the first counted requirement.
 		expect(byId.get('ep-loader-2')?.subtitleCounts).toEqual({
 			satisfiedCount: 1,
-			totalRequirements: 2
+			totalRequirements: 2,
+			satisfiedViaCutoff: false
 		});
 		// ep3 has no subtitles at all.
 		expect(byId.get('ep-loader-3')?.subtitleCounts).toEqual({
 			satisfiedCount: 0,
-			totalRequirements: 2
+			totalRequirements: 2,
+			satisfiedViaCutoff: false
 		});
 	});
 
@@ -245,7 +248,8 @@ describe('library/tv/[id] page loader', () => {
 		const byId = new Map(flatEpisodes.map((ep) => [ep.id, ep]));
 		expect(byId.get('ep-loader-1')?.subtitleCounts).toEqual({
 			satisfiedCount: 2,
-			totalRequirements: 2
+			totalRequirements: 2,
+			satisfiedViaCutoff: true
 		});
 	});
 

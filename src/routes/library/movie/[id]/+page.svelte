@@ -12,6 +12,7 @@
 	import { MediaSearchModal } from '$lib/components/search';
 	import { SubtitleSearchModal } from '$lib/components/subtitles';
 	import SubtitleSyncModal from '$lib/components/subtitles/SubtitleSyncModal.svelte';
+	import SubtitleRequirementsSection from '$lib/components/subtitles/SubtitleRequirementsSection.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import {
 		ConfirmationModal,
@@ -47,6 +48,7 @@
 	import { resolvePath } from '$lib/utils/routing';
 	import { getLibraryDetailBackHref } from '$lib/utils/libraryReturnNavigation';
 	import { deriveSubtitleProgress } from '$lib/utils/subtitle-status-display.js';
+	import { requirementKey, type SubtitleRequirement } from '$lib/shared/language-profile.js';
 	import { createDynamicSSE } from '$lib/sse';
 	import { getFileName } from '$lib/utils/format.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
@@ -474,6 +476,30 @@
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
 
+	// Per-item subtitle requirement override (details-page editing).
+	let savingRequirements = $state(false);
+	const missingRequirementKeys = $derived(
+		(data.subtitleStatus?.missing ?? []).map((requirement) => requirementKey(requirement))
+	);
+
+	async function handleRequirementsSave(requirements: SubtitleRequirement[] | null) {
+		savingRequirements = true;
+		try {
+			const response = await fetch(`/api/library/movies/${movie.id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ subtitleRequirementsOverride: requirements })
+			});
+			if (!response.ok) {
+				const body = (await response.json().catch(() => ({}))) as { error?: string };
+				throw new Error(body.error ?? 'Failed to save subtitle languages');
+			}
+			await invalidateAll();
+		} finally {
+			savingRequirements = false;
+		}
+	}
+
 	const searchProgress = createSearchProgress();
 
 	function handleImport() {
@@ -880,6 +906,17 @@
 		{scoreInfo}
 		{scoreLoading}
 		subtitleProgress={subtitleRequirementProgress}
+	/>
+
+	<!-- Subtitle requirements (per-item override editing) -->
+	<SubtitleRequirementsSection
+		requirements={data.effectiveSubtitleRequirements?.requirements ?? []}
+		missingKeys={missingRequirementKeys}
+		source={data.effectiveSubtitleRequirements?.source ?? null}
+		profileName={data.effectiveLanguageProfile?.profile.name ?? null}
+		editable
+		saving={savingRequirements}
+		onSave={handleRequirementsSave}
 	/>
 
 	<!-- Main Content -->

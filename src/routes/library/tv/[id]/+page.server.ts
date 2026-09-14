@@ -23,7 +23,7 @@ import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-r
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
 import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService.js';
-import type { EffectiveLanguageProfile, EpisodeSubtitleCounts } from '$lib/shared/language-profile.js';
+import type { EffectiveSubtitleRequirements, EffectiveLanguageProfile, EpisodeSubtitleCounts } from '$lib/shared/language-profile.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ module: 'LibraryTvPage', logDomain: 'scans' });
@@ -68,6 +68,8 @@ export interface EpisodeWithFile {
 	runtime: number | null;
 	monitored: boolean | null;
 	hasFile: boolean | null;
+	/** Tri-state subtitle gate (null = inherit from series). */
+	wantsSubtitlesOverride: boolean | null;
 	file: EpisodeFileInfo | null;
 	subtitles?: SubtitleInfo[];
 	/** Cutoff-aware requirement progress; null when the series has no effective profile. */
@@ -178,6 +180,7 @@ export interface LibrarySeriesPageData {
 	libraryName: string | null;
 	/** The profile governing the series plus the level it was resolved from. */
 	effectiveLanguageProfile: EffectiveLanguageProfile | null;
+	effectiveSubtitleRequirements: EffectiveSubtitleRequirements | null;
 	/** Language profiles available for the per-item subtitle profile override. */
 	languageProfiles: Array<{ id: string; name: string }>;
 	/** Instance default for original-title display (language_settings.prefer_original_title). */
@@ -306,10 +309,12 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 	// ONE batched pass over the already-fetched rows + the series' effective
 	// profile (constant query count — safe for very large libraries).
 	const profileService = getLanguageProfileService();
-	const [effectiveLanguageProfile, episodeSubtitleCounts] = await Promise.all([
-		profileService.getEffectiveProfileForSeries(id),
-		profileService.getSeriesEpisodeSubtitleCounts(id, subtitlesByEpisode)
-	]);
+	const [effectiveLanguageProfile, effectiveSubtitleRequirements, episodeSubtitleCounts] =
+		await Promise.all([
+			profileService.getEffectiveProfileForSeries(id),
+			profileService.getEffectiveSubtitleRequirements({ seriesId: id }),
+			profileService.getSeriesEpisodeSubtitleCounts(id, subtitlesByEpisode)
+		]);
 	const languageSettings = await getLanguageSettingsService().get();
 	const preferOriginalTitleDefault = languageSettings.preferOriginalTitle;
 
@@ -330,6 +335,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 				runtime: ep.runtime,
 				monitored: ep.monitored,
 				hasFile: ep.hasFile,
+				wantsSubtitlesOverride: ep.wantsSubtitlesOverride ?? null,
 				file: episodeIdToFile.get(ep.id) || null,
 				subtitles: (subtitlesByEpisode.get(ep.id) || []).map(
 					(sub): SubtitleInfo => ({
@@ -485,6 +491,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 		librarySlug,
 		libraryName,
 		effectiveLanguageProfile,
+		effectiveSubtitleRequirements,
 		languageProfiles,
 		preferOriginalTitleDefault
 	};

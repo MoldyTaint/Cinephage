@@ -67,6 +67,8 @@
 		runtime: number | null;
 		monitored: boolean | null;
 		hasFile: boolean | null;
+		/** Tri-state subtitle gate (null = inherit from series). */
+		wantsSubtitlesOverride?: boolean | null;
 		file: EpisodeFile | null;
 		subtitles?: Subtitle[];
 		/** Cutoff-aware requirement progress from the loader (null when no effective profile). */
@@ -101,6 +103,7 @@
 		onSubtitleAutoSearch?: (episode: Episode) => void;
 		onSubtitleSync?: (subtitleId: string) => void;
 		onSubtitleDelete?: (subtitleId: string) => void;
+		onSubtitleGateChange?: (episodeId: string, value: boolean | null) => void;
 		onDelete?: (episode: Episode) => void;
 	}
 
@@ -125,6 +128,7 @@
 		onSubtitleAutoSearch,
 		onSubtitleSync,
 		onSubtitleDelete,
+		onSubtitleGateChange,
 		onDelete
 	}: Props = $props();
 
@@ -181,13 +185,11 @@
 	);
 	const subtitleProgress = $derived.by<SubtitleRequirementProgress | null>(() => {
 		if (!hasRequirementCounts || !requirementCounts) return null;
-		const { satisfiedCount, totalRequirements } = requirementCounts;
+		const { satisfiedCount, totalRequirements, satisfiedViaCutoff } = requirementCounts;
 		return {
 			satisfiedCount,
 			totalCount: totalRequirements,
-			// The per-episode payload carries only counts (cutoff is already
-			// encoded in the denominator), so a cutoff marker is not derivable.
-			satisfiedViaCutoff: false,
+			satisfiedViaCutoff,
 			state:
 				satisfiedCount === 0
 					? 'missing'
@@ -508,6 +510,8 @@
 							onDelete={onSubtitleDelete}
 							onSearch={() => onSubtitleSearch?.(episode)}
 							onAutoSearch={handleSubtitleAutoSearchClick}
+							wantsSubtitles={episode.wantsSubtitlesOverride ?? null}
+							onWantsSubtitlesChange={(value) => onSubtitleGateChange?.(episode.id, value)}
 						/>
 					</div>
 				</div>
@@ -584,6 +588,8 @@
 						onDelete={onSubtitleDelete}
 						onSearch={() => onSubtitleSearch?.(episode)}
 						onAutoSearch={handleSubtitleAutoSearchClick}
+						wantsSubtitles={episode.wantsSubtitlesOverride ?? null}
+						onWantsSubtitlesChange={(value) => onSubtitleGateChange?.(episode.id, value)}
 					/>
 				</div>
 			</div>

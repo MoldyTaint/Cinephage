@@ -533,6 +533,7 @@
 						{#if subtitleProfileHelper}
 							<p class="mt-1 text-xs text-base-content/60">{subtitleProfileHelper}</p>
 						{/if}
+						<p class="mt-1 text-xs text-base-content/60">{m.library_subtitleProfile_help()}</p>
 					</div>
 					<div class="form-control w-full">
 						<div class="label py-0.5">

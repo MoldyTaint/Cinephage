@@ -23,6 +23,10 @@
 		onDelete?: (subtitleId: string) => void;
 		onSearch?: () => void;
 		onAutoSearch?: () => void;
+		/** Tri-state subtitle gate: null inherits from the series. */
+		wantsSubtitles?: boolean | null;
+		/** Persist a gate change (true force-on / false off / null inherit). */
+		onWantsSubtitlesChange?: (value: boolean | null) => void;
 	}
 
 	let {
@@ -33,7 +37,9 @@
 		onSync,
 		onDelete,
 		onSearch,
-		onAutoSearch
+		onAutoSearch,
+		wantsSubtitles = null,
+		onWantsSubtitlesChange
 	}: Props = $props();
 
 	let confirmDeleteId = $state<string | null>(null);
@@ -69,6 +75,23 @@
 	class="dropdown-content z-50 w-72 rounded-lg border border-base-300 bg-base-200 p-3 shadow-xl sm:w-80"
 	onmouseleave={cancelDelete}
 >
+	{#if onWantsSubtitlesChange}
+		<label class="mb-2 flex items-center justify-between gap-2 border-b border-base-300 pb-2 text-xs">
+			<span class="font-semibold text-base-content/70">Subtitles</span>
+			<select
+				class="select select-bordered select-xs w-24"
+				value={wantsSubtitles === null ? 'inherit' : wantsSubtitles ? 'on' : 'off'}
+				onchange={(event) => {
+					const value = (event.currentTarget as HTMLSelectElement).value;
+					onWantsSubtitlesChange(value === 'inherit' ? null : value === 'on');
+				}}
+			>
+				<option value="inherit">Inherit</option>
+				<option value="on">On</option>
+				<option value="off">Off</option>
+			</select>
+		</label>
+	{/if}
 	{#if !hasFile}
 		<div class="py-2 text-center text-sm text-base-content/50">No media file available</div>
 	{:else if subtitles.length === 0}

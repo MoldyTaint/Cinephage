@@ -781,14 +781,17 @@ export class LanguageProfileService {
 
 		for (const [episodeId, rows] of subtitlesByEpisode) {
 			const override = overrideById.get(episodeId) ?? null;
-			const requirements =
-				override && override.length > 0 ? override : (base?.requirements ?? []);
-			const cutoff =
-				override && override.length > 0
-					? { rank: null, applies: false }
-					: base
-						? cutoffOf(base)
-						: { rank: null, applies: false };
+			const hasOverride = override !== null && override.length > 0;
+			// Contract: no entry when neither the series profile nor the
+			// episode's own override provides requirements.
+			if (!base && !hasOverride) continue;
+
+			const requirements = hasOverride ? override! : (base?.requirements ?? []);
+			const cutoff = hasOverride
+				? { rank: null, applies: false }
+				: base
+					? cutoffOf(base)
+					: { rank: null, applies: false };
 
 			const external = rows.filter((sub) => this.isExternalSubtitleRecord(sub));
 			const satisfiedFlags = this.computeSatisfiedFlags(

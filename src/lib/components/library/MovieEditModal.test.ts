@@ -241,7 +241,7 @@ describe('MovieEditModal subtitle profile inheritance', () => {
 		expect(await screen.findByText(/Inherited: English Only \(library\)/)).toBeTruthy();
 
 		const select = screen.getByRole('combobox', {
-			name: /subtitle profile/i
+			name: /language profile/i
 		}) as HTMLSelectElement;
 		expect(select.value).toBe('');
 	});
@@ -266,7 +266,7 @@ describe('MovieEditModal subtitle profile inheritance', () => {
 		});
 
 		const select = screen.getByRole('combobox', {
-			name: /subtitle profile/i
+			name: /language profile/i
 		}) as HTMLSelectElement;
 		await fireEvent.change(select, { target: { value: 'lp-jp' } });
 		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
@@ -283,7 +283,7 @@ describe('MovieEditModal subtitle profile inheritance', () => {
 		});
 
 		const select = screen.getByRole('combobox', {
-			name: /subtitle profile/i
+			name: /language profile/i
 		}) as HTMLSelectElement;
 		expect(select.value).toBe('lp-jp');
 

@@ -22,7 +22,7 @@ import { getMetadataProviderConfig } from '$lib/server/metadata/provider-setting
 import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService.js';
 import type { SubtitleStatus } from '$lib/server/subtitles/types.js';
-import type { EffectiveLanguageProfile } from '$lib/shared/language-profile.js';
+import type { EffectiveLanguageProfile , EffectiveSubtitleRequirements } from '$lib/shared/language-profile.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ module: 'LibraryMoviePage', logDomain: 'scans' });
@@ -87,6 +87,7 @@ export interface LibraryMoviePageData {
 	collection: CollectionInfo | null;
 	/** Requirement-aware subtitle status for the movie (effective profile applied). */
 	subtitleStatus: SubtitleStatus;
+	effectiveSubtitleRequirements: EffectiveSubtitleRequirements | null;
 	/** The profile governing the movie plus the level it was resolved from. */
 	effectiveLanguageProfile: EffectiveLanguageProfile | null;
 	/** Language profiles available for the per-item subtitle profile override. */
@@ -165,8 +166,15 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 	const movie = movieResult[0];
 
 	const profileService = getLanguageProfileService();
-	const [files, movieSubtitles, releaseInfo, tmdbDetails, subtitleStatus, effectiveLanguageProfile] =
-		await Promise.all([
+	const [
+		files,
+		movieSubtitles,
+		releaseInfo,
+		tmdbDetails,
+		subtitleStatus,
+		effectiveLanguageProfile,
+		effectiveSubtitleRequirements
+	] = await Promise.all([
 			db.select().from(movieFiles).where(eq(movieFiles.movieId, id)),
 			db
 				.select({
@@ -208,7 +216,8 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			// Same computation as GET /api/library/movies/[id] — reuse the service
 			// directly instead of self-fetching the API.
 			profileService.getMovieSubtitleStatus(id),
-			profileService.getEffectiveProfileForMovie(id)
+			profileService.getEffectiveProfileForMovie(id),
+			profileService.getEffectiveSubtitleRequirements({ movieId: id })
 		]);
 	const languageSettings = await getLanguageSettingsService().get();
 	const preferOriginalTitleDefault = languageSettings.preferOriginalTitle;
@@ -421,6 +430,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 		collection,
 		subtitleStatus,
 		effectiveLanguageProfile,
+		effectiveSubtitleRequirements,
 		languageProfiles,
 		preferOriginalTitleDefault
 	};
