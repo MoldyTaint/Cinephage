@@ -429,7 +429,7 @@
 			<label class="label cursor-pointer justify-start gap-2">
 				<input
 					type="checkbox"
-					class="checkbox checkbox-sm"
+					class="checkbox checkbox-sm checkbox-primary"
 					bind:checked={formAudioPreferOriginal}
 				/>
 				<span class="label-text text-xs"
@@ -606,7 +606,11 @@
 
 		<div class="flex flex-col gap-2 sm:flex-row sm:gap-4">
 			<label class="label cursor-pointer gap-2">
-				<input type="checkbox" class="checkbox" bind:checked={formUpgradesAllowed} />
+				<input
+					type="checkbox"
+					class="checkbox checkbox-primary"
+					bind:checked={formUpgradesAllowed}
+				/>
 				<span class="label-text">{m.settings_integrations_languageProfiles_allowUpgrades()}</span>
 			</label>
 		</div>
