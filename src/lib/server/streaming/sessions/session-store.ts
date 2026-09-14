@@ -36,6 +36,8 @@ interface CreatePlaybackSessionInput {
 	audioPreference?: EffectiveAudioPreference;
 	/** Language of the chosen source (or the original language when it drove an untagged pick). */
 	chosenAudioLanguage?: string | null;
+	/** Ordered subtitle language preferences (see PlaybackSession.preferredSubtitleLanguages). */
+	preferredSubtitleLanguages?: string[];
 }
 
 export class PlaybackSessionStore {
@@ -80,6 +82,9 @@ export class PlaybackSessionStore {
 					}
 				: undefined,
 			chosenAudioLanguage: input.chosenAudioLanguage ?? null,
+			preferredSubtitleLanguages: input.preferredSubtitleLanguages
+				? [...input.preferredSubtitleLanguages]
+				: [],
 			lastAccessedAt: now,
 			attempts: [...input.attempts],
 			resourceIdsByKey: {},

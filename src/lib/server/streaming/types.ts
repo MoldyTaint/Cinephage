@@ -191,6 +191,14 @@ export interface PlaybackSession {
 	 * applies (e.g. an untagged source picked as a neutral fallback).
 	 */
 	chosenAudioLanguage?: string | null;
+	/**
+	 * Ordered subtitle language preferences from the item's effective
+	 * subtitle requirements (first = most wanted), captured at session
+	 * creation. The playlist rewriter marks the first track satisfying the
+	 * highest-priority language as DEFAULT=YES; empty/absent falls back to
+	 * the provider default or the first track.
+	 */
+	preferredSubtitleLanguages?: string[];
 	lastAccessedAt: number;
 	attempts: PlaybackSessionAttempt[];
 	resourceIdsByKey: Record<string, string>;

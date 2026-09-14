@@ -1,5 +1,35 @@
-import type { PlaybackSession, SessionResourceKind } from '../types';
+import type { PlaybackSession, PlaybackSessionSubtitle, SessionResourceKind } from '../types';
 import { resolveHlsUrl } from '../utils/hls-rewrite.js';
+import { languageSatisfies } from '$lib/server/subtitles/requirement-matcher.js';
+import { normalizeLanguageCode } from '$lib/shared/languages';
+
+/**
+ * Index of the track that should carry DEFAULT=YES, chosen from the item's
+ * effective subtitle requirements: the first track satisfying the
+ * highest-priority preferred language wins (then the next preference, and so
+ * on — base-tag matching per the shared requirement matcher). Returns null
+ * when no preference matches so the caller falls back to the provider
+ * default / first-track rule.
+ */
+export function pickDefaultSubtitleIndex(
+	subtitles: PlaybackSessionSubtitle[],
+	preferredLanguages?: string[]
+): number | null {
+	if (!preferredLanguages?.length) return null;
+
+	const normalized = subtitles.map((subtitle) => ({
+		subtitle,
+		language: normalizeLanguageCode(subtitle.language || '')
+	}));
+
+	for (const preferred of preferredLanguages) {
+		const match = normalized.find(({ language }) => languageSatisfies(language, preferred));
+		if (match) {
+			return subtitles.indexOf(match.subtitle);
+		}
+	}
+	return null;
+}
 
 interface RewritePlaylistOptions {
 	playlist: string;
@@ -119,9 +149,11 @@ function injectSubtitleTracks(
 	}
 
 	const lines = playlist.split('\n');
+	const defaultIndex = pickDefaultSubtitleIndex(session.subtitles, session.preferredSubtitleLanguages);
 	const mediaTags = session.subtitles.map((subtitle, index) => {
 		const playlistUrl = buildSubtitlePlaylistUrl(baseUrl, session.token, subtitle.id, apiKey);
-		return `#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="cinephage-subs",NAME="${subtitle.label.replace(/"/g, '\\"')}",DEFAULT=${subtitle.isDefault || index === 0 ? 'YES' : 'NO'},AUTOSELECT=YES,FORCED=NO,LANGUAGE="${subtitle.language || 'und'}",URI="${playlistUrl}"`;
+		const isDefault = defaultIndex !== null ? index === defaultIndex : subtitle.isDefault || index === 0;
+		return `#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="cinephage-subs",NAME="${subtitle.label.replace(/"/g, '\\"')}",DEFAULT=${isDefault ? 'YES' : 'NO'},AUTOSELECT=YES,FORCED=NO,LANGUAGE="${subtitle.language || 'und'}",URI="${playlistUrl}"`;
 	});
 
 	const withMediaTags: string[] = [];

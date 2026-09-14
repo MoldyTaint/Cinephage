@@ -10,7 +10,10 @@ import type {
 	PlaybackSessionSubtitle,
 	StreamSource
 } from '../types';
-import { getAudioPreferenceFor } from '../language-profile-helper';
+import {
+	getAudioPreferenceFor,
+	getPreferredSubtitleLanguagesFor
+} from '../language-profile-helper';
 import { getPlaybackSessionStore } from './session-store';
 
 const streamLog = { logDomain: 'streams' as const };
@@ -137,7 +140,13 @@ export class PlaybackSessionService {
 			attempts: [],
 			sourceExpiresAt: source.expiresAt,
 			audioPreference,
-			chosenAudioLanguage
+			chosenAudioLanguage,
+			preferredSubtitleLanguages: await getPreferredSubtitleLanguagesFor(
+				params.type,
+				params.tmdbId,
+				params.season,
+				params.episode
+			)
 		});
 
 		logger.info(

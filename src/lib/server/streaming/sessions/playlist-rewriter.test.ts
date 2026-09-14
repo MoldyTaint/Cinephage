@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlaybackSession, SessionResourceKind } from '../types';
-import { rewriteSessionPlaylist } from './playlist-rewriter';
+import { pickDefaultSubtitleIndex, rewriteSessionPlaylist } from './playlist-rewriter';
 
 function createMockSession(): PlaybackSession {
 	return {
@@ -428,5 +428,47 @@ describe('rewriteSessionPlaylist', () => {
 			expect(registered[1].kind).toBe('playlist');
 			expect(result).not.toContain('/asset/');
 		});
+	});
+});
+
+describe('pickDefaultSubtitleIndex', () => {
+	const tracks = (languages: string[]) =>
+		languages.map((language, i) => ({
+			id: `sub-${i}`,
+			url: `https://cdn.example.com/${i}.vtt`,
+			label: `Track ${i}`,
+			language,
+			isDefault: false
+		}));
+
+	it('prefers the track matching the highest-priority language', () => {
+		const subtitles = tracks(['en', 'fr', 'de']);
+		expect(pickDefaultSubtitleIndex(subtitles, ['fr', 'de'])).toBe(1);
+	});
+
+	it('falls through to later preferences when the first has no match', () => {
+		const subtitles = tracks(['en', 'de', 'fr']);
+		expect(pickDefaultSubtitleIndex(subtitles, ['es', 'de'])).toBe(1);
+	});
+
+	it('matches region/script variants of a base-tag preference', () => {
+		const subtitles = tracks(['en', 'pt-BR']);
+		expect(pickDefaultSubtitleIndex(subtitles, ['pt'])).toBe(1);
+	});
+
+	it('requires exact canonical tags for regional preferences', () => {
+		const subtitles = tracks(['en', 'zh']);
+		expect(pickDefaultSubtitleIndex(subtitles, ['zh-Hans'])).toBeNull();
+	});
+
+	it('ignores unresolvable track languages', () => {
+		const subtitles = tracks(['en', 'und']);
+		expect(pickDefaultSubtitleIndex(subtitles, ['fr'])).toBeNull();
+	});
+
+	it('returns null without preferences (positional fallback)', () => {
+		const subtitles = tracks(['en', 'fr']);
+		expect(pickDefaultSubtitleIndex(subtitles)).toBeNull();
+		expect(pickDefaultSubtitleIndex(subtitles, [])).toBeNull();
 	});
 });
