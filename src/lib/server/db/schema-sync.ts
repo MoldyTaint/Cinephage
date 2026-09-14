@@ -143,8 +143,9 @@ import {
  * Version 136: Add storage_items indexes on episode_file_id and movie_file_id
  * Version 137: Add allow_movies and allow_tv columns to download_clients for debrid content-type restriction
  * Version 138: Add arr_id_mappings table for the Radarr/Sonarr-compatible API layer's surrogate integer IDs
+ * Version 139: Add arr_notification_configs table for arr-compat clients (Pulsarr, etc.) registering webhooks
  */
-export const CURRENT_SCHEMA_VERSION = 138;
+export const CURRENT_SCHEMA_VERSION = 139;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{

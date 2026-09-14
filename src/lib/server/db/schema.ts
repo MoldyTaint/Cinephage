@@ -4042,3 +4042,35 @@ export const arrIdMappings = sqliteTable(
 
 export type ArrIdMapping = typeof arrIdMappings.$inferSelect;
 export type NewArrIdMapping = typeof arrIdMappings.$inferInsert;
+
+/**
+ * Radarr/Sonarr-compatible notification (webhook) connections registered by
+ * arr-compat clients (Pulsarr, Notifiarr, etc.) via POST /notification.
+ * `config` stores the full NotificationResource body as posted (name,
+ * implementation, fields incl. url/method/username/password/headers, ...)
+ * so GET/PUT can echo it back verbatim - the boolean columns below are
+ * just a queryable mirror of the flags that matter for deciding whether
+ * to fire, alongside which app (radarr/sonarr) this was registered on.
+ */
+export const arrNotificationConfigs = sqliteTable('arr_notification_configs', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => randomUUID()),
+	// 'radarr' or 'sonarr' - which arr-compat surface this was registered on
+	app: text('app').notNull(),
+	name: text('name').notNull(),
+	onGrab: integer('on_grab', { mode: 'boolean' }).notNull().default(false),
+	onDownload: integer('on_download', { mode: 'boolean' }).notNull().default(false),
+	onUpgrade: integer('on_upgrade', { mode: 'boolean' }).notNull().default(false),
+	onMovieAdded: integer('on_movie_added', { mode: 'boolean' }).notNull().default(false),
+	onMovieDelete: integer('on_movie_delete', { mode: 'boolean' }).notNull().default(false),
+	onSeriesAdd: integer('on_series_add', { mode: 'boolean' }).notNull().default(false),
+	onSeriesDelete: integer('on_series_delete', { mode: 'boolean' }).notNull().default(false),
+	config: text('config', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+	createdAt: text('created_at')
+		.notNull()
+		.$defaultFn(() => new Date().toISOString())
+});
+
+export type ArrNotificationConfig = typeof arrNotificationConfigs.$inferSelect;
+export type NewArrNotificationConfig = typeof arrNotificationConfigs.$inferInsert;

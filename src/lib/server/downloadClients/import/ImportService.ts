@@ -70,6 +70,8 @@ import { getFileManagementSettings } from '$lib/server/settings/file-management.
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import { getMediaBrowserNotifier } from '$lib/server/notifications/mediabrowser';
+import { notifyMovieDownload, notifySeriesDownload } from '$lib/server/arr/notifications.js';
+import { getOrAssignArrId } from '$lib/server/arr/ArrIdMappingService.js';
 import { getSidecarSettings } from '$lib/server/library/sidecar/sidecarSettings.js';
 import {
 	buildMovieNfo,
@@ -1254,6 +1256,16 @@ export class ImportService extends EventEmitter {
 		// Tell connected media servers (Jellyfin/Plex/Emby) about the new file.
 		getMediaBrowserNotifier().queueUpdate(destPath, isUpgrade ? 'Modified' : 'Created', 'import');
 
+		// Tell any arr-compat clients (Pulsarr, Notifiarr, ...) that registered
+		// a webhook - never let a slow/unreachable third-party endpoint delay
+		// the import response.
+		notifyMovieDownload({ title: movie.title, tmdbId: movie.tmdbId }).catch((err) => {
+			logger.warn(
+				{ movieId: movie.id, err: err instanceof Error ? err.message : String(err) },
+				'Failed to notify arr-compat webhooks'
+			);
+		});
+
 		// Optional sidecar files (.nfo + poster/fanart) - see NfoGenerator.ts /
 		// SidecarImageService.ts for why this exists (Jellyfin never probes
 		// .strm files during a scan, so a movie can otherwise sit with no
@@ -1904,6 +1916,32 @@ export class ImportService extends EventEmitter {
 
 		// See the movie import path above for why this exists.
 		getMediaBrowserNotifier().queueUpdate(destPath, isUpgrade ? 'Modified' : 'Created', 'import');
+
+		// See the movie import path above for why this exists.
+		const episodeFileArrId = await getOrAssignArrId('episodeFile', fileId);
+		notifySeriesDownload(
+			{ title: seriesData.title, tvdbId: seriesData.tvdbId },
+			matchingEpisodes.map((ep) => ({
+				episodeNumber: ep.episodeNumber,
+				seasonNumber: ep.seasonNumber,
+				title: ep.title,
+				overview: ep.overview,
+				airDate: ep.airDate
+			})),
+			{
+				id: episodeFileArrId,
+				relativePath,
+				quality:
+					[fileData.quality?.resolution, fileData.quality?.source].filter(Boolean).join(' ') ||
+					'Unknown',
+				size: transferResult.sizeBytes ?? 0
+			}
+		).catch((err) => {
+			logger.warn(
+				{ seriesId: seriesData.id, err: err instanceof Error ? err.message : String(err) },
+				'Failed to notify arr-compat webhooks'
+			);
+		});
 
 		// Optional sidecar files - see NfoGenerator.ts / SidecarImageService.ts
 		// / the movie import path above. TV has three independent levels
