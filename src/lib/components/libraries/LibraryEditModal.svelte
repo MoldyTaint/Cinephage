@@ -152,6 +152,7 @@
 		} else if (libraryId) {
 			const library = libraries.find((l) => l.id === libraryId) ?? null;
 			if (library) {
+				const profileId = library.languageProfileId ?? '';
 				libraryForm = {
 					name: library.name,
 					mediaType: library.mediaType,
@@ -160,9 +161,11 @@
 					defaultSearchOnAdd: library.defaultSearchOnAdd ?? true,
 					defaultWantsSubtitles: library.defaultWantsSubtitles ?? false,
 					qualityProfileId: library.qualityProfileId ?? null,
-					languageProfileId: library.languageProfileId ?? ''
+					languageProfileId: profileId
 				};
-				editingLibraryLanguageProfileId = libraryForm.languageProfileId;
+				// Read from the row (not libraryForm) so this effect doesn't
+				// depend on the state it just wrote.
+				editingLibraryLanguageProfileId = profileId;
 				librarySaveError = null;
 			}
 		}
