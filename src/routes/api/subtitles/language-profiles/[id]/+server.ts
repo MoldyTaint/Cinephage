@@ -8,8 +8,15 @@ import { parseBody, assertFound } from '$lib/server/api/validate.js';
  * GET /api/subtitles/language-profiles/:id
  * Get a single language profile by ID.
  */
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async ({ params, url }) => {
 	const service = LanguageProfileService.getInstance();
+
+	// ?usage=1 → delete-impact preview instead of the profile body.
+	if (url.searchParams.get('usage')) {
+		const usage = await service.countProfileUsage(params.id);
+		return json(usage);
+	}
+
 	const profile = await service.getProfile(params.id);
 
 	assertFound(profile, 'Language profile', params.id);

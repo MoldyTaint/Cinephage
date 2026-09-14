@@ -1184,3 +1184,88 @@ describe('getEffectiveSubtitleRequirements (per-item overrides)', () => {
 afterAll(() => {
 	destroyTestDb(testDb);
 });
+
+describe('countProfileUsage (delete impact preview)', () => {
+	let profileService: ReturnType<typeof LanguageProfileService.getInstance>;
+
+	beforeEach(async () => {
+		for (const table of TABLES_TO_CLEAR) {
+			testDb.sqlite.prepare(`DELETE FROM ${table}`).run();
+		}
+		profileService = LanguageProfileService.getInstance();
+		await seedProfile(PROFILE_OVERRIDE, 'Used');
+		await seedProfile(PROFILE_DEFAULT, 'Default');
+	});
+
+	it('counts direct, via-library, smart-list, and instance-default usage', async () => {
+		const {
+			movies: moviesTable,
+			series: seriesTable,
+			libraries: librariesTable,
+			smartLists: smartListsTable
+		} = await import('$lib/server/db/schema.js');
+
+		await testDb.db.insert(librariesTable).values({
+			id: 'lib-usage',
+			name: 'L',
+			slug: 'lib-usage',
+			mediaType: 'movie',
+			languageProfileId: PROFILE_OVERRIDE
+		});
+		await testDb.db.insert(moviesTable).values([
+			{
+				id: 'movie-usage-1',
+				tmdbId: 1,
+				title: 'Direct',
+				path: 'direct',
+				libraryId: 'lib-usage',
+				languageProfileId: PROFILE_OVERRIDE
+			},
+			{
+				id: 'movie-usage-2',
+				tmdbId: 2,
+				title: 'Via library',
+				path: 'via',
+				libraryId: 'lib-usage',
+				languageProfileId: null
+			}
+		]);
+		await testDb.db.insert(seriesTable).values({
+			id: 'series-usage',
+			tmdbId: 3,
+			title: 'Direct series',
+			path: 'direct-series',
+			libraryId: 'lib-usage',
+			languageProfileId: PROFILE_OVERRIDE
+		});
+		await testDb.db.insert(smartListsTable).values({
+			id: 'sl-usage',
+			name: 'List',
+			mediaType: 'movie',
+			filters: '{}',
+			languageProfileId: PROFILE_OVERRIDE
+		});
+		await testDb.db
+			.update(languageProfiles)
+			.set({ id: PROFILE_OVERRIDE })
+			.where(eq(languageProfiles.id, PROFILE_OVERRIDE));
+
+		const usage = await profileService.countProfileUsage(PROFILE_OVERRIDE);
+
+		expect(usage).toEqual({
+			directMovies: 1,
+			directSeries: 1,
+			viaLibraries: 1,
+			smartLists: 1,
+			isInstanceDefault: false
+		});
+	});
+
+	it('flags the instance default', async () => {
+		const { LanguageSettingsService } = await import('./LanguageSettingsService.js');
+		await LanguageSettingsService.getInstance().update({ defaultProfileId: PROFILE_DEFAULT });
+
+		const usage = await profileService.countProfileUsage(PROFILE_DEFAULT);
+		expect(usage.isInstanceDefault).toBe(true);
+	});
+});

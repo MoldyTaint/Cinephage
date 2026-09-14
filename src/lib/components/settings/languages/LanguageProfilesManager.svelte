@@ -75,6 +75,14 @@
 	// Delete confirmation
 	let confirmDeleteOpen = $state(false);
 	let deleteTarget = $state<LanguageProfile | null>(null);
+	interface ProfileUsage {
+		directMovies: number;
+		directSeries: number;
+		viaLibraries: number;
+		smartLists: number;
+		isInstanceDefault: boolean;
+	}
+	let deleteUsage = $state<ProfileUsage | null>(null);
 
 	function getLanguageName(code: string): string {
 		return getLanguageNameFromLib(code);
@@ -239,7 +247,13 @@
 
 	function confirmDelete(profile: LanguageProfile) {
 		deleteTarget = profile;
+		deleteUsage = null;
 		confirmDeleteOpen = true;
+		// Non-critical: powers the impact preview inside the confirm dialog.
+		fetch(`/api/subtitles/language-profiles/${profile.id}?usage=1`)
+			.then((response) => (response.ok ? response.json() : null))
+			.then((data) => (deleteUsage = data))
+			.catch(() => undefined);
 	}
 
 	async function handleConfirmDelete() {
@@ -608,6 +622,42 @@
 </ModalWrapper>
 
 <!-- Delete Confirmation Modal -->
+{#if confirmDeleteOpen && deleteUsage}
+	<div class="fixed inset-x-0 bottom-24 z-[60] mx-auto w-fit max-w-[90vw]">
+		<div class="rounded-lg border border-base-content/20 bg-base-200 px-4 py-3 text-sm shadow-xl">
+			<ul class="list-disc space-y-0.5 pl-4">
+				{#if deleteUsage.directMovies > 0 || deleteUsage.directSeries > 0}
+					<li>
+						{m.settings_integrations_languageProfiles_deleteImpactDirect({
+							movies: deleteUsage.directMovies,
+							series: deleteUsage.directSeries
+						})}
+					</li>
+				{/if}
+				{#if deleteUsage.viaLibraries > 0}
+					<li>
+						{m.settings_integrations_languageProfiles_deleteImpactLibraries({
+							count: deleteUsage.viaLibraries
+						})}
+					</li>
+				{/if}
+				{#if deleteUsage.smartLists > 0}
+					<li>
+						{m.settings_integrations_languageProfiles_deleteImpactSmartLists({
+							count: deleteUsage.smartLists
+						})}
+					</li>
+				{/if}
+				{#if deleteUsage.isInstanceDefault}
+					<li>{m.settings_integrations_languageProfiles_deleteImpactDefault()}</li>
+				{/if}
+				<li class="text-base-content/60">
+					{m.settings_integrations_languageProfiles_deleteImpactFallback()}
+				</li>
+			</ul>
+		</div>
+	</div>
+{/if}
 <ConfirmationModal
 	open={confirmDeleteOpen}
 	title={m.ui_modal_confirmTitle()}

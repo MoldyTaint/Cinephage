@@ -4803,5 +4803,10 @@
 	"library_languageProfile_applyConfirmTitle": "Apply to existing items?",
 	"library_languageProfile_applyConfirmBody": "This library's default language profile changed. Assign it to all existing items in this library and clear their custom subtitle choices?",
 	"library_languageProfile_applyConfirmAction": "Apply to existing items",
-	"library_languageProfile_applySkip": "Keep items as they are"
+	"library_languageProfile_applySkip": "Keep items as they are",
+	"settings_integrations_languageProfiles_deleteImpactDirect": "used directly by {movies} movie(s) and {series} series",
+	"settings_integrations_languageProfiles_deleteImpactLibraries": "{count} item(s) inherit it through library defaults",
+	"settings_integrations_languageProfiles_deleteImpactSmartLists": "{count} smart list(s) reference it",
+	"settings_integrations_languageProfiles_deleteImpactDefault": "it is the instance default",
+	"settings_integrations_languageProfiles_deleteImpactFallback": "Deleting it makes these items fall back to the next level in the chain."
 }

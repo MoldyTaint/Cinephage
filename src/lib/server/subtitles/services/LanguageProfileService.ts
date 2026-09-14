@@ -25,7 +25,7 @@ import {
 	subtitles,
 	type LanguageProfileRow
 } from '$lib/server/db/schema';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { extname } from 'node:path';
@@ -271,6 +271,56 @@ export class LanguageProfileService {
 	 * explicitly because sqlite connections in the app do not enable foreign
 	 * keys, so ON DELETE SET NULL cannot be relied upon.
 	 */
+	/**
+	 * Count how many items' effective resolution references this profile:
+	 * direct overrides, items inheriting through library defaults, smart
+	 * lists, and whether it is the instance default. Powers the delete
+	 * impact preview.
+	 */
+	async countProfileUsage(profileId: string): Promise<{
+		directMovies: number;
+		directSeries: number;
+		viaLibraries: number;
+		smartLists: number;
+		isInstanceDefault: boolean;
+	}> {
+		const [directMovies] = await db
+			.select({ count: sql<number>`count(*)` })
+			.from(movies)
+			.where(eq(movies.languageProfileId, profileId));
+		const [directSeries] = await db
+			.select({ count: sql<number>`count(*)` })
+			.from(series)
+			.where(eq(series.languageProfileId, profileId));
+
+		// Items with no override whose owning library defaults to this profile.
+		const [moviesViaLibraries] = await db
+			.select({ count: sql<number>`count(*)` })
+			.from(movies)
+			.innerJoin(libraries, eq(movies.libraryId, libraries.id))
+			.where(and(eq(libraries.languageProfileId, profileId), isNull(movies.languageProfileId)));
+		const [seriesViaLibraries] = await db
+			.select({ count: sql<number>`count(*)` })
+			.from(series)
+			.innerJoin(libraries, eq(series.libraryId, libraries.id))
+			.where(and(eq(libraries.languageProfileId, profileId), isNull(series.languageProfileId)));
+
+		const [smartListCount] = await db
+			.select({ count: sql<number>`count(*)` })
+			.from(smartLists)
+			.where(eq(smartLists.languageProfileId, profileId));
+
+		const defaultProfileId = await LanguageSettingsService.getInstance().getDefaultProfileId();
+
+		return {
+			directMovies: directMovies?.count ?? 0,
+			directSeries: directSeries?.count ?? 0,
+			viaLibraries: (moviesViaLibraries?.count ?? 0) + (seriesViaLibraries?.count ?? 0),
+			smartLists: smartListCount?.count ?? 0,
+			isInstanceDefault: defaultProfileId === profileId
+		};
+	}
+
 	async deleteProfile(id: string): Promise<void> {
 		const existing = await this.getProfile(id);
 		if (!existing) {
