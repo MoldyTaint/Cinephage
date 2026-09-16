@@ -9,6 +9,29 @@ import { extractReleaseGroup } from './patterns/releaseGroup';
 
 describe('ReleaseParser', () => {
 	describe('Movie Releases', () => {
+		it.each([
+			[
+				"Straight Outta Compton (2015-Director's Cut)",
+				'Straight Outta Compton',
+				2015,
+				"Director's Cut"
+			],
+			['Se7en (1995-Remastered)', 'Se7en', 1995, 'Remastered'],
+			[
+				"Gods and Generals (2003-Extended Director's Cut)",
+				'Gods and Generals',
+				2003,
+				"Director's Cut"
+			],
+			['Aquaman (2018-Imax)', 'Aquaman', 2018, 'IMAX'],
+			['Alien (1979-Theatrical Cut)', 'Alien', 1979, 'Theatrical']
+		])('parses year and edition from %s', (filename, cleanTitle, year, edition) => {
+			const result = parseRelease(filename);
+			expect(result.cleanTitle).toBe(cleanTitle);
+			expect(result.year).toBe(year);
+			expect(result.edition).toBe(edition);
+		});
+
 		it('should parse a standard movie release', () => {
 			const result = parseRelease('The.Matrix.1999.1080p.BluRay.x264-GROUP');
 

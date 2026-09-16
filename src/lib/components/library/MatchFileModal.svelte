@@ -8,6 +8,7 @@
 	import { getFileName } from '$lib/utils/format.js';
 	import { searchTmdb } from '$lib/api/discover.js';
 	import { matchUnmatched } from '$lib/api/library.js';
+	import { extractSearchYear } from '$lib/utils/search-query.js';
 
 	interface UnmatchedFile {
 		id: string;
@@ -55,7 +56,8 @@
 	// Reset state when file changes
 	$effect(() => {
 		if (file) {
-			searchQuery = file.parsedTitle || '';
+			const { title, year } = extractSearchYear(file.parsedTitle || '');
+			searchQuery = year ? `${title} (${year})` : title;
 			searchType = file.mediaType === 'tv' ? 'tv' : 'movie';
 			selectedShow = null;
 			season = file.parsedSeason ?? 1;
