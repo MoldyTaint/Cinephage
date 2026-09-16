@@ -2135,6 +2135,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 					stats.awaitingCount++;
 					break;
 				case 'seeding':
+				case 'seeding-imported':
 					stats.seedingCount++;
 					break;
 				case 'paused':
