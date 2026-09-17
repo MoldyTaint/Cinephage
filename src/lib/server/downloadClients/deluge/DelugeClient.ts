@@ -12,7 +12,7 @@ import type {
 	DownloadInfo,
 	IDownloadClient
 } from '../core/interfaces';
-import { getBasicAuthHeader } from '../core/client-utils.js';
+import { getBasicAuthHeader, joinCategoryPath } from '../core/client-utils.js';
 import {
 	buildMagnetFromInfoHash,
 	extractInfoHashFromMagnet,
@@ -366,6 +366,22 @@ export class DelugeClient implements IDownloadClient {
 		const addOptions: Record<string, unknown> = {};
 		if (options.savePath) {
 			addOptions.download_location = options.savePath;
+		} else if (options.category?.trim()) {
+			try {
+				const derived = joinCategoryPath(await this.getDefaultSavePath(), options.category);
+				if (derived) {
+					addOptions.download_location = derived;
+				}
+			} catch {
+				// Fall back to label-only when the default path is unavailable.
+			}
+		}
+		if (options.category?.trim()) {
+			try {
+				await this.ensureCategory(options.category.trim());
+			} catch {
+				// Label plugin is optional — never block the download on it.
+			}
 		}
 		if (options.paused) {
 			addOptions.add_paused = true;
