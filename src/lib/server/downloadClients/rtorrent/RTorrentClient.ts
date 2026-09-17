@@ -12,7 +12,7 @@ import type {
 	DownloadInfo,
 	IDownloadClient
 } from '../core/interfaces';
-import { getBasicAuthHeader } from '../core/client-utils.js';
+import { getBasicAuthHeader, joinCategoryPath } from '../core/client-utils.js';
 import {
 	buildMagnetFromInfoHash,
 	extractInfoHashFromMagnet,
@@ -640,10 +640,30 @@ export class RTorrentClient implements IDownloadClient {
 			? null
 			: new Set((await this.getTorrentHashes()).map((hash) => hash.toLowerCase()));
 
+		// Derive a per-category directory atomically at load time. Post-hoc
+		// d.directory.set does not move existing data, so the directory and
+		// label must ride along with load.start/load.raw_start.
+		let effectiveSavePath = options.savePath?.trim() || '';
+		if (!effectiveSavePath && options.category?.trim()) {
+			try {
+				effectiveSavePath = joinCategoryPath(await this.getDefaultSavePath(), options.category);
+			} catch {
+				effectiveSavePath = '';
+			}
+		}
+		const normalizedCategory = options.category?.trim() || '';
+		const extraCommands: string[] = [];
+		if (effectiveSavePath) {
+			extraCommands.push(`d.directory.set=${effectiveSavePath}`);
+		}
+		if (normalizedCategory) {
+			extraCommands.push(`d.custom1.set=${normalizedCategory}`);
+		}
+
 		if (options.torrentFile) {
 			await this.callFirstSuccess<unknown>([
-				{ method: 'load.raw_start', params: ['', options.torrentFile] },
-				{ method: 'load_raw_start', params: ['', options.torrentFile] }
+				{ method: 'load.raw_start', params: ['', options.torrentFile, ...extraCommands] },
+				{ method: 'load_raw_start', params: ['', options.torrentFile, ...extraCommands] }
 			]);
 		} else {
 			let source = options.magnetUri;
@@ -658,8 +678,8 @@ export class RTorrentClient implements IDownloadClient {
 			}
 
 			await this.callFirstSuccess<unknown>([
-				{ method: 'load.start', params: ['', source] },
-				{ method: 'load_start', params: ['', source] }
+				{ method: 'load.start', params: ['', source, ...extraCommands] },
+				{ method: 'load_start', params: ['', source, ...extraCommands] }
 			]);
 		}
 

@@ -447,6 +447,81 @@ describe('RTorrentClient', () => {
 		expect(download).toBeTruthy();
 		expect(download?.contentPath).toBe(expectedPath);
 	});
+
+	it('sets directory and label atomically at load time for categories', async () => {
+		const infoHash = '3bd0fecad68932cb2e320d4dc19b750a36824173';
+		const loadBodies: string[] = [];
+
+		const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+			const body = String(init?.body ?? '');
+			const method = body.match(/<methodName>([^<]+)<\/methodName>/)?.[1] ?? '';
+
+			if (method === 'directory.default') {
+				return new Response(xmlString('/downloads'), { status: 200 });
+			}
+
+			if (method === 'd.multicall2' || method === 'd.multicall' || method === 'download_list') {
+				return new Response(xmlStringArray([]), { status: 200 });
+			}
+
+			if (method === 'load.start') {
+				loadBodies.push(body);
+				return new Response(xmlInt(0), { status: 200 });
+			}
+
+			return new Response(xmlInt(0), { status: 200 });
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		const client = new RTorrentClient({
+			host: 'localhost',
+			port: 80,
+			useSsl: false
+		});
+
+		const result = await client.addDownload({ infoHash, category: 'movies' });
+
+		expect(result).toBe(infoHash);
+		expect(loadBodies).toHaveLength(1);
+		expect(loadBodies[0]).toContain('d.directory.set=/downloads/movies');
+		expect(loadBodies[0]).toContain('d.custom1.set=movies');
+	});
+
+	it('prefers an explicit savePath over the derived category path', async () => {
+		const infoHash = '3bd0fecad68932cb2e320d4dc19b750a36824173';
+		const loadBodies: string[] = [];
+		const methodsCalled: string[] = [];
+
+		const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+			const body = String(init?.body ?? '');
+			const method = body.match(/<methodName>([^<]+)<\/methodName>/)?.[1] ?? '';
+			methodsCalled.push(method);
+
+			if (method === 'd.multicall2' || method === 'd.multicall' || method === 'download_list') {
+				return new Response(xmlStringArray([]), { status: 200 });
+			}
+
+			if (method === 'load.start') {
+				loadBodies.push(body);
+				return new Response(xmlInt(0), { status: 200 });
+			}
+
+			return new Response(xmlInt(0), { status: 200 });
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		const client = new RTorrentClient({
+			host: 'localhost',
+			port: 80,
+			useSsl: false
+		});
+
+		await client.addDownload({ infoHash, category: 'movies', savePath: '/custom/path' });
+
+		expect(methodsCalled).not.toContain('directory.default');
+		expect(loadBodies).toHaveLength(1);
+		expect(loadBodies[0]).toContain('d.directory.set=/custom/path');
+	});
 });
 
 describe('RTorrentClient canBeRemoved', () => {

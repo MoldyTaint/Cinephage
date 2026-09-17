@@ -13,7 +13,7 @@ import type {
 	DownloadInfo,
 	IDownloadClient
 } from '../core/interfaces';
-import { getBasicAuthHeader } from '../core/client-utils.js';
+import { getBasicAuthHeader, joinCategoryPath } from '../core/client-utils.js';
 
 interface TransmissionRpcResponse<T> {
 	result: string;
@@ -452,6 +452,15 @@ export class TransmissionClient implements IDownloadClient {
 
 		if (options.savePath) {
 			args['download-dir'] = options.savePath;
+		} else if (options.category?.trim()) {
+			try {
+				const derived = joinCategoryPath(await this.getDefaultSavePath(), options.category);
+				if (derived) {
+					args['download-dir'] = derived;
+				}
+			} catch {
+				// Fall back to labels-only when the default path is unavailable.
+			}
 		}
 
 		if (options.category?.trim()) {

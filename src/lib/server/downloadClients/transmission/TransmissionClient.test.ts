@@ -26,6 +26,23 @@ function mockRpcAddSuccess(payloads: RpcRequestPayload[]): ReturnType<typeof vi.
 			});
 		}
 
+		if (payload.method === 'session-get') {
+			return new Response(
+				JSON.stringify({
+					result: 'success',
+					arguments: {
+						version: '4.0.6',
+						'rpc-version': 17,
+						'download-dir': '/downloads'
+					}
+				}),
+				{
+					status: 200,
+					headers: { 'Content-Type': 'application/json' }
+				}
+			);
+		}
+
 		return new Response(
 			JSON.stringify({
 				result: 'success',
@@ -109,10 +126,12 @@ describe('TransmissionClient', () => {
 		});
 
 		expect(hash).toBe('deadbeef');
-		expect(payloads).toHaveLength(2);
-		expect(payloads[1].method).toBe('torrent-add');
-		expect(payloads[1].arguments?.metainfo).toBe(torrentFile.toString('base64'));
-		expect(payloads[1].arguments?.filename).toBeUndefined();
+		expect(payloads[1].method).toBe('session-get');
+		const torrentAdd = payloads.find((payload) => payload.method === 'torrent-add');
+		expect(torrentAdd?.arguments?.metainfo).toBe(torrentFile.toString('base64'));
+		expect(torrentAdd?.arguments?.filename).toBeUndefined();
+		expect(torrentAdd?.arguments?.['download-dir']).toBe('/downloads/tv');
+		expect(torrentAdd?.arguments?.labels).toEqual(['tv']);
 	});
 
 	it('uses magnet URI when torrent file is unavailable', async () => {
@@ -129,10 +148,29 @@ describe('TransmissionClient', () => {
 		});
 
 		expect(hash).toBe('deadbeef');
-		expect(payloads).toHaveLength(2);
-		expect(payloads[1].method).toBe('torrent-add');
-		expect(payloads[1].arguments?.filename).toBe(magnetUri);
-		expect(payloads[1].arguments?.metainfo).toBeUndefined();
+		expect(payloads[1].method).toBe('session-get');
+		const torrentAdd = payloads.find((payload) => payload.method === 'torrent-add');
+		expect(torrentAdd?.arguments?.filename).toBe(magnetUri);
+		expect(torrentAdd?.arguments?.metainfo).toBeUndefined();
+		expect(torrentAdd?.arguments?.['download-dir']).toBe('/downloads/tv');
+	});
+
+	it('prefers an explicit savePath over the derived category path', async () => {
+		const payloads: RpcRequestPayload[] = [];
+		vi.stubGlobal('fetch', mockRpcAddSuccess(payloads));
+
+		const client = createClient();
+
+		const hash = await client.addDownload({
+			magnetUri: 'magnet:?xt=urn:btih:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+			category: 'tv',
+			savePath: '/custom/path'
+		});
+
+		expect(hash).toBe('deadbeef');
+		expect(payloads.some((payload) => payload.method === 'session-get')).toBe(false);
+		const torrentAdd = payloads.find((payload) => payload.method === 'torrent-add');
+		expect(torrentAdd?.arguments?.['download-dir']).toBe('/custom/path');
 	});
 
 	describe('canBeRemoved', () => {

@@ -19,3 +19,14 @@ export function getBasicAuthHeader(
 	const encoded = Buffer.from(`${username}:${pw}`).toString('base64');
 	return `Basic ${encoded}`;
 }
+
+/**
+ * Join a client default path with a category name (Radarr-style `[category]`
+ * subdirectory). Returns '' when either side is blank so callers fall back
+ * to current behavior. Explicit savePath always wins at the call site.
+ */
+export function joinCategoryPath(basePath: string, category: string): string {
+	const base = basePath.trim().replace(/\/+$/, '');
+	const name = category.trim();
+	return base && name ? `${base}/${name}` : '';
+}
