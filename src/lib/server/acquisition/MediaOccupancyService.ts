@@ -10,6 +10,8 @@ import {
 import type { GrabTarget } from '$lib/server/filters/stages/grab/types.js';
 import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
 import type { Resolution } from '$lib/server/indexers/parser/types.js';
+import { acquisitionService, episodeTargetKey, movieTargetKey } from './AcquisitionService.js';
+import { computeMovieQualitySlot } from './slot-keys.js';
 
 type OccupancyReason =
 	| 'movie_already_downloading'
@@ -78,6 +80,16 @@ class MediaOccupancyServiceImpl {
 		movieId: string,
 		options: MediaOccupancyOptions
 	): Promise<MediaOccupancyResult> {
+		// Durable acquisition intents first: an ACTIVE reservation blocks any
+		// new grab for the slot — including upgrades (one active acquisition
+		// per slot; an upgrade waits for the active one to import or fail).
+		// Bucket-aware: a different quality bucket's reservation does not
+		// block when the candidate targets a known desired bucket.
+		const reservationConflict = await this.checkMovieReservation(movieId, options);
+		if (reservationConflict) {
+			return reservationConflict;
+		}
+
 		// Multi-quality bucket-aware path: when a candidate targets a desired
 		// resolution bucket, evaluate occupancy per-slot so another bucket's
 		// active download or existing file does not block an empty bucket.
@@ -212,6 +224,22 @@ class MediaOccupancyServiceImpl {
 			return { occupied: false };
 		}
 
+		// Durable acquisition intents first (season packs reserve every
+		// episode in their scope, so an active pack blocks per-episode grabs).
+		const reservation = acquisitionService.findActiveByTargetKeys(
+			episodeIds.map((episodeId) => episodeTargetKey(episodeId))
+		);
+		if (reservation) {
+			return {
+				occupied: true,
+				reason: 'episode_already_downloading',
+				details: {
+					queueItemId: reservation.queueId ?? undefined,
+					episodeIds: reservation.episodeIds ?? []
+				}
+			};
+		}
+
 		const activeDownload = await this.getBlockingEpisodeDownload(episodeIds);
 		if (activeDownload) {
 			return {
@@ -261,6 +289,48 @@ class MediaOccupancyServiceImpl {
 		}
 
 		return { occupied: false };
+	}
+
+	/**
+	 * Reservation-based occupancy for movies. Returns an occupied result when
+	 * an active acquisition intent holds the candidate's slot (or any slot,
+	 * when the candidate's bucket is unknown or single-quality).
+	 */
+	private async checkMovieReservation(
+		movieId: string,
+		options: MediaOccupancyOptions
+	): Promise<MediaOccupancyResult | undefined> {
+		let slot: string | undefined;
+		if (options.candidateResolution) {
+			const movieRows = await db
+				.select({
+					desiredQualities: movies.desiredQualities,
+					scoringProfileId: movies.scoringProfileId
+				})
+				.from(movies)
+				.where(eq(movies.id, movieId))
+				.limit(1);
+			slot = await computeMovieQualitySlot(
+				movieRows[0]?.desiredQualities,
+				movieRows[0]?.scoringProfileId,
+				options.candidateResolution
+			);
+		}
+
+		const reservation =
+			slot && slot !== 'single'
+				? acquisitionService.findActiveByTargetKeys([movieTargetKey(movieId, slot)])
+				: acquisitionService.findActiveMovieReservation(movieId);
+
+		if (!reservation) return undefined;
+
+		return {
+			occupied: true,
+			reason: 'movie_already_downloading',
+			details: {
+				queueItemId: reservation.queueId ?? undefined
+			}
+		};
 	}
 
 	private async getBlockingMovieDownload(movieId: string, resolution?: string) {

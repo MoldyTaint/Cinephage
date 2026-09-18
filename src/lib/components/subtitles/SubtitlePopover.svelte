@@ -76,10 +76,12 @@
 	onmouseleave={cancelDelete}
 >
 	{#if onWantsSubtitlesChange}
-		<label class="mb-2 flex items-center justify-between gap-2 border-b border-base-300 pb-2 text-xs">
+		<label
+			class="mb-2 flex items-center justify-between gap-2 border-b border-base-300 pb-2 text-xs"
+		>
 			<span class="font-semibold text-base-content/70">Subtitles</span>
 			<select
-				class="select select-bordered select-xs w-24"
+				class="select-bordered select w-24 select-xs"
 				value={wantsSubtitles === null ? 'inherit' : wantsSubtitles ? 'on' : 'off'}
 				onchange={(event) => {
 					const value = (event.currentTarget as HTMLSelectElement).value;

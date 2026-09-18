@@ -17,7 +17,11 @@ import { getSubtitleSearchService } from './services/SubtitleSearchService.js';
 import { getSubtitleDownloadService } from './services/SubtitleDownloadService.js';
 import { LanguageProfileService } from './services/LanguageProfileService.js';
 import { selectBestCandidate, type CandidateRejectionReason } from './acquisition.js';
-import { filterSearchEligible, recordSearchFailure, resetSearchFailure } from './subtitle-search-state.js';
+import {
+	filterSearchEligible,
+	recordSearchFailure,
+	resetSearchFailure
+} from './subtitle-search-state.js';
 import { DEFAULT_MINIMUM_SCORE, requirementKey } from '$lib/shared/language-profile.js';
 import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
 import type { SubtitleDownloadResult, SubtitleSearchResult } from './types.js';
@@ -179,7 +183,14 @@ export async function autoSearchMovie(
 		? missing
 		: await filterSearchEligible('movie', movie.id, missing);
 	if (activeMissing.length === 0) {
-		return { ownerType: 'movie', ownerId: movie.id, title: movie.title, searched: false, outcomes: [], downloaded: 0 };
+		return {
+			ownerType: 'movie',
+			ownerId: movie.id,
+			title: movie.title,
+			searched: false,
+			outcomes: [],
+			downloaded: 0
+		};
 	}
 
 	const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
@@ -236,7 +247,14 @@ export async function autoSearchEpisode(
 		? missing
 		: await filterSearchEligible('episode', episode.id, missing);
 	if (activeMissing.length === 0) {
-		return { ownerType: 'episode', ownerId: episode.id, title, searched: false, outcomes: [], downloaded: 0 };
+		return {
+			ownerType: 'episode',
+			ownerId: episode.id,
+			title,
+			searched: false,
+			outcomes: [],
+			downloaded: 0
+		};
 	}
 
 	const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;

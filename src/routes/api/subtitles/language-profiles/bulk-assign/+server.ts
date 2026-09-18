@@ -24,8 +24,10 @@ const bulkAssignSchema = z
 		mediaType: z.enum(['movie', 'series']),
 		/** IDs of media items to update */
 		mediaIds: z.array(z.string().uuid()).default([]),
-		/** Assign to ALL items of the library instead of explicit ids */
-		libraryId: z.string().uuid().optional(),
+		/** Assign to ALL items of the library instead of explicit ids.
+		 * Not a UUID: seeded/built-in libraries use slug ids (e.g.
+		 * 'lib-movies-standard'). */
+		libraryId: z.string().min(1).optional(),
 		/** Language profile ID to assign (null to remove profile) */
 		languageProfileId: z.string().uuid().nullable(),
 		/** Whether to enable subtitle searching for these items */
@@ -45,8 +47,14 @@ const bulkAssignSchema = z
  * Assign a language profile to multiple movies or series at once.
  */
 export const POST: RequestHandler = async ({ request }) => {
-	const { mediaType, mediaIds: explicitIds, languageProfileId, wantsSubtitles, clearOverrides, libraryId } =
-		await parseBody(request, bulkAssignSchema);
+	const {
+		mediaType,
+		mediaIds: explicitIds,
+		languageProfileId,
+		wantsSubtitles,
+		clearOverrides,
+		libraryId
+	} = await parseBody(request, bulkAssignSchema);
 
 	// Library-wide mode: expand to all items of the library's media type.
 	let mediaIds: string[];

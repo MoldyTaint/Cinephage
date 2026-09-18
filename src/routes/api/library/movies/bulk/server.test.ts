@@ -32,8 +32,7 @@ vi.mock('$lib/logging', () => ({
 }));
 
 vi.mock('$lib/server/library/LibraryAddService.js', async (importOriginal) => {
-	const actual =
-		await importOriginal<typeof import('$lib/server/library/LibraryAddService.js')>();
+	const actual = await importOriginal<typeof import('$lib/server/library/LibraryAddService.js')>();
 	return {
 		...actual,
 		validateRootFolder: actual.validateRootFolder,
@@ -88,9 +87,7 @@ describe('Bulk movie additions', () => {
 	});
 
 	it('adds movies without stamping a language profile override', async () => {
-		const { fetchMovieDetails } = await import(
-			'$lib/server/library/LibraryAddService.js'
-		);
+		const { fetchMovieDetails } = await import('$lib/server/library/LibraryAddService.js');
 		vi.mocked(fetchMovieDetails).mockResolvedValue({
 			id: 9002,
 			title: 'Bulk Movie',

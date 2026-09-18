@@ -103,7 +103,8 @@ export interface SubtitleScoreBreakdown {
 /**
  * Result from a subtitle search
  */
-export interface SubtitleSearchResult {	// Provider info
+export interface SubtitleSearchResult {
+	// Provider info
 	providerId: string;
 	providerName: string;
 	providerSubtitleId: string;

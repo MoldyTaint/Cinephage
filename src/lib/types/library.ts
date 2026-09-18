@@ -109,6 +109,9 @@ export interface LibraryMovie {
 	availabilityDelay?: number;
 	added: string;
 	hasFile: boolean | null;
+	/** Probed audio languages contradict the effective audio preference
+	 * (import verifier; marks the item upgrade-eligible for language). */
+	languageShortfall?: boolean | null;
 	tmdbCollectionId?: number | null;
 	collectionName?: string | null;
 	/** Per-item metadata language override mode ('inherit' | 'original' | 'explicit') */
@@ -148,6 +151,9 @@ export interface LibrarySeries {
 	wantsSubtitles: boolean | null;
 	/** Subtitle language profile override; null = inherit (library/instance default). */
 	languageProfileId?: string | null;
+	/** Probed audio languages contradict the effective audio preference
+	 * (import verifier; marks the item upgrade-eligible for language). */
+	languageShortfall?: boolean | null;
 	added: string;
 	episodeCount: number | null;
 	episodeFileCount: number | null;

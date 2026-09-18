@@ -44,7 +44,7 @@ const { searchService, downloadService, providerManager, profileService, missing
 		const defaultProfile = {
 			id: 'profile-1',
 			name: 'Default',
-			audio: { preferOriginal: true, languages: [] },
+			audio: { preferOriginal: true, languages: [], mode: 'prefer' },
 			subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
 			cutoffRank: 0,
 			upgradesAllowed: true,
@@ -164,15 +164,18 @@ function resetDb() {
 	testDb.db.delete(languageProfiles).run();
 	// Migration 137 added a real FK from movies/series.language_profile_id to
 	// language_profiles.id, so the profile the tests assign must exist (v2 shape).
-	testDb.db.insert(languageProfiles).values({
-		id: 'profile-1',
-		name: 'Default',
-		audio: { preferOriginal: true, languages: [] },
-		subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
-		cutoffRank: 0,
-		minimumScore: 80,
-		upgradesAllowed: true
-	}).run();
+	testDb.db
+		.insert(languageProfiles)
+		.values({
+			id: 'profile-1',
+			name: 'Default',
+			audio: { preferOriginal: true, languages: [], mode: 'prefer' },
+			subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
+			cutoffRank: 0,
+			minimumScore: 80,
+			upgradesAllowed: true
+		})
+		.run();
 }
 
 beforeEach(() => {
@@ -315,7 +318,7 @@ describe('MissingSubtitlesTask monitored gating', () => {
 			profile: {
 				id: 'profile-library',
 				name: 'Library',
-				audio: { preferOriginal: true, languages: [] },
+				audio: { preferOriginal: true, languages: [], mode: 'prefer' },
 				subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
 				cutoffRank: 0,
 				upgradesAllowed: true,
@@ -573,7 +576,7 @@ describe('HI gating on scheduled/import searches', () => {
 		profileService.getProfile.mockResolvedValueOnce({
 			id: 'profile-1',
 			name: 'Default',
-			audio: { preferOriginal: true, languages: [] },
+			audio: { preferOriginal: true, languages: [], mode: 'prefer' },
 			subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'require-hi' }],
 			cutoffRank: 0,
 			upgradesAllowed: true,
@@ -587,4 +590,3 @@ describe('HI gating on scheduled/import searches', () => {
 		});
 	});
 });
-

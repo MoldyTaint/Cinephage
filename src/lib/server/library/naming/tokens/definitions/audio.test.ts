@@ -42,13 +42,16 @@ describe('AudioLanguages token', () => {
 
 	it('drops unknown entries from mixed sets instead of rendering them', () => {
 		expect(
-			audioLanguagesToken.render({ title: 't', audioLanguages: ['eng', 'und', 'xx'] }, enabledConfig)
+			audioLanguagesToken.render(
+				{ title: 't', audioLanguages: ['eng', 'und', 'xx'] },
+				enabledConfig
+			)
 		).toBe('en');
 	});
 
 	it('renders an empty string when the includeMediaInfo gate is off', () => {
-		expect(
-			audioLanguagesToken.render({ title: 't', audioLanguages: ['eng'] }, gatedConfig)
-		).toBe('');
+		expect(audioLanguagesToken.render({ title: 't', audioLanguages: ['eng'] }, gatedConfig)).toBe(
+			''
+		);
 	});
 });

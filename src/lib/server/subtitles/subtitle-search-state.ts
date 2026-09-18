@@ -100,7 +100,9 @@ export async function filterSearchEligible(
 	requirements: SubtitleRequirement[]
 ): Promise<SubtitleRequirement[]> {
 	const states = await getSearchStates(ownerType, ownerId);
-	return requirements.filter((requirement) => isSearchActive(states.get(requirementKey(requirement))));
+	return requirements.filter((requirement) =>
+		isSearchActive(states.get(requirementKey(requirement)))
+	);
 }
 
 /** All requirement states for an owner, keyed by requirement key. */

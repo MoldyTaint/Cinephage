@@ -14,13 +14,7 @@
  */
 
 import { db } from '$lib/server/db/index.js';
-import {
-	movies,
-	series,
-	episodes,
-	subtitles,
-	monitoringHistory
-} from '$lib/server/db/schema.js';
+import { movies, series, episodes, subtitles, monitoringHistory } from '$lib/server/db/schema.js';
 import { eq, and, isNotNull, asc, inArray, or, isNull } from 'drizzle-orm';
 import { getSubtitleSearchService } from '$lib/server/subtitles/services/SubtitleSearchService.js';
 import { getSubtitleDownloadService } from '$lib/server/subtitles/services/SubtitleDownloadService.js';
@@ -316,9 +310,7 @@ async function searchMovieSubtitleUpgrades(
 					// Search for subtitles. Gate providers that cannot verify HI when
 					// the requirements include HI; otherwise an upgrade candidate could
 					// not verify the accessibility of the subtitle it replaces.
-					const requireHearingImpaired = requirements.some(
-						(r) => r.accessibility === 'require-hi'
-					);
+					const requireHearingImpaired = requirements.some((r) => r.accessibility === 'require-hi');
 					const results = await searchService.searchForMovie(movie.id, languages, {
 						requireHearingImpaired
 					});
@@ -553,9 +545,7 @@ async function searchEpisodeSubtitleUpgrades(
 					// Search for subtitles. Gate providers that cannot verify HI when
 					// the requirements include HI; otherwise an upgrade candidate could
 					// not verify the accessibility of the subtitle it replaces.
-					const requireHearingImpaired = requirements.some(
-						(r) => r.accessibility === 'require-hi'
-					);
+					const requireHearingImpaired = requirements.some((r) => r.accessibility === 'require-hi');
 					const results = await searchService.searchForEpisode(episode.id, languages, {
 						requireHearingImpaired
 					});

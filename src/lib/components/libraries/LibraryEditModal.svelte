@@ -438,9 +438,13 @@
 					>
 						{m.library_languageProfile_applySkip()}
 					</button>
-					<button class="btn btn-primary btn-sm" onclick={applyToExistingItems} disabled={applyingToItems}>
+					<button
+						class="btn btn-primary btn-sm"
+						onclick={applyToExistingItems}
+						disabled={applyingToItems}
+					>
 						{#if applyingToItems}
-							<span class="loading loading-spinner loading-xs"></span>
+							<span class="loading loading-xs loading-spinner"></span>
 						{/if}
 						{m.library_languageProfile_applyConfirmAction()}
 					</button>

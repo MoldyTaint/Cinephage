@@ -4,7 +4,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/svelte';
 import LanguageSettingsForm from './languages/LanguageSettingsForm.svelte';
 
 const { updateLanguageSettings } = vi.hoisted(() => ({
-	updateLanguageSettings: vi.fn().mockResolvedValue({})
+	updateLanguageSettings: vi.fn()
 }));
 
 vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
@@ -40,29 +40,20 @@ const baseSettings: FormSettings = {
 	preferOriginalTitle: false
 };
 
-const profiles = [
-	{ id: 'p1', name: 'English' },
-	{ id: 'p2', name: 'French' }
-];
-
 const countries = [
 	{ code: 'US', name: 'United States' },
 	{ code: 'DE', name: 'Germany' }
 ];
 
-const languages = [
-	{ code: 'de', name: 'German' },
-	{ code: 'en', name: 'English' },
-	{ code: 'pt-BR', name: 'Portuguese (Brazil)' }
-];
-
 function renderForm(overrides: Partial<FormSettings> = {}) {
+	const settings = { ...baseSettings, ...overrides };
 	return render(LanguageSettingsForm, {
 		props: {
-			settings: { ...baseSettings, ...overrides },
-			profiles,
+			settings,
 			countries,
-			languages
+			dirty: false,
+			busy: false,
+			saved: false
 		}
 	});
 }
@@ -70,19 +61,23 @@ function renderForm(overrides: Partial<FormSettings> = {}) {
 describe('language settings form', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		// The server persists the patch and echoes the full settings row back.
+		updateLanguageSettings.mockImplementation(async (patch: Partial<FormSettings>) => ({
+			...baseSettings,
+			...patch
+		}));
 	});
 
 	afterEach(() => {
 		cleanup();
 	});
 
-	it('renders all sections with the loaded settings values', async () => {
+	it('renders the localization and subtitle-handling values without the interface or profile sections', () => {
 		const { container } = renderForm({ preferOriginalTitle: true });
 
-		// Interface section embeds the per-user LanguageSelector
-		expect(container.querySelector('.language-selector')).toBeTruthy();
+		// The per-user interface selector lives in the sidebar, not here.
+		expect(container.querySelector('.language-selector')).toBeNull();
 
-		// Metadata section values
 		const metadataLocale = screen.getByRole('combobox', {
 			name: /metadata language/i
 		}) as HTMLSelectElement;
@@ -101,11 +96,8 @@ describe('language settings form', () => {
 		}) as HTMLInputElement;
 		expect(preferOriginal.checked).toBe(true);
 
-		// Audio & subtitles section values
-		const defaultProfile = screen.getByRole('combobox', {
-			name: /default profile/i
-		}) as HTMLSelectElement;
-		expect(defaultProfile.value).toBe('p1');
+		// Default-profile selection moved into the profile cards.
+		expect(screen.queryByRole('combobox', { name: /default profile/i })).toBeNull();
 
 		const autoSync = screen.getByRole('checkbox', {
 			name: /auto-sync subtitles/i
@@ -114,51 +106,63 @@ describe('language settings form', () => {
 	});
 
 	it('only sends the changed fields on save', async () => {
-		renderForm();
+		const { component } = renderForm();
 
 		const region = screen.getByRole('combobox', { name: /^region$/i }) as HTMLSelectElement;
 		await fireEvent.change(region, { target: { value: 'DE' } });
-		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+		await component.save();
 
 		expect(updateLanguageSettings).toHaveBeenCalledTimes(1);
 		expect(updateLanguageSettings).toHaveBeenCalledWith({ region: 'DE' });
 	});
 
 	it('sends an empty patch when nothing changed', async () => {
-		renderForm();
+		const { component } = renderForm();
 
-		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+		await component.save();
 
 		expect(updateLanguageSettings).toHaveBeenCalledWith({});
 	});
 
-	it('sends the changed default profile on save', async () => {
-		renderForm();
+	it('compares later edits against the saved snapshot, not the stale loader data', async () => {
+		const { component } = renderForm();
 
-		const defaultProfile = screen.getByRole('combobox', {
-			name: /default profile/i
-		}) as HTMLSelectElement;
-		await fireEvent.change(defaultProfile, { target: { value: 'p2' } });
-		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+		const region = screen.getByRole('combobox', { name: /^region$/i }) as HTMLSelectElement;
+		await fireEvent.change(region, { target: { value: 'DE' } });
+		await component.save();
 
-		expect(updateLanguageSettings).toHaveBeenCalledTimes(1);
-		expect(updateLanguageSettings).toHaveBeenCalledWith({ defaultProfileId: 'p2' });
+		// The server stored region=DE, so an immediate second save is a no-op.
+		await component.save();
+
+		expect(updateLanguageSettings).toHaveBeenCalledTimes(2);
+		expect(updateLanguageSettings).toHaveBeenLastCalledWith({});
 	});
 
-	it('sends a null default profile when none is selected', async () => {
-		renderForm();
+	it('keeps the saved value in the form after saving (no stale-prop re-sync)', async () => {
+		const { component } = renderForm();
 
-		const defaultProfile = screen.getByRole('combobox', {
-			name: /default profile/i
-		}) as HTMLSelectElement;
-		await fireEvent.change(defaultProfile, { target: { value: '' } });
-		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+		const checkbox = screen.getByRole('checkbox', {
+			name: /show original titles by default/i
+		}) as HTMLInputElement;
+		await fireEvent.click(checkbox);
+		await component.save();
 
-		expect(updateLanguageSettings).toHaveBeenCalledWith({ defaultProfileId: null });
+		// The dirty flag flipping back to false must not re-apply the stale
+		// loader prop over the just-saved response.
+		expect(
+			(
+				screen.getByRole('checkbox', {
+					name: /show original titles by default/i
+				}) as HTMLInputElement
+			).checked
+		).toBe(true);
+
+		await component.save();
+		expect(updateLanguageSettings).toHaveBeenLastCalledWith({});
 	});
 
 	it('shows the assumed-language select only for the assume-language policy', async () => {
-		const { container } = renderForm();
+		const { component } = renderForm();
 
 		expect(screen.queryByRole('combobox', { name: /assumed language/i })).toBeNull();
 
@@ -174,17 +178,19 @@ describe('language settings form', () => {
 
 		// Changing the policy alone must not write the assumed language
 		await fireEvent.change(assumed, { target: { value: 'de' } });
-		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+		await component.save();
 		expect(updateLanguageSettings).toHaveBeenCalledTimes(1);
 		expect(updateLanguageSettings).toHaveBeenCalledWith({
 			unknownSubtitlePolicy: 'assume-language',
 			assumedLanguage: 'de'
 		});
-		expect(container).toBeTruthy();
 	});
 
 	it('clears the stored assumed language when switching back to the und policy', async () => {
-		renderForm({ unknownSubtitlePolicy: 'assume-language', assumedLanguage: 'fr' });
+		const { component } = renderForm({
+			unknownSubtitlePolicy: 'assume-language',
+			assumedLanguage: 'fr'
+		});
 
 		const policy = screen.getByRole('combobox', {
 			name: /unknown subtitle language/i
@@ -194,14 +200,14 @@ describe('language settings form', () => {
 		// The select is hidden again and the stored language is cleared on save
 		expect(screen.queryByRole('combobox', { name: /assumed language/i })).toBeNull();
 
-		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+		await component.save();
 		expect(updateLanguageSettings).toHaveBeenCalledWith({
 			unknownSubtitlePolicy: 'und',
 			assumedLanguage: null
 		});
 	});
 
-	it('links to subtitle providers only (profiles and naming live in sibling tabs)', () => {
+	it('links to subtitle providers (profiles and naming live in sibling tabs)', () => {
 		renderForm();
 
 		expect(screen.getByRole('link', { name: /subtitle providers/i }).getAttribute('href')).toBe(

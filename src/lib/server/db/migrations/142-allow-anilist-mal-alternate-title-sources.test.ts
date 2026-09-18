@@ -86,10 +86,17 @@ describe('migration v139 — allow anilist/mal alternate title sources', () => {
 
 		// Every pre-existing row survives the rebuild unchanged.
 		const rows = sqlite
-			.prepare(`SELECT media_type, media_id, title, source, language, country FROM alternate_titles ORDER BY id`)
+			.prepare(
+				`SELECT media_type, media_id, title, source, language, country FROM alternate_titles ORDER BY id`
+			)
 			.all();
 		expect(rows.length).toBe(5);
-		expect(rows[0]).toMatchObject({ media_type: 'movie', title: 'Dűne', source: 'tmdb', country: 'HU' });
+		expect(rows[0]).toMatchObject({
+			media_type: 'movie',
+			title: 'Dűne',
+			source: 'tmdb',
+			country: 'HU'
+		});
 		expect(rows[1]).toMatchObject({ media_type: 'movie', title: 'My Title', source: 'user' });
 
 		// Indexes recreated.
@@ -108,14 +115,15 @@ describe('migration v139 — allow anilist/mal alternate title sources', () => {
 	it('is idempotent: a second apply neither errors nor loses rows', () => {
 		const sqlite = createPreMigrationDatabase();
 		migration_v142.apply(sqlite);
-		const countAfterFirst = (
-			sqlite.prepare(`SELECT COUNT(*) FROM alternate_titles`).pluck().get() as number
-		);
+		const countAfterFirst = sqlite
+			.prepare(`SELECT COUNT(*) FROM alternate_titles`)
+			.pluck()
+			.get() as number;
 
 		expect(() => migration_v142.apply(sqlite)).not.toThrow();
-		expect(
-			sqlite.prepare(`SELECT COUNT(*) FROM alternate_titles`).pluck().get() as number
-		).toBe(countAfterFirst);
+		expect(sqlite.prepare(`SELECT COUNT(*) FROM alternate_titles`).pluck().get() as number).toBe(
+			countAfterFirst
+		);
 		expect(tableDdl(sqlite, 'alternate_titles')).toContain("'anilist'");
 	});
 

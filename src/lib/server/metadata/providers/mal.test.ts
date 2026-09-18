@@ -45,7 +45,9 @@ describe('MalProvider.getDetails title variants', () => {
 		expect(details?.title).toBe(fullAnime.title_english);
 		expect(details?.originalTitle).toBe(fullAnime.title_japanese);
 
-		const variantTitles = (details?.alternateTitles ?? []).map((v: MetadataTitleVariant) => v.title);
+		const variantTitles = (details?.alternateTitles ?? []).map(
+			(v: MetadataTitleVariant) => v.title
+		);
 		expect(variantTitles).toEqual([
 			'Kino\u2019s Journey -the Beautiful World- the Animated Series',
 			'キノの旅 -the Beautiful World- the Animated Series',

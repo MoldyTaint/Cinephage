@@ -1,3 +1,4 @@
+import { getInstantFileEvidence } from '$lib/server/languages/debrid-evidence';
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.js';
 import { downloadQueue, episodes } from '$lib/server/db/schema.js';
@@ -70,6 +71,9 @@ export class DebridHandler {
 			if (existing) return this.returnOrReconcileExisting(existing, prepared.value.infoHash);
 
 			const parsed = parser.parse(request.release.title);
+			// Best-effort tier-3 evidence: cached file listing from the debrid
+			// provider (no download); null when uncached/unsupported.
+			const instantEvidence = await getInstantFileEvidence(prepared.value.infoHash);
 			const queueItem = await downloadMonitor.addToQueue({
 				downloadClientId: initiallySelected.client.id,
 				downloadId: `${INTENT_PREFIX}${prepared.value.infoHash.toLowerCase()}`,
@@ -88,7 +92,12 @@ export class DebridHandler {
 					resolution: parsed.resolution ?? undefined,
 					source: parsed.source ?? undefined,
 					codec: parsed.codec ?? undefined,
-					hdr: parsed.hdr ?? undefined
+					hdr: parsed.hdr ?? undefined,
+					languages: parsed.languages.length > 0 ? parsed.languages : undefined,
+					fileLanguages:
+						instantEvidence && instantEvidence.languages.length > 0
+							? instantEvidence.languages
+							: undefined
 				},
 				size: request.release.size,
 				releaseGroup: parsed.releaseGroup ?? undefined,

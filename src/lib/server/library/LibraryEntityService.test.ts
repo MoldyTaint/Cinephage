@@ -257,7 +257,7 @@ describe('LibraryEntityService language profile per library', () => {
 			.values({
 				id: LANGUAGE_PROFILE_ID,
 				name: 'Lang Profile',
-				audio: { preferOriginal: true, languages: [] },
+				audio: { preferOriginal: true, languages: [], mode: 'prefer' },
 				subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
 				cutoffRank: null,
 				minimumScore: 70,
@@ -389,4 +389,3 @@ describe('LibraryEntityService language profile per library', () => {
 		await testDb.db.delete(languageProfiles).where(eq(languageProfiles.id, profileId));
 	});
 });
-

@@ -116,14 +116,19 @@ describe('tmdb settings resolution (language_settings authority)', () => {
 					excluded_genre_ids: []
 				})
 			})
-			.onConflictDoUpdate({ target: settings.key, set: { value: JSON.stringify({
-				include_adult: false,
-				min_vote_average: 0,
-				min_vote_count: 0,
-				language: 'fr-FR',
-				region: 'FR',
-				excluded_genre_ids: []
-			}) } });
+			.onConflictDoUpdate({
+				target: settings.key,
+				set: {
+					value: JSON.stringify({
+						include_adult: false,
+						min_vote_average: 0,
+						min_vote_count: 0,
+						language: 'fr-FR',
+						region: 'FR',
+						excluded_genre_ids: []
+					})
+				}
+			});
 	});
 
 	async function seedLanguageSettings(values: { metadataLocale: string; region: string }) {

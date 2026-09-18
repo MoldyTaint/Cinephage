@@ -23,13 +23,18 @@ describe('subtitleRequirementSchema', () => {
 
 describe('audioPreferenceSchema', () => {
 	it('defaults to original audio with no fallbacks', () => {
-		expect(audioPreferenceSchema.parse({})).toEqual({ preferOriginal: true, languages: [] });
+		expect(audioPreferenceSchema.parse({})).toEqual({
+			preferOriginal: true,
+			languages: [],
+			mode: 'prefer'
+		});
 	});
 
 	it('canonicalizes fallback languages', () => {
 		expect(audioPreferenceSchema.parse({ languages: ['FRE', 'ger'] })).toEqual({
 			preferOriginal: true,
-			languages: ['fr', 'de']
+			languages: ['fr', 'de'],
+			mode: 'prefer'
 		});
 	});
 });
@@ -48,9 +53,7 @@ describe('languageProfileV2CreateSchema', () => {
 	});
 
 	it('rejects a cutoff rank outside the requirement list', () => {
-		expect(() =>
-			languageProfileV2CreateSchema.parse({ ...validBody, cutoffRank: 2 })
-		).toThrow();
+		expect(() => languageProfileV2CreateSchema.parse({ ...validBody, cutoffRank: 2 })).toThrow();
 	});
 
 	it('accepts a cutoff rank on the last requirement', () => {
@@ -115,16 +118,16 @@ describe('per-item override fields in update schemas', () => {
 	it('episode: accepts an override and null to clear', () => {
 		expect(
 			episodeUpdateSchema.parse({ subtitleRequirementsOverride: [{ tag: 'ja' }] })
-		).toMatchObject({ subtitleRequirementsOverride: [{ tag: 'ja', variant: 'regular', accessibility: 'any' }] });
+		).toMatchObject({
+			subtitleRequirementsOverride: [{ tag: 'ja', variant: 'regular', accessibility: 'any' }]
+		});
 		expect(episodeUpdateSchema.parse({ subtitleRequirementsOverride: null })).toMatchObject({
 			subtitleRequirementsOverride: null
 		});
 	});
 
 	it('episode: rejects an empty override list', () => {
-		expect(() =>
-			episodeUpdateSchema.parse({ subtitleRequirementsOverride: [] })
-		).toThrow();
+		expect(() => episodeUpdateSchema.parse({ subtitleRequirementsOverride: [] })).toThrow();
 	});
 
 	it('episode: still requires at least one field', () => {

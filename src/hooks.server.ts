@@ -229,6 +229,12 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				if (isHealthRoute(path)) {
 					return true;
 				}
+				// Client error reports must be receivable pre-auth — crashes on
+				// /login happen before a session exists. The endpoint itself
+				// enforces same-origin + payload validation.
+				if (path === '/api/settings/logs/client-report') {
+					return true;
+				}
 				return false;
 			}
 

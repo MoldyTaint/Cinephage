@@ -11,12 +11,7 @@
  */
 
 import { db } from '$lib/server/db/index.js';
-import {
-	movies,
-	series,
-	episodes,
-	monitoringHistory
-} from '$lib/server/db/schema.js';
+import { movies, series, episodes, monitoringHistory } from '$lib/server/db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { getSubtitleSearchService } from '$lib/server/subtitles/services/SubtitleSearchService.js';
 import { getSubtitleDownloadService } from '$lib/server/subtitles/services/SubtitleDownloadService.js';
@@ -278,12 +273,12 @@ async function searchMissingMovieSubtitles(
 
 		await Promise.all(
 			batch.map(async (movie, batchIndex) => {
-			const isMonitored = await isMovieMonitored({ movie });
-			if (!isMonitored) {
-				return;
-			}
+				const isMonitored = await isMovieMonitored({ movie });
+				if (!isMonitored) {
+					return;
+				}
 
-			// Stagger searches within batch
+				// Stagger searches within batch
 				if (batchIndex > 0) {
 					await sleep(SEARCH_DELAY_MS * batchIndex);
 				}
@@ -621,9 +616,7 @@ async function searchMissingEpisodeSubtitles(
 								} catch (downloadError) {
 									errorCount++;
 									episodeError =
-										downloadError instanceof Error
-											? downloadError.message
-											: String(downloadError);
+										downloadError instanceof Error ? downloadError.message : String(downloadError);
 									await recordSearchFailure('episode', episodeId, key);
 									logger.warn(
 										{

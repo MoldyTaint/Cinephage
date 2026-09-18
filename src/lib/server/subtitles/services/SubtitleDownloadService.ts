@@ -399,7 +399,8 @@ export class SubtitleDownloadService {
 			throw new Error(
 				`Failed to write subtitle file "${subtitleFileName}": ${
 					fileError instanceof Error ? fileError.message : String(fileError)
-				}`
+				}`,
+				{ cause: fileError }
 			);
 		}
 
@@ -597,7 +598,8 @@ export class SubtitleDownloadService {
 			throw new Error(
 				`Failed to read subtitle zip archive: ${
 					error instanceof Error ? error.message : String(error)
-				}`
+				}`,
+				{ cause: error }
 			);
 		}
 

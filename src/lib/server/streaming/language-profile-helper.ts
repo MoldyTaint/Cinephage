@@ -12,6 +12,7 @@ import { and, eq } from 'drizzle-orm';
 import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
 import { logger } from '$lib/logging';
 import { normalizeLanguageCode } from '$lib/shared/languages';
+import { materializeAudioPreference } from '$lib/server/languages/audio-preference-resolver';
 import {
 	DEFAULT_EFFECTIVE_AUDIO_PREFERENCE,
 	type EffectiveAudioPreference
@@ -73,27 +74,13 @@ export async function getAudioPreferenceFor(
 				: await profileService.getProfileForSeries(mediaRow.id);
 
 		// v2 audio object directly off the parsed profile (rowToProfile already
-		// coerces malformed JSON to the default audio shape).
-		const audio = profile?.audio ?? {
-			preferOriginal: DEFAULT_EFFECTIVE_AUDIO_PREFERENCE.preferOriginal,
-			languages: [...DEFAULT_EFFECTIVE_AUDIO_PREFERENCE.languages]
-		};
-
-		const seen = new Set<string>();
-		const languages = audio.languages
-			.map((tag) => normalizeLanguageCode(tag))
-			.filter((tag) => {
-				if (tag === '' || seen.has(tag)) return false;
-				seen.add(tag);
-				return true;
-			});
-
-		const rawOriginal = mediaRow.originalLanguage?.trim();
-		const preference: EffectiveAudioPreference = {
-			preferOriginal: audio.preferOriginal,
-			languages,
-			originalLanguage: rawOriginal ? normalizeLanguageCode(rawOriginal) : null
-		};
+		// coerces malformed JSON to the default audio shape). Materialization
+		// (canonicalize, dedupe, mode default) is shared with the acquisition
+		// resolver so both paths produce comparable snapshots.
+		const preference = materializeAudioPreference(
+			profile?.audio ?? null,
+			mediaRow.originalLanguage
+		);
 
 		logger.debug(
 			{
@@ -147,11 +134,7 @@ export async function getPreferredSubtitleLanguagesFor(
 
 		if (mediaType === 'movie') {
 			const movie = (
-				await db
-					.select({ id: movies.id })
-					.from(movies)
-					.where(eq(movies.tmdbId, tmdbId))
-					.limit(1)
+				await db.select({ id: movies.id }).from(movies).where(eq(movies.tmdbId, tmdbId)).limit(1)
 			)[0];
 			if (!movie) return [];
 			const effective = await profileService.getEffectiveSubtitleRequirements({
@@ -161,11 +144,7 @@ export async function getPreferredSubtitleLanguagesFor(
 		}
 
 		const show = (
-			await db
-				.select({ id: series.id })
-				.from(series)
-				.where(eq(series.tmdbId, tmdbId))
-				.limit(1)
+			await db.select({ id: series.id }).from(series).where(eq(series.tmdbId, tmdbId)).limit(1)
 		)[0];
 		if (!show || season === undefined || episode === undefined) return [];
 
@@ -191,7 +170,14 @@ export async function getPreferredSubtitleLanguagesFor(
 		return normalizePreferred(effective?.requirements ?? []);
 	} catch (error) {
 		logger.warn(
-			{ tmdbId, mediaType, season, episode, ...streamLog, error: error instanceof Error ? error.message : String(error) },
+			{
+				tmdbId,
+				mediaType,
+				season,
+				episode,
+				...streamLog,
+				error: error instanceof Error ? error.message : String(error)
+			},
 			'Failed to resolve preferred subtitle languages; using positional defaulting'
 		);
 		return [];
@@ -199,9 +185,7 @@ export async function getPreferredSubtitleLanguagesFor(
 }
 
 /** Canonicalize + dedupe requirement tags, preserving requirement order. */
-function normalizePreferred(
-	requirements: Array<{ tag: string }>
-): string[] {
+function normalizePreferred(requirements: Array<{ tag: string }>): string[] {
 	const seen = new Set<string>();
 	const languages: string[] = [];
 	for (const requirement of requirements) {

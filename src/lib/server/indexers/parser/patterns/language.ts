@@ -21,7 +21,15 @@ interface LanguageMatch {
 const LANGUAGE_PATTERNS: Array<{ pattern: RegExp; code: string }> = [
 	// Multi-language indicators
 	{ pattern: /\bmulti(?:[\s._-]?(?:lang|language|audio|sub)?)?\b/i, code: 'multi' },
-	{ pattern: /\bdual[\s._-]?audio\b/i, code: 'multi' },
+	// "Dual" counts as multi only with language context ("Dual Audio", "DUAL ESP-ENG",
+	// "dual-lat") — a bare "Dual" stays untagged so the movie title "Dual (2022)"
+	// does not false-positive.
+	{
+		pattern: /\bdual(?=[\s._-]*(?:audio|lang|lat|latino|esp|spa|eng|castellano|subs?\b))/i,
+		code: 'multi'
+	},
+	// Nordic packs carry multiple Scandinavian dubs alongside the original track.
+	{ pattern: /\bnordi?c\b/i, code: 'multi' },
 
 	// RuTracker-style "original audio" marker: releases named like
 	// "3 XX + Original + RUS" carry the original (untranslated) audio track.
@@ -52,6 +60,7 @@ const LANGUAGE_PATTERNS: Array<{ pattern: RegExp; code: string }> = [
 	// Spanish variants
 	{ pattern: /\bspanish\b/i, code: 'es' },
 	{ pattern: /\bespanol\b/i, code: 'es' },
+	{ pattern: /\besp\b/i, code: 'es' },
 	{ pattern: /\bspa\b/i, code: 'es' },
 	{ pattern: /\bcastellano\b/i, code: 'es' },
 	{ pattern: /\blatino\b/i, code: 'es' },
@@ -235,4 +244,16 @@ export function extractLanguages(title: string): LanguageMatch {
  */
 export function hasExplicitLanguage(title: string): boolean {
 	return LANGUAGE_PATTERNS.some(({ pattern }) => pattern.test(title));
+}
+
+/**
+ * Extract language tokens from a torrent FILE name (tier-3 evidence — the
+ * names inside a pack, not the release title). Strips the extension, then
+ * applies the same token table. File names are stronger evidence than titles
+ * for multi-audio packs but still not proof: a ".es.srt" sidecar names its
+ * subtitle, not an audio track — only ffprobe at import is definitive.
+ */
+export function extractLanguagesFromFileName(fileName: string): LanguageMatch {
+	const base = fileName.replace(/\.[a-z0-9]{1,4}$/i, '').replace(/[._]+/g, ' ');
+	return extractLanguages(base);
 }

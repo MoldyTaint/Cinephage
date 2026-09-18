@@ -151,8 +151,11 @@ import {
  * Version 144: Add language_settings.prefer_original_title instance default (boolean, default 0)
  * Version 145: Drop deprecated per-item adaptive subtitle columns (movies/episodes failed_subtitle_attempts, first_subtitle_search_at)
  * Version 146: Per-item subtitle requirement overrides on movies/series/episodes + inheritance repair
+ * Version 148: Acquisition intents + reservations — durable acquisition authority and slot exclusivity
+ * Version 149: Import operations journal — durable multi-step import record for recovery and reports
+ * Version 150: movie_files (movie_id, relative_path) unique index (legacy duplicates deduped)
  */
-export const CURRENT_SCHEMA_VERSION = 146;
+export const CURRENT_SCHEMA_VERSION = 150;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -837,6 +840,61 @@ const TABLE_DEFINITIONS: string[] = [
 		"last_seen_at" text,
 		"created_at" text,
 		"updated_at" text
+	)`,
+
+	// Acquisition Intents + Reservations (v148) — durable acquisition
+	// authority and per-slot exclusivity. See schema.ts docs.
+	`CREATE TABLE IF NOT EXISTS "acquisition_intents" (
+		"id" text PRIMARY KEY NOT NULL,
+		"media_type" text NOT NULL,
+		"movie_id" text REFERENCES "movies"("id") ON DELETE SET NULL,
+		"series_id" text REFERENCES "series"("id") ON DELETE SET NULL,
+		"season_number" integer,
+		"episode_ids" text,
+		"quality_slot" text NOT NULL,
+		"protocol" text NOT NULL,
+		"identity_kind" text,
+		"identity_value" text,
+		"release_title" text NOT NULL,
+		"indexer_id" text,
+		"indexer_name" text,
+		"upgrade_status" text,
+		"decision" text,
+		"source" text NOT NULL,
+		"status" text DEFAULT 'active' NOT NULL,
+		"queue_id" text,
+		"error" text,
+		"created_at" text NOT NULL,
+		"updated_at" text NOT NULL,
+		"completed_at" text
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "acquisition_reservations" (
+		"id" text PRIMARY KEY NOT NULL,
+		"intent_id" text NOT NULL REFERENCES "acquisition_intents"("id") ON DELETE CASCADE,
+		"target_key" text NOT NULL,
+		"created_at" text NOT NULL,
+		"released_at" text
+	)`,
+
+	`CREATE TABLE IF NOT EXISTS "import_operations" (
+		"id" text PRIMARY KEY NOT NULL,
+		"intent_id" text REFERENCES "acquisition_intents"("id") ON DELETE SET NULL,
+		"queue_id" text,
+		"media_type" text NOT NULL,
+		"movie_id" text,
+		"series_id" text,
+		"episode_ids" text,
+		"protocol" text,
+		"destination_path" text NOT NULL,
+		"new_file_id" text,
+		"pending_old_file_ids" text,
+		"failed_old_file_ids" text,
+		"status" text DEFAULT 'staged' NOT NULL,
+		"error" text,
+		"created_at" text NOT NULL,
+		"updated_at" text NOT NULL,
+		"completed_at" text
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "download_history" (
@@ -1582,6 +1640,18 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_download_queue_tombstones_client" ON "download_queue_tombstones" ("download_client_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_download_queue_tombstones_suppressed_until" ON "download_queue_tombstones" ("suppressed_until")`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_download_queue_tombstones_unique" ON "download_queue_tombstones" ("download_client_id", "protocol", "remote_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_acq_intents_status" ON "acquisition_intents" ("status")`,
+	`CREATE INDEX IF NOT EXISTS "idx_acq_intents_queue" ON "acquisition_intents" ("queue_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_acq_intents_movie" ON "acquisition_intents" ("movie_id")`,
+	`CREATE INDEX IF NOT EXISTS "idx_acq_intents_series" ON "acquisition_intents" ("series_id")`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_acq_intents_active_identity" ON "acquisition_intents" ("identity_value") WHERE "identity_value" IS NOT NULL AND "status" = 'active'`,
+	`CREATE INDEX IF NOT EXISTS "idx_acq_reservations_intent" ON "acquisition_reservations" ("intent_id")`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_acq_reservations_active_target" ON "acquisition_reservations" ("target_key") WHERE "released_at" IS NULL`,
+	`CREATE INDEX IF NOT EXISTS "idx_import_operations_status" ON "import_operations" ("status")`,
+	`CREATE INDEX IF NOT EXISTS "idx_import_operations_queue" ON "import_operations" ("queue_id")`,
+	// NOTE: idx_movie_files_movie_path_unique is created ONLY by migration
+	// v150 (dedupe first). Creating it here would fail on legacy DBs with
+	// duplicate rows, because INDEX_DEFINITIONS run before migrations.
 	`CREATE INDEX IF NOT EXISTS "idx_blocklist_movie" ON "blocklist" ("movie_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_blocklist_series" ON "blocklist" ("series_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_blocklist_infohash" ON "blocklist" ("info_hash")`,

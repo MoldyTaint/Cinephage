@@ -43,7 +43,7 @@ export interface LanguageDefinition {
 	variants?: readonly LanguageVariant[];
 }
 
-export const SUPPORTED_LANGUAGES: readonly LanguageDefinition[] = [
+const SUPPORTED_LANGUAGES: readonly LanguageDefinition[] = [
 	{ code: 'en', alpha3B: 'eng', alpha3T: 'eng', name: 'English', nativeName: 'English' },
 	{
 		code: 'es',
@@ -103,7 +103,13 @@ export const SUPPORTED_LANGUAGES: readonly LanguageDefinition[] = [
 	{ code: 'ro', alpha3B: 'rum', alpha3T: 'ron', name: 'Romanian', nativeName: 'Română' },
 	{ code: 'bg', alpha3B: 'bul', alpha3T: 'bul', name: 'Bulgarian', nativeName: 'Български' },
 	{ code: 'uk', alpha3B: 'ukr', alpha3T: 'ukr', name: 'Ukrainian', nativeName: 'Українська' },
-	{ code: 'id', alpha3B: 'ind', alpha3T: 'ind', name: 'Indonesian', nativeName: 'Bahasa Indonesia' },
+	{
+		code: 'id',
+		alpha3B: 'ind',
+		alpha3T: 'ind',
+		name: 'Indonesian',
+		nativeName: 'Bahasa Indonesia'
+	},
 	{ code: 'ms', alpha3B: 'may', alpha3T: 'msa', name: 'Malay', nativeName: 'Bahasa Melayu' },
 	{ code: 'hr', alpha3B: 'hrv', alpha3T: 'hrv', name: 'Croatian', nativeName: 'Hrvatski' },
 	{ code: 'sr', alpha3B: 'srp', alpha3T: 'srp', name: 'Serbian', nativeName: 'Српски' },
@@ -180,6 +186,8 @@ for (const lang of SUPPORTED_LANGUAGES) {
 	LANGUAGE_LOOKUP.set(lang.code.toLowerCase(), lang.code);
 	if (lang.alpha3B) LANGUAGE_LOOKUP.set(lang.alpha3B.toLowerCase(), lang.code);
 	if (lang.alpha3T) LANGUAGE_LOOKUP.set(lang.alpha3T.toLowerCase(), lang.code);
+	// English names resolve too (torznab `language` attrs use names, e.g. "Spanish")
+	LANGUAGE_LOOKUP.set(lang.name.toLowerCase(), lang.code);
 	for (const variant of lang.variants ?? []) {
 		LANGUAGE_BY_TAG.set(variant.code, {
 			...lang,
@@ -188,6 +196,7 @@ for (const lang of SUPPORTED_LANGUAGES) {
 			variants: undefined
 		});
 		LANGUAGE_LOOKUP.set(variant.code.toLowerCase(), variant.code);
+		LANGUAGE_LOOKUP.set(variant.name.toLowerCase(), variant.code);
 	}
 }
 

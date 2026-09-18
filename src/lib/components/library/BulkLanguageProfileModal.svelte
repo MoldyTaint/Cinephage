@@ -91,7 +91,7 @@
 					</label>
 					<select
 						id="bulk-language-profile"
-						class="select-bordered select select-sm w-full"
+						class="select-bordered select w-full select-sm"
 						bind:value={selectedProfileId}
 					>
 						<option value="">{m.library_subtitleProfile_inherit()}</option>
@@ -107,7 +107,7 @@
 					</label>
 					<select
 						id="bulk-wants-subtitles"
-						class="select-bordered select select-sm w-full"
+						class="select-bordered select w-full select-sm"
 						bind:value={wantsSubtitles}
 					>
 						<option value={null}>No change</option>

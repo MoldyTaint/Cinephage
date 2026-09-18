@@ -1,21 +1,9 @@
 <script lang="ts">
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
-	import {
-		X,
-		Search,
-		Loader2,
-		RefreshCw,
-		Captions,
-		AlertTriangle,
-		Info
-	} from 'lucide-svelte';
+	import { X, Search, Loader2, RefreshCw, Captions, AlertTriangle, Info } from 'lucide-svelte';
 	import SubtitleSearchResultRow from './SubtitleSearchResultRow.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
-	import {
-		searchSubtitles,
-		downloadSubtitle,
-		getSubtitleProviders
-	} from '$lib/api/subtitles.js';
+	import { searchSubtitles, downloadSubtitle, getSubtitleProviders } from '$lib/api/subtitles.js';
 	import { ALL_LANGUAGE_OPTIONS, getLanguageName } from '$lib/shared/languages.js';
 
 	interface SubtitleResult {
@@ -212,9 +200,7 @@
 
 	async function loadProviders() {
 		try {
-			const data = (await getSubtitleProviders()) as unknown as
-				| SubtitleProviderOption[]
-				| null;
+			const data = (await getSubtitleProviders()) as unknown as SubtitleProviderOption[] | null;
 			providers = (Array.isArray(data) ? data : []).filter((p) => p.enabled !== false);
 		} catch {
 			// Non-fatal: the filter simply stays empty.
@@ -389,12 +375,12 @@
 
 	<!-- Pre-search filters -->
 	<div class="mb-4 rounded-lg border border-base-300 p-3">
-		<p class="mb-2 text-xs font-semibold uppercase text-base-content/60">Search filters</p>
+		<p class="mb-2 text-xs font-semibold text-base-content/60 uppercase">Search filters</p>
 		<div class="flex flex-wrap items-end gap-4">
 			<label class="form-control">
 				<span class="label-text mb-1 text-xs">Providers</span>
 				<select
-					class="select select-bordered select-sm w-48"
+					class="select-bordered select w-48 select-sm"
 					multiple
 					size="3"
 					bind:value={selectedProviderIds}
@@ -409,7 +395,7 @@
 			<label class="form-control">
 				<span class="label-text mb-1 text-xs">Languages</span>
 				<select
-					class="select select-bordered select-sm w-56"
+					class="select-bordered select w-56 select-sm"
 					multiple
 					size="3"
 					bind:value={selectedLanguages}
@@ -476,7 +462,7 @@
 
 	<!-- Provider failures -->
 	{#if providerFailures.length > 0}
-		<div class="alert alert-warning mb-4 text-sm">
+		<div class="mb-4 alert text-sm alert-warning">
 			<AlertTriangle size={16} />
 			<div>
 				<p class="font-medium">
@@ -493,7 +479,7 @@
 
 	<!-- Threshold notice -->
 	{#if thresholdNotice}
-		<div class="alert alert-info mb-4 text-sm">
+		<div class="mb-4 alert text-sm alert-info">
 			<Info size={16} />
 			<span>
 				{thresholdNotice.total} results, best score {thresholdNotice.score} below threshold

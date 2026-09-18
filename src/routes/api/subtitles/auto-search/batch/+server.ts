@@ -260,7 +260,10 @@ export const POST: RequestHandler = async ({ request }) => {
 						episodeNumber: isEpisode ? item.episodeNumber : undefined
 					};
 
-					sendEvent('subtitle:progress', { ...base, status: 'searching' } satisfies BatchProgressEvent);
+					sendEvent('subtitle:progress', {
+						...base,
+						status: 'searching'
+					} satisfies BatchProgressEvent);
 
 					try {
 						const result = isEpisode

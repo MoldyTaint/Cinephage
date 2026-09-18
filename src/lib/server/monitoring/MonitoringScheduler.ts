@@ -852,9 +852,8 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				return await executeMetadataRefreshTask(ctx);
 			}
 			case 'original-language-backfill': {
-				const { executeOriginalLanguageBackfillTask } = await import(
-					'./tasks/OriginalLanguageBackfillTask.js'
-				);
+				const { executeOriginalLanguageBackfillTask } =
+					await import('./tasks/OriginalLanguageBackfillTask.js');
 				return await executeOriginalLanguageBackfillTask(ctx);
 			}
 			default:

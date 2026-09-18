@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../test/db-helper';
+import { createTestDb, type TestDatabase } from '../../../../test/db-helper';
 import { eq } from 'drizzle-orm';
 import { languageProfiles, movies, series } from '$lib/server/db/schema';
 import type { StreamSource } from '../types';
@@ -38,7 +38,8 @@ vi.mock('$lib/server/cinephage/modules/library-streaming/LibraryStreamingModule'
 const NO_PROFILE_DEFAULT = {
 	preferOriginal: true,
 	languages: [],
-	originalLanguage: null
+	originalLanguage: null,
+	mode: 'prefer'
 };
 
 let mediaSeq = 0;
@@ -90,7 +91,8 @@ function seedProfile(
 			name: `Profile ${id}`,
 			audio: {
 				preferOriginal: audio.preferOriginal ?? true,
-				languages: audio.languages ?? []
+				languages: audio.languages ?? [],
+				mode: 'prefer'
 			},
 			subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
 			cutoffRank: null,
@@ -109,7 +111,8 @@ function updateProfileAudio(
 		.set({
 			audio: {
 				preferOriginal: audio.preferOriginal ?? true,
-				languages: audio.languages ?? []
+				languages: audio.languages ?? [],
+				mode: 'prefer'
 			}
 		})
 		.where(eq(languageProfiles.id, id))
@@ -214,7 +217,8 @@ describe('PlaybackSessionService', () => {
 		expect(session?.audioPreference).toEqual({
 			preferOriginal: true,
 			languages: [],
-			originalLanguage: 'ja'
+			originalLanguage: 'ja',
+			mode: 'prefer'
 		});
 		expect(session?.entryUrl).toBe('https://stream.example.com/jpn.mp4');
 		expect(session?.chosenAudioLanguage).toBe('jpn');
@@ -301,7 +305,8 @@ describe('PlaybackSessionService', () => {
 		expect(session?.audioPreference).toEqual({
 			preferOriginal: false,
 			languages: ['fr'],
-			originalLanguage: 'ja'
+			originalLanguage: 'ja',
+			mode: 'prefer'
 		});
 		expect(session?.entryUrl).toBe('https://stream.example.com/fr.mp4');
 	});
@@ -327,7 +332,8 @@ describe('PlaybackSessionService', () => {
 		expect(first.session?.audioPreference).toEqual({
 			preferOriginal: true,
 			languages: [],
-			originalLanguage: 'ko'
+			originalLanguage: 'ko',
+			mode: 'prefer'
 		});
 
 		const second = await service.createOrReuseSession({
@@ -353,7 +359,8 @@ describe('PlaybackSessionService', () => {
 		expect(first.session?.audioPreference).toEqual({
 			preferOriginal: true,
 			languages: ['ja'],
-			originalLanguage: null
+			originalLanguage: null,
+			mode: 'prefer'
 		});
 
 		// The profile changes (e.g. user edits it); no forceRefresh is passed.
@@ -366,7 +373,8 @@ describe('PlaybackSessionService', () => {
 		expect(second.session?.audioPreference).toEqual({
 			preferOriginal: true,
 			languages: ['fr'],
-			originalLanguage: null
+			originalLanguage: null,
+			mode: 'prefer'
 		});
 	});
 

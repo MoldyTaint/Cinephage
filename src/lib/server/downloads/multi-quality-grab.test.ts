@@ -97,6 +97,8 @@ const { grabService } = await import('./GrabService.js');
 
 function resetDb() {
 	testDb.sqlite.exec(`
+		DELETE FROM acquisition_reservations;
+		DELETE FROM acquisition_intents;
 		DELETE FROM download_queue;
 		DELETE FROM download_history;
 		DELETE FROM movie_files;

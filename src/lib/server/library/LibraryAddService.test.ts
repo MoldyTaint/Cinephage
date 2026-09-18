@@ -68,10 +68,7 @@ vi.mock('$lib/logging', () => ({
 	}))
 }));
 
-import {
-	getEffectiveScoringProfileId,
-	validateRootFolder
-} from './LibraryAddService.js';
+import { getEffectiveScoringProfileId, validateRootFolder } from './LibraryAddService.js';
 import { ValidationError } from '$lib/errors';
 
 beforeEach(() => {

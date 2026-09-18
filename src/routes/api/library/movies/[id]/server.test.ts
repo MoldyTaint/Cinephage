@@ -1,9 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-	createTestDb,
-	destroyTestDb,
-	type TestDatabase
-} from '../../../../../test/db-helper';
+import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../../test/db-helper';
 import { api } from '../../../../../test/api-helper';
 import { languageProfiles, libraries, movies, rootFolders } from '$lib/server/db/schema.js';
 
@@ -34,9 +30,8 @@ vi.mock('$lib/server/subtitles/services/SubtitleImportService.js', () => ({
 
 const { GET, PATCH } = await import('./+server');
 const { eq } = await import('drizzle-orm');
-const { LanguageSettingsService } = await import(
-	'$lib/server/subtitles/services/LanguageSettingsService.js'
-);
+const { LanguageSettingsService } =
+	await import('$lib/server/subtitles/services/LanguageSettingsService.js');
 
 const LANGUAGE_PROFILE_ID = 'a0000000-0000-4000-8000-000000000001';
 const OTHER_PROFILE_ID = 'a0000000-0000-4000-8000-000000000002';
@@ -50,7 +45,7 @@ async function seedLanguageProfile(id: string, name: string): Promise<void> {
 		.values({
 			id,
 			name,
-			audio: { preferOriginal: true, languages: [] },
+			audio: { preferOriginal: true, languages: [], mode: 'prefer' },
 			subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
 			cutoffRank: null,
 			minimumScore: 70,
@@ -157,8 +152,7 @@ describe('GET /api/library/movies/[id] — effectiveLanguageProfile', () => {
 
 		const none = await api.get(GET, { params: { id: movieId } });
 		expect(
-			(none.data as { movie: { effectiveLanguageProfile: unknown } }).movie
-				.effectiveLanguageProfile
+			(none.data as { movie: { effectiveLanguageProfile: unknown } }).movie.effectiveLanguageProfile
 		).toBeNull();
 
 		await seedLanguageProfile(LANGUAGE_PROFILE_ID, 'Default');
@@ -199,7 +193,11 @@ describe('PATCH /api/library/movies/[id] — languageProfileId', () => {
 		await seedLanguageProfile(LANGUAGE_PROFILE_ID, 'Clear Me');
 		const movieId = await seedMovie({ languageProfileId: LANGUAGE_PROFILE_ID });
 
-		const { status } = await api.put(PATCH, { languageProfileId: null }, { params: { id: movieId } });
+		const { status } = await api.put(
+			PATCH,
+			{ languageProfileId: null },
+			{ params: { id: movieId } }
+		);
 
 		expect(status).toBe(200);
 		const row = await testDb.db

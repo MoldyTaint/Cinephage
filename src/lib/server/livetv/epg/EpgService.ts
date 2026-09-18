@@ -807,7 +807,12 @@ export class EpgService {
 	 * @param lang - Optional display language (validated base tag). When omitted,
 	 *   the plain title/description/category columns are returned unchanged.
 	 */
-	getChannelPrograms(channelId: string, start: Date, end: Date, lang?: string | null): EpgProgram[] {
+	getChannelPrograms(
+		channelId: string,
+		start: Date,
+		end: Date,
+		lang?: string | null
+	): EpgProgram[] {
 		const startIso = start.toISOString();
 		const endIso = end.toISOString();
 

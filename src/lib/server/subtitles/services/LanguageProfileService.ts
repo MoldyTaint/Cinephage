@@ -97,7 +97,7 @@ export function parseAudioPreference(value: unknown, profileId: string): AudioPr
 		if (parsed != null) {
 			logger.warn({ profileId }, 'Malformed language profile audio JSON; using defaults');
 		}
-		return { preferOriginal: true, languages: [] };
+		return { preferOriginal: true, languages: [], mode: 'prefer' };
 	}
 
 	const raw = parsed as Partial<AudioPreference>;
@@ -105,7 +105,8 @@ export function parseAudioPreference(value: unknown, profileId: string): AudioPr
 		preferOriginal: typeof raw.preferOriginal === 'boolean' ? raw.preferOriginal : true,
 		languages: Array.isArray(raw.languages)
 			? raw.languages.filter((tag): tag is string => typeof tag === 'string' && tag.trim() !== '')
-			: []
+			: [],
+		mode: raw.mode === 'require' ? 'require' : 'prefer'
 	};
 }
 
@@ -113,7 +114,10 @@ export function parseAudioPreference(value: unknown, profileId: string): AudioPr
  * Defensively parse the stored subtitle requirements, coercing unknown
  * variant/accessibility values and dropping entries without a usable tag.
  */
-export function parseSubtitleRequirements(value: unknown, profileId: string): SubtitleRequirement[] {
+export function parseSubtitleRequirements(
+	value: unknown,
+	profileId: string
+): SubtitleRequirement[] {
 	const parsed = parseJsonColumn(value, 'subtitles', profileId);
 	if (parsed == null) return [];
 	if (!Array.isArray(parsed)) {
@@ -239,7 +243,8 @@ export class LanguageProfileService {
 		// The update schema is partial, so re-check the cutoff invariant against
 		// the merged requirement list.
 		const mergedSubtitles = parsed.subtitles ?? existing.subtitles;
-		const mergedCutoffRank = parsed.cutoffRank !== undefined ? parsed.cutoffRank : existing.cutoffRank;
+		const mergedCutoffRank =
+			parsed.cutoffRank !== undefined ? parsed.cutoffRank : existing.cutoffRank;
 		if (mergedCutoffRank !== null && mergedCutoffRank >= mergedSubtitles.length) {
 			throw new Error('Cutoff rank must reference a subtitle requirement');
 		}
@@ -397,7 +402,11 @@ export class LanguageProfileService {
 			.limit(1);
 		if (!movie) return null;
 
-		return this.resolveEffectiveProfile(movie.languageProfileId ?? null, 'movie', movie.libraryId ?? null);
+		return this.resolveEffectiveProfile(
+			movie.languageProfileId ?? null,
+			'movie',
+			movie.libraryId ?? null
+		);
 	}
 
 	/**
@@ -473,9 +482,11 @@ export class LanguageProfileService {
 	 * Returns null when neither an override nor any profile in the chain
 	 * resolves (then the item has no subtitle requirements).
 	 */
-	async getEffectiveSubtitleRequirements(
-		input: { movieId?: string; seriesId?: string; episodeId?: string }
-	): Promise<EffectiveSubtitleRequirements | null> {
+	async getEffectiveSubtitleRequirements(input: {
+		movieId?: string;
+		seriesId?: string;
+		episodeId?: string;
+	}): Promise<EffectiveSubtitleRequirements | null> {
 		if (input.movieId) {
 			const [row] = await db
 				.select({
@@ -615,11 +626,7 @@ export class LanguageProfileService {
 			.from(subtitles)
 			.where(eq(subtitles.movieId, movieId));
 
-		return this.calculateStatus(
-			effective.requirements,
-			existingSubtitles,
-			cutoffOf(effective)
-		);
+		return this.calculateStatus(effective.requirements, existingSubtitles, cutoffOf(effective));
 	}
 
 	/**
@@ -637,11 +644,7 @@ export class LanguageProfileService {
 			.from(subtitles)
 			.where(eq(subtitles.episodeId, episodeId));
 
-		return this.calculateStatus(
-			effective.requirements,
-			existingSubtitles,
-			cutoffOf(effective)
-		);
+		return this.calculateStatus(effective.requirements, existingSubtitles, cutoffOf(effective));
 	}
 
 	/**
@@ -688,9 +691,7 @@ export class LanguageProfileService {
 			const override = episode.subtitleRequirementsOverride;
 			const requirements = override && override.length > 0 ? override : base.requirements;
 			const cutoff =
-				override && override.length > 0
-					? { rank: null, applies: false }
-					: cutoffOf(base);
+				override && override.length > 0 ? { rank: null, applies: false } : cutoffOf(base);
 
 			const status = await this.calculateStatus(
 				requirements,

@@ -99,7 +99,11 @@ describe('BaseSubtitleProvider.canSearch language semantics', () => {
 		const provider = new TestProvider(['en']);
 		expect(provider.canSearch({ languages: ['en'] } as SubtitleSearchCriteria)).toBe(false);
 		expect(
-			provider.canSearch({ title: 'T', videoHash: 'abc', languages: ['en'] } as SubtitleSearchCriteria)
+			provider.canSearch({
+				title: 'T',
+				videoHash: 'abc',
+				languages: ['en']
+			} as SubtitleSearchCriteria)
 		).toBe(true);
 	});
 });
@@ -112,11 +116,15 @@ describe('BaseSubtitleProvider capabilities and priority', () => {
 	});
 
 	it('exposes overridden capabilities and configured priority', () => {
-		const provider = new TestProvider(['zh'], { priority: 7 }, {
-			supportsAnime: true,
-			hearingImpairedVerifiable: true,
-			hashVerifiable: true
-		});
+		const provider = new TestProvider(
+			['zh'],
+			{ priority: 7 },
+			{
+				supportsAnime: true,
+				hearingImpairedVerifiable: true,
+				hashVerifiable: true
+			}
+		);
 		expect(provider.capabilities.supportsAnime).toBe(true);
 		expect(provider.capabilities.hearingImpairedVerifiable).toBe(true);
 		expect(provider.capabilities.hashVerifiable).toBe(true);

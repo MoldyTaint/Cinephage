@@ -46,7 +46,11 @@ describe('selectBestCandidate', () => {
 	});
 
 	it('does not let a forced candidate fill a regular requirement', () => {
-		const selection = selectBestCandidate([result({ matchScore: 99, isForced: true })], regularEn, 70);
+		const selection = selectBestCandidate(
+			[result({ matchScore: 99, isForced: true })],
+			regularEn,
+			70
+		);
 
 		expect(selection.best).toBeUndefined();
 		expect(selection.bestRejected?.reason).toBe('requirement');
@@ -54,21 +58,31 @@ describe('selectBestCandidate', () => {
 	});
 
 	it('does not let a regular candidate fill a forced requirement', () => {
-		const selection = selectBestCandidate([result({ matchScore: 99, isForced: false })], forcedEn, 70);
+		const selection = selectBestCandidate(
+			[result({ matchScore: 99, isForced: false })],
+			forcedEn,
+			70
+		);
 
 		expect(selection.best).toBeUndefined();
 		expect(selection.bestRejected?.reason).toBe('requirement');
 	});
 
 	it('accepts either variant for a both requirement', () => {
-		expect(selectBestCandidate([result({ isForced: true, matchScore: 90 })], anyEn, 70).best).toBeDefined();
+		expect(
+			selectBestCandidate([result({ isForced: true, matchScore: 90 })], anyEn, 70).best
+		).toBeDefined();
 		expect(
 			selectBestCandidate([result({ isForced: false, matchScore: 90 })], anyEn, 70).best
 		).toBeDefined();
 	});
 
 	it('reports threshold rejection with the best rejected score', () => {
-		const selection = selectBestCandidate([result({ matchScore: 40 }), result({ matchScore: 55 })], regularEn, 70);
+		const selection = selectBestCandidate(
+			[result({ matchScore: 40 }), result({ matchScore: 55 })],
+			regularEn,
+			70
+		);
 
 		expect(selection.best).toBeUndefined();
 		expect(selection.bestRejected?.reason).toBe('threshold');
@@ -95,7 +109,9 @@ describe('selectBestCandidate', () => {
 
 	it('honours the HI requirement tuple', () => {
 		const requireHi = { tag: 'en', variant: 'regular', accessibility: 'require-hi' } as const;
-		expect(selectBestCandidate([result({ isHearingImpaired: false })], requireHi, 70).best).toBeUndefined();
+		expect(
+			selectBestCandidate([result({ isHearingImpaired: false })], requireHi, 70).best
+		).toBeUndefined();
 		expect(
 			selectBestCandidate([result({ isHearingImpaired: true })], requireHi, 70).best
 		).toBeDefined();

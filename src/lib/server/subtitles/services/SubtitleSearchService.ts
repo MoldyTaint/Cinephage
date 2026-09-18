@@ -288,10 +288,14 @@ export class SubtitleSearchService {
 			excludeHearingImpaired: options?.excludeHearingImpaired
 		};
 
-		return this.search(criteria, { episodeId }, {
-			...options,
-			mediaKind: await this.resolveSeriesMediaKind(seriesData[0])
-		});
+		return this.search(
+			criteria,
+			{ episodeId },
+			{
+				...options,
+				mediaKind: await this.resolveSeriesMediaKind(seriesData[0])
+			}
+		);
 	}
 
 	/**

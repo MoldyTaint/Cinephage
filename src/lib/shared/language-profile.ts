@@ -12,11 +12,21 @@ export type SubtitleVariant = 'regular' | 'forced' | 'both';
 
 export type SubtitleAccessibility = 'any' | 'prefer-hi' | 'require-hi' | 'exclude-hi';
 
+/**
+ * How strictly the audio preference is enforced during acquisition.
+ * 'prefer' ranks matching releases higher but never blocks a grab (soft);
+ * 'require' additionally rejects releases whose evidence affirmatively
+ * contradicts the preference — absence of evidence never rejects.
+ */
+export type AudioAcquisitionMode = 'prefer' | 'require';
+
 export interface AudioPreference {
 	/** Prefer the media's original audio track when choosing releases/sources */
 	preferOriginal: boolean;
 	/** Ordered fallback audio languages; empty means no preference */
 	languages: LanguageTag[];
+	/** Enforcement mode for acquisition (default 'prefer') */
+	mode: AudioAcquisitionMode;
 }
 
 export interface SubtitleRequirement {
@@ -76,18 +86,6 @@ export interface EpisodeSubtitleCounts {
 }
 
 export const DEFAULT_MINIMUM_SCORE = 70;
-
-/** Create a complete default profile body (id is assigned by persistence). */
-export function makeLanguageProfile(name: string): Omit<LanguageProfileV2, 'id'> {
-	return {
-		name,
-		audio: { preferOriginal: true, languages: [] },
-		subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
-		cutoffRank: null,
-		minimumScore: DEFAULT_MINIMUM_SCORE,
-		upgradesAllowed: true
-	};
-}
 
 /** Stable identity for a subtitle requirement, used for dedupe and state keys. */
 export function requirementKey(requirement: SubtitleRequirement): string {

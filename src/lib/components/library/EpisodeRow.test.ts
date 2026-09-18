@@ -11,7 +11,7 @@
  *    denominator, e.g. "1 of 1".
  * 4. Badge text is screen-reader readable (role="status", not icon-only).
  */
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/svelte';
 import EpisodeRow from './EpisodeRow.svelte';
 

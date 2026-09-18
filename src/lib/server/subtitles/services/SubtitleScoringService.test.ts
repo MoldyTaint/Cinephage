@@ -186,9 +186,7 @@ describe('SubtitleScoringService', () => {
 			const score = scoringService.score(mediocre, noYearCriteria);
 
 			expect(score).toBeLessThan(70);
-			expect(
-				scoringService.meetsThreshold({ ...mediocre, matchScore: score }, 70)
-			).toBe(false);
+			expect(scoringService.meetsThreshold({ ...mediocre, matchScore: score }, 70)).toBe(false);
 		});
 	});
 

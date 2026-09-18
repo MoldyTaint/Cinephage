@@ -190,22 +190,23 @@ export const GET: RequestHandler = async ({ params }) => {
 
 		// Get overall series subtitle status (episodes missing subtitles)
 		const profileService = getLanguageProfileService();
-		const [episodesMissingSubs, effectiveLanguageProfile, effectiveSubtitleRequirements] = await Promise.all([
-			profileService.getSeriesEpisodesMissingSubtitles(params.id),
-			profileService.getEffectiveProfileForSeries(params.id),
-			profileService.getEffectiveSubtitleRequirements({ seriesId: params.id })
-		]);
+		const [episodesMissingSubs, effectiveLanguageProfile, effectiveSubtitleRequirements] =
+			await Promise.all([
+				profileService.getSeriesEpisodesMissingSubtitles(params.id),
+				profileService.getEffectiveProfileForSeries(params.id),
+				profileService.getEffectiveSubtitleRequirements({ seriesId: params.id })
+			]);
 
-			return json({
-				success: true,
-				series: {
-					...seriesItem,
-					// Legacy view derived from the v2 pair (kept one release).
-					metadataLanguage: metadataLanguageToLegacy(
-						seriesItem.metadataLanguageMode,
-						seriesItem.metadataLanguageValue
-					),
-					providerRefs: enrichedProviderRefs,
+		return json({
+			success: true,
+			series: {
+				...seriesItem,
+				// Legacy view derived from the v2 pair (kept one release).
+				metadataLanguage: metadataLanguageToLegacy(
+					seriesItem.metadataLanguageMode,
+					seriesItem.metadataLanguageValue
+				),
+				providerRefs: enrichedProviderRefs,
 				percentComplete:
 					seriesItem.episodeCount && seriesItem.episodeCount > 0
 						? Math.round(((seriesItem.episodeFileCount || 0) / seriesItem.episodeCount) * 100)

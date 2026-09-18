@@ -36,12 +36,8 @@ describe('displayTitle', () => {
 	});
 
 	it('keeps per-item behavior unchanged when set', () => {
-		expect(
-			displayTitle({ ...item, preferOriginalTitle: true }, false)
-		).toBe('The Movie');
-		expect(
-			displayTitle({ ...item, preferOriginalTitle: false }, true)
-		).toBe('Le Film');
+		expect(displayTitle({ ...item, preferOriginalTitle: true }, false)).toBe('The Movie');
+		expect(displayTitle({ ...item, preferOriginalTitle: false }, true)).toBe('Le Film');
 	});
 
 	it('falls back to the title when originalTitle is missing', () => {

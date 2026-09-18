@@ -6,11 +6,7 @@
  * adapter (see src/lib/server/subtitles/providers/*).
  */
 
-import {
-	canonicalizeLanguageTag,
-	getLanguageDefinition,
-	type LanguageDefinition
-} from '$lib/shared/languages.js';
+import { canonicalizeLanguageTag, getLanguageDefinition } from '$lib/shared/languages.js';
 import type { LanguageCode } from './types';
 
 /**

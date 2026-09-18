@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseRelease, extractExternalIds } from './ReleaseParser';
-import { extractLanguages } from './patterns/language';
+import { extractLanguages, extractLanguagesFromFileName } from './patterns/language';
 import { isTvRelease } from './patterns/episode';
 import { extractResolution } from './patterns/resolution';
 import { extractSource } from './patterns/source';
@@ -564,6 +564,36 @@ describe('ReleaseParser', () => {
 			expect(extractLanguages('Show.2023.Dual.Audio.1080p-GROUP').languages).toEqual(['multi']);
 		});
 
+		it('DUAL with language context parses to multi plus the tagged languages', () => {
+			// Real recon title 2026-09-15 — previously parsed as ['en'] only
+			expect(
+				extractLanguages('Toy.Story.5.(2026)[DUAL ESP-ENG][HDR10 HEVC][WEB-DL 1080p]-Mang0z4')
+					.languages
+			).toEqual(['multi', 'en', 'es']);
+			expect(extractLanguages('Avatar.Fuego.2025.dual-lat.1080p.WEB-DL').languages).toEqual([
+				'multi'
+			]);
+			expect(extractLanguages('Movie.2023.DUAL.ENG-HIN.720p').languages).toEqual([
+				'multi',
+				'en',
+				'hi'
+			]);
+		});
+
+		it('bare DUAL without language context stays untagged (movie title "Dual")', () => {
+			expect(extractLanguages('Dual.2022.1080p.WEBRip.x264-GROUP').languages).toEqual([]);
+		});
+
+		it('NORDiC packs parse to the multi marker', () => {
+			expect(
+				extractLanguages('Show.2026.NORDiC.1080p.WEB-DL.DDP5.1.Atmos.H.265-NORViNE').languages
+			).toEqual(['multi']);
+		});
+
+		it('ESP abbreviation parses as Spanish', () => {
+			expect(extractLanguages('Movie.2026.1080p.WEB-DL.ESP.x264-GROUP').languages).toEqual(['es']);
+		});
+
 		it('explicit languages are kept as-is', () => {
 			expect(extractLanguages('Film.2023.German.French.1080p-GROUP').languages).toEqual([
 				'de',
@@ -573,6 +603,18 @@ describe('ReleaseParser', () => {
 
 		it('the RuTracker original-audio marker stays orig', () => {
 			expect(extractLanguages('3 XX + Original + RUS').languages).toEqual(['orig', 'ru']);
+		});
+
+		it('file names parse with the same token table (tier-3 evidence)', () => {
+			expect(extractLanguagesFromFileName('Movie.2026.1080p.ESP.mkv').languages).toEqual(['es']);
+			expect(extractLanguagesFromFileName('show-s02e05.eng.srt').languages).toEqual(['en']);
+			expect(extractLanguagesFromFileName('La.Pelicula.Castellano.mp4').languages).toEqual(['es']);
+		});
+
+		it('file names without language tokens stay untagged', () => {
+			expect(extractLanguagesFromFileName('Toy.Story.5.2026.1080p.WEB-DL.mkv').languages).toEqual(
+				[]
+			);
 		});
 	});
 

@@ -1,6 +1,12 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../test/db-helper';
-import { languageProfiles, libraries, movies, rootFolders, subtitles } from '$lib/server/db/schema.js';
+import {
+	languageProfiles,
+	libraries,
+	movies,
+	rootFolders,
+	subtitles
+} from '$lib/server/db/schema.js';
 
 const testDb: TestDatabase = createTestDb();
 
@@ -27,10 +33,8 @@ type MovieLoadFn = (event: LoadEvent) => Promise<import('./+page.server').Librar
 // The exported load has SvelteKit's PageServerLoad signature; tests call it
 // with a minimal event stub.
 const loadFn = load as unknown as MovieLoadFn;
-const { eq } = await import('drizzle-orm');
-const { LanguageSettingsService } = await import(
-	'$lib/server/subtitles/services/LanguageSettingsService.js'
-);
+const { LanguageSettingsService } =
+	await import('$lib/server/subtitles/services/LanguageSettingsService.js');
 
 const LANGUAGE_PROFILE_ID = 'c0000000-0000-4000-8000-000000000001';
 const MOVIE_ID = 'movie-loader-1';
@@ -68,7 +72,7 @@ async function seedLanguageProfile(): Promise<void> {
 		.values({
 			id: LANGUAGE_PROFILE_ID,
 			name: 'Loader Profile',
-			audio: { preferOriginal: true, languages: [] },
+			audio: { preferOriginal: true, languages: [], mode: 'prefer' },
 			subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
 			cutoffRank: null,
 			minimumScore: 70,
@@ -147,9 +151,7 @@ describe('library/movie/[id] page loader', () => {
 		await seedMovie();
 		const settingsService = LanguageSettingsService.getInstance();
 
-		expect((await loadFn({ params: { id: MOVIE_ID } })).preferOriginalTitleDefault).toBe(
-			false
-		);
+		expect((await loadFn({ params: { id: MOVIE_ID } })).preferOriginalTitleDefault).toBe(false);
 
 		await settingsService.update({ preferOriginalTitle: true });
 		const result = await loadFn({ params: { id: MOVIE_ID } });

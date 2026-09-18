@@ -105,7 +105,9 @@ function makeItem(overrides: Partial<SyncedMediaItem> = {}): SyncedMediaItem {
 function stubProviderResult(result: SyncResult) {
 	managerMocks.getEnabledServers.mockResolvedValue([SERVER]);
 	managerMocks.testServer.mockResolvedValue({ success: true });
-	providerMocks.createStatsProvider.mockReturnValue({ fetchAllItems: () => Promise.resolve(result) });
+	providerMocks.createStatsProvider.mockReturnValue({
+		fetchAllItems: () => Promise.resolve(result)
+	});
 }
 
 /** Insert the server row so synced_items/runs FKs resolve. */

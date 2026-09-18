@@ -189,7 +189,9 @@
 		return true;
 	}
 
-	const missingRequiredSettings = $derived(declaredSettings.filter((s) => s.required && settingMissing(s)));
+	const missingRequiredSettings = $derived(
+		declaredSettings.filter((s) => s.required && settingMissing(s))
+	);
 	const canSubmit = $derived(!!name && !nameTooLong && missingRequiredSettings.length === 0);
 
 	// Filter definitions based on search
@@ -216,7 +218,7 @@
 			testResult = null;
 			seedSettingValues(
 				provider?.implementation
-					? definitions.find((d) => d.implementation === provider?.implementation) ?? null
+					? (definitions.find((d) => d.implementation === provider?.implementation) ?? null)
 					: null,
 				mode,
 				provider
@@ -224,7 +226,9 @@
 		}
 	});
 
-	function defaultValueForType(type: ProviderDefinition['settings'][number]['type']): string | number | boolean {
+	function defaultValueForType(
+		type: ProviderDefinition['settings'][number]['type']
+	): string | number | boolean {
 		switch (type) {
 			case 'number':
 				return 0;
@@ -249,15 +253,8 @@
 			for (const setting of def.settings) {
 				const stored = isAuthSettingKey(setting.key)
 					? ((currentProvider as Record<string, unknown> | null)?.[setting.key] as
-							| string
-							| number
-							| boolean
-							| undefined)
-					: (currentProvider?.settings?.[setting.key] as
-							| string
-							| number
-							| boolean
-							| undefined);
+							string | number | boolean | undefined)
+					: (currentProvider?.settings?.[setting.key] as string | number | boolean | undefined);
 
 				const hasStored =
 					currentProvider !== null &&
@@ -320,7 +317,8 @@
 
 			if (
 				isSecretSettingKey(setting.key) &&
-				(typeof raw === 'string' && isBlankOrRedacted(raw.trim()))
+				typeof raw === 'string' &&
+				isBlankOrRedacted(raw.trim())
 			) {
 				// Blank secret: keep the stored value when editing, otherwise omit.
 				const stored = provider?.settings?.[setting.key];
@@ -652,7 +650,8 @@
 					<div class="rounded-lg bg-success/10 p-3">
 						<div class="flex items-center gap-2 text-success">
 							<CheckCircle2 class="h-4 w-4" />
-							<span class="text-sm font-medium">{m.subtitleProviders_modal_noApiKeyRequired()}</span>
+							<span class="text-sm font-medium">{m.subtitleProviders_modal_noApiKeyRequired()}</span
+							>
 						</div>
 						<p class="mt-1 text-xs text-base-content/60">
 							{m.subtitleProviders_modal_noApiKeyDescription()}
@@ -699,11 +698,7 @@
 				>
 			{/if}
 
-			<button
-				class="btn btn-ghost"
-				onclick={handleTest}
-				disabled={testing || saving || !canSubmit}
-			>
+			<button class="btn btn-ghost" onclick={handleTest} disabled={testing || saving || !canSubmit}>
 				{#if testing}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{/if}

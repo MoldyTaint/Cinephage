@@ -1,10 +1,6 @@
 import { describe, expect, it, vi, afterEach, beforeAll, afterAll } from 'vitest';
 import { deflateSync, gzipSync } from 'node:zlib';
-import {
-	createTestDb,
-	destroyTestDb,
-	type TestDatabase
-} from '../../../../test/db-helper';
+import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../test/db-helper';
 import { livetvAccounts, livetvChannels } from '$lib/server/db/schema';
 import { M3uProvider } from './M3uProvider';
 import type { LiveTvAccount } from '$lib/types/livetv';
@@ -320,7 +316,7 @@ describe('M3uProvider normalizeChannelLookupKey (Unicode-aware)', () => {
 		expect(normalize('!!!')).toBeNull();
 		expect(normalize('---')).toBeNull();
 		expect(normalize('★ ★ ★')).toBeNull();
-		expect(normalize('📺!!')).toBeNull();
+		expect(normalize('\u{1F4FA}!!')).toBeNull();
 		expect(normalize('')).toBeNull();
 		expect(normalize(undefined)).toBeNull();
 	});

@@ -722,10 +722,14 @@ describe('SubtitleSearchService - capability gating and priority tiers', () => {
 		});
 		mockGetEnabledProviders.mockResolvedValue([tierTwo, tierOne]);
 
-		const aggregated = await service.search(criteria, {}, {
-			requirement: enRequirement,
-			minimumScore: 70
-		});
+		const aggregated = await service.search(
+			criteria,
+			{},
+			{
+				requirement: enRequirement,
+				minimumScore: 70
+			}
+		);
 
 		expect(tierOne.search).toHaveBeenCalledTimes(1);
 		expect(tierTwo.search).not.toHaveBeenCalled();
@@ -738,7 +742,11 @@ describe('SubtitleSearchService - capability gating and priority tiers', () => {
 	});
 
 	it('falls through to the next tier when the first yields no acceptable candidate', async () => {
-		const tierOne = makeProvider({ id: 'tier-1', priority: 10, search: vi.fn().mockResolvedValue([]) });
+		const tierOne = makeProvider({
+			id: 'tier-1',
+			priority: 10,
+			search: vi.fn().mockResolvedValue([])
+		});
 		const tierTwo = makeProvider({
 			id: 'tier-2',
 			priority: 20,
@@ -746,10 +754,14 @@ describe('SubtitleSearchService - capability gating and priority tiers', () => {
 		});
 		mockGetEnabledProviders.mockResolvedValue([tierOne, tierTwo]);
 
-		const aggregated = await service.search(criteria, {}, {
-			requirement: enRequirement,
-			minimumScore: 70
-		});
+		const aggregated = await service.search(
+			criteria,
+			{},
+			{
+				requirement: enRequirement,
+				minimumScore: 70
+			}
+		);
 
 		expect(tierOne.search).toHaveBeenCalledTimes(1);
 		expect(tierTwo.search).toHaveBeenCalledTimes(1);

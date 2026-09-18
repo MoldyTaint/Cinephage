@@ -102,9 +102,10 @@ describe('migration v142 — drop deprecated adaptive subtitle columns', () => {
 			{ id: 'movie-2', title: 'Beta', has_file: 0, last_search_time: null }
 		]);
 
-		const episode = sqlite
-			.prepare(`SELECT * FROM episodes WHERE id = 'ep-1'`)
-			.get() as Record<string, unknown>;
+		const episode = sqlite.prepare(`SELECT * FROM episodes WHERE id = 'ep-1'`).get() as Record<
+			string,
+			unknown
+		>;
 		expect(episode).toMatchObject({
 			id: 'ep-1',
 			series_id: 'series-1',
@@ -117,9 +118,7 @@ describe('migration v142 — drop deprecated adaptive subtitle columns', () => {
 		// Inserts against the slimmed tables still work.
 		expect(() =>
 			sqlite
-				.prepare(
-					`INSERT INTO movies (id, tmdb_id, title) VALUES ('movie-3', 303, 'Gamma')`
-				)
+				.prepare(`INSERT INTO movies (id, tmdb_id, title) VALUES ('movie-3', 303, 'Gamma')`)
 				.run()
 		).not.toThrow();
 	});

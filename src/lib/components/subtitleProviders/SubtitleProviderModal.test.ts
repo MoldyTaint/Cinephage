@@ -59,10 +59,16 @@ const napiprojektDefinition: ProviderDefinition = {
 	features: [],
 	settings: [
 		{ key: 'onlyAuthors', label: 'Only Authors', type: 'boolean', required: false },
-		{ key: 'mode', label: 'Mode', type: 'select', required: false, options: [
-			{ value: 'fast', label: 'Fast' },
-			{ value: 'accurate', label: 'Accurate' }
-		] }
+		{
+			key: 'mode',
+			label: 'Mode',
+			type: 'select',
+			required: false,
+			options: [
+				{ value: 'fast', label: 'Fast' },
+				{ value: 'accurate', label: 'Accurate' }
+			]
+		}
 	]
 };
 
@@ -112,10 +118,7 @@ describe('SubtitleProviderModal generic settings', () => {
 	});
 
 	it('renders a token-style setting with masking, required marker, and description', () => {
-		renderModal(
-			[assrtDefinition],
-			makeProvider({ settings: { token: 'stored-token' } })
-		);
+		renderModal([assrtDefinition], makeProvider({ settings: { token: 'stored-token' } }));
 
 		const input = screen.getByLabelText(/API Token/) as HTMLInputElement;
 		expect(input).toBeTruthy();
@@ -179,7 +182,10 @@ describe('SubtitleProviderModal generic settings', () => {
 	});
 
 	it('renders and persists boolean and select settings', async () => {
-		const { onSave } = renderModal([napiprojektDefinition], makeProvider({ implementation: 'napiprojekt', settings: {} }));
+		const { onSave } = renderModal(
+			[napiprojektDefinition],
+			makeProvider({ implementation: 'napiprojekt', settings: {} })
+		);
 
 		const checkbox = screen.getByLabelText(/Only Authors/) as HTMLInputElement;
 		expect(checkbox.type).toBe('checkbox');
@@ -197,7 +203,10 @@ describe('SubtitleProviderModal generic settings', () => {
 	});
 
 	it('persists an untouched boolean as false (does not drop it)', async () => {
-		const { onSave } = renderModal([napiprojektDefinition], makeProvider({ implementation: 'napiprojekt', settings: {} }));
+		const { onSave } = renderModal(
+			[napiprojektDefinition],
+			makeProvider({ implementation: 'napiprojekt', settings: {} })
+		);
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 

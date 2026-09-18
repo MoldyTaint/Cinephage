@@ -53,9 +53,7 @@ function addSyncedItemRawLanguageColumns(sqlite: Database.Database): void {
 	if (!tableExists(sqlite, 'media_server_synced_items')) return;
 	for (const { raw } of SYNCED_ITEM_LANGUAGE_COLUMNS) {
 		if (columnExists(sqlite, 'media_server_synced_items', raw)) continue;
-		sqlite
-			.prepare(`ALTER TABLE "media_server_synced_items" ADD COLUMN "${raw}" text`)
-			.run();
+		sqlite.prepare(`ALTER TABLE "media_server_synced_items" ADD COLUMN "${raw}" text`).run();
 		logger.info(`[migration v140] Added media_server_synced_items.${raw}`);
 	}
 }

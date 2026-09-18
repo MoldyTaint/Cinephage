@@ -149,10 +149,14 @@ function injectSubtitleTracks(
 	}
 
 	const lines = playlist.split('\n');
-	const defaultIndex = pickDefaultSubtitleIndex(session.subtitles, session.preferredSubtitleLanguages);
+	const defaultIndex = pickDefaultSubtitleIndex(
+		session.subtitles,
+		session.preferredSubtitleLanguages
+	);
 	const mediaTags = session.subtitles.map((subtitle, index) => {
 		const playlistUrl = buildSubtitlePlaylistUrl(baseUrl, session.token, subtitle.id, apiKey);
-		const isDefault = defaultIndex !== null ? index === defaultIndex : subtitle.isDefault || index === 0;
+		const isDefault =
+			defaultIndex !== null ? index === defaultIndex : subtitle.isDefault || index === 0;
 		return `#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="cinephage-subs",NAME="${subtitle.label.replace(/"/g, '\\"')}",DEFAULT=${isDefault ? 'YES' : 'NO'},AUTOSELECT=YES,FORCED=NO,LANGUAGE="${subtitle.language || 'und'}",URI="${playlistUrl}"`;
 	});
 

@@ -23,7 +23,11 @@ import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-r
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
 import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService.js';
-import type { EffectiveSubtitleRequirements, EffectiveLanguageProfile, EpisodeSubtitleCounts } from '$lib/shared/language-profile.js';
+import type {
+	EffectiveSubtitleRequirements,
+	EffectiveLanguageProfile,
+	EpisodeSubtitleCounts
+} from '$lib/shared/language-profile.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ module: 'LibraryTvPage', logDomain: 'scans' });
@@ -122,6 +126,8 @@ export interface LibrarySeriesPageData {
 		tmdbId: number;
 		tvdbId: number | null;
 		imdbId: string | null;
+		/** Probed audio contradicts the effective audio preference (phase D) */
+		languageShortfall?: boolean | null;
 		providerRefs: Partial<Record<'tmdb' | 'anilist' | 'mal', string>> | null;
 		title: string;
 		originalTitle: string | null;
@@ -212,6 +218,7 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 			rootFolderPath: rootFolders.path,
 			scoringProfileId: series.scoringProfileId,
 			monitored: series.monitored,
+			languageShortfall: series.languageShortfall,
 			seasonFolder: series.seasonFolder,
 			seriesType: series.seriesType,
 			wantsSubtitles: series.wantsSubtitles,
@@ -337,20 +344,18 @@ export const load: PageServerLoad = async ({ params }): Promise<LibrarySeriesPag
 				hasFile: ep.hasFile,
 				wantsSubtitlesOverride: ep.wantsSubtitlesOverride ?? null,
 				file: episodeIdToFile.get(ep.id) || null,
-				subtitles: (subtitlesByEpisode.get(ep.id) || []).map(
-					(sub): SubtitleInfo => ({
-						id: sub.id,
-						language: sub.language,
-						isForced: sub.isForced ?? undefined,
-						isHearingImpaired: sub.isHearingImpaired ?? undefined,
-						format: sub.format ?? undefined,
-						matchScore: sub.matchScore,
-						providerId: sub.providerId,
-						dateAdded: sub.dateAdded,
-						wasSynced: sub.wasSynced ?? undefined,
-						syncOffset: sub.syncOffset
-					})
-				),
+				subtitles: (subtitlesByEpisode.get(ep.id) || []).map((sub): SubtitleInfo => ({
+					id: sub.id,
+					language: sub.language,
+					isForced: sub.isForced ?? undefined,
+					isHearingImpaired: sub.isHearingImpaired ?? undefined,
+					format: sub.format ?? undefined,
+					matchScore: sub.matchScore,
+					providerId: sub.providerId,
+					dateAdded: sub.dateAdded,
+					wasSynced: sub.wasSynced ?? undefined,
+					syncOffset: sub.syncOffset
+				})),
 				subtitleCounts: episodeSubtitleCounts.get(ep.id) ?? null
 			}));
 

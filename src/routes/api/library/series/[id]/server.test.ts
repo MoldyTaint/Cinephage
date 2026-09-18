@@ -1,16 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-	createTestDb,
-	destroyTestDb,
-	type TestDatabase
-} from '../../../../../test/db-helper';
+import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../../test/db-helper';
 import { api } from '../../../../../test/api-helper';
-import {
-	languageProfiles,
-	libraries,
-	rootFolders,
-	series
-} from '$lib/server/db/schema.js';
+import { languageProfiles, libraries, rootFolders, series } from '$lib/server/db/schema.js';
 
 const testDb: TestDatabase = createTestDb();
 
@@ -38,9 +29,8 @@ vi.mock('$lib/server/subtitles/services/SubtitleImportService.js', () => ({
 
 const { GET, PATCH } = await import('./+server');
 const { eq } = await import('drizzle-orm');
-const { LanguageSettingsService } = await import(
-	'$lib/server/subtitles/services/LanguageSettingsService.js'
-);
+const { LanguageSettingsService } =
+	await import('$lib/server/subtitles/services/LanguageSettingsService.js');
 
 const LANGUAGE_PROFILE_ID = 'b0000000-0000-4000-8000-000000000001';
 const OTHER_PROFILE_ID = 'b0000000-0000-4000-8000-000000000002';
@@ -51,7 +41,7 @@ async function seedLanguageProfile(id: string, name: string): Promise<void> {
 		.values({
 			id,
 			name,
-			audio: { preferOriginal: true, languages: [] },
+			audio: { preferOriginal: true, languages: [], mode: 'prefer' },
 			subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
 			cutoffRank: null,
 			minimumScore: 70,
@@ -118,7 +108,9 @@ describe('GET /api/library/series/[id] — effectiveLanguageProfile', () => {
 		await LanguageSettingsService.getInstance().update({ defaultProfileId: OTHER_PROFILE_ID });
 
 		const { status, data } = await api.get(GET, { params: { id: seriesId } });
-		const payload = data as { series: { effectiveLanguageProfile: Record<string, unknown> | null } };
+		const payload = data as {
+			series: { effectiveLanguageProfile: Record<string, unknown> | null };
+		};
 
 		expect(status).toBe(200);
 		expect(payload.series.effectiveLanguageProfile).toEqual({

@@ -2,15 +2,15 @@ import { tmdb } from '$lib/server/tmdb';
 import { createChildLogger } from '$lib/logging';
 import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService';
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
-import { ALL_LANGUAGE_OPTIONS } from '$lib/shared/languages';
 import type { PageServerLoad } from './$types';
 
 const logger = createChildLogger({ module: 'LanguagesSettingsPage', logDomain: 'system' });
 
 /**
  * Library > Languages tab. Loads the language-settings singleton, the
- * language profiles (for the manager and the default-profile selector) and
- * the TMDB language/country catalogues used by the locale and region selects.
+ * language profiles, and the TMDB country catalogue for the region select.
+ * Language dropdowns use the client-safe shared registry
+ * ($lib/shared/languages) directly, so no TMDB language fetch is needed.
  */
 export const load: PageServerLoad = async () => {
 	const [settings, profiles] = await Promise.all([
@@ -18,39 +18,20 @@ export const load: PageServerLoad = async () => {
 		LanguageProfileService.getInstance().getProfiles()
 	]);
 
-	const tmdbConfigured = await tmdb.isConfigured();
-
 	let countries: { code: string; name: string }[] = [];
-	let languages: { code: string; name: string }[] = [];
 
-	if (tmdbConfigured) {
+	if (await tmdb.isConfigured()) {
 		try {
-			const [countriesData, languagesData] = await Promise.all([
-				tmdb.getCountries(),
-				tmdb.getLanguages()
-			]);
-
+			const countriesData = await tmdb.getCountries();
 			if (countriesData) {
 				countries = countriesData
 					.map((c) => ({ code: c.iso_3166_1, name: c.english_name }))
 					.sort((a, b) => a.name.localeCompare(b.name));
 			}
-
-			if (languagesData) {
-				languages = languagesData
-					.map((l) => ({ code: l.iso_639_1, name: l.english_name }))
-					.sort((a, b) => a.name.localeCompare(b.name));
-			}
 		} catch (e) {
-			logger.error({ err: e }, 'Failed to fetch TMDB languages/countries');
+			logger.error({ err: e }, 'Failed to fetch TMDB countries');
 		}
 	}
 
-	if (languages.length === 0) {
-		// Fall back to the shared registry so the locale selects stay usable
-		// without a configured TMDB connection.
-		languages = ALL_LANGUAGE_OPTIONS.map((l) => ({ code: l.code, name: l.name }));
-	}
-
-	return { settings, profiles, countries, languages, tmdbConfigured };
+	return { settings, profiles, countries };
 };

@@ -378,7 +378,12 @@ describe('storeProviderTitleVariants', () => {
 	it('inserts anilist variants and is idempotent on re-link/refresh', async () => {
 		testDb.db
 			.insert(series)
-			.values({ id: 'series-variants-1', tmdbId: 9301, title: 'Cowboy Bebop', path: 'Cowboy Bebop' })
+			.values({
+				id: 'series-variants-1',
+				tmdbId: 9301,
+				title: 'Cowboy Bebop',
+				path: 'Cowboy Bebop'
+			})
 			.run();
 
 		const variants = [
@@ -412,7 +417,12 @@ describe('storeProviderTitleVariants', () => {
 	it('never writes a language that was not supplied by the provider', async () => {
 		testDb.db
 			.insert(series)
-			.values({ id: 'series-variants-2', tmdbId: 9302, title: 'Vinland Saga', path: 'Vinland Saga' })
+			.values({
+				id: 'series-variants-2',
+				tmdbId: 9302,
+				title: 'Vinland Saga',
+				path: 'Vinland Saga'
+			})
 			.run();
 
 		await storeProviderTitleVariants('series', 'series-variants-2', 'mal', [

@@ -9,10 +9,7 @@ import { tmdb } from '$lib/server/tmdb';
 import type { GlobalTmdbFilters } from '$lib/types/tmdb';
 import { parseBody } from '$lib/server/api/validate.js';
 import { TMDB } from '$lib/config/constants.js';
-import {
-	normalizeMetadataLocale,
-	normalizeRegionCode
-} from '$lib/server/languages/normalize.js';
+import { normalizeMetadataLocale, normalizeRegionCode } from '$lib/server/languages/normalize.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'system' as const });

@@ -93,8 +93,13 @@ vi.mock('$lib/server/tmdb.js', () => ({
 	}
 }));
 
-const { refreshMovieMetadata, refreshSeriesMetadata, resolveLanguage, resolveLanguageForFetch, metadataLanguageToLegacy } =
-	await import('./metadata-refresh.js');
+const {
+	refreshMovieMetadata,
+	refreshSeriesMetadata,
+	resolveLanguage,
+	resolveLanguageForFetch,
+	metadataLanguageToLegacy
+} = await import('./metadata-refresh.js');
 const { tmdb } = await import('$lib/server/tmdb.js');
 const mockFetch = tmdb.fetch as unknown as ReturnType<typeof vi.fn>;
 const { movies, series, episodes } = await import('$lib/server/db/schema.js');
@@ -339,7 +344,11 @@ describe('URLSearchParams request building', () => {
 		expect(detailsCall).not.toContain(' ');
 
 		const query = new URLSearchParams(detailsCall!.split('?')[1]);
-		expect([...query.keys()].sort()).toEqual(['append_to_response', 'include_image_language', 'language']);
+		expect([...query.keys()].sort()).toEqual([
+			'append_to_response',
+			'include_image_language',
+			'language'
+		]);
 		expect(query.get('append_to_response')).toBe(
 			'credits,videos,images,recommendations,similar,watch/providers,content_ratings,keywords'
 		);

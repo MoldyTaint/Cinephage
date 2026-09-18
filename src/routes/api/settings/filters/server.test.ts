@@ -52,9 +52,8 @@ describe('Global filters API', () => {
 	}
 
 	function getLanguageSettingsRow(): Record<string, unknown> | undefined {
-		return testDb.sqlite
-			.prepare(`SELECT * FROM language_settings WHERE id = 'singleton'`)
-			.get() as Record<string, unknown> | undefined;
+		return testDb.sqlite.prepare(`SELECT * FROM language_settings WHERE id = 'singleton'`).get() as
+			Record<string, unknown> | undefined;
 	}
 
 	it('GET returns stored global_filters and never reads language_settings', async () => {
@@ -86,7 +85,10 @@ describe('Global filters API', () => {
 		// Response shape unchanged: the parsed body comes back verbatim.
 		expect(data.filters).toMatchObject({ language: 'pt-br', region: 'de' });
 
-		expect(JSON.parse(getStoredFilters() ?? '{}')).toMatchObject({ language: 'pt-br', region: 'de' });
+		expect(JSON.parse(getStoredFilters() ?? '{}')).toMatchObject({
+			language: 'pt-br',
+			region: 'de'
+		});
 
 		const row = getLanguageSettingsRow();
 		expect(row).toBeDefined();

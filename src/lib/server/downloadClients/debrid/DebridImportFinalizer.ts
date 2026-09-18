@@ -19,6 +19,9 @@ import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import { eventBuffer } from '$lib/server/sse/EventBuffer.js';
 import { downloadMonitor } from '../monitoring/DownloadMonitorService';
 import { ImportService } from '../import/ImportService';
+import { computeMovieReplacement, computeEpisodeReplacement } from '../import/replacement.js';
+import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
+import type { Resolution } from '$lib/server/indexers/parser/types.js';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
 type Quality = { resolution?: string; source?: string; codec?: string; hdr?: string };
@@ -111,6 +114,25 @@ export class DebridImportFinalizer {
 			input.mediaType === 'movie'
 				? await db.select().from(movieFiles).where(eq(movieFiles.movieId, input.movieId!))
 				: await db.select().from(episodeFiles).where(eq(episodeFiles.seriesId, input.seriesId!));
+
+		// Replacement policy is computed from CURRENT rows (acquisition
+		// redesign) — the grab-time isUpgrade flag never retires files.
+		let movieMultiQuality = false;
+		let movieResolution: Resolution | undefined;
+		if (input.mediaType === 'movie') {
+			const movieRow = await db
+				.select({ desiredQualities: movies.desiredQualities, profileId: movies.scoringProfileId })
+				.from(movies)
+				.where(eq(movies.id, input.movieId!))
+				.limit(1);
+			const { multiQuality } = await resolveMovieMultiQuality(
+				movieRow[0]?.desiredQualities,
+				movieRow[0]?.profileId
+			);
+			movieMultiQuality = multiQuality;
+			movieResolution = sorted[0]?.metadata.quality?.resolution as Resolution | undefined;
+		}
+
 		const prepared = sorted.map((file): PreparedFile => {
 			const current = existing.find((row) => row.relativePath === file.plan.relativePath);
 			const episodeIds = file.metadata.episodeIds ?? queue.episodeIds ?? [];
@@ -118,17 +140,24 @@ export class DebridImportFinalizer {
 			if (input.mediaType === 'series' && (!episodeIds.length || seasonNumber === undefined)) {
 				throw new Error('Episode registration requires episode and season identifiers');
 			}
-			const retireIds = existing
-				.filter((row) => row.id !== current?.id)
-				.filter((row) => {
-					if (input.mediaType === 'movie') return Boolean(queue.isUpgrade);
-					const episodeRow = row as typeof episodeFiles.$inferSelect;
-					return (
-						(episodeRow.episodeIds ?? []).some((id) => episodeIds.includes(id)) &&
-						(Boolean(queue.isUpgrade) || episodeRow.relativePath.toLowerCase().endsWith('.strm'))
-					);
-				})
-				.map((row) => row.id);
+			let retireIds: string[];
+			if (input.mediaType === 'movie') {
+				retireIds = computeMovieReplacement({
+					existingFiles: existing,
+					newResolution: movieResolution,
+					multiQuality: movieMultiQuality,
+					retire: true,
+					keepFileIds: [current?.id ?? '']
+				});
+			} else {
+				retireIds = computeEpisodeReplacement({
+					existingFiles: existing as unknown as Parameters<
+						typeof computeEpisodeReplacement
+					>[0]['existingFiles'],
+					incomingEpisodeIds: episodeIds,
+					retireStrmPlaceholders: true
+				}).filter((id) => id !== current?.id);
+			}
 			return { input: file, id: current?.id ?? randomUUID(), episodeIds, seasonNumber, retireIds };
 		});
 		const importedAt = new Date().toISOString();

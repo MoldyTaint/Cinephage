@@ -5,6 +5,10 @@
  * and detects new, changed, or removed files by comparing against the database.
  */
 
+import {
+	recalculateMovieShortfall,
+	recalculateSeriesShortfall
+} from '$lib/server/languages/language-shortfall';
 import { readdir, stat } from 'fs/promises';
 import { join, dirname, relative, basename } from 'path';
 import { db } from '$lib/server/db/index.js';
@@ -1387,6 +1391,12 @@ export class DiskScanService extends EventEmitter {
 					mediaInfo
 				})
 				.where(eq(movieFiles.id, fileId));
+			const [row] = await db
+				.select({ movieId: movieFiles.movieId })
+				.from(movieFiles)
+				.where(eq(movieFiles.id, fileId))
+				.limit(1);
+			if (row?.movieId) await recalculateMovieShortfall(row.movieId);
 		} else {
 			await db
 				.update(episodeFiles)
@@ -1395,6 +1405,12 @@ export class DiskScanService extends EventEmitter {
 					mediaInfo
 				})
 				.where(eq(episodeFiles.id, fileId));
+			const [row] = await db
+				.select({ seriesId: episodeFiles.seriesId })
+				.from(episodeFiles)
+				.where(eq(episodeFiles.id, fileId))
+				.limit(1);
+			if (row?.seriesId) await recalculateSeriesShortfall(row.seriesId);
 		}
 	}
 

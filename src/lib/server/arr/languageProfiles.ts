@@ -41,10 +41,7 @@ export interface LanguageProfileResource {
 /** Ordered, deduplicated language tags a v2 profile configures (subtitle requirements first, then audio fallbacks). */
 function profileLanguageCodes(row: Pick<LanguageProfileV2, 'audio' | 'subtitles'>): string[] {
 	const codes: string[] = [];
-	for (const tag of [
-		...row.subtitles.map((req) => req.tag),
-		...(row.audio?.languages ?? [])
-	]) {
+	for (const tag of [...row.subtitles.map((req) => req.tag), ...(row.audio?.languages ?? [])]) {
 		if (tag && !codes.includes(tag)) codes.push(tag);
 	}
 	return codes;
@@ -76,9 +73,7 @@ export async function buildLanguageProfiles(): Promise<LanguageProfileResource[]
 				name: row.name,
 				// Real field is non-nullable; Cinephage's column defaults true.
 				upgradeAllowed: row.upgradesAllowed ?? true,
-				cutoff: cutoffTag
-					? toLanguageResource(cutoffTag)
-					: { id: 0, name: 'Unknown' },
+				cutoff: cutoffTag ? toLanguageResource(cutoffTag) : { id: 0, name: 'Unknown' },
 				languages: codes.map((code) => ({
 					id: codeArrIds.get(code) ?? 0,
 					language: toLanguageResource(code),

@@ -315,8 +315,7 @@ export abstract class BaseSubtitleProvider implements ISubtitleProvider {
 		// Check if we support at least one of the requested languages.
 		const hasLanguageSupport = criteria.languages.some((lang) =>
 			this.supportedLanguages.some(
-				(supported) =>
-					languageSatisfies(supported, lang) || languageSatisfies(lang, supported)
+				(supported) => languageSatisfies(supported, lang) || languageSatisfies(lang, supported)
 			)
 		);
 

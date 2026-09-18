@@ -18,7 +18,7 @@ const { searchService, downloadService, profileService } = vi.hoisted(() => {
 	const profile = {
 		id: 'profile-1',
 		name: 'Default',
-		audio: { preferOriginal: true, languages: [] },
+		audio: { preferOriginal: true, languages: [], mode: 'prefer' },
 		subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
 		cutoffRank: 0,
 		upgradesAllowed: true,
@@ -30,8 +30,12 @@ const { searchService, downloadService, profileService } = vi.hoisted(() => {
 		getProfile: vi.fn().mockResolvedValue(profile),
 		getEffectiveProfileForMovie: vi.fn().mockResolvedValue({ profile, source: 'movie' }),
 		getEffectiveProfileForSeries: vi.fn().mockResolvedValue({ profile, source: 'series' }),
-		getMovieSubtitleStatus: vi.fn().mockResolvedValue({ satisfied: false, missing: [], existing: [] }),
-		getEpisodeSubtitleStatus: vi.fn().mockResolvedValue({ satisfied: false, missing: [], existing: [] })
+		getMovieSubtitleStatus: vi
+			.fn()
+			.mockResolvedValue({ satisfied: false, missing: [], existing: [] }),
+		getEpisodeSubtitleStatus: vi
+			.fn()
+			.mockResolvedValue({ satisfied: false, missing: [], existing: [] })
 	};
 
 	return { searchService, downloadService, profileService };
@@ -104,7 +108,7 @@ beforeEach(() => {
 		.values({
 			id: 'profile-1',
 			name: 'Default',
-			audio: { preferOriginal: true, languages: [] },
+			audio: { preferOriginal: true, languages: [], mode: 'prefer' },
 			subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
 			cutoffRank: 0,
 			minimumScore: 80,

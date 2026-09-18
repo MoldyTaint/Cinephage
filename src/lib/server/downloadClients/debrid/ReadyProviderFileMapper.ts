@@ -8,6 +8,8 @@ import {
 	type SeriesType
 } from '$lib/server/library/tv-episode-resolver.js';
 import type { ProviderFile, ProviderItem } from './debrid-adapter';
+import { extractLanguagesFromFileName } from '$lib/server/indexers/parser/patterns/language';
+import { languageMatches } from '$lib/server/languages/audio-preference';
 
 interface ReadyProviderFileMapperOptions {
 	naming: ConstructorParameters<typeof LibraryDestinationPlanner>[0];
@@ -68,6 +70,13 @@ interface MapperInput {
 		media: MovieContext | SeriesContext;
 		library: { rootPath: string };
 	};
+	/**
+	 * Ordered audio languages from the item's effective language profile
+	 * (original first when preferOriginal). Drives the movie file-choice
+	 * tiebreaker: among similarly-sized video files, prefer the one whose
+	 * name evidences a wanted language (audio-language design, tier 3).
+	 */
+	preferredAudioLanguages?: string[];
 }
 
 export interface ReadyProviderFileMapping {
@@ -115,12 +124,42 @@ export class ReadyProviderFileMapper {
 			: this.mapSeries(input, eligibleFiles);
 	}
 
+	/**
+	 * Pick the movie file: largest eligible video wins, with a language
+	 * tiebreaker among near-equal sizes — packs often carry per-language
+	 * video variants of the same size, and file names are the only pre-download
+	 * signal for which is which.
+	 */
+	private chooseMovieFile(
+		eligibleFiles: ProviderFile[],
+		preferredAudioLanguages?: string[]
+	): ProviderFile {
+		const bySize = [...eligibleFiles].sort((a, b) => b.sizeBytes - a.sizeBytes);
+		const largest = bySize[0];
+		if (!preferredAudioLanguages || preferredAudioLanguages.length === 0) return largest;
+
+		const nearLargest = bySize.filter(
+			(file) => file.sizeBytes >= largest.sizeBytes * 0.95 && file.sizeBytes > 0
+		);
+		for (const preferred of preferredAudioLanguages) {
+			for (const file of nearLargest) {
+				const tokens = extractLanguagesFromFileName(file.name).languages;
+				if (
+					tokens.some((tag) => tag !== 'multi' && tag !== 'orig' && languageMatches(tag, preferred))
+				) {
+					return file;
+				}
+			}
+		}
+		return largest;
+	}
+
 	private mapMovie(
 		input: MapperInput,
 		eligibleFiles: ProviderFile[]
 	): ReadyProviderFileMapperResult {
 		if (input.context.media.type !== 'movie') throw new Error('Movie context is required');
-		const providerFile = [...eligibleFiles].sort((a, b) => b.sizeBytes - a.sizeBytes)[0];
+		const providerFile = this.chooseMovieFile(eligibleFiles, input.preferredAudioLanguages);
 		const plan = this.planner.planMovie({
 			rootPath: input.context.library.rootPath,
 			mediaPath: input.context.media.movie.path,

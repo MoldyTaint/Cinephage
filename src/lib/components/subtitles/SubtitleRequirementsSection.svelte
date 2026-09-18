@@ -10,10 +10,7 @@
 	 * chain (spec: per-item language customization, 2026-09-14).
 	 */
 	import { m } from '$lib/paraglide/messages';
-	import {
-		requirementKey,
-		type SubtitleRequirement
-	} from '$lib/shared/language-profile.js';
+	import { requirementKey, type SubtitleRequirement } from '$lib/shared/language-profile.js';
 	import { ALL_LANGUAGE_OPTIONS, getLanguageName } from '$lib/shared/languages.js';
 
 	interface Props {
@@ -25,6 +22,9 @@
 		source?: string | null;
 		/** Name of the governing profile (for the inherited label). */
 		profileName?: string | null;
+		/** True when probed audio languages contradict the effective audio
+		 * preference (import verifier, phase D) — renders a warning badge. */
+		audioShortfall?: boolean;
 		editable?: boolean;
 		saving?: boolean;
 		/** Persist the list; called with null to clear the override. */
@@ -38,6 +38,7 @@
 		missingKeys = [],
 		source = null,
 		profileName = null,
+		audioShortfall = false,
 		editable = false,
 		saving = false,
 		onSave,
@@ -57,7 +58,7 @@
 		// Re-sync the working copy whenever the server-provided list changes
 		// (after save or prop refresh) — but never clobber in-flight edits.
 		// Reads `requirements` so prop changes re-run this effect.
-		requirements;
+		void requirements;
 		if (!dirty) {
 			list = requirements.map((requirement) => ({ ...requirement }));
 		}
@@ -105,9 +106,15 @@
 	<div class="mb-2 flex items-center justify-between gap-2">
 		<h3 class="text-sm font-semibold">{m.library_subtitleRequirements_title()}</h3>
 		{#if isCustomized}
-			<span class="badge badge-primary badge-sm">{m.library_subtitleRequirements_customized()}</span>
+			<span class="badge badge-sm badge-primary">{m.library_subtitleRequirements_customized()}</span
+			>
 		{:else if profileName}
 			<span class="badge badge-ghost badge-sm">{profileName}</span>
+		{/if}
+		{#if audioShortfall}
+			<span class="badge badge-sm badge-warning" title={m.library_audioShortfall_title()}>
+				{m.library_audioShortfall_badge()}
+			</span>
 		{/if}
 	</div>
 
@@ -117,9 +124,7 @@
 
 	<ul class="flex flex-col gap-1.5">
 		{#each list as requirement, index (requirementKey(requirement) + index)}
-			<li
-				class="flex flex-wrap items-center gap-2 rounded-lg bg-base-200/50 px-2.5 py-1.5"
-			>
+			<li class="flex flex-wrap items-center gap-2 rounded-lg bg-base-200/50 px-2.5 py-1.5">
 				<span
 					class="badge badge-sm {isMissing(requirement) ? 'badge-warning' : 'badge-success'}"
 					title={isMissing(requirement)
@@ -133,7 +138,7 @@
 
 				{#if editable}
 					<select
-						class="select select-bordered select-xs w-36"
+						class="select-bordered select w-36 select-xs"
 						bind:value={requirement.tag}
 						onchange={() => (dirty = true)}
 						aria-label={getLanguageName(requirement.tag)}
@@ -143,7 +148,7 @@
 						{/each}
 					</select>
 					<select
-						class="select select-bordered select-xs"
+						class="select-bordered select select-xs"
 						bind:value={requirement.variant}
 						onchange={() => (dirty = true)}
 						aria-label={m.library_subtitleRequirements_variant()}
@@ -153,7 +158,7 @@
 						{/each}
 					</select>
 					<select
-						class="select select-bordered select-xs"
+						class="select-bordered select select-xs"
 						bind:value={requirement.accessibility}
 						onchange={() => (dirty = true)}
 						aria-label={m.library_subtitleRequirements_accessibility()}
@@ -182,7 +187,7 @@
 					</button>
 					<button
 						type="button"
-						class="btn btn-ghost btn-xs text-error"
+						class="btn btn-ghost text-error btn-xs"
 						disabled={list.length <= 1}
 						onclick={() => removeRequirement(index)}
 						aria-label={m.library_subtitleRequirements_remove()}
@@ -230,7 +235,7 @@
 					onclick={save}
 				>
 					{#if saving}
-						<span class="loading loading-spinner loading-xs"></span>
+						<span class="loading loading-xs loading-spinner"></span>
 					{/if}
 					{m.library_subtitleRequirements_save()}
 				</button>

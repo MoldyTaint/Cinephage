@@ -65,7 +65,7 @@ async function seedProfile(id: string, name: string): Promise<void> {
 	await testDb.db.insert(languageProfiles).values({
 		id,
 		name,
-		audio: { preferOriginal: true, languages: [] },
+		audio: { preferOriginal: true, languages: [], mode: 'prefer' },
 		subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
 		cutoffRank: null,
 		minimumScore: 70,
@@ -137,7 +137,7 @@ function makeProfile(overrides: Partial<LanguageProfile> = {}): LanguageProfile 
 	return {
 		id: 'test-profile',
 		name: 'Test Profile',
-		audio: { preferOriginal: true, languages: [] },
+		audio: { preferOriginal: true, languages: [], mode: 'prefer' },
 		subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
 		cutoffRank: null,
 		minimumScore: 70,
@@ -152,7 +152,7 @@ function makeCreateBody(
 ): Omit<LanguageProfile, 'id' | 'createdAt' | 'updatedAt'> {
 	return {
 		name: 'Created Profile',
-		audio: { preferOriginal: true, languages: ['ja'] },
+		audio: { preferOriginal: true, languages: ['ja'], mode: 'prefer' },
 		subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
 		cutoffRank: null,
 		minimumScore: 70,
@@ -244,15 +244,15 @@ describe('LanguageProfileService', () => {
 
 	describe('Profile validation (create/update)', () => {
 		it('should reject a profile without subtitle requirements', async () => {
-			await expect(
-				profileService.createProfile(makeCreateBody({ subtitles: [] }))
-			).rejects.toThrow('At least one subtitle language is required');
+			await expect(profileService.createProfile(makeCreateBody({ subtitles: [] }))).rejects.toThrow(
+				'At least one subtitle language is required'
+			);
 		});
 
 		it('should reject a cutoff rank that does not reference a requirement', async () => {
-			await expect(
-				profileService.createProfile(makeCreateBody({ cutoffRank: 3 }))
-			).rejects.toThrow('Cutoff rank must reference a subtitle requirement');
+			await expect(profileService.createProfile(makeCreateBody({ cutoffRank: 3 }))).rejects.toThrow(
+				'Cutoff rank must reference a subtitle requirement'
+			);
 		});
 
 		it('should reject an update whose cutoff rank exceeds the requirement list', async () => {
@@ -268,19 +268,24 @@ describe('LanguageProfileService', () => {
 		it('should fall back to audio defaults on malformed JSON', () => {
 			const audio = parseAudioPreference('{not json', 'profile-1');
 
-			expect(audio).toEqual({ preferOriginal: true, languages: [] });
+			expect(audio).toEqual({ preferOriginal: true, languages: [], mode: 'prefer' });
 		});
 
 		it('should fall back to audio defaults on shape-mismatched data', () => {
 			expect(parseAudioPreference('null', 'profile-1')).toEqual({
 				preferOriginal: true,
-				languages: []
+				languages: [],
+				mode: 'prefer'
 			});
 			expect(parseAudioPreference({ preferOriginal: 'yes' }, 'profile-1')).toEqual({
 				preferOriginal: true,
-				languages: []
+				languages: [],
+				mode: 'prefer'
 			});
-			const partial = parseAudioPreference({ preferOriginal: false, languages: ['en', '', 42] }, 'p');
+			const partial = parseAudioPreference(
+				{ preferOriginal: false, languages: ['en', '', 42] },
+				'p'
+			);
 			expect(partial.preferOriginal).toBe(false);
 			expect(partial.languages).toEqual(['en']);
 		});
@@ -317,10 +322,8 @@ describe('LanguageProfileService', () => {
 
 			expect(created.id).toBeTruthy();
 			expect(created.name).toBe('Created Profile');
-			expect(created.audio).toEqual({ preferOriginal: true, languages: ['ja'] });
-			expect(created.subtitles).toEqual([
-				{ tag: 'en', variant: 'regular', accessibility: 'any' }
-			]);
+			expect(created.audio).toEqual({ preferOriginal: true, languages: ['ja'], mode: 'prefer' });
+			expect(created.subtitles).toEqual([{ tag: 'en', variant: 'regular', accessibility: 'any' }]);
 			expect(created.cutoffRank).toBeNull();
 			expect(created.minimumScore).toBe(80);
 			expect(created.upgradesAllowed).toBe(false);
@@ -357,12 +360,20 @@ describe('LanguageProfileService', () => {
 
 		it('should delete a profile and null every reference', async () => {
 			const created = await profileService.createProfile(makeCreateBody());
-			await testDb.db
-				.insert(movies)
-				.values({ id: 'movie-1', tmdbId: 101, title: 'M1', path: '/m1', languageProfileId: created.id });
-			await testDb.db
-				.insert(libraries)
-				.values({ id: 'lib-1', name: 'L', slug: 'lib-1', mediaType: 'movie', languageProfileId: created.id });
+			await testDb.db.insert(movies).values({
+				id: 'movie-1',
+				tmdbId: 101,
+				title: 'M1',
+				path: '/m1',
+				languageProfileId: created.id
+			});
+			await testDb.db.insert(libraries).values({
+				id: 'lib-1',
+				name: 'L',
+				slug: 'lib-1',
+				mediaType: 'movie',
+				languageProfileId: created.id
+			});
 			await settingsService.update({ defaultProfileId: created.id });
 
 			await profileService.deleteProfile(created.id);
@@ -371,7 +382,9 @@ describe('LanguageProfileService', () => {
 
 			const movie = (await testDb.db.select().from(movies).where(eq(movies.id, 'movie-1')))[0];
 			expect(movie.languageProfileId).toBeNull();
-			const library = (await testDb.db.select().from(libraries).where(eq(libraries.id, 'lib-1')))[0];
+			const library = (
+				await testDb.db.select().from(libraries).where(eq(libraries.id, 'lib-1'))
+			)[0];
 			expect(library.languageProfileId).toBeNull();
 			expect(await settingsService.getDefaultProfileId()).toBeNull();
 		});
@@ -389,7 +402,9 @@ describe('LanguageProfileService', () => {
 		it('should fall back to the default profile for movies without an assignment', async () => {
 			const created = await profileService.createProfile(makeCreateBody());
 			await settingsService.update({ defaultProfileId: created.id });
-			await testDb.db.insert(movies).values({ id: 'movie-2', tmdbId: 102, title: 'M2', path: '/m2' });
+			await testDb.db
+				.insert(movies)
+				.values({ id: 'movie-2', tmdbId: 102, title: 'M2', path: '/m2' });
 
 			const profile = await profileService.getProfileForMovie('movie-2');
 			expect(profile?.id).toBe(created.id);
@@ -641,9 +656,21 @@ describe('LanguageProfileService', () => {
 				(path) => !path.includes('gone')
 			);
 
-			expect(counts.get('ep-counts-1')).toEqual({ satisfiedCount: 1, totalRequirements: 2, satisfiedViaCutoff: false });
-			expect(counts.get('ep-counts-2')).toEqual({ satisfiedCount: 1, totalRequirements: 2, satisfiedViaCutoff: false });
-			expect(counts.get('ep-counts-3')).toEqual({ satisfiedCount: 0, totalRequirements: 2, satisfiedViaCutoff: false });
+			expect(counts.get('ep-counts-1')).toEqual({
+				satisfiedCount: 1,
+				totalRequirements: 2,
+				satisfiedViaCutoff: false
+			});
+			expect(counts.get('ep-counts-2')).toEqual({
+				satisfiedCount: 1,
+				totalRequirements: 2,
+				satisfiedViaCutoff: false
+			});
+			expect(counts.get('ep-counts-3')).toEqual({
+				satisfiedCount: 0,
+				totalRequirements: 2,
+				satisfiedViaCutoff: false
+			});
 		});
 
 		it('uses cutoffRank + 1 as the denominator and ignores requirements beyond the cutoff', async () => {
@@ -679,9 +706,21 @@ describe('LanguageProfileService', () => {
 				() => true
 			);
 
-			expect(counts.get('ep-counts-1')).toEqual({ satisfiedCount: 2, totalRequirements: 2, satisfiedViaCutoff: true });
-			expect(counts.get('ep-counts-2')).toEqual({ satisfiedCount: 1, totalRequirements: 2, satisfiedViaCutoff: false });
-			expect(counts.get('ep-counts-3')).toEqual({ satisfiedCount: 0, totalRequirements: 2, satisfiedViaCutoff: false });
+			expect(counts.get('ep-counts-1')).toEqual({
+				satisfiedCount: 2,
+				totalRequirements: 2,
+				satisfiedViaCutoff: true
+			});
+			expect(counts.get('ep-counts-2')).toEqual({
+				satisfiedCount: 1,
+				totalRequirements: 2,
+				satisfiedViaCutoff: false
+			});
+			expect(counts.get('ep-counts-3')).toEqual({
+				satisfiedCount: 0,
+				totalRequirements: 2,
+				satisfiedViaCutoff: false
+			});
 		});
 
 		it('does not count embedded subtitle rows', async () => {
@@ -706,7 +745,11 @@ describe('LanguageProfileService', () => {
 				() => true
 			);
 
-			expect(counts.get('ep-counts-1')).toEqual({ satisfiedCount: 0, totalRequirements: 1, satisfiedViaCutoff: false });
+			expect(counts.get('ep-counts-1')).toEqual({
+				satisfiedCount: 0,
+				totalRequirements: 1,
+				satisfiedViaCutoff: false
+			});
 		});
 	});
 
@@ -1026,7 +1069,7 @@ describe('LanguageProfileService', () => {
 			expect(profile.cutoffRank).toBeNull();
 			expect(profile.upgradesAllowed).toBe(true);
 			expect(profile.minimumScore).toBe(70);
-			expect(profile.audio).toEqual({ preferOriginal: true, languages: [] });
+			expect(profile.audio).toEqual({ preferOriginal: true, languages: [], mode: 'prefer' });
 			expect(profile.subtitles[0]).toEqual({ tag: 'en', variant: 'regular', accessibility: 'any' });
 		});
 
@@ -1039,7 +1082,7 @@ describe('LanguageProfileService', () => {
 					{ tag: 'fr', variant: 'both', accessibility: 'exclude-hi' }
 				],
 				cutoffRank: 0,
-				audio: { preferOriginal: false, languages: ['ja', 'en'] }
+				audio: { preferOriginal: false, languages: ['ja', 'en'], mode: 'prefer' }
 			});
 
 			expect(profile.subtitles[0].variant).toBe('regular');

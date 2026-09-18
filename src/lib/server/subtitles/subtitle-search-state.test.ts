@@ -45,7 +45,14 @@ describe('isSearchActive policy', () => {
 		expect(isSearchActive(null, NOW)).toBe(true);
 		expect(isSearchActive(undefined, NOW)).toBe(true);
 		expect(
-			isSearchActive({ failedAttempts: 0, firstSearchAt: new Date(NOW - 90 * DAY).toISOString(), lastSearchAt: null }, NOW)
+			isSearchActive(
+				{
+					failedAttempts: 0,
+					firstSearchAt: new Date(NOW - 90 * DAY).toISOString(),
+					lastSearchAt: null
+				},
+				NOW
+			)
 		).toBe(true);
 	});
 
@@ -91,7 +98,14 @@ describe('isSearchActive policy', () => {
 			isSearchActive({ failedAttempts: 3, firstSearchAt: 'not-a-date', lastSearchAt: null }, NOW)
 		).toBe(true);
 		expect(
-			isSearchActive({ failedAttempts: 3, firstSearchAt: new Date(NOW - 30 * DAY).toISOString(), lastSearchAt: 'nope' }, NOW)
+			isSearchActive(
+				{
+					failedAttempts: 3,
+					firstSearchAt: new Date(NOW - 30 * DAY).toISOString(),
+					lastSearchAt: 'nope'
+				},
+				NOW
+			)
 		).toBe(true);
 	});
 });
@@ -116,7 +130,11 @@ describe('per-requirement DB state', () => {
 		await resetSearchFailure('episode', 'ep-1', KEY_A);
 
 		const states = await getSearchStates('episode', 'ep-1');
-		expect(states.get(KEY_A)).toEqual({ failedAttempts: 0, firstSearchAt: null, lastSearchAt: expect.any(String) });
+		expect(states.get(KEY_A)).toEqual({
+			failedAttempts: 0,
+			firstSearchAt: null,
+			lastSearchAt: expect.any(String)
+		});
 		expect(states.get(KEY_B)?.failedAttempts).toBe(1);
 	});
 

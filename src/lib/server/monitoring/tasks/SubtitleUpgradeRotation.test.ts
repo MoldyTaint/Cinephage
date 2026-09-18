@@ -5,8 +5,8 @@ import { eq, isNull } from 'drizzle-orm';
 
 const testDb: TestDatabase = createTestDb();
 
-const { searchService, downloadService, providerManager, profileService, profileState } = vi.hoisted(
-	() => {
+const { searchService, downloadService, providerManager, profileService, profileState } =
+	vi.hoisted(() => {
 		const searchService = {
 			searchForMovie: vi.fn().mockResolvedValue({ results: [] }),
 			searchForEpisode: vi.fn().mockResolvedValue({ results: [] })
@@ -36,20 +36,18 @@ const { searchService, downloadService, providerManager, profileService, profile
 			getProfile: vi.fn(async () => ({
 				id: 'profile-1',
 				name: 'Default',
-				audio: { preferOriginal: true, languages: [] },
+				audio: { preferOriginal: true, languages: [], mode: 'prefer' },
 				subtitles: profileState.subtitles,
 				cutoffRank: null,
 				minimumScore: 70,
 				upgradesAllowed: true
 			})),
-			getEffectiveSubtitleRequirements: vi.fn(
-				async (): Promise<unknown> => ({
-					requirements: profileState.subtitles,
-					source: 'default',
-					profile: await profileServiceMocks.getProfile(),
-					cutoffApplies: true
-				})
-			),
+			getEffectiveSubtitleRequirements: vi.fn(async (): Promise<unknown> => ({
+				requirements: profileState.subtitles,
+				source: 'default',
+				profile: await profileServiceMocks.getProfile(),
+				cutoffApplies: true
+			})),
 			getMovieSubtitleStatus: vi.fn(),
 			getEpisodeSubtitleStatus: vi.fn(),
 			getSeriesEpisodesMissingSubtitles: vi.fn().mockResolvedValue([])
@@ -57,8 +55,7 @@ const { searchService, downloadService, providerManager, profileService, profile
 		const profileServiceMocks = { getProfile: profileService.getProfile };
 
 		return { searchService, downloadService, providerManager, profileService, profileState };
-	}
-);
+	});
 
 vi.mock('$lib/server/db', () => ({
 	get db() {
@@ -119,15 +116,18 @@ function resetDb() {
 	testDb.db.delete(subtitles).run();
 	testDb.db.delete(movies).run();
 	testDb.db.delete(languageProfiles).run();
-	testDb.db.insert(languageProfiles).values({
-		id: 'profile-1',
-		name: 'Default',
-		audio: { preferOriginal: true, languages: [] },
-		subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
-		cutoffRank: null,
-		minimumScore: 70,
-		upgradesAllowed: true
-	}).run();
+	testDb.db
+		.insert(languageProfiles)
+		.values({
+			id: 'profile-1',
+			name: 'Default',
+			audio: { preferOriginal: true, languages: [], mode: 'prefer' },
+			subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
+			cutoffRank: null,
+			minimumScore: 70,
+			upgradesAllowed: true
+		})
+		.run();
 	profileState.subtitles = [{ tag: 'en', variant: 'regular', accessibility: 'any' }];
 }
 

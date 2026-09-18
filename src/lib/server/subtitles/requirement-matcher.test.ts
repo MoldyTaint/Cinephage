@@ -4,11 +4,7 @@ import type {
 	SubtitleRequirement,
 	SubtitleVariant
 } from '$lib/shared/language-profile.js';
-import {
-	languageSatisfies,
-	matchesRequirement,
-	type SubtitleLike
-} from './requirement-matcher.js';
+import { languageSatisfies, matchesRequirement, type SubtitleLike } from './requirement-matcher.js';
 
 const req = (
 	tag: string,
@@ -16,11 +12,11 @@ const req = (
 	accessibility: SubtitleAccessibility
 ): SubtitleRequirement => ({ tag, variant, accessibility });
 
-const sub = (
-	language: string,
-	isForced = false,
-	isHearingImpaired = false
-): SubtitleLike => ({ language, isForced, isHearingImpaired });
+const sub = (language: string, isForced = false, isHearingImpaired = false): SubtitleLike => ({
+	language,
+	isForced,
+	isHearingImpaired
+});
 
 const VARIANTS: SubtitleVariant[] = ['regular', 'forced', 'both'];
 const ACCESSIBILITIES: SubtitleAccessibility[] = ['any', 'prefer-hi', 'require-hi', 'exclude-hi'];
@@ -69,9 +65,10 @@ describe('matchesRequirement variant × accessibility truth table', () => {
 						{ language: 'en', isForced, isHearingImpaired },
 						req('en', variant, accessibility)
 					);
-					expect(actual, `forced=${isForced} hi=${isHearingImpaired} expected ${expected[index]}`).toBe(
-						expected[index]
-					);
+					expect(
+						actual,
+						`forced=${isForced} hi=${isHearingImpaired} expected ${expected[index]}`
+					).toBe(expected[index]);
 				});
 			});
 		}
@@ -177,4 +174,3 @@ describe('null/undefined flags are treated as false', () => {
 		expect(matchesRequirement(subtitle, req('en', 'forced', 'any'))).toBe(false);
 	});
 });
-

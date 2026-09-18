@@ -143,12 +143,16 @@
 		{scoringProfiles}
 		{requiredMediaSubType}
 		{effectiveSubtitleProfile}
+		{languageProfiles}
+		{effectiveSubtitleRequirements}
 		{onSearchOnAddInput}
 		{onWantsSubtitlesInput}
 		bind:selectedRootFolder
 		bind:selectedScoringProfile
 		bind:searchOnAdd
 		bind:wantsSubtitles
+		bind:selectedLanguageProfile
+		bind:subtitleRequirementsOverride
 	/>
 
 	<SeriesAddOptions

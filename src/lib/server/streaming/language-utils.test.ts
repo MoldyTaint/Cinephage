@@ -21,7 +21,8 @@ describe('sortSourcesByAudioPreference', () => {
 		expect(DEFAULT_EFFECTIVE_AUDIO_PREFERENCE).toEqual({
 			preferOriginal: true,
 			languages: [],
-			originalLanguage: null
+			originalLanguage: null,
+			mode: 'prefer'
 		});
 	});
 
@@ -77,10 +78,7 @@ describe('sortSourcesByAudioPreference', () => {
 		const pref = preference({ languages: ['pt-BR'] });
 		// 'pob' is a provider alias for pt-BR; 'pt' matches by base tag. Both hit
 		// preference rank 0, so upstream order decides the tie (sort stability).
-		const sorted = sortSourcesByAudioPreference(
-			[source('pt'), source('pob'), source('es')],
-			pref
-		);
+		const sorted = sortSourcesByAudioPreference([source('pt'), source('pob'), source('es')], pref);
 		expect(sorted.map((s) => s.id)).toEqual(['pt', 'pob', 'es']);
 	});
 
@@ -133,33 +131,35 @@ describe('audioPreferencesEqual', () => {
 	it('treats identical resolved preferences as equal', () => {
 		expect(
 			audioPreferencesEqual(
-				{ preferOriginal: true, languages: ['ja', 'en'], originalLanguage: 'ja' },
-				{ preferOriginal: true, languages: ['ja', 'en'], originalLanguage: 'ja' }
+				{ preferOriginal: true, languages: ['ja', 'en'], originalLanguage: 'ja', mode: 'prefer' },
+				{ preferOriginal: true, languages: ['ja', 'en'], originalLanguage: 'ja', mode: 'prefer' }
 			)
 		).toBe(true);
 	});
 
 	it('detects differences in any field, including order', () => {
-		const base = { preferOriginal: true, languages: ['ja', 'en'], originalLanguage: 'ja' };
-		expect(
-			audioPreferencesEqual(base, { ...base, preferOriginal: false })
-		).toBe(false);
-		expect(
-			audioPreferencesEqual(base, { ...base, originalLanguage: null })
-		).toBe(false);
-		expect(
-			audioPreferencesEqual(base, { ...base, languages: ['en', 'ja'] })
-		).toBe(false);
-		expect(
-			audioPreferencesEqual(base, { ...base, languages: ['ja'] })
-		).toBe(false);
+		const base: EffectiveAudioPreference = {
+			preferOriginal: true,
+			languages: ['ja', 'en'],
+			originalLanguage: 'ja',
+			mode: 'prefer'
+		};
+		expect(audioPreferencesEqual(base, { ...base, preferOriginal: false })).toBe(false);
+		expect(audioPreferencesEqual(base, { ...base, originalLanguage: null })).toBe(false);
+		expect(audioPreferencesEqual(base, { ...base, languages: ['en', 'ja'] })).toBe(false);
+		expect(audioPreferencesEqual(base, { ...base, languages: ['ja'] })).toBe(false);
 	});
 
 	it('treats null and undefined originalLanguage as equal', () => {
 		expect(
 			audioPreferencesEqual(
-				{ preferOriginal: true, languages: [], originalLanguage: null },
-				{ preferOriginal: true, languages: [], originalLanguage: undefined as unknown as null }
+				{ preferOriginal: true, languages: [], originalLanguage: null, mode: 'prefer' },
+				{
+					preferOriginal: true,
+					languages: [],
+					originalLanguage: undefined as unknown as null,
+					mode: 'prefer'
+				}
 			)
 		).toBe(true);
 	});

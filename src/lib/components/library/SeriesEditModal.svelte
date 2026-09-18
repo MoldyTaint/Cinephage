@@ -517,7 +517,7 @@
 					</select>
 					{#if subtitleProfileHelper}
 						<p class="mt-1 text-xs text-base-content/60">{subtitleProfileHelper}</p>
-					<p class="mt-1 text-xs text-base-content/60">{m.library_subtitleProfile_help()}</p>
+						<p class="mt-1 text-xs text-base-content/60">{m.library_subtitleProfile_help()}</p>
 					{/if}
 				</div>
 				<div class="grid grid-cols-2 gap-3">

@@ -72,9 +72,7 @@ export const migration_v146: MigrationDefinition = {
 				}>;
 				if (!info.some((c) => c.name === 'language_profile_id')) return 0;
 				const result = sqlite
-					.prepare(
-						`UPDATE "${table}" SET language_profile_id = NULL WHERE language_profile_id = ?`
-					)
+					.prepare(`UPDATE "${table}" SET language_profile_id = NULL WHERE language_profile_id = ?`)
 					.run(defaultedId);
 				return result.changes;
 			};
@@ -92,9 +90,7 @@ export const migration_v146: MigrationDefinition = {
 				);
 			}
 		} else {
-			logger.info(
-				'[migration v143] No instance default profile configured; nothing to repair'
-			);
+			logger.info('[migration v143] No instance default profile configured; nothing to repair');
 		}
 	}
 };

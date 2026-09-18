@@ -28,9 +28,7 @@ export function isZipContent(content: Buffer): boolean {
 /** True when `ext` (with or without dot, any case) is a subtitle extension. */
 export function isSubtitleExtension(ext: string): boolean {
 	const normalized = ext.toLowerCase();
-	return SUBTITLE_EXTENSION_SET.has(
-		normalized.startsWith('.') ? normalized : `.${normalized}`
-	);
+	return SUBTITLE_EXTENSION_SET.has(normalized.startsWith('.') ? normalized : `.${normalized}`);
 }
 
 // A generous SRT/VTT timestamp line (`,` or `.` as the millisecond separator).
@@ -169,7 +167,10 @@ export function selectSubtitleZipEntry(
 	const targetLanguage = normalizeZipLanguage(target.language);
 	const targetStem = stemKey(target.videoFileName ?? target.releaseName ?? target.fileName);
 
-	const ranked = sorted.map((entry) => ({ entry, rank: rankEntry(entry.entryName, target, targetLanguage, targetStem) }));
+	const ranked = sorted.map((entry) => ({
+		entry,
+		rank: rankEntry(entry.entryName, target, targetLanguage, targetStem)
+	}));
 	const bestRank = Math.max(...ranked.map((item) => item.rank));
 	const winners = ranked.filter((item) => item.rank === bestRank);
 

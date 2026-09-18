@@ -63,7 +63,16 @@ export class ReleaseCache {
 			src: criteria.searchSource ?? '',
 			c: (criteria.categories ?? []).sort().join(','),
 			i: (criteria.indexerIds ?? []).sort().join(','),
-			lang: (criteria.language ?? '').toLowerCase()
+			lang: (criteria.language ?? '').toLowerCase(),
+			// Ordered audio preference changes ranking, so it belongs in the key
+			ap: criteria.audioPreference
+				? [
+						criteria.audioPreference.preferOriginal ? 1 : 0,
+						criteria.audioPreference.mode,
+						criteria.audioPreference.originalLanguage ?? '',
+						...[...criteria.audioPreference.languages].sort()
+					]
+				: null
 		};
 
 		// Add type-specific fields

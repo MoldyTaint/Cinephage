@@ -62,9 +62,9 @@ describe('detectSubtitleFormatFromContent', () => {
 	});
 
 	it('detects MicroDVD .sub from cue indices', () => {
-		expect(
-			detectSubtitleFormatFromContent(Buffer.from('{1}{1}23.976\nHello\n', 'utf-8'))
-		).toBe('sub');
+		expect(detectSubtitleFormatFromContent(Buffer.from('{1}{1}23.976\nHello\n', 'utf-8'))).toBe(
+			'sub'
+		);
 	});
 
 	it('returns unknown for arbitrary text and binary payloads', () => {

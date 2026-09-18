@@ -538,11 +538,9 @@ describe('SubtitleDownloadService', () => {
 			format: 'srt'
 		});
 
-		const txSpy = vi
-			.spyOn(testDb.db, 'transaction')
-			.mockImplementation(() => {
-				throw new Error('transaction failed');
-			});
+		const txSpy = vi.spyOn(testDb.db, 'transaction').mockImplementation(() => {
+			throw new Error('transaction failed');
+		});
 		try {
 			await expect(service.downloadForMovie(movieId, buildSearchResult())).rejects.toThrow(
 				'transaction failed'
@@ -560,7 +558,8 @@ describe('SubtitleDownloadService', () => {
 		expect((await testDb.db.select().from(subtitleHistory)).length).toBe(0);
 	});
 
-	it('notifies media servers when a subtitle is created', async () => {		const movieId = await seedMovie();
+	it('notifies media servers when a subtitle is created', async () => {
+		const movieId = await seedMovie();
 		const service = SubtitleDownloadService.getInstance();
 
 		const result = await service.downloadForMovie(movieId, buildSearchResult());

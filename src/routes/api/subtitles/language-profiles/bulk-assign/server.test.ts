@@ -8,7 +8,6 @@ import {
 import { api } from '../../../../../test/api-helper';
 import {
 	movies,
-	series,
 	libraries,
 	rootFolders,
 	libraryRootFolders,
@@ -81,7 +80,7 @@ async function seedLibraryWithMovies(): Promise<void> {
 	await testDb.db.insert(languageProfiles).values({
 		id: PROFILE_ID,
 		name: 'E2E',
-		audio: { preferOriginal: true, languages: [] },
+		audio: { preferOriginal: true, languages: [], mode: 'prefer' },
 		subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
 		cutoffRank: null,
 		minimumScore: 70,

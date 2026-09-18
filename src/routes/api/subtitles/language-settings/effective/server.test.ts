@@ -40,7 +40,7 @@ async function seedProfile(id: string, name: string): Promise<void> {
 	await testDb.db.insert(languageProfiles).values({
 		id,
 		name,
-		audio: { preferOriginal: true, languages: [] },
+		audio: { preferOriginal: true, languages: [], mode: 'prefer' },
 		subtitles: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
 		cutoffRank: null,
 		minimumScore: 70,

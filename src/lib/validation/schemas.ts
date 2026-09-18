@@ -913,12 +913,13 @@ export const subtitleRequirementSchema = z.object({
 /** Combined profile audio preferences. */
 export const audioPreferenceSchema = z.object({
 	preferOriginal: z.boolean().default(true),
-	languages: z.array(languageTagSchema).default([])
+	languages: z.array(languageTagSchema).default([]),
+	mode: z.enum(['prefer', 'require']).default('prefer')
 });
 
 const languageProfileV2BaseSchema = z.object({
 	name: z.string().min(1, 'Name is required').max(60, 'Name must be 60 characters or less'),
-	audio: audioPreferenceSchema.default({ preferOriginal: true, languages: [] }),
+	audio: audioPreferenceSchema.default({ preferOriginal: true, languages: [], mode: 'prefer' }),
 	subtitles: z
 		.array(subtitleRequirementSchema)
 		.min(1, 'At least one subtitle language is required'),
@@ -929,10 +930,13 @@ const languageProfileV2BaseSchema = z.object({
 
 /** Create payload for the combined profile (Phase 2 persistence). */
 export const languageProfileV2CreateSchema = languageProfileV2BaseSchema
-	.refine((profile) => profile.cutoffRank === null || profile.cutoffRank < profile.subtitles.length, {
-		message: 'Cutoff rank must reference a subtitle requirement',
-		path: ['cutoffRank']
-	})
+	.refine(
+		(profile) => profile.cutoffRank === null || profile.cutoffRank < profile.subtitles.length,
+		{
+			message: 'Cutoff rank must reference a subtitle requirement',
+			path: ['cutoffRank']
+		}
+	)
 	.refine(
 		(profile) => {
 			const keys = profile.subtitles.map(
@@ -1833,9 +1837,7 @@ export function normalizeLegacyMetadataLanguage(value: string | null | undefined
 	if (value == null || value.trim() === '') return { mode: 'inherit', value: null };
 	if (value.trim().toLowerCase() === 'original') return { mode: 'original', value: null };
 	const canonical = canonicalMetadataLocale(value);
-	return canonical
-		? { mode: 'explicit', value: canonical }
-		: { mode: 'inherit', value: null };
+	return canonical ? { mode: 'explicit', value: canonical } : { mode: 'inherit', value: null };
 }
 
 /**
@@ -2227,6 +2229,8 @@ export const grabRequestSchema = z
 		isAutomatic: z.boolean().optional(),
 		isUpgrade: z.boolean().optional(),
 		force: z.boolean().optional(),
+		/** Acquisition origin recorded on the acquisition intent. */
+		source: z.enum(['manual', 'automatic', 'arr_push', 'override']).optional(),
 		streamUsenet: z.boolean().optional(),
 		acquisitionProtocol: z.enum(['default', 'torrent', 'debrid']).optional()
 	})
@@ -2376,7 +2380,8 @@ export const conditionSchema = z.object({
 		'hdr',
 		'streaming_service',
 		'flag',
-		'indexer'
+		'indexer',
+		'language'
 	]),
 	required: z.boolean(),
 	negate: z.boolean(),
@@ -2389,7 +2394,8 @@ export const conditionSchema = z.object({
 	hdr: z.string().nullable().optional(),
 	streamingService: z.string().optional(),
 	flag: z.enum(['isRemux', 'isRepack', 'isProper', 'is3d']).optional(),
-	indexer: z.string().optional()
+	indexer: z.string().optional(),
+	language: z.string().optional()
 });
 
 export type Condition = z.infer<typeof conditionSchema>;

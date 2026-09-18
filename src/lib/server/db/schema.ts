@@ -683,6 +683,10 @@ export const movies = sqliteTable(
 		subtitleRequirementsOverride: text('subtitle_requirements_override', {
 			mode: 'json'
 		}).$type<SubtitleRequirement[]>(),
+		// Audio-language shortfall: probed audio contradicts the effective
+		// audio preference (import verifier, phase D of the 2026-09-15 design).
+		// Marks the item eligible for a better-language upgrade re-grab.
+		languageShortfall: integer('language_shortfall', { mode: 'boolean' }).default(false),
 		// Whether to monitor for upgrades
 		monitored: integer('monitored', { mode: 'boolean' }).default(true),
 		// Minimum availability before searching (announced, inCinemas, released)
@@ -732,61 +736,69 @@ export const movies = sqliteTable(
 /**
  * Movie Files - Actual movie files on disk
  */
-export const movieFiles = sqliteTable('movie_files', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => randomUUID()),
-	movieId: text('movie_id')
-		.notNull()
-		.references(() => movies.id, { onDelete: 'cascade' }),
-	// Path relative to the movie folder
-	relativePath: text('relative_path').notNull(),
-	// File size in bytes
-	size: integer('size'),
-	// When the file was added to library
-	dateAdded: text('date_added').$defaultFn(() => new Date().toISOString()),
-	// Scene name if detected
-	sceneName: text('scene_name'),
-	// Release group if detected
-	releaseGroup: text('release_group'),
-	// Parsed quality info as JSON
-	quality: text('quality', { mode: 'json' }).$type<{
-		resolution?: string;
-		source?: string;
-		codec?: string;
-		hdr?: string;
-	}>(),
-	// MediaInfo extracted data
-	mediaInfo: text('media_info', { mode: 'json' }).$type<{
-		containerFormat?: string;
-		videoCodec?: string;
-		videoProfile?: string;
-		videoBitrate?: number;
-		videoBitDepth?: number;
-		videoHdrFormat?: string;
-		width?: number;
-		height?: number;
-		fps?: number;
-		runtime?: number; // seconds
-		audioCodec?: string;
-		audioChannels?: number;
-		audioBitrate?: number;
-		audioLanguages?: string[];
-		subtitleLanguages?: string[];
-	}>(),
-	// Edition info (Director's Cut, Extended, etc.)
-	edition: text('edition'),
-	// Languages detected in file
-	languages: text('languages', { mode: 'json' }).$type<string[]>(),
-	// Info hash of the torrent used to download this file (for duplicate detection)
-	infoHash: text('info_hash'),
-	lastSeenScanId: text('last_seen_scan_id'),
-	// Content categorization: 'main' | 'bonus' (Phase 1 pattern recognition)
-	contentCategory: text('content_category').notNull().default('main'),
-	filenameSignature: text('filename_signature'),
-	contentHash: text('content_hash'),
-	contentHashAlgorithm: text('content_hash_algorithm')
-});
+export const movieFiles = sqliteTable(
+	'movie_files',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => randomUUID()),
+		movieId: text('movie_id')
+			.notNull()
+			.references(() => movies.id, { onDelete: 'cascade' }),
+		// Path relative to the movie folder
+		relativePath: text('relative_path').notNull(),
+		// File size in bytes
+		size: integer('size'),
+		// When the file was added to library
+		dateAdded: text('date_added').$defaultFn(() => new Date().toISOString()),
+		// Scene name if detected
+		sceneName: text('scene_name'),
+		// Release group if detected
+		releaseGroup: text('release_group'),
+		// Parsed quality info as JSON
+		quality: text('quality', { mode: 'json' }).$type<{
+			resolution?: string;
+			source?: string;
+			codec?: string;
+			hdr?: string;
+		}>(),
+		// MediaInfo extracted data
+		mediaInfo: text('media_info', { mode: 'json' }).$type<{
+			containerFormat?: string;
+			videoCodec?: string;
+			videoProfile?: string;
+			videoBitrate?: number;
+			videoBitDepth?: number;
+			videoHdrFormat?: string;
+			width?: number;
+			height?: number;
+			fps?: number;
+			runtime?: number; // seconds
+			audioCodec?: string;
+			audioChannels?: number;
+			audioBitrate?: number;
+			audioLanguages?: string[];
+			subtitleLanguages?: string[];
+		}>(),
+		// Edition info (Director's Cut, Extended, etc.)
+		edition: text('edition'),
+		// Languages detected in file
+		languages: text('languages', { mode: 'json' }).$type<string[]>(),
+		// Info hash of the torrent used to download this file (for duplicate detection)
+		infoHash: text('info_hash'),
+		lastSeenScanId: text('last_seen_scan_id'),
+		// Content categorization: 'main' | 'bonus' (Phase 1 pattern recognition)
+		contentCategory: text('content_category').notNull().default('main'),
+		filenameSignature: text('filename_signature'),
+		contentHash: text('content_hash'),
+		contentHashAlgorithm: text('content_hash_algorithm')
+	},
+	(table) => [
+		// One row per movie+path: re-grabs and streaming re-imports update the
+		// existing row (migration 150 deduped legacy duplicates first).
+		uniqueIndex('idx_movie_files_movie_path_unique').on(table.movieId, table.relativePath)
+	]
+);
 
 /**
  * Series - TV series added to the library (linked to TMDB)
@@ -827,6 +839,10 @@ export const series = sqliteTable(
 		subtitleRequirementsOverride: text('subtitle_requirements_override', {
 			mode: 'json'
 		}).$type<SubtitleRequirement[]>(),
+		// Audio-language shortfall: probed audio contradicts the effective
+		// audio preference (import verifier, phase D of the 2026-09-15 design).
+		// Marks the item eligible for a better-language upgrade re-grab.
+		languageShortfall: integer('language_shortfall', { mode: 'boolean' }).default(false),
 		// Whether to monitor for new episodes
 		monitored: integer('monitored', { mode: 'boolean' }).default(true),
 		// How to handle new seasons/episodes added after initial add: 'all' | 'none'
@@ -1036,9 +1052,9 @@ export const alternateTitles = sqliteTable(
 		title: text('title').notNull(),
 		// Normalized title for matching (lowercase, no special chars)
 		cleanTitle: text('clean_title').notNull(),
-	// Source of this title: 'tmdb' (auto-fetched), 'user' (manually added), or
-	// 'anilist'/'mal' (anime provider title variants — migration 139)
-	source: text('source', { enum: ['tmdb', 'user', 'anilist', 'mal'] }).notNull(),
+		// Source of this title: 'tmdb' (auto-fetched), 'user' (manually added), or
+		// 'anilist'/'mal' (anime provider title variants — migration 139)
+		source: text('source', { enum: ['tmdb', 'user', 'anilist', 'mal'] }).notNull(),
 		// ISO 639-1 language code (e.g., 'en', 'cs', 'de')
 		language: text('language'),
 		// ISO 3166-1 country code (e.g., 'US', 'CZ', 'DE')
@@ -1374,6 +1390,8 @@ export const downloadQueue = sqliteTable(
 			source?: string;
 			codec?: string;
 			hdr?: string;
+			languages?: string[];
+			fileLanguages?: string[];
 		}>(),
 
 		// Release group (extracted from release title at grab time)
@@ -1444,6 +1462,168 @@ export const downloadQueueTombstones = sqliteTable(
 			table.protocol,
 			table.remoteId
 		)
+	]
+);
+
+/**
+ * Acquisition Intents — the durable authority for what is being acquired,
+ * for which media slots, and why it was approved (migration 148).
+ *
+ * The download queue is a transport projection linked to an intent; media
+ * ownership and exclusivity live here. Slot exclusivity ("one active
+ * acquisition per movie/quality bucket or episode") is enforced by a partial
+ * unique index on acquisition_reservations (target_key WHERE released_at IS
+ * NULL), which survives restarts — unlike the pre-existing process-local
+ * locks and status-list inference.
+ *
+ * Intents record the decision at APPROVAL time (including the
+ * pipeline-computed upgrade status). They deliberately do NOT record a
+ * replacement plan: import-time replacement is recomputed against current
+ * library state by the import finalizer, never from grab-time intent.
+ */
+export const acquisitionIntents = sqliteTable(
+	'acquisition_intents',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => randomUUID()),
+
+		// Target
+		mediaType: text('media_type', { enum: ['movie', 'tv'] }).notNull(),
+		movieId: text('movie_id').references(() => movies.id, { onDelete: 'set null' }),
+		seriesId: text('series_id').references(() => series.id, { onDelete: 'set null' }),
+		seasonNumber: integer('season_number'),
+		/** Expanded concrete episode scope (JSON array of episode ids; never empty for tv). */
+		episodeIds: text('episode_ids', { mode: 'json' }).$type<string[]>(),
+
+		// Slot: 'single' for single-quality movies, the bucket resolution otherwise.
+		qualitySlot: text('quality_slot').notNull(),
+
+		// Release identity
+		protocol: text('protocol').notNull(),
+		/** Canonical release identity kind once resolved ('info_hash' | 'indexer_guid' | 'provider_hash'). */
+		identityKind: text('identity_kind'),
+		identityValue: text('identity_value'),
+		releaseTitle: text('release_title').notNull(),
+		indexerId: text('indexer_id'),
+		indexerName: text('indexer_name'),
+
+		// Decision audit (pipeline-computed at approval time)
+		upgradeStatus: text('upgrade_status'),
+		decision: text('decision', { mode: 'json' }).$type<Record<string, unknown>>(),
+
+		// Origin
+		source: text('source', { enum: ['manual', 'automatic', 'arr_push', 'override'] }).notNull(),
+
+		// Lifecycle: active → completed | failed | canceled
+		status: text('status', { enum: ['active', 'completed', 'failed', 'canceled'] })
+			.notNull()
+			.default('active'),
+		/** download_queue.id once the transport row exists. */
+		queueId: text('queue_id'),
+		error: text('error'),
+
+		createdAt: text('created_at')
+			.notNull()
+			.$defaultFn(() => new Date().toISOString()),
+		updatedAt: text('updated_at')
+			.notNull()
+			.$defaultFn(() => new Date().toISOString()),
+		completedAt: text('completed_at')
+	},
+	(table) => [
+		index('idx_acq_intents_status').on(table.status),
+		index('idx_acq_intents_queue').on(table.queueId),
+		index('idx_acq_intents_movie').on(table.movieId),
+		index('idx_acq_intents_series').on(table.seriesId),
+		// One ACTIVE acquisition per canonical release identity across ALL
+		// targets: the same torrent grabbed for two movies is always wrong.
+		uniqueIndex('idx_acq_intents_active_identity')
+			.on(table.identityValue)
+			.where(sql`${table.identityValue} IS NOT NULL AND ${table.status} = 'active'`)
+	]
+);
+
+/**
+ * Acquisition Reservations — durable per-slot locks (migration 148).
+ * One ACTIVE (released_at IS NULL) row per target_key, DB-enforced:
+ *   movie:<movieId>:<qualitySlot>   e.g. movie:abc:2160p / movie:abc:single
+ *   episode:<episodeId>             one per episode in the intent's scope
+ */
+export const acquisitionReservations = sqliteTable(
+	'acquisition_reservations',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => randomUUID()),
+		intentId: text('intent_id')
+			.notNull()
+			.references(() => acquisitionIntents.id, { onDelete: 'cascade' }),
+		targetKey: text('target_key').notNull(),
+		createdAt: text('created_at')
+			.notNull()
+			.$defaultFn(() => new Date().toISOString()),
+		/** null while the reservation is held; set when the intent reaches a terminal state. */
+		releasedAt: text('released_at')
+	},
+	(table) => [
+		index('idx_acq_reservations_intent').on(table.intentId),
+		// THE exclusivity invariant.
+		uniqueIndex('idx_acq_reservations_active_target')
+			.on(table.targetKey)
+			.where(sql`${table.releasedAt} IS NULL`)
+	]
+);
+
+/**
+ * Import Operations journal (migration 149) — durable record of each
+ * multi-step import so startup recovery can resume or compensate
+ * deterministically instead of guessing from queue statuses.
+ *
+ * States: staged → registered → completed | recovery_required.
+ * `pendingOldFileIds` holds DB rows whose physical retirement failed (or
+ * never ran); recovery and reports reconcile them. Media is never
+ * auto-deleted from here — phase-5 reports surface it.
+ */
+export const importOperations = sqliteTable(
+	'import_operations',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => randomUUID()),
+		intentId: text('intent_id').references(() => acquisitionIntents.id, {
+			onDelete: 'set null'
+		}),
+		queueId: text('queue_id'),
+		mediaType: text('media_type', { enum: ['movie', 'episode'] }).notNull(),
+		movieId: text('movie_id'),
+		seriesId: text('series_id'),
+		episodeIds: text('episode_ids', { mode: 'json' }).$type<string[]>(),
+		protocol: text('protocol'),
+		/** Destination path of the incoming file (absolute). */
+		destinationPath: text('destination_path').notNull(),
+		newFileId: text('new_file_id'),
+		/** DB rows targeted for retirement, with the file id the new row replaced. */
+		pendingOldFileIds: text('pending_old_file_ids', { mode: 'json' }).$type<string[]>(),
+		/** Rows whose physical deletion failed — row kept on purpose, flagged here. */
+		failedOldFileIds: text('failed_old_file_ids', { mode: 'json' }).$type<string[]>(),
+		status: text('status', {
+			enum: ['staged', 'registered', 'completed', 'recovery_required']
+		})
+			.notNull()
+			.default('staged'),
+		error: text('error'),
+		createdAt: text('created_at')
+			.notNull()
+			.$defaultFn(() => new Date().toISOString()),
+		updatedAt: text('updated_at')
+			.notNull()
+			.$defaultFn(() => new Date().toISOString()),
+		completedAt: text('completed_at')
+	},
+	(table) => [
+		index('idx_import_operations_status').on(table.status),
+		index('idx_import_operations_queue').on(table.queueId)
 	]
 );
 

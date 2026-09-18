@@ -7,6 +7,7 @@ import type {
 	UpgradeStats
 } from './stages/grab/types.js';
 import { BlocklistStage } from './stages/grab/BlocklistStage.js';
+import { IdentityStage } from './stages/grab/IdentityStage.js';
 import { ScoringStage } from './stages/grab/ScoringStage.js';
 import { BannedFormatStage } from './stages/grab/BannedFormatStage.js';
 import { SizeValidationStage } from './stages/grab/SizeValidationStage.js';
@@ -17,14 +18,17 @@ import { MediaOccupancyStage } from './stages/grab/MediaOccupancyStage.js';
 import { BlockedExtensionStage } from './stages/grab/BlockedExtensionStage.js';
 import { UpgradeStage } from './stages/grab/UpgradeStage.js';
 import { DelayStage } from './stages/grab/DelayStage.js';
+import { LanguageStage } from './stages/grab/LanguageStage.js';
 import { RequiredFormatsStage } from './stages/grab/RequiredFormatsStage.js';
 
 export class GrabDecisionPipeline {
 	private stages = [
+		new IdentityStage(),
 		new BlocklistStage(),
 		new ScoringStage(),
 		new BannedFormatStage(),
 		new RequiredFormatsStage(),
+		new LanguageStage(),
 		new SizeValidationStage(),
 		new ProtocolStage(),
 		new MinimumScoreStage(),
@@ -73,6 +77,7 @@ export class GrabDecisionPipeline {
 		if (!rejectingStage) return undefined;
 
 		const map: Record<string, RejectionType> = {
+			identity: 'identity_mismatch',
 			blocklist: 'blocklisted',
 			bannedFormat: 'banned',
 			requiredFormats: 'missing_required_format',

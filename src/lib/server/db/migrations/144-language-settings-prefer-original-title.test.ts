@@ -36,7 +36,9 @@ function createPreMigrationDatabase(): Database.Database {
 	return sqlite;
 }
 
-function getColumns(sqlite: Database.Database): Array<{ name: string; dflt_value: string | null; notnull: number }> {
+function getColumns(
+	sqlite: Database.Database
+): Array<{ name: string; dflt_value: string | null; notnull: number }> {
 	return sqlite.prepare(`PRAGMA table_info("language_settings")`).all() as Array<{
 		name: string;
 		dflt_value: string | null;

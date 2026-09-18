@@ -40,9 +40,8 @@ type SeriesLoadFn = (event: LoadEvent) => Promise<import('./+page.server').Libra
 // with a minimal event stub.
 const loadFn = load as unknown as SeriesLoadFn;
 const { eq } = await import('drizzle-orm');
-const { LanguageSettingsService } = await import(
-	'$lib/server/subtitles/services/LanguageSettingsService.js'
-);
+const { LanguageSettingsService } =
+	await import('$lib/server/subtitles/services/LanguageSettingsService.js');
 
 const LANGUAGE_PROFILE_ID = 'd0000000-0000-4000-8000-000000000001';
 const SERIES_ID = 'series-loader-1';
@@ -66,7 +65,7 @@ async function seedLanguageProfile(): Promise<void> {
 		.values({
 			id: LANGUAGE_PROFILE_ID,
 			name: 'Tv Loader Profile',
-			audio: { preferOriginal: true, languages: [] },
+			audio: { preferOriginal: true, languages: [], mode: 'prefer' },
 			subtitles: [
 				{ tag: 'en', variant: 'regular', accessibility: 'any' },
 				{ tag: 'es', variant: 'regular', accessibility: 'any' },

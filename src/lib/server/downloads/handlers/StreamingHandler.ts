@@ -26,7 +26,10 @@ import { statSync } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
-import { replaceIdsForImport } from '$lib/server/quality/buckets.js';
+import {
+	computeMovieReplacement,
+	computeEpisodeReplacement
+} from '$lib/server/downloadClients/import/replacement.js';
 import type { Resolution } from '$lib/server/indexers/parser/types.js';
 import type { GrabRequest, ResolvedContext, HandlerResult } from '../grab-types.js';
 
@@ -235,28 +238,52 @@ export class StreamingHandler {
 		);
 		const newResolution = quality.resolution as Resolution | undefined;
 
-		if (isUpgrade) {
-			await this.deleteExistingMovieFiles(movieId, movie.rootFolder.path, movie.path, {
-				multiQuality,
-				newResolution
+		// .strm destinations are deterministic (title/year/tmdbId): an existing
+		// row for the same path is updated in place, so re-grabs never create
+		// duplicates and never unlink their own file (self-deletion bug).
+		const samePathRow = await db.query.movieFiles.findFirst({
+			where: and(eq(movieFiles.movieId, movieId), eq(movieFiles.relativePath, relativePath))
+		});
+
+		const fileId = samePathRow?.id ?? randomUUID();
+		if (samePathRow) {
+			await db
+				.update(movieFiles)
+				.set({
+					size: fileSize,
+					dateAdded: new Date().toISOString(),
+					sceneName: release.title,
+					releaseGroup: parsedRelease.releaseGroup ?? 'Streaming',
+					edition: parsedRelease.edition ?? undefined,
+					quality,
+					mediaInfo
+				})
+				.where(eq(movieFiles.id, fileId));
+		} else {
+			await db.insert(movieFiles).values({
+				id: fileId,
+				movieId,
+				relativePath,
+				size: fileSize,
+				dateAdded: new Date().toISOString(),
+				sceneName: release.title,
+				releaseGroup: parsedRelease.releaseGroup ?? 'Streaming',
+				edition: parsedRelease.edition ?? undefined,
+				quality,
+				mediaInfo
 			});
 		}
 
-		const fileId = randomUUID();
-		await db.insert(movieFiles).values({
-			id: fileId,
-			movieId,
-			relativePath,
-			size: fileSize,
-			dateAdded: new Date().toISOString(),
-			sceneName: release.title,
-			releaseGroup: parsedRelease.releaseGroup ?? 'Streaming',
-			edition: parsedRelease.edition ?? undefined,
-			quality,
-			mediaInfo
-		});
-
 		await db.update(movies).set({ hasFile: true }).where(eq(movies.id, movieId));
+
+		// Retire AFTER registration, selected from current state via the
+		// shared policy. The just-written row is excluded by id — the old
+		// delete-before-insert order unlinked the fresh .strm.
+		await this.retireMovieFiles(movieId, movie.rootFolder.path, movie.path, {
+			multiQuality,
+			newResolution,
+			keepFileIds: [fileId]
+		});
 
 		await db.insert(downloadHistory).values({
 			title: release.title,
@@ -355,15 +382,6 @@ export class StreamingHandler {
 
 		const relativePath = getLibraryRelativePath(show.rootFolder.path, show.path, filePath);
 
-		if (isUpgrade) {
-			await this.deleteExistingEpisodeFiles(
-				seriesId,
-				episodeRow.id,
-				show.rootFolder.path,
-				show.path
-			);
-		}
-
 		const fileId = await upsertEpisodeFileByPath({
 			seriesId,
 			seasonNumber: season,
@@ -379,6 +397,12 @@ export class StreamingHandler {
 		});
 
 		await db.update(episodes).set({ hasFile: true }).where(eq(episodes.id, episodeRow.id));
+
+		// Register-then-retire: overlapping files are selected from current
+		// state after the new row exists (coverage rule, self-deletion guard).
+		await this.retireEpisodeFiles(seriesId, [episodeRow.id], show.rootFolder.path, show.path, {
+			keepFileIds: [fileId]
+		});
 
 		await db.insert(downloadHistory).values({
 			title: release.title,
@@ -557,26 +581,6 @@ export class StreamingHandler {
 					continue;
 				}
 
-				if (isUpgrade) {
-					const allSeriesFiles = await db.query.episodeFiles.findMany({
-						where: eq(episodeFiles.seriesId, seriesId)
-					});
-					const existingFiles = allSeriesFiles.filter((f) =>
-						f.episodeIds?.includes(epData.episodeId)
-					);
-					for (const oldFile of existingFiles) {
-						const oldFilePath = join(show.rootFolder!.path, show.path, oldFile.relativePath);
-						try {
-							if (await fileExists(oldFilePath)) {
-								await unlink(oldFilePath);
-							}
-						} catch {
-							// non-critical
-						}
-						await db.delete(episodeFiles).where(eq(episodeFiles.id, oldFile.id));
-					}
-				}
-
 				const fileId = await upsertEpisodeFileByPath({
 					seriesId,
 					seasonNumber,
@@ -591,6 +595,16 @@ export class StreamingHandler {
 				});
 
 				await db.update(episodes).set({ hasFile: true }).where(eq(episodes.id, epData.episodeId));
+
+				// Register-then-retire with the coverage rule; the just-upserted
+				// row is excluded (same path → updated in place, never deleted).
+				await this.retireEpisodeFiles(
+					seriesId,
+					[epData.episodeId],
+					show.rootFolder!.path,
+					show.path,
+					{ keepFileIds: [fileId] }
+				);
 
 				createdEpisodeIds.push(epData.episodeId);
 				createdFileIds.push(fileId);
@@ -661,25 +675,35 @@ export class StreamingHandler {
 		}
 	}
 
-	private async deleteExistingMovieFiles(
+	/**
+	 * Retire existing movie files per the shared state-based policy. Runs
+	 * AFTER the new row is registered; `keepFileIds` excludes it. Physical
+	 * deletion failure keeps the DB row (scan re-discovery guard).
+	 */
+	private async retireMovieFiles(
 		movieId: string,
 		rootFolderPath: string,
 		moviePath: string,
-		options?: { multiQuality?: boolean; newResolution?: Resolution }
+		options: {
+			multiQuality: boolean;
+			newResolution?: Resolution;
+			keepFileIds: string[];
+		}
 	): Promise<void> {
 		const existingFiles = await db.query.movieFiles.findMany({
 			where: eq(movieFiles.movieId, movieId)
 		});
 
-		// This is only invoked on upgrade; in multi-quality mode only the file(s)
-		// in the same resolution bucket are replaced, other tiers are preserved.
 		const replaceIds = new Set(
-			replaceIdsForImport(existingFiles, {
-				newResolution: options?.newResolution,
-				multiQuality: options?.multiQuality ?? false,
-				isUpgrade: true
+			computeMovieReplacement({
+				existingFiles,
+				newResolution: options.newResolution,
+				multiQuality: options.multiQuality,
+				retire: true,
+				keepFileIds: options.keepFileIds
 			})
 		);
+		if (replaceIds.size === 0) return;
 
 		const { recycleEnabled } = await getFileManagementSettings();
 
@@ -688,32 +712,56 @@ export class StreamingHandler {
 			const oldFilePath = join(rootFolderPath, moviePath, oldFile.relativePath);
 			try {
 				await deletePhysicalFile(oldFilePath, recycleEnabled, rootFolderPath);
-			} catch {
-				// non-critical
+			} catch (error) {
+				logger.warn(
+					{ fileId: oldFile.id, path: oldFilePath, err: error },
+					'Failed to delete old streaming movie file - keeping DB row'
+				);
+				continue;
 			}
 			await db.delete(movieFiles).where(eq(movieFiles.id, oldFile.id));
 		}
 	}
 
-	private async deleteExistingEpisodeFiles(
+	/**
+	 * Retire episode files overlapping `episodeId` per the coverage rule:
+	 * multi-episode files survive unless the incoming set preserves every
+	 * episode they hold; .strm placeholders always yield to real files.
+	 */
+	private async retireEpisodeFiles(
 		seriesId: string,
-		episodeId: string,
+		incomingEpisodeIds: string[],
 		rootFolderPath: string,
-		seriesPath: string
+		seriesPath: string,
+		options?: { keepFileIds?: string[] }
 	): Promise<void> {
 		const allSeriesFiles = await db.query.episodeFiles.findMany({
 			where: eq(episodeFiles.seriesId, seriesId)
 		});
-		const existingFiles = allSeriesFiles.filter((f) => f.episodeIds?.includes(episodeId));
 
-		for (const oldFile of existingFiles) {
+		const replaceIds = new Set(
+			computeEpisodeReplacement({
+				existingFiles: allSeriesFiles,
+				incomingEpisodeIds,
+				keepFileIds: options?.keepFileIds,
+				retireStrmPlaceholders: true
+			})
+		);
+		if (replaceIds.size === 0) return;
+
+		for (const oldFile of allSeriesFiles) {
+			if (!replaceIds.has(oldFile.id)) continue;
 			const oldFilePath = join(rootFolderPath, seriesPath, oldFile.relativePath);
 			try {
 				if (await fileExists(oldFilePath)) {
 					await unlink(oldFilePath);
 				}
-			} catch {
-				// non-critical
+			} catch (error) {
+				logger.warn(
+					{ fileId: oldFile.id, path: oldFilePath, err: error },
+					'Failed to delete old streaming episode file - keeping DB row'
+				);
+				continue;
 			}
 			await db.delete(episodeFiles).where(eq(episodeFiles.id, oldFile.id));
 		}

@@ -105,6 +105,38 @@ describe('ReadyProviderFileMapper', () => {
 		expect(JSON.stringify(result)).not.toMatch(/hostile|provider name|secret|https?:/i);
 	});
 
+	it('prefers the preferred-language variant among equal-size movie files', async () => {
+		const providerItem = item([
+			file('en', '/Movie.2026.1080p.ENG.mkv', { sizeBytes: 9 * GIB }),
+			file('es', '/Movie.2026.1080p.ESP.mkv', { sizeBytes: 9 * GIB })
+		]);
+
+		const result = await mapper().map({
+			providerItem,
+			context: movie,
+			preferredAudioLanguages: ['es', 'en']
+		});
+
+		expect(result.files[0].providerFileRef.providerFileId).toBe('es');
+	});
+
+	it('keeps the largest file when no preferred language matches the names', async () => {
+		const providerItem = item([
+			file('big', '/Movie.2026.1080p.mkv', { sizeBytes: 10 * GIB }),
+			file('small-es', '/Movie.2026.480p.ESP.mkv', { sizeBytes: 2 * GIB })
+		]);
+
+		const result = await mapper().map({
+			providerItem,
+			context: movie,
+			preferredAudioLanguages: ['es']
+		});
+
+		// The ESP file is far smaller — size wins, the tiebreaker only applies
+		// among near-equal candidates.
+		expect(result.files[0].providerFileRef.providerFileId).toBe('big');
+	});
+
 	it('maps both multi-episode and multi-file releases without omitting queued episodes', async () => {
 		const multiEpisode = await mapper().map({
 			providerItem: item([file('both', '/Show.S01E01-E02.mkv')]),

@@ -10,10 +10,10 @@ vi.mock('$lib/server/services/AlternateTitleService.js', () => ({
 }));
 
 const { buildMetadataProviderRegistry } = await import('./provider-registry.js');
-const { storeProviderTitleVariants } = await import('$lib/server/services/AlternateTitleService.js');
-const { persistEnrichmentTitleVariants, persistLinkedProviderTitleVariants } = await import(
-	'./provider-resolution.js'
-);
+const { storeProviderTitleVariants } =
+	await import('$lib/server/services/AlternateTitleService.js');
+const { persistEnrichmentTitleVariants, persistLinkedProviderTitleVariants } =
+	await import('./provider-resolution.js');
 
 const mockedRegistryBuild = vi.mocked(buildMetadataProviderRegistry);
 const mockedStore = vi.mocked(storeProviderTitleVariants);

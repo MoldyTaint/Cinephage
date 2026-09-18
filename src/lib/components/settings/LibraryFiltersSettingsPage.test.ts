@@ -80,13 +80,6 @@ describe('discovery filters page after the language/region fold', () => {
 		expect(container).toBeTruthy();
 	});
 
-	it('links to the Library Languages tab for language settings', () => {
-		renderPage();
-
-		const link = screen.getByRole('link', { name: /open language settings/i });
-		expect(link.getAttribute('href')).toBe('/settings/library/languages');
-	});
-
 	it('still saves the remaining filters', async () => {
 		renderPage();
 

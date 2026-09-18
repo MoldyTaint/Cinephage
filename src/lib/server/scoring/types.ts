@@ -36,7 +36,8 @@ export type ConditionType =
 	| 'hdr'
 	| 'streaming_service'
 	| 'flag'
-	| 'indexer';
+	| 'indexer'
+	| 'language';
 
 /**
  * A single condition within a custom format definition
@@ -90,6 +91,11 @@ export interface FormatCondition {
 
 	/** For indexer conditions (match by indexer name) */
 	indexer?: string;
+
+	/** For language conditions: a canonical language tag ('es', 'pt-BR') or
+	 * the 'multi' / 'orig' pseudo-codes parsed from release names. Matches
+	 * when any parsed language token matches (base-tag fallback). */
+	language?: string;
 }
 
 // =============================================================================

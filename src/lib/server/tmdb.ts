@@ -1,10 +1,7 @@
 import { db } from './db';
 import { languageSettings, settings } from './db/schema';
 import { eq } from 'drizzle-orm';
-import {
-	normalizeMetadataLocale,
-	normalizeRegionCode
-} from '$lib/server/languages/normalize.js';
+import { normalizeMetadataLocale, normalizeRegionCode } from '$lib/server/languages/normalize.js';
 import type {
 	GlobalTmdbFilters,
 	MovieDetails,
@@ -81,8 +78,7 @@ async function loadTmdbSettings(): Promise<{ apiKey: string; filters: GlobalTmdb
 				// language_settings is the TMDB locale/region authority: metadata_locale
 				// feeds the response `language` and `region` feeds region filtering.
 				// Migration 137 seeded the singleton from global_filters, so existing
-				// installs are covered. Fall back to global_filters.language/region
-				// when the singleton row is missing or its values are unparseable.
+				// installs are covered.
 				if (_cachedFilters) {
 					let localeRow: typeof languageSettings.$inferSelect | undefined;
 					try {
@@ -92,14 +88,11 @@ async function loadTmdbSettings(): Promise<{ apiKey: string; filters: GlobalTmdb
 					} catch (e) {
 						logger.warn({ err: e }, 'Failed to read language_settings for TMDB locale');
 					}
-					const locale =
-						normalizeMetadataLocale(localeRow?.metadataLocale) ??
-						normalizeMetadataLocale(_cachedFilters.language);
+					const locale = normalizeMetadataLocale(localeRow?.metadataLocale);
 					if (locale) {
 						_cachedFilters.language = locale;
 					}
-					const region =
-						normalizeRegionCode(localeRow?.region) ?? normalizeRegionCode(_cachedFilters.region);
+					const region = normalizeRegionCode(localeRow?.region);
 					if (region) {
 						_cachedFilters.region = region;
 					}

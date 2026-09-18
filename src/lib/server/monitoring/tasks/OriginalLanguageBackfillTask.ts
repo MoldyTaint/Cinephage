@@ -8,7 +8,10 @@ import type { TaskResult } from '../MonitoringScheduler.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
 import { TaskCancelledException } from '$lib/server/tasks/TaskCancelledException.js';
 
-const logger = createChildLogger({ module: 'OriginalLanguageBackfillTask', logDomain: 'monitoring' });
+const logger = createChildLogger({
+	module: 'OriginalLanguageBackfillTask',
+	logDomain: 'monitoring'
+});
 
 /**
  * Backfill the nullable `original_language` column for movies and series that
@@ -58,10 +61,7 @@ export async function executeOriginalLanguageBackfillTask(
 				const details = await tmdb.getMovie(movie.tmdbId, lang);
 				const originalLanguage = details.original_language || null;
 				if (originalLanguage) {
-					await db
-						.update(movies)
-						.set({ originalLanguage })
-						.where(eq(movies.id, movie.id));
+					await db.update(movies).set({ originalLanguage }).where(eq(movies.id, movie.id));
 					itemsUpdated++;
 				} else {
 					logger.debug(
@@ -109,18 +109,11 @@ export async function executeOriginalLanguageBackfillTask(
 
 		for await (const s of ctx?.iterate?.(seriesToBackfill) ?? seriesToBackfill) {
 			try {
-				const lang = resolveLanguageForFetch(
-					s.metadataLanguageMode,
-					s.metadataLanguageValue,
-					null
-				);
+				const lang = resolveLanguageForFetch(s.metadataLanguageMode, s.metadataLanguageValue, null);
 				const details = await tmdb.getTVShow(s.tmdbId, lang);
 				const originalLanguage = details.original_language || null;
 				if (originalLanguage) {
-					await db
-						.update(series)
-						.set({ originalLanguage })
-						.where(eq(series.id, s.id));
+					await db.update(series).set({ originalLanguage }).where(eq(series.id, s.id));
 					itemsUpdated++;
 				} else {
 					logger.debug(

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
 	ALL_LANGUAGE_OPTIONS,
-	SUPPORTED_LANGUAGES,
 	canonicalizeLanguageTag,
 	getLanguageDefinition,
 	getLanguageName,
@@ -41,6 +40,14 @@ describe('canonicalizeLanguageTag', () => {
 		expect(canonicalizeLanguageTag('pob')).toBe('pt-BR');
 	});
 
+	it('resolves English language names (torznab language attrs use names)', () => {
+		expect(canonicalizeLanguageTag('English')).toBe('en');
+		expect(canonicalizeLanguageTag('spanish')).toBe('es');
+		expect(canonicalizeLanguageTag('French')).toBe('fr');
+		expect(canonicalizeLanguageTag('Japanese')).toBe('ja');
+		expect(canonicalizeLanguageTag('Portuguese (Brazil)')).toBe('pt-BR');
+	});
+
 	it('returns an empty string for unknown languages', () => {
 		expect(canonicalizeLanguageTag('xx-zz')).toBe('');
 		expect(canonicalizeLanguageTag('')).toBe('');
@@ -50,7 +57,7 @@ describe('canonicalizeLanguageTag', () => {
 
 describe('registry data', () => {
 	it('contains a fixed Armenian native name', () => {
-		const armenian = SUPPORTED_LANGUAGES.find((lang) => lang.code === 'hy');
+		const armenian = getLanguageDefinition('hy');
 		expect(armenian?.nativeName).toBe('Հայերեն');
 	});
 

@@ -105,25 +105,31 @@ export const GET: RequestHandler = async ({ params }) => {
 		}
 
 		const profileService = getLanguageProfileService();
-		const [files, existingSubtitles, subtitleStatus, effectiveLanguageProfile, effectiveSubtitleRequirements, releaseInfo] =
-			await Promise.all([
-				db.select().from(movieFiles).where(eq(movieFiles.movieId, movie.id)),
-				db.select().from(subtitles).where(eq(subtitles.movieId, movie.id)),
-				profileService.getMovieSubtitleStatus(movie.id),
-				profileService.getEffectiveProfileForMovie(movie.id),
-				profileService.getEffectiveSubtitleRequirements({ movieId: movie.id }),
-				tmdb.getMovieReleaseInfo(movie.tmdbId).catch((err) => {
-					logger.warn(
-						{
-							movieId: movie.id,
-							tmdbId: movie.tmdbId,
-							error: err instanceof Error ? err.message : String(err)
-						},
-						'[API] Failed to fetch movie release info'
-					);
-					return null;
-				})
-			]);
+		const [
+			files,
+			existingSubtitles,
+			subtitleStatus,
+			effectiveLanguageProfile,
+			effectiveSubtitleRequirements,
+			releaseInfo
+		] = await Promise.all([
+			db.select().from(movieFiles).where(eq(movieFiles.movieId, movie.id)),
+			db.select().from(subtitles).where(eq(subtitles.movieId, movie.id)),
+			profileService.getMovieSubtitleStatus(movie.id),
+			profileService.getEffectiveProfileForMovie(movie.id),
+			profileService.getEffectiveSubtitleRequirements({ movieId: movie.id }),
+			tmdb.getMovieReleaseInfo(movie.tmdbId).catch((err) => {
+				logger.warn(
+					{
+						movieId: movie.id,
+						tmdbId: movie.tmdbId,
+						error: err instanceof Error ? err.message : String(err)
+					},
+					'[API] Failed to fetch movie release info'
+				);
+				return null;
+			})
+		]);
 		const providerConfig = await getMetadataProviderConfig();
 		const enrichedProviderRefs = await resolveMissingAnimeProviderRefs({
 			title: movie.title,
@@ -142,16 +148,16 @@ export const GET: RequestHandler = async ({ params }) => {
 				(movie.providerRefs as Partial<Record<'tmdb' | 'anilist' | 'mal', string>> | null) ??
 				undefined
 		});
-			return json({
-				success: true,
-				movie: {
-					...movie,
-					// Legacy view derived from the v2 pair (kept one release).
-					metadataLanguage: metadataLanguageToLegacy(
-						movie.metadataLanguageMode,
-						movie.metadataLanguageValue
-					),
-					providerRefs: enrichedProviderRefs,
+		return json({
+			success: true,
+			movie: {
+				...movie,
+				// Legacy view derived from the v2 pair (kept one release).
+				metadataLanguage: metadataLanguageToLegacy(
+					movie.metadataLanguageMode,
+					movie.metadataLanguageValue
+				),
+				providerRefs: enrichedProviderRefs,
 				tmdbStatus: releaseInfo?.status ?? null,
 				releaseDate: releaseInfo?.release_date ?? null,
 				files: files.map((f) => ({

@@ -931,6 +931,7 @@
 		missingKeys={missingRequirementKeys}
 		source={data.effectiveSubtitleRequirements?.source ?? null}
 		profileName={data.effectiveLanguageProfile?.profile.name ?? null}
+		audioShortfall={data.movie.languageShortfall ?? false}
 		editable
 		saving={savingRequirements}
 		onSave={handleRequirementsSave}

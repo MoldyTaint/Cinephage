@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/svelte';
 import CommonOptions from './CommonOptions.svelte';
 import type { RootFolderWithSpaceAndDefault as RootFolder } from '$lib/types/downloadClient.js';

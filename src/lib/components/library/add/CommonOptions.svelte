@@ -6,7 +6,6 @@
 	import { formatBytes } from '$lib/utils/format.js';
 	import type { RootFolderWithSpaceAndDefault as RootFolder } from '$lib/types/downloadClient.js';
 	import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
-	import { ALL_LANGUAGE_OPTIONS } from '$lib/shared/languages.js';
 	import SubtitleRequirementsSection from '$lib/components/subtitles/SubtitleRequirementsSection.svelte';
 
 	interface ScoringProfile {
@@ -240,7 +239,7 @@
 		</select>
 		<button
 			type="button"
-			class="btn btn-ghost btn-xs mt-1 self-start px-0 text-base-content/70"
+			class="btn mt-1 self-start btn-ghost px-0 text-base-content/70 btn-xs"
 			onclick={() => (customizingSubtitles = !customizingSubtitles)}
 		>
 			{customizingSubtitles ? '▾' : '▸'}
@@ -250,8 +249,9 @@
 			<div class="mt-2">
 				<SubtitleRequirementsSection
 					requirements={subtitleRequirementsOverride ??
-						effectiveSubtitleRequirements ??
-						[{ tag: 'en', variant: 'regular', accessibility: 'any' }]}
+						effectiveSubtitleRequirements ?? [
+							{ tag: 'en', variant: 'regular', accessibility: 'any' }
+						]}
 					editable
 					onSave={(requirements) => {
 						subtitleRequirementsOverride = requirements;

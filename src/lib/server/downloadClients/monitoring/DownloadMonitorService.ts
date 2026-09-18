@@ -50,6 +50,7 @@ import {
 } from '$lib/types/queue';
 import { parseEpisodePointerFromTitle } from '$lib/server/downloads/episode-pointer.js';
 import { activityStreamEvents } from '$lib/server/activity/ActivityStreamEvents.js';
+import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
 
 // Import service is loaded lazily to avoid circular dependencies
 let importServiceInstance: import('../import').ImportService | null = null;
@@ -385,6 +386,13 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		logger.info('Performing startup sync to check for orphaned downloads');
 
 		try {
+			// Release slot reservations whose transport is gone (crash recovery,
+			// legacy rows). Runs before client sync so freed slots are grabbable.
+			const reconciled = acquisitionService.reconcileStaleIntents();
+			if (reconciled > 0) {
+				logger.info({ reconciled }, 'Reconciled stale acquisition intents at startup');
+			}
+
 			const manager = getDownloadClientManager();
 			const enabledClients = await manager.getEnabledClients();
 
@@ -2206,10 +2214,13 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				)
 			];
 			if (infoHash) {
+				// 'failed' is excluded here too: resurrecting a failed row
+				// silently returned the previous target and upgrade flags to
+				// the new grab (stale-row reuse bug).
 				duplicateConditions.push(
 					and(
 						eq(downloadQueue.infoHash, infoHash),
-						notInArray(downloadQueue.status, ['removed', ...POST_IMPORT_STATUSES])
+						notInArray(downloadQueue.status, ['removed', 'failed', ...POST_IMPORT_STATUSES])
 					)
 				);
 			}
@@ -2389,6 +2400,9 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 		// Update status to removed
 		await db.update(downloadQueue).set({ status: 'removed' }).where(eq(downloadQueue.id, id));
+
+		// User-initiated removal: release the acquisition's slot reservations.
+		acquisitionService.cancelByQueueId(id, 'removed from queue');
 
 		this.emit('queue:removed', id);
 		this.emitSSE('queue:removed', { id });
@@ -2585,6 +2599,9 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		protocol?: 'torrent' | 'usenet' | 'debrid'
 	): Promise<void> {
 		const now = new Date().toISOString();
+
+		// The acquisition completed: release its slot reservations.
+		acquisitionService.completeByQueueId(id);
 
 		// For torrents, use 'seeding-imported' to show it's imported but still seeding
 		// For usenet and debrid, use 'imported' directly (no seeding)
@@ -3235,6 +3252,9 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		errorMessage: string,
 		options?: { terminalImport?: boolean }
 	): Promise<void> {
+		// The acquisition failed terminally: release its slot reservations.
+		acquisitionService.failByQueueId(id, errorMessage);
+
 		await db
 			.update(downloadQueue)
 			.set({

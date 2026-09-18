@@ -33,7 +33,8 @@ export class UsenetHandler {
 			resolution: parsed.resolution ?? undefined,
 			source: parsed.source ?? undefined,
 			codec: parsed.codec ?? undefined,
-			hdr: parsed.hdr ?? undefined
+			hdr: parsed.hdr ?? undefined,
+			languages: parsed.languages.length > 0 ? parsed.languages : undefined
 		};
 
 		let nzbContent: Buffer | undefined;

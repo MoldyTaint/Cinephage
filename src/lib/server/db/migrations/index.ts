@@ -143,6 +143,10 @@ import { migration_v143 } from './143-media-server-language-normalization.js';
 import { migration_v144 } from './144-language-settings-prefer-original-title.js';
 import { migration_v145 } from './145-drop-deprecated-adaptive-subtitle-columns.js';
 import { migration_v146 } from './146-subtitle-requirement-overrides.js';
+import { migration_v147 } from './147-language-shortfall-flag.js';
+import { migration_v148 } from './148-acquisition-intents-reservations.js';
+import { migration_v149 } from './149-import-operations-journal.js';
+import { migration_v150 } from './150-movie-files-path-unique.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -288,5 +292,9 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v143,
 	migration_v144,
 	migration_v145,
-	migration_v146
+	migration_v146,
+	migration_v147,
+	migration_v148,
+	migration_v149,
+	migration_v150
 ];

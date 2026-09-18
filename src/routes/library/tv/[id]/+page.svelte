@@ -1515,9 +1515,7 @@
 
 	// Per-series subtitle auto-search (all missing)
 	const seriesSubtitleProgress = $derived(
-		deriveSeriesSubtitleProgress(
-			data.seasons.flatMap((season) => season.episodes)
-		)
+		deriveSeriesSubtitleProgress(data.seasons.flatMap((season) => season.episodes))
 	);
 
 	let savingRequirements = $state(false);
@@ -1794,6 +1792,7 @@
 		requirements={data.effectiveSubtitleRequirements?.requirements ?? []}
 		source={data.effectiveSubtitleRequirements?.source ?? null}
 		profileName={data.effectiveLanguageProfile?.profile.name ?? null}
+		audioShortfall={data.series.languageShortfall ?? false}
 		editable
 		saving={savingRequirements || searchingRequirements}
 		onSave={handleRequirementsSave}

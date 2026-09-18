@@ -47,20 +47,30 @@
 	const SCROLL_KEY = 'cinephage:library:tv:scrollY';
 
 	beforeNavigate(({ to }) => {
-		if (to?.url.pathname.startsWith('/library/tv/')) {
-			localStorage.setItem(SCROLL_KEY, String(window.scrollY));
-		} else {
-			localStorage.removeItem(SCROLL_KEY);
+		try {
+			if (to?.url.pathname.startsWith('/library/tv/')) {
+				localStorage.setItem(SCROLL_KEY, String(window.scrollY));
+			} else {
+				localStorage.removeItem(SCROLL_KEY);
+			}
+		} catch {
+			// storage unavailable (blocked cookies / ETP)
 		}
 	});
 
 	afterNavigate(({ from }) => {
-		if (from?.url.pathname.startsWith('/library/tv/')) {
-			const saved = localStorage.getItem(SCROLL_KEY);
-			if (saved) {
-				requestAnimationFrame(() => window.scrollTo({ top: parseInt(saved), behavior: 'instant' }));
-				localStorage.removeItem(SCROLL_KEY);
+		try {
+			if (from?.url.pathname.startsWith('/library/tv/')) {
+				const saved = localStorage.getItem(SCROLL_KEY);
+				if (saved) {
+					requestAnimationFrame(() =>
+						window.scrollTo({ top: parseInt(saved), behavior: 'instant' })
+					);
+					localStorage.removeItem(SCROLL_KEY);
+				}
 			}
+		} catch {
+			// storage unavailable (blocked cookies / ETP)
 		}
 	});
 

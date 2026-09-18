@@ -1,9 +1,6 @@
 import { logger } from '$lib/logging';
 import { getLibraryStreamingModule } from '$lib/server/cinephage/modules/library-streaming/LibraryStreamingModule.js';
-import {
-	resolveAudioPreferenceBucket,
-	sortSourcesByAudioPreference
-} from '../language-utils';
+import { resolveAudioPreferenceBucket, sortSourcesByAudioPreference } from '../language-utils';
 import type {
 	PlaybackMediaType,
 	PlaybackSession,
@@ -122,8 +119,7 @@ export class PlaybackSessionService {
 
 		const chosenBucket = resolveAudioPreferenceBucket(source, audioPreference);
 		const chosenAudioLanguage =
-			source.language ??
-			(chosenBucket === 0 ? (audioPreference.originalLanguage ?? null) : null);
+			source.language ?? (chosenBucket === 0 ? (audioPreference.originalLanguage ?? null) : null);
 
 		const session = this.store.createSession({
 			mediaType: params.type,

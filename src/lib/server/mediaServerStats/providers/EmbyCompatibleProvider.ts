@@ -155,8 +155,7 @@ export abstract class EmbyCompatibleProvider implements MediaServerStatsProvider
 		const primarySource = mediaSources[0] ?? null;
 		const videoStream =
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			mediaSources.map((source: any) => this.getVideoStream(source)).find((v) => v != null) ??
-			null;
+			mediaSources.map((source: any) => this.getVideoStream(source)).find((v) => v != null) ?? null;
 		// Audio/subtitle tracks dedupe by normalized language tag (first seen
 		// wins) so repeated tracks across sources do not duplicate languages.
 		const audioStreams = dedupeStreamsByLanguage(

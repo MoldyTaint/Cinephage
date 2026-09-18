@@ -223,10 +223,7 @@ export async function refreshSeriesMetadata(seriesId: string): Promise<void> {
 			onProbed: async (probed) => {
 				probedOriginalLanguage = probed;
 				await db.update(series).set({ originalLanguage: probed }).where(eq(series.id, seriesId));
-				logger.info(
-					{ seriesId, originalLanguage: probed },
-					'Backfilled series original_language'
-				);
+				logger.info({ seriesId, originalLanguage: probed }, 'Backfilled series original_language');
 			}
 		}
 	);

@@ -17,6 +17,7 @@ import { TemplateEngine } from '../engine/TemplateEngine';
 import { FilterEngine } from '../engine/FilterEngine';
 import { SelectorEngine, type JsonValue } from '../engine/SelectorEngine';
 import { createChildLogger } from '$lib/logging';
+import { canonicalizeLanguageTag } from '$lib/shared/languages';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
 import { extractInfoHash } from '$lib/server/downloadClients/utils/hashUtils';
@@ -528,7 +529,11 @@ export class ResponseParser {
 			'rageid',
 			'tvmazeid',
 			'traktid',
-			'doubanid'
+			'doubanid',
+			'language',
+			'languages',
+			'subs',
+			'subtitles'
 		];
 		if (optionalFields.includes(lowerName)) {
 			return true;
@@ -705,7 +710,35 @@ export class ResponseParser {
 			if (!isNaN(tvdbId)) result.tvdbId = tvdbId;
 		}
 
+		// Structured language attrs (torznab/newznab `language`/`subs`) — the
+		// indexer asserts these; title-token parsing stays on `parsed.languages`.
+		const audioLanguages = this.parseLanguageList(values['language'] ?? values['languages']);
+		if (audioLanguages.length > 0) {
+			result.languages = audioLanguages;
+		}
+		const subtitleLanguages = this.parseLanguageList(values['subs'] ?? values['subtitles']);
+		if (subtitleLanguages.length > 0) {
+			result.subtitleLanguages = subtitleLanguages;
+		}
+
 		return result;
+	}
+
+	/**
+	 * Parse a possibly multi-valued language attribute ("English, Spanish",
+	 * "en;es") into canonical tags. Unknown tokens are dropped, not guessed.
+	 */
+	private parseLanguageList(value: string | null | undefined): string[] {
+		if (!value) return [];
+		const seen = new Set<string>();
+		const out: string[] = [];
+		for (const token of value.split(/[,;|/]/)) {
+			const canonical = canonicalizeLanguageTag(token.trim());
+			if (!canonical || canonical === 'und' || seen.has(canonical)) continue;
+			seen.add(canonical);
+			out.push(canonical);
+		}
+		return out;
 	}
 
 	/**

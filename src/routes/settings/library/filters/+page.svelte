@@ -7,7 +7,6 @@
 	import type { GlobalTmdbFilters } from '$lib/types/tmdb';
 	import type { PageData } from './$types';
 	import { page } from '$app/state';
-	import { resolve } from '$app/paths';
 	import { TMDB } from '$lib/config/constants.js';
 
 	let { data }: { data: PageData } = $props();
@@ -61,14 +60,6 @@
 			<TmdbConfigRequired message={m.settings_filters_tmdbRequired()} />
 		</div>
 	{/if}
-
-	<!-- Language/region localization moved to the Library > Languages tab -->
-	<div class="rounded-lg border border-base-300 px-4 py-3 text-sm">
-		{m.settings_filters_languageSettingsMoved()}
-		<a class="link link-primary" href={resolve('/settings/library/languages')}>
-			{m.settings_filters_languageSettingsLink()}
-		</a>
-	</div>
 
 	<!-- Content Settings -->
 	<SettingsSection title={m.settings_filters_contentPreferences()}>

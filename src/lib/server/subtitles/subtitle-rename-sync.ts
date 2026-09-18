@@ -116,10 +116,7 @@ async function selectEpisodeSubtitleRows(
  * changed (avoids needless writes for folder moves that already resolve
  * correctly).
  */
-async function updateRow(
-	row: typeof subtitles.$inferSelect,
-	newAbsPath: string
-): Promise<boolean> {
+async function updateRow(row: typeof subtitles.$inferSelect, newAbsPath: string): Promise<boolean> {
 	const oldDir = dirname(row.relativePath);
 	const newRelative =
 		oldDir === '.' || oldDir === ''
@@ -127,9 +124,6 @@ async function updateRow(
 			: `${oldDir.split(/[\\/]+/).join('/')}/${basename(newAbsPath)}`;
 	if (newRelative === row.relativePath) return false;
 
-	db.update(subtitles)
-		.set({ relativePath: newRelative })
-		.where(eq(subtitles.id, row.id))
-		.run();
+	db.update(subtitles).set({ relativePath: newRelative }).where(eq(subtitles.id, row.id)).run();
 	return true;
 }

@@ -2455,7 +2455,10 @@ describe('in-place subtitle companion renames', () => {
 			);
 
 			expect(result.success).toBe(true);
-			const rows = await db.select().from(schema.subtitles).where(eq(schema.subtitles.movieId, movieId));
+			const rows = await db
+				.select()
+				.from(schema.subtitles)
+				.where(eq(schema.subtitles.movieId, movieId));
 			expect(rows).toHaveLength(1);
 			expect(rows[0].relativePath).toBe('New.en.srt');
 		} finally {

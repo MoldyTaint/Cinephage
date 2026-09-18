@@ -451,7 +451,15 @@ export const CRITICAL_COLUMNS: Record<string, string[]> = {
 		'consecutive_failures'
 	],
 	root_folders: ['id', 'path', 'media_sub_type', 'read_only', 'preserve_symlinks'],
-	libraries: ['id', 'name', 'slug', 'media_type', 'media_sub_type', 'is_system', 'language_profile_id'],
+	libraries: [
+		'id',
+		'name',
+		'slug',
+		'media_type',
+		'media_sub_type',
+		'is_system',
+		'language_profile_id'
+	],
 	movies: [
 		'id',
 		'tmdb_id',
@@ -476,7 +484,13 @@ export const CRITICAL_COLUMNS: Record<string, string[]> = {
 		'metadata_language_value',
 		'subtitle_requirements_override'
 	],
-	episodes: ['id', 'series_id', 'season_number', 'episode_number', 'subtitle_requirements_override'],
+	episodes: [
+		'id',
+		'series_id',
+		'season_number',
+		'episode_number',
+		'subtitle_requirements_override'
+	],
 	subtitles: ['id', 'relative_path', 'language', 'format', 'last_checked_at'],
 	indexers: ['id', 'name', 'definition_id', 'enabled'],
 	scoring_profiles: ['id', 'name', 'is_default']
@@ -609,7 +623,11 @@ export const MIGRATION_COLUMN_MAP: Record<number, Array<{ table: string; column:
 		{ table: 'libraries', column: 'language_profile_id' }
 	],
 	141: [{ table: 'subtitles', column: 'last_checked_at' }],
-	144: [{ table: 'language_settings', column: 'prefer_original_title' }]
+	144: [{ table: 'language_settings', column: 'prefer_original_title' }],
+	147: [
+		{ table: 'movies', column: 'language_shortfall' },
+		{ table: 'series', column: 'language_shortfall' }
+	]
 };
 
 /**

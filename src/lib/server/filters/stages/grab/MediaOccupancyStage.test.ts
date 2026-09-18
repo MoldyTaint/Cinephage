@@ -23,12 +23,12 @@ describe('MediaOccupancyStage', () => {
 		expect(stage.isEnabled(ctx)).toBe(false);
 	});
 
-	it('is disabled for manual grabs', () => {
+	it('runs for manual grabs (slot exclusivity applies to everyone)', () => {
 		const ctx = makeGrabDecisionContext({
 			options: { force: false, skipBlocklist: false, allowSidegrade: false, isAutomatic: false }
 		});
 
-		expect(stage.isEnabled(ctx)).toBe(false);
+		expect(stage.isEnabled(ctx)).toBe(true);
 	});
 
 	it('accepts when target is not occupied', async () => {
