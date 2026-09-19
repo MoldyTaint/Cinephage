@@ -45,6 +45,15 @@ export class IdentityStage implements DecisionStage<GrabDecisionContext> {
 			yearMode: info.mediaType === 'tv' ? 'forward-drift' : 'strict'
 		});
 
+		// ID-asserted releases (the indexer/search resolved an external id) are
+		// accepted even when the title match is inconclusive — localized or
+		// alternate naming can defeat title matching while the ID is exact.
+		// The ID also counts as year evidence for automatic movie grabs.
+		const idMethod = this.matchExternalId(ctx.release, info);
+		if (idMethod) {
+			return { accepted: true, details: { identityMethod: `external_id:${idMethod}` } };
+		}
+
 		if (!match.matched) {
 			const targetLabel = `${info.titles[0]}${info.year != null ? ` (${info.year})` : ''}`;
 			return {
@@ -91,6 +100,22 @@ export class IdentityStage implements DecisionStage<GrabDecisionContext> {
 		return { accepted: true, details: { identityMethod: match.method } };
 	}
 
+	private matchExternalId(
+		release: GrabDecisionContext['release'],
+		info: GrabDecisionContext['targetInfo'] & object
+	): string | null {
+		if (release.tmdbId != null && info.tmdbId != null && release.tmdbId === info.tmdbId) {
+			return 'tmdb';
+		}
+		if (release.imdbId && info.imdbId && release.imdbId.toLowerCase() === info.imdbId.toLowerCase()) {
+			return 'imdb';
+		}
+		if (release.tvdbId != null && info.tvdbId != null && release.tvdbId === info.tvdbId) {
+			return 'tvdb';
+		}
+		return null;
+	}
+
 	private checkEpisodeScope(
 		ctx: GrabDecisionContext,
 		parsed: ReturnType<typeof parseRelease>
@@ -122,6 +147,32 @@ export class IdentityStage implements DecisionStage<GrabDecisionContext> {
 			// Episode-scoped targets: a single-episode release must be that
 			// episode; season packs covering the target season are fine.
 			const scope = info.episodeScope ?? [];
+
+			// Defense in depth for callers that built a context without an
+			// explicit target season: reject a single-episode release whose
+			// season appears nowhere in the episode scope (e.g. S02E05 for a
+			// target scope of {S01E05}).
+			if (
+				info.seasonNumber == null &&
+				scope.length > 0 &&
+				!episode.isSeasonPack &&
+				episode.season != null
+			) {
+				const anySeasonMatch = scope.some((e) => e.seasonNumber === episode.season);
+				if (!anySeasonMatch) {
+					return {
+						accepted: false,
+						reason: `Release S${episode.season} is outside the target episode scope`,
+						details: {
+							rejectionType: 'identity_mismatch',
+							matchReason: 'season_scope_mismatch',
+							parsedSeason: episode.season,
+							targetSeasons: [...new Set(scope.map((e) => e.seasonNumber))]
+						}
+					};
+				}
+			}
+
 			if (
 				scope.length > 0 &&
 				!episode.isSeasonPack &&

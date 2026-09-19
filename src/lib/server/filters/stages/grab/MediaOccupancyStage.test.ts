@@ -15,9 +15,23 @@ describe('MediaOccupancyStage', () => {
 		vi.clearAllMocks();
 	});
 
-	it('is disabled for forced grabs', () => {
+	it('stays enabled for manual force grabs (hard stage)', () => {
 		const ctx = makeGrabDecisionContext({
-			options: { force: true, skipBlocklist: false, allowSidegrade: false, isAutomatic: true }
+			options: { force: true, skipBlocklist: false, allowSidegrade: false, isAutomatic: false }
+		});
+
+		expect(stage.isEnabled(ctx)).toBe(true);
+	});
+
+	it('is disabled only for an explicit hard override', () => {
+		const ctx = makeGrabDecisionContext({
+			options: {
+				force: true,
+				skipBlocklist: false,
+				allowSidegrade: false,
+				isAutomatic: false,
+				overrideHardStages: true
+			}
 		});
 
 		expect(stage.isEnabled(ctx)).toBe(false);

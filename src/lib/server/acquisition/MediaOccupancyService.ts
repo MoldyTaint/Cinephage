@@ -319,7 +319,11 @@ class MediaOccupancyServiceImpl {
 
 		const reservation =
 			slot && slot !== 'single'
-				? acquisitionService.findActiveByTargetKeys([movieTargetKey(movieId, slot)])
+				? (acquisitionService.findActiveByTargetKeys([movieTargetKey(movieId, slot)]) ??
+					// A 'single'-slot reservation covers the whole movie (created
+					// before a single↔multi-quality config change), so it must
+					// block every bucket grab too.
+					acquisitionService.findActiveByTargetKeys([movieTargetKey(movieId, 'single')]))
 				: acquisitionService.findActiveMovieReservation(movieId);
 
 		if (!reservation) return undefined;

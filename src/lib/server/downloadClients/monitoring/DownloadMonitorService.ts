@@ -1655,6 +1655,12 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 						updatedItem,
 						updatedItem.errorMessage ?? 'Download client reported an error'
 					);
+					// Terminal queue state must release the acquisition intent
+					// (slot + identity), or the target stays wedged until restart.
+					acquisitionService.failByQueueId(
+						updatedItem.id,
+						updatedItem.errorMessage ?? 'Download client reported an error'
+					);
 					this.emit('queue:failed', updatedItem);
 					this.emitSSE('queue:failed', updatedItem);
 					return;
@@ -1751,6 +1757,10 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				if (failedItem) {
 					await this.createFailedHistoryRecord(
 						failedItem,
+						'Download removed from client unexpectedly (recovery exhausted)'
+					);
+					acquisitionService.failByQueueId(
+						queueItem.id,
 						'Download removed from client unexpectedly (recovery exhausted)'
 					);
 					this.emit('queue:failed', failedItem);
@@ -1873,11 +1883,13 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				'Download removed from client after completion'
 			);
 
-			// Mark as removed - the import service should have already imported it
+			// Mark as removed - the import service should have already imported it.
+			// If the import never ran, cancel the acquisition so the slot frees.
 			await db
 				.update(downloadQueue)
 				.set({ status: 'removed' })
 				.where(eq(downloadQueue.id, queueItem.id));
+			acquisitionService.cancelByQueueId(queueItem.id, 'download removed from client');
 
 			const item = rowToQueueItem({ ...queueItem, status: 'removed' });
 			this.emit('queue:removed', item.id);

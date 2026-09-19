@@ -24,5 +24,3 @@ export async function computeMovieQualitySlot(
 	}
 	return 'single';
 }
-
-export const EPISODE_SLOT = 'episodes';

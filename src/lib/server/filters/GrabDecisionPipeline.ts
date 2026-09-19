@@ -1,5 +1,5 @@
 import { composeDecisionStages } from './compositor.js';
-import type { DecisionAudit } from './types.js';
+import type { DecisionAudit, StageResult } from './types.js';
 import type {
 	GrabDecisionContext,
 	GrabDecision,
@@ -41,7 +41,6 @@ export class GrabDecisionPipeline {
 
 	async evaluate(ctx: GrabDecisionContext, options?: { runAll?: boolean }): Promise<GrabDecision> {
 		const audit = await composeDecisionStages(this.stages, ctx, options);
-
 		const upgradeStageResult = audit.stages.find((s) => s.name === 'upgrade');
 		const upgradeStats = upgradeStageResult?.result?.details?.upgradeStats as
 			UpgradeStats | undefined;
@@ -70,6 +69,20 @@ export class GrabDecisionPipeline {
 			upgradeStats,
 			audit
 		};
+	}
+
+	/**
+	 * Hard identity check only. Force-override/manual grabs skip policy but
+	 * must still verify the release actually refers to the target media.
+	 */
+	async evaluateIdentity(ctx: GrabDecisionContext): Promise<StageResult> {
+		const stage = this.stages.find((candidate) => candidate.name === 'identity') as
+			| IdentityStage
+			| undefined;
+		if (!stage || !stage.isEnabled(ctx)) {
+			return { accepted: true };
+		}
+		return stage.evaluate(ctx);
 	}
 
 	private mapRejectionType(audit: DecisionAudit): RejectionType | undefined {

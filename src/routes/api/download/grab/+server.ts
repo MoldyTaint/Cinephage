@@ -100,6 +100,9 @@ export const POST: RequestHandler = async (event) => {
 			guid: data.guid,
 			commentsUrl: data.commentsUrl,
 			categories: data.categories,
+			tmdbId: data.tmdbId,
+			imdbId: data.imdbId,
+			tvdbId: data.tvdbId,
 			releaseGroup: undefined
 		},
 		target,

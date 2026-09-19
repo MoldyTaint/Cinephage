@@ -6,7 +6,7 @@ export class BlocklistStage implements DecisionStage<GrabDecisionContext> {
 	name = 'blocklist';
 
 	isEnabled(ctx: GrabDecisionContext): boolean {
-		return !ctx.options.force && !ctx.options.skipBlocklist;
+		return ctx.options.overrideHardStages !== true && !ctx.options.skipBlocklist;
 	}
 
 	async evaluate(ctx: GrabDecisionContext): Promise<StageResult> {

@@ -120,8 +120,8 @@ export class ReadyProviderFileMapper {
 		}
 
 		return input.context.media.type === 'movie'
-			? this.mapMovie(input, eligibleFiles)
-			: this.mapSeries(input, eligibleFiles);
+			? await this.mapMovie(input, eligibleFiles)
+			: await this.mapSeries(input, eligibleFiles);
 	}
 
 	/**
@@ -154,13 +154,13 @@ export class ReadyProviderFileMapper {
 		return largest;
 	}
 
-	private mapMovie(
+	private async mapMovie(
 		input: MapperInput,
 		eligibleFiles: ProviderFile[]
-	): ReadyProviderFileMapperResult {
+	): Promise<ReadyProviderFileMapperResult> {
 		if (input.context.media.type !== 'movie') throw new Error('Movie context is required');
 		const providerFile = this.chooseMovieFile(eligibleFiles, input.preferredAudioLanguages);
-		const plan = this.planner.planMovie({
+		const plan = await this.planner.planMovie({
 			rootPath: input.context.library.rootPath,
 			mediaPath: input.context.media.movie.path,
 			media: input.context.media.movie,
@@ -185,10 +185,10 @@ export class ReadyProviderFileMapper {
 		};
 	}
 
-	private mapSeries(
+	private async mapSeries(
 		input: MapperInput,
 		eligibleFiles: ProviderFile[]
-	): ReadyProviderFileMapperResult {
+	): Promise<ReadyProviderFileMapperResult> {
 		if (input.context.media.type !== 'series') throw new Error('Series context is required');
 
 		const queueEpisodeIds = input.context.queueItem.episodeIds ?? [];
@@ -266,7 +266,7 @@ export class ReadyProviderFileMapper {
 				.map((episode) => episode.episodeNumber)
 				.sort((a, b) => a - b);
 			const firstEpisode = matchedEpisodes[0];
-			const plan = this.planner.planEpisode({
+			const plan = await this.planner.planEpisode({
 				rootPath: input.context.library.rootPath,
 				mediaPath: input.context.media.series.path,
 				media: input.context.media.series,

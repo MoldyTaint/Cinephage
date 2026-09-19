@@ -31,6 +31,10 @@ export interface ReleaseInfo {
 	category?: string;
 	/** When the release was first published on the indexer */
 	publishDate?: Date;
+	/** External IDs asserted by the indexer/search result, when available. */
+	tmdbId?: number;
+	imdbId?: string;
+	tvdbId?: number;
 }
 
 export interface ExistingFile {
@@ -80,6 +84,10 @@ export interface TargetIdentityInfo {
 	titles: string[];
 	/** Movie release year / series first-air year. */
 	year?: number;
+	/** External IDs of the target, used to accept ID-asserted releases. */
+	tmdbId?: number;
+	imdbId?: string | null;
+	tvdbId?: number | null;
 	/** Season number when the target is season-scoped. */
 	seasonNumber?: number;
 	/**
@@ -95,6 +103,14 @@ export interface GrabDecisionOptions {
 	skipBlocklist: boolean;
 	allowSidegrade: boolean;
 	isAutomatic: boolean;
+	/**
+	 * Explicit hard-override (admin "override rejected release" flows). When
+	 * true, the hard stages (blocklist, duplicate-hash, media-occupancy) are
+	 * skipped. Plain manual grabs set `force` to skip policy only — they must
+	 * still pass identity and the hard stages. Identity ignores this flag
+	 * entirely and always runs.
+	 */
+	overrideHardStages?: boolean;
 	isUpgrade?: boolean;
 	/** Skip the delay stage - used when processing a release that has already waited its delay period */
 	skipDelay?: boolean;

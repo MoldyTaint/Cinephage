@@ -157,7 +157,10 @@ export async function searchForEpisode(
 						indexerId: release.indexerId,
 						indexerName: release.indexerName,
 						size: release.size,
-						protocol: release.protocol as 'torrent' | 'usenet' | 'streaming' | undefined
+						protocol: release.protocol as 'torrent' | 'usenet' | 'streaming' | undefined,
+						tmdbId: release.tmdbId,
+						imdbId: release.imdbId,
+						tvdbId: release.tvdbId
 					},
 					target: {
 						type: 'episode' as const,

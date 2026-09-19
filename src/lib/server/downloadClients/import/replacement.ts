@@ -46,11 +46,13 @@ export function computeMovieReplacement(input: MovieReplacementInput): string[] 
 	const keep = new Set(input.keepFileIds ?? []);
 
 	if (input.multiQuality) {
+		// Same resolution bucket only. .strm placeholders carry their bucket's
+		// resolution like real files, so a real import retires the placeholder
+		// in its bucket while leaving other tiers untouched.
 		return input.existingFiles
 			.filter(
 				(file) =>
 					!keep.has(file.id) &&
-					file.relativePath.toLowerCase().endsWith('.strm') === false &&
 					(file.quality?.resolution ?? undefined) === input.newResolution
 			)
 			.map((file) => file.id);

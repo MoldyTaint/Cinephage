@@ -4,8 +4,11 @@ import { db } from '$lib/server/db/index.js';
 import {
 	acquisitionIntents,
 	acquisitionReservations,
-	downloadQueue
+	downloadQueue,
+	movies
 } from '$lib/server/db/schema.js';
+import { computeMovieQualitySlot } from './slot-keys.js';
+import type { Resolution } from '$lib/server/indexers/parser/types.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ module: 'AcquisitionService', logDomain: 'downloads' });
@@ -265,6 +268,89 @@ export class AcquisitionService {
 			.where(and(eq(acquisitionIntents.queueId, queueId), eq(acquisitionIntents.status, 'active')))
 			.limit(1)
 			.all()[0];
+	}
+
+	/**
+	 * Re-arm the acquisition authority for a failed queue row being retried
+	 * (re-download / client retry). Without this the retried transport runs
+	 * with no reservation, so a concurrent automatic grab for the same slot
+	 * can be accepted and the retry later completes into nothing.
+	 *
+	 * Returns the existing active intent when one is already linked, otherwise
+	 * creates one from the row's stored target/quality/identity. A slot or
+	 * identity conflict refuses the retry instead of double-acquiring.
+	 */
+	async rearmForQueueId(
+		queueId: string
+	): Promise<{ ok: true; intentId: string } | { ok: false; reason: string }> {
+		const row = db.select().from(downloadQueue).where(eq(downloadQueue.id, queueId)).get();
+		if (!row) return { ok: false, reason: 'Queue item not found' };
+
+		const existing = this.findActiveByQueueId(queueId);
+		if (existing) return { ok: true, intentId: existing.id };
+
+		const identity: ReleaseIdentity | undefined = row.infoHash
+			? { kind: 'info_hash', value: row.infoHash }
+			: undefined;
+
+		let result: CreateIntentResult;
+		if (row.movieId) {
+			const movie = db.select().from(movies).where(eq(movies.id, row.movieId)).get();
+			const slot = await computeMovieQualitySlot(
+				movie?.desiredQualities ?? null,
+				movie?.scoringProfileId ?? null,
+				(row.quality?.resolution ?? undefined) as Resolution | undefined
+			);
+			result = this.createIntent({
+				mediaType: 'movie',
+				movieId: row.movieId,
+				qualitySlot: slot,
+				protocol: row.protocol,
+				identity,
+				releaseTitle: row.title,
+				indexerId: row.indexerId ?? undefined,
+				indexerName: row.indexerName ?? undefined,
+				source: 'manual',
+				queueId: row.id
+			});
+		} else if (row.seriesId) {
+			const episodeIds = (row.episodeIds ?? []).filter((episodeId): episodeId is string =>
+				Boolean(episodeId)
+			);
+			if (episodeIds.length === 0) {
+				return { ok: false, reason: 'Queue item has no episode scope to reserve' };
+			}
+			result = this.createIntent({
+				mediaType: 'tv',
+				seriesId: row.seriesId,
+				seasonNumber: row.seasonNumber ?? undefined,
+				episodeIds,
+				qualitySlot: 'episodes',
+				protocol: row.protocol,
+				identity,
+				releaseTitle: row.title,
+				indexerId: row.indexerId ?? undefined,
+				indexerName: row.indexerName ?? undefined,
+				source: 'manual',
+				queueId: row.id
+			});
+		} else {
+			return { ok: false, reason: 'Queue item has no media target' };
+		}
+
+		if (!result.ok) {
+			const { conflict, kind } = result;
+			return {
+				ok: false,
+				reason:
+					kind === 'identity_conflict'
+						? `Duplicate release "${conflict.releaseTitle}" is already being acquired`
+						: `"${conflict.releaseTitle}" is already being acquired for this slot — wait for it or remove it first`
+			};
+		}
+
+		logger.info({ queueId, intentId: result.intentId }, 'Re-armed acquisition intent for queue retry');
+		return { ok: true, intentId: result.intentId };
 	}
 
 	/** Release every reservation still held by the intent. */

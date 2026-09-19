@@ -14,7 +14,7 @@ export class MediaOccupancyStage implements DecisionStage<GrabDecisionContext> {
 	// This stage runs for manual (non-automatic) grabs as well; only an
 	// explicit force skips it — and force never bypasses the reservation.
 	isEnabled(ctx: GrabDecisionContext): boolean {
-		return !ctx.options.force;
+		return ctx.options.overrideHardStages !== true;
 	}
 
 	async evaluate(ctx: GrabDecisionContext): Promise<StageResult> {

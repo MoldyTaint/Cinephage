@@ -87,10 +87,43 @@ class GrabServiceImpl {
 
 		const resolved = await this.resolveTarget(request);
 
-		// When force-overriding, skip the decision pipeline — but the
-		// acquisition still reserves its slot: an override may bypass scoring
-		// policy, never slot exclusivity.
+		// When force-overriding, skip policy scoring — but identity is never
+		// skippable and the acquisition still reserves its slot.
 		if (forceOverride) {
+			// Explicit admin override: the hard stages are intentionally skipped
+			// (documented override path), unlike plain manual `force` grabs.
+			options.overrideHardStages = true;
+
+			const overrideExistingFiles = await this.getExistingFiles(request);
+			const identity = await grabDecisionPipeline.evaluateIdentity({
+				release,
+				target,
+				existingFiles: overrideExistingFiles,
+				profile: resolved.profile,
+				options,
+				desiredQualities: resolved.desiredQualities,
+				targetInfo: resolved.targetInfo,
+				computed: {}
+			});
+			if (!identity.accepted) {
+				logger.warn(
+					{ title: release.title, reason: identity.reason },
+					'[Grab] Override rejected by identity stage'
+				);
+				return {
+					success: false,
+					decision: {
+						accepted: false,
+						reason: identity.reason ?? 'Release does not match the target media',
+						rejectionType: 'identity_mismatch',
+						upgradeStatus: 'rejected',
+						scores: { candidate: 0 },
+						audit: { stages: [], finalResult: { accepted: false }, totalDurationMs: 0 }
+					},
+					error: identity.reason ?? 'Release does not match the target media'
+				};
+			}
+
 			const reservation = await this.reserveSlot(request, resolved, undefined, 'override');
 			if (!reservation.ok) {
 				return this.conflictResult(reservation);
@@ -98,7 +131,25 @@ class GrabServiceImpl {
 			const intentId = reservation.intentId;
 			options.intentId = intentId;
 
-			const handlerResult = await this.routeByProtocol(request, resolved);
+			let handlerResult: HandlerResult;
+			try {
+				handlerResult = await this.routeByProtocol(request, resolved);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				acquisitionService.failIntent(intentId, message);
+				logger.error({ title: release.title, error: message }, '[Grab] Override handler threw');
+				return {
+					success: false,
+					decision: {
+						accepted: false,
+						reason: message,
+						upgradeStatus: 'rejected',
+						scores: { candidate: 0 },
+						audit: { stages: [], finalResult: { accepted: false }, totalDurationMs: 0 }
+					},
+					error: message
+				};
+			}
 			if (!handlerResult.success) {
 				acquisitionService.failIntent(intentId, handlerResult.error ?? 'Handler failed');
 				logger.error(
@@ -207,7 +258,30 @@ class GrabServiceImpl {
 		// upgrade decision, never the caller's possibly-missing flag.
 		options.isUpgrade = decision.upgradeStatus === 'upgrade';
 
-		const handlerResult = await this.routeByProtocol(request, resolved);
+		let handlerResult: HandlerResult;
+		try {
+			handlerResult = await this.routeByProtocol(request, resolved);
+		} catch (error) {
+			// A throwing handler must not leak the reservation/intent: fail it
+			// before surfacing the error.
+			const message = error instanceof Error ? error.message : String(error);
+			acquisitionService.failIntent(intentId, message);
+			logger.error(
+				{
+					title: release.title,
+					error: message,
+					protocol: release.protocol,
+					indexerId: release.indexerId,
+					isAutomatic: options.isAutomatic
+				},
+				'[Grab] Handler threw while adding release to download client'
+			);
+			this.persistFailedGrab(release, resolved, message).catch((err) =>
+				logger.warn({ err }, '[Grab] Failed to persist failed grab history record')
+			);
+
+			return { success: false, decision, error: message };
+		}
 
 		if (!handlerResult.success) {
 			acquisitionService.failIntent(intentId, handlerResult.error ?? 'Handler failed');
@@ -367,7 +441,9 @@ class GrabServiceImpl {
 			targetInfo = {
 				mediaType: 'movie',
 				titles: await this.resolveTargetTitles('movie', movie.id, movie.title, movie.originalTitle),
-				year: movie.year ?? undefined
+				year: movie.year ?? undefined,
+				tmdbId: movie.tmdbId,
+				imdbId: movie.imdbId ?? null
 			};
 		} else {
 			seriesId = 'seriesId' in target ? target.seriesId : undefined;
@@ -423,6 +499,14 @@ class GrabServiceImpl {
 					seasonNumber: episode.seasonNumber,
 					episodeNumber: episode.episodeNumber
 				}));
+
+				// Single-episode targets must carry their season: IdentityStage
+				// skips the season check when targetInfo.seasonNumber is null, so
+				// without this a release for the same episode number in another
+				// season (Show.S02E05 for target S01E05) would pass identity.
+				if (target.type === 'episode' && seasonNumber === undefined && scoped.length === 1) {
+					seasonNumber = scoped[0].seasonNumber;
+				}
 			}
 
 			targetInfo = {
@@ -434,6 +518,9 @@ class GrabServiceImpl {
 					show!.originalTitle
 				),
 				year: show!.year ?? undefined,
+				tmdbId: show!.tmdbId,
+				tvdbId: show!.tvdbId ?? null,
+				imdbId: show!.imdbId ?? null,
 				seasonNumber,
 				episodeScope
 			};

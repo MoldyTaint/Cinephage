@@ -59,6 +59,29 @@ describe('computeMovieReplacement', () => {
 		});
 		expect(ids).toEqual([]);
 	});
+
+	it('multi-quality: retires the same-bucket .strm placeholder', () => {
+		const ids = computeMovieReplacement({
+			existingFiles: [
+				{
+					id: 'strm-1080',
+					relativePath: 'Movie.strm',
+					quality: { resolution: '1080p' },
+					isStrm: true
+				},
+				{
+					id: 'strm-2160',
+					relativePath: 'Movie.4k.strm',
+					quality: { resolution: '2160p' },
+					isStrm: true
+				}
+			],
+			newResolution: '1080p',
+			multiQuality: true,
+			retire: true
+		});
+		expect(ids).toEqual(['strm-1080']);
+	});
 });
 
 describe('computeEpisodeReplacement', () => {

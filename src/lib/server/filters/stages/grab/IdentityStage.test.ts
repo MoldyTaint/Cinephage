@@ -77,6 +77,34 @@ describe('IdentityStage', () => {
 		expect(result.details?.matchReason).toBe('no_year_evidence');
 	});
 
+	it('accepts an ID-asserted release even when title/year evidence is inconclusive', async () => {
+		const ctx = makeGrabDecisionContext({
+			targetInfo: { ...movieInfo, tmdbId: 948 },
+			release: {
+				title: 'A.Very.Different.Localized.Name.1080p.WEB-DL',
+				protocol: 'torrent',
+				tmdbId: 948
+			},
+			options: { force: false, skipBlocklist: false, allowSidegrade: false, isAutomatic: true }
+		});
+		const result = await stage.evaluate(ctx);
+		expect(result.accepted).toBe(true);
+		expect(result.details?.identityMethod).toBe('external_id:tmdb');
+	});
+
+	it('does not let a mismatched asserted ID override a title mismatch', async () => {
+		const ctx = makeGrabDecisionContext({
+			targetInfo: { ...movieInfo, tmdbId: 948 },
+			release: {
+				title: 'Detective.Conan.The.Bride.of.Halloween.2022.1080p',
+				protocol: 'torrent',
+				tmdbId: 999
+			},
+			options: { force: false, skipBlocklist: false, allowSidegrade: false, isAutomatic: true }
+		});
+		expect((await stage.evaluate(ctx)).accepted).toBe(false);
+	});
+
 	it('allows interactive movie grabs without year evidence', async () => {
 		const ctx = makeGrabDecisionContext({
 			targetInfo: movieInfo,
@@ -159,5 +187,21 @@ describe('IdentityStage', () => {
 		});
 		const result = await stage.evaluate(ctx);
 		expect(result.accepted).toBe(true);
+	});
+
+	it('rejects a wrong-season single episode even without an explicit target season', async () => {
+		// Episode targets must still be season-checked: a S02E05 release must
+		// never pass for a S01E05 target just because seasonNumber was unset.
+		const ctx = makeGrabDecisionContext({
+			targetInfo: {
+				...seriesInfo,
+				episodeScope: [{ seasonNumber: 1, episodeNumber: 5 }]
+			},
+			release: { title: 'Detective.Conan.2022.S02E05.1080p', protocol: 'torrent' },
+			options: { force: false, skipBlocklist: false, allowSidegrade: false, isAutomatic: true }
+		});
+		const result = await stage.evaluate(ctx);
+		expect(result.accepted).toBe(false);
+		expect(result.details?.matchReason).toBe('season_scope_mismatch');
 	});
 });
