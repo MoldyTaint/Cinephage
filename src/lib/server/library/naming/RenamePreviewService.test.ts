@@ -66,7 +66,8 @@ vi.mock('node:fs/promises', () => ({
 	stat: vi.fn(),
 	readdir: vi.fn(),
 	rmdir: vi.fn(),
-	mkdir: vi.fn()
+	mkdir: vi.fn(),
+	realpath: vi.fn(async (path: string) => path)
 }));
 
 // Import the mocked module to get references to the mock functions.
