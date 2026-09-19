@@ -30,7 +30,7 @@ const {
 } = await import('./subtitle-search-state.js');
 
 const DAY = 24 * 60 * 60 * 1000;
-const NOW = Date.parse('2026-09-13T12:00:00.000Z');
+const NOW = Date.now();
 const KEY_A = 'en|regular|any';
 const KEY_B = 'en|forced|any';
 
