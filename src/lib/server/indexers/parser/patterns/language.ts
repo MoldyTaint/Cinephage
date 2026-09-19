@@ -162,7 +162,78 @@ const LANGUAGE_PATTERNS: Array<{ pattern: RegExp; code: string }> = [
 
 	// Hebrew variants
 	{ pattern: /\bhebrew\b/i, code: 'he' },
-	{ pattern: /\bheb\b/i, code: 'he' }
+	{ pattern: /\bheb\b/i, code: 'he' },
+
+	// Ukrainian variants
+	{ pattern: /\bukrainian\b/i, code: 'uk' },
+	{ pattern: /\bukr\b/i, code: 'uk' },
+
+	// Romanian variants
+	{ pattern: /\bromanian\b/i, code: 'ro' },
+	{ pattern: /\bromana\b/i, code: 'ro' },
+	{ pattern: /\brum\b/i, code: 'ro' },
+
+	// Bulgarian variants
+	{ pattern: /\bbulgarian\b/i, code: 'bg' },
+	{ pattern: /\bbul\b/i, code: 'bg' },
+
+	// Croatian variants
+	{ pattern: /\bcroatian\b/i, code: 'hr' },
+	{ pattern: /\bhrvatski\b/i, code: 'hr' },
+	{ pattern: /\bhrv\b/i, code: 'hr' },
+
+	// Serbian variants
+	{ pattern: /\bserbian\b/i, code: 'sr' },
+	{ pattern: /\bsrpski\b/i, code: 'sr' },
+	{ pattern: /\bsrp\b/i, code: 'sr' },
+
+	// Slovenian variants
+	{ pattern: /\bslovenian\b/i, code: 'sl' },
+	{ pattern: /\bslovenscina\b/i, code: 'sl' },
+	{ pattern: /\bslv\b/i, code: 'sl' },
+
+	// Slovak variants
+	{ pattern: /\bslovak\b/i, code: 'sk' },
+	{ pattern: /\bslk\b/i, code: 'sk' },
+
+	// Catalan variants
+	{ pattern: /\bcatalan\b/i, code: 'ca' },
+
+	// Indonesian variants
+	{ pattern: /\bindonesian\b/i, code: 'id' },
+	{ pattern: /\bindo\b/i, code: 'id' },
+
+	// Malay variants
+	{ pattern: /\bmalay\b/i, code: 'ms' },
+	{ pattern: /\bmelayu\b/i, code: 'ms' },
+	{ pattern: /\bmsa\b/i, code: 'ms' },
+
+	// Persian variants
+	{ pattern: /\bpersian\b/i, code: 'fa' },
+	{ pattern: /\bfarsi\b/i, code: 'fa' },
+	{ pattern: /\bfas\b/i, code: 'fa' },
+
+	// Bengali / Tamil / Telugu variants
+	{ pattern: /\bbengali\b/i, code: 'bn' },
+	{ pattern: /\btamil\b/i, code: 'ta' },
+	{ pattern: /\btam\b/i, code: 'ta' },
+	{ pattern: /\btelugu\b/i, code: 'te' },
+	{ pattern: /\btel\b/i, code: 'te' },
+
+	// Baltic / Balkan variants
+	{ pattern: /\blatvian\b/i, code: 'lv' },
+	{ pattern: /\blatviesu\b/i, code: 'lv' },
+	{ pattern: /\blav\b/i, code: 'lv' },
+	{ pattern: /\blithuanian\b/i, code: 'lt' },
+	{ pattern: /\blietuviskai\b/i, code: 'lt' },
+	{ pattern: /\bbosnian\b/i, code: 'bs' },
+	{ pattern: /\bbos\b/i, code: 'bs' },
+	{ pattern: /\bmacedonian\b/i, code: 'mk' },
+	{ pattern: /\bmkd\b/i, code: 'mk' },
+
+	// Icelandic variants ('is' itself is excluded on purpose: common word)
+	{ pattern: /\bicelandic\b/i, code: 'is' },
+	{ pattern: /\bisl\b/i, code: 'is' }
 ];
 
 /**
@@ -195,7 +266,28 @@ const BARE_ISO639_1_CODES = new Set([
 	'ko',
 	'zh',
 	'th',
-	'vi'
+	'vi',
+	// Additions: unambiguous codes present in the curated registry whose
+	// releases previously got no language evidence at all.
+	'ar',
+	'uk',
+	'ro',
+	'bg',
+	'hr',
+	'sr',
+	'sk',
+	'sl',
+	'ca',
+	'id',
+	'ms',
+	'fa',
+	'bn',
+	'ta',
+	'te',
+	'lv',
+	'lt',
+	'bs',
+	'mk'
 ]);
 
 /** Captures the optional two-letter tag list that follows a "(YYYY)" year. */

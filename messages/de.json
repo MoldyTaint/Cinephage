@@ -1831,6 +1831,8 @@
 	"livetv_epgGuide_showingCount": "Zeige {count} von {total}",
 	"livetv_epgGuide_today": "Heute",
 	"livetv_epgGuide_updating": "Aktualisieren...",
+	"livetv_epg_displayLanguage": "Anzeigesprache",
+	"livetv_epg_displayLanguageAuto": "Automatisch (Instanz-Standard)",
 	"livetv_epgSourcePicker_description": "Wählen Sie eine EPG-Quelle für diesen Kanal",
 	"livetv_epgSourcePicker_failedToLoad": "EPG-Quellen konnten nicht geladen werden",
 	"livetv_epgSourcePicker_noChannelsAvailable": "Keine EPG-Kanäle verfügbar",

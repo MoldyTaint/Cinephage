@@ -2,6 +2,7 @@ import { db } from '$lib/server/db/index.js';
 import { movies, series } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
+import { resolveLanguage } from '$lib/server/metadata/metadata-refresh.js';
 import { createChildLogger } from '$lib/logging/index.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
@@ -45,7 +46,10 @@ export async function executeMetadataRefreshTask(
 			.select({
 				id: movies.id,
 				tmdbId: movies.tmdbId,
-				title: movies.title
+				title: movies.title,
+				metadataLanguageMode: movies.metadataLanguageMode,
+				metadataLanguageValue: movies.metadataLanguageValue,
+				originalLanguage: movies.originalLanguage
 			})
 			.from(movies);
 
@@ -56,7 +60,15 @@ export async function executeMetadataRefreshTask(
 
 		for await (const movie of ctx?.iterate?.(allMovies) ?? allMovies) {
 			try {
-				const tmdbMovie = await tmdb.getMovie(movie.tmdbId);
+				// Honor each item's metadata language override; never clobber an
+				// explicit/original selection with the global locale.
+				const movieLanguage = await resolveLanguage(
+					movie.metadataLanguageMode,
+					movie.metadataLanguageValue,
+					`/movie/${movie.tmdbId}`,
+					{ originalLanguage: movie.originalLanguage }
+				);
+				const tmdbMovie = await tmdb.getMovie(movie.tmdbId, movieLanguage);
 
 				let externalIds: { imdb_id: string | null } | null = null;
 				try {
@@ -123,7 +135,10 @@ export async function executeMetadataRefreshTask(
 			.select({
 				id: series.id,
 				tmdbId: series.tmdbId,
-				title: series.title
+				title: series.title,
+				metadataLanguageMode: series.metadataLanguageMode,
+				metadataLanguageValue: series.metadataLanguageValue,
+				originalLanguage: series.originalLanguage
 			})
 			.from(series);
 
@@ -131,7 +146,13 @@ export async function executeMetadataRefreshTask(
 
 		for await (const s of ctx?.iterate?.(allSeries) ?? allSeries) {
 			try {
-				const tmdbSeries = await tmdb.getTVShow(s.tmdbId);
+				const seriesLanguage = await resolveLanguage(
+					s.metadataLanguageMode,
+					s.metadataLanguageValue,
+					`/tv/${s.tmdbId}`,
+					{ originalLanguage: s.originalLanguage }
+				);
+				const tmdbSeries = await tmdb.getTVShow(s.tmdbId, seriesLanguage);
 
 				await db
 					.update(series)

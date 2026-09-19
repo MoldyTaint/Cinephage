@@ -40,12 +40,13 @@ vi.mock('$lib/server/tmdb', async (importOriginal) => {
 });
 
 const notifierMocks = vi.hoisted(() => ({
-	queueUpdate: vi.fn()
+	queueUpdate: vi.fn(),
+	deleteMediaItemByTmdb: vi.fn().mockResolvedValue(1)
 }));
 
 vi.mock('$lib/server/notifications/mediabrowser', () => ({
 	getMediaBrowserNotifier: () => ({ queueUpdate: notifierMocks.queueUpdate }),
-	getMediaBrowserManager: () => ({ deleteMediaItemByTmdb: vi.fn().mockResolvedValue(1) })
+	getMediaBrowserManager: () => ({ deleteMediaItemByTmdb: notifierMocks.deleteMediaItemByTmdb })
 }));
 
 const mockedMoveFile = vi.fn();
@@ -142,6 +143,46 @@ describe('RenamePreviewService', () => {
 			// The old filename fallback (['ger'] from the release name) is gone.
 			expect(resolveAudioLanguages(undefined)).toBeUndefined();
 			expect(resolveAudioLanguages([])).toBeUndefined();
+		});
+	});
+
+	describe('media-server cleanup ordering (Jellyfin file-loss guard)', () => {
+		it('deletes the old server entry only after the folder move', async () => {
+			resetAllMocks();
+			testDb.db.delete(schema.movies).run();
+			testDb.db.delete(schema.rootFolders).run();
+
+			const rootId = randomUUID();
+			testDb.db
+				.insert(schema.rootFolders)
+				.values({ id: rootId, name: 'Movies', path: '/media/movies', mediaType: 'movie' })
+				.run();
+			testDb.db
+				.insert(schema.movies)
+				.values({
+					id: 'movie-order',
+					tmdbId: 4242,
+					title: 'Order Test',
+					year: 2024,
+					path: 'Order Test (2024) OLD',
+					rootFolderId: rootId
+				})
+				.run();
+
+			mockedFileExists.mockResolvedValue(true);
+			(mockFs.rename as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+			const result = await new RenamePreviewService().reorganizeFolder('movie-order', 'movie');
+
+			expect(result.success).toBe(true);
+			expect(notifierMocks.deleteMediaItemByTmdb).toHaveBeenCalledTimes(1);
+
+			// Jellyfin/Emby DELETE removes the file location too: the call must
+			// never happen before the disk rename or the media file is destroyed.
+			const renameOrder = (mockFs.rename as ReturnType<typeof vi.fn>).mock
+				.invocationCallOrder[0];
+			const deleteOrder = notifierMocks.deleteMediaItemByTmdb.mock.invocationCallOrder[0];
+			expect(renameOrder).toBeLessThan(deleteOrder);
 		});
 	});
 

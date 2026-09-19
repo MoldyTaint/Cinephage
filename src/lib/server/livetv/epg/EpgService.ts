@@ -17,6 +17,7 @@ import {
 	type EpgProgramRecord
 } from '$lib/server/db/schema';
 import { createChildLogger } from '$lib/logging';
+import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
 import { getProvider } from '../providers';
 import { liveTvEvents } from '../LiveTvEvents';
 import {
@@ -936,18 +937,28 @@ export class EpgService {
 			return fallback;
 		}
 
-		const requested = lang.toLowerCase();
-		const exact = entries.find((entry) => entry.lang === requested);
+		// Canonicalize both sides through the server registry so ISO 639-2
+		// stored tags (`ger`, `zho`) and alias variants match a `de`/`zh`
+		// request instead of silently falling back to the first variant.
+		const requested = normalizeLanguageTag(lang);
+		if (requested === 'und') return fallback;
+
+		const canonicalEntries = entries.map((entry) => ({
+			entry,
+			canonical: entry.lang ? normalizeLanguageTag(entry.lang) : 'und'
+		}));
+
+		const exact = canonicalEntries.find(({ canonical }) => canonical === requested);
 		if (exact) {
-			return exact.text;
+			return exact.entry.text;
 		}
 
 		const requestedBase = requested.split('-')[0];
-		const baseMatch = entries.find(
-			(entry) => entry.lang !== null && entry.lang.split('-')[0] === requestedBase
+		const baseMatch = canonicalEntries.find(
+			({ canonical }) => canonical !== 'und' && canonical.split('-')[0] === requestedBase
 		);
 		if (baseMatch) {
-			return baseMatch.text;
+			return baseMatch.entry.text;
 		}
 
 		return entries[0].text ?? fallback;

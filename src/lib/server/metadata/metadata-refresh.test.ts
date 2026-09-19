@@ -344,15 +344,12 @@ describe('URLSearchParams request building', () => {
 		expect(detailsCall).not.toContain(' ');
 
 		const query = new URLSearchParams(detailsCall!.split('?')[1]);
-		expect([...query.keys()].sort()).toEqual([
-			'append_to_response',
-			'include_image_language',
-			'language'
-		]);
+		// include_image_language is injected by tmdb.fetch from the effective
+		// language, not hardcoded here.
+		expect([...query.keys()].sort()).toEqual(['append_to_response', 'language']);
 		expect(query.get('append_to_response')).toBe(
 			'credits,videos,images,recommendations,similar,watch/providers,content_ratings,keywords'
 		);
-		expect(query.get('include_image_language')).toBe('null,en');
 		expect(query.get('language')).toBe('de');
 	});
 

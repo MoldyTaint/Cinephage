@@ -21,7 +21,8 @@ import {
 } from '$lib/server/livetv/epg/epg-utils';
 import { channelLineupService } from '$lib/server/livetv/lineup';
 import { createChildLogger } from '$lib/logging';
-import { normalizeTmdbLanguage } from '$lib/server/languages/normalize';
+import { normalizeLanguageTag } from '$lib/server/languages/normalize';
+import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService.js';
 import { ValidationError } from '$lib/errors';
 import { z } from 'zod';
 
@@ -35,14 +36,26 @@ const paramsSchema = z.object({
 });
 
 /**
- * Resolve the optional `lang` query parameter to a canonical base language tag.
- * Returns null when absent or invalid so the request falls back to the plain
- * EPG columns (invalid input is ignored, never an error).
+ * Resolve the display language for localized EPG text.
+ *
+ * Order: explicit `?lang=` (canonicalized; region/script preserved so
+ * `pt-BR` can beat a bare `pt`) → the instance `language_settings`
+ * metadata locale → null (plain columns, pre-i18n behavior). Invalid input is
+ * ignored, never an error.
  */
-function resolveLangParam(url: URL): string | null {
+async function resolveLangParam(url: URL): Promise<string | null> {
 	const raw = url.searchParams.get('lang');
-	if (!raw || !raw.trim()) return null;
-	return normalizeTmdbLanguage(raw);
+	if (raw && raw.trim()) {
+		const tag = normalizeLanguageTag(raw);
+		return tag === 'und' ? null : tag;
+	}
+	try {
+		const settings = await getLanguageSettingsService().get();
+		const tag = normalizeLanguageTag(settings.metadataLocale);
+		return tag === 'und' ? null : tag;
+	} catch {
+		return null;
+	}
 }
 
 export const GET: RequestHandler = async ({ url }) => {
@@ -104,7 +117,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		);
 		const guideMap = mapGuideDataToRequestedChannels(
 			resolvedPlan,
-			epgService.getGuideData(resolvedPlan.sourceChannelIds, start, end, resolveLangParam(url))
+			epgService.getGuideData(resolvedPlan.sourceChannelIds, start, end, await resolveLangParam(url))
 		);
 
 		// Convert map to object for JSON

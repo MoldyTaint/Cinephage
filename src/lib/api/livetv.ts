@@ -9,6 +9,37 @@ import type {
 
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
 
+/**
+ * localStorage key for the EPG display-language selection. Empty means "auto":
+ * the server falls back to the instance metadata locale
+ * (language_settings.metadata_locale).
+ */
+export const EPG_DISPLAY_LANGUAGE_STORAGE_KEY = 'cinephage:epg-display-language';
+
+/** Read the persisted EPG display language ('' = auto/instance default). */
+export function getStoredEpgDisplayLanguage(): string {
+	if (typeof localStorage === 'undefined') return '';
+	try {
+		return localStorage.getItem(EPG_DISPLAY_LANGUAGE_STORAGE_KEY) ?? '';
+	} catch {
+		return '';
+	}
+}
+
+/** Persist the EPG display language ('' clears the override). */
+export function storeEpgDisplayLanguage(language: string): void {
+	if (typeof localStorage === 'undefined') return;
+	try {
+		if (language) {
+			localStorage.setItem(EPG_DISPLAY_LANGUAGE_STORAGE_KEY, language);
+		} else {
+			localStorage.removeItem(EPG_DISPLAY_LANGUAGE_STORAGE_KEY);
+		}
+	} catch {
+		// Storage unavailable (private mode): the selection stays in-memory.
+	}
+}
+
 export async function getChannels(params?: Record<string, string>) {
 	return apiGet('/api/livetv/channels', params);
 }

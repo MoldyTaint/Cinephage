@@ -144,6 +144,7 @@ export const POST: RequestHandler = async ({ request }) => {
 						tmdbId,
 						imdbId,
 						title: movieDetails.title,
+						originalLanguage: movieDetails.original_language,
 						originalTitle: movieDetails.original_title,
 						year,
 						overview: movieDetails.overview,

@@ -16,6 +16,7 @@ import {
 	persistEnrichmentTitleVariants
 } from '$lib/server/metadata/provider-resolution.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+import { resolveLanguage } from '$lib/server/metadata/metadata-refresh.js';
 import { createChildLogger } from '$lib/logging';
 import {
 	startRefresh,
@@ -45,9 +46,28 @@ export const POST: RequestHandler = async ({ params }) => {
 	startRefresh(refreshId, { movieId: id });
 
 	try {
+		// Honor the per-item metadata language so a manual refresh produces the
+		// same localized titles/overviews as the background task. A null result
+		// keeps the global TMDB default (language_settings.metadata_locale).
+		const fetchLanguage = await resolveLanguage(
+			movieData.metadataLanguageMode,
+			movieData.metadataLanguageValue,
+			`/movie/${movieData.tmdbId}`,
+			{
+				originalLanguage: movieData.originalLanguage,
+				onProbed: async (probed) => {
+					await db.update(movies).set({ originalLanguage: probed }).where(eq(movies.id, id));
+					logger.info(
+						{ movieId: id, originalLanguage: probed },
+						'[RefreshMovie] Backfilled movie original_language'
+					);
+				}
+			}
+		);
+
 		// Fetch fresh data from TMDB (canonical identity/overview/genres)
 		const [tmdbMovie, externalIds] = await Promise.all([
-			tmdb.getMovie(movieData.tmdbId),
+			tmdb.getMovie(movieData.tmdbId, fetchLanguage),
 			tmdb.getMovieExternalIds(movieData.tmdbId).catch((err) => {
 				logger.warn(
 					{

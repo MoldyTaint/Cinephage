@@ -71,7 +71,12 @@ export function resolveWithOriginalLanguage(
 	storedFilter: string | null | undefined
 ): string | null {
 	const fromUrl = typeof urlParam === 'string' ? urlParam.trim() : '';
-	if (fromUrl) return fromUrl;
+	if (fromUrl && !NO_FILTER_MARKERS.has(fromUrl.toLowerCase())) {
+		// Normalize at the boundary too: `en-US` → `en`; junk → null (fall
+		// through to the stored filter).
+		const normalizedUrl = normalizeTmdbLanguage(fromUrl);
+		if (normalizedUrl) return normalizedUrl;
+	}
 
 	const stored = typeof storedFilter === 'string' ? storedFilter.trim() : '';
 	if (!stored || NO_FILTER_MARKERS.has(stored.toLowerCase())) return null;

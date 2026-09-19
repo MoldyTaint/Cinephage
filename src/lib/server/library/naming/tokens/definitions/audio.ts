@@ -38,9 +38,15 @@ export const audioTokens: TokenDefinition[] = [
 			if (!config.includeMediaInfo) return '';
 			// Canonicalize every source value (ffprobe emits ISO 639-2 like `eng`);
 			// markers such as `multi`/`und` normalize to `und`, never to a guess.
-			const meaningful = (info.audioLanguages ?? [])
-				.map((code) => normalizeLanguageTag(code))
-				.filter((tag) => tag !== 'und');
+			// Duplicate tracks (main + commentary both English) render ONCE.
+			const seen = new Set<string>();
+			const meaningful: string[] = [];
+			for (const code of info.audioLanguages ?? []) {
+				const tag = normalizeLanguageTag(code);
+				if (tag === 'und' || seen.has(tag)) continue;
+				seen.add(tag);
+				meaningful.push(tag);
+			}
 			// Empty or fully-unknown track sets render as `und`.
 			return meaningful.length > 0 ? meaningful.join(' ') : 'und';
 		}

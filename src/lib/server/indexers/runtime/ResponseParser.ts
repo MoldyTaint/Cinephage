@@ -17,7 +17,7 @@ import { TemplateEngine } from '../engine/TemplateEngine';
 import { FilterEngine } from '../engine/FilterEngine';
 import { SelectorEngine, type JsonValue } from '../engine/SelectorEngine';
 import { createChildLogger } from '$lib/logging';
-import { canonicalizeLanguageTag } from '$lib/shared/languages';
+import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
 import { extractInfoHash } from '$lib/server/downloadClients/utils/hashUtils';
@@ -733,8 +733,11 @@ export class ResponseParser {
 		const seen = new Set<string>();
 		const out: string[] = [];
 		for (const token of value.split(/[,;|/]/)) {
-			const canonical = canonicalizeLanguageTag(token.trim());
-			if (!canonical || canonical === 'und' || seen.has(canonical)) continue;
+			// Full ISO-aware normalizer: valid codes outside the curated list
+			// (fil, ceb, ...) must not be silently dropped here while the title
+			// parser and audio ranking accept them.
+			const canonical = normalizeLanguageTag(token.trim());
+			if (canonical === 'und' || seen.has(canonical)) continue;
 			seen.add(canonical);
 			out.push(canonical);
 		}

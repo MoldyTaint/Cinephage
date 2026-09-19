@@ -107,9 +107,10 @@ const TV_APPEND_TO_RESPONSE =
  * exactly once (no manual `&language=` string interpolation).
  */
 function buildDetailsPath(base: string, appendToResponse: string, language: string | null): string {
+	// include_image_language is derived from the effective language inside
+	// tmdb.fetch so images localize with the rest of the response.
 	const params = new URLSearchParams({
-		append_to_response: appendToResponse,
-		include_image_language: 'null,en'
+		append_to_response: appendToResponse
 	});
 	if (language) params.set('language', language);
 	return `${base}?${params.toString()}`;

@@ -16,6 +16,7 @@ import { alternateTitles, movies, series } from '$lib/server/db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import type { MetadataTitleVariant } from '$lib/server/metadata/providers/types.js';
+import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
 import { createChildLogger } from '$lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'AlternateTitleService', logDomain: 'system' });
@@ -526,8 +527,11 @@ async function storeTranslationTitleRows(
 	let inserted = 0;
 	for (const translation of translations) {
 		const title = (translation.data?.title ?? translation.data?.name ?? '').trim();
-		const language = translation.iso_639_1?.trim().toLowerCase();
-		if (!title || !language) continue;
+		// Canonicalize through the server boundary so alias variants (iw/he,
+		// cn/zh-Hans, ...) dedupe against each other; unknown inputs become und
+		// and are skipped rather than stored raw.
+		const language = normalizeLanguageTag(translation.iso_639_1);
+		if (!title || language === 'und') continue;
 
 		const normalized = cleanTitle(title);
 		if (!normalized || ownTitles.has(normalized)) continue;
@@ -599,8 +603,9 @@ export async function storeProviderTitleVariants(
 				title,
 				cleanTitle: normalized,
 				source,
-				// Only set when the provider supplies a real language code.
-				language: variant.language ?? null,
+				// Only set when the provider supplies a real language code;
+				// canonicalized so alias codes dedupe consistently.
+				language: variant.language ? normalizeLanguageTag(variant.language) : null,
 				// e.g. AniList countryOfOrigin on the native title.
 				country: variant.country ?? null
 			});

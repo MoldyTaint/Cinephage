@@ -20,7 +20,8 @@ function generateCleanTitle(title: string): string {
 
 function isLanguageCode(spec: string | undefined): boolean {
 	if (!spec) return false;
-	return /^[a-z]{2,3}$/i.test(spec);
+	// Bare base tags plus full BCP-47 specs ({Title:pt-BR}, {Title:zh-Hans}).
+	return /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(spec);
 }
 
 /**

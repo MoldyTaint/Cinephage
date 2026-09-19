@@ -1831,6 +1831,8 @@
 	"livetv_epgGuide_showingCount": "Показано {count} из {total}",
 	"livetv_epgGuide_today": "Сегодня",
 	"livetv_epgGuide_updating": "Обновление...",
+	"livetv_epg_displayLanguage": "Язык отображения",
+	"livetv_epg_displayLanguageAuto": "Авто (по умолчанию экземпляра)",
 	"livetv_epgSourcePicker_description": "Выберите источник EPG для этого канала",
 	"livetv_epgSourcePicker_failedToLoad": "Не удалось загрузить источники EPG",
 	"livetv_epgSourcePicker_noChannelsAvailable": "Каналы EPG недоступны",

@@ -37,6 +37,7 @@ import {
 } from '$lib/server/library/LibraryAddService.js';
 import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
+import { resolveLocalizedTitlesForFormats } from '$lib/server/library/naming/localization.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { getBlockedTmdbIdSet } from '$lib/server/library/status.js';
 import type {
@@ -836,6 +837,7 @@ export class SmartListService {
 
 				const { imdbId } = await fetchMovieExternalIds(item.tmdbId);
 
+				const localizedTitles = await resolveLocalizedTitlesForFormats('movie', item.tmdbId);
 				const config = namingSettingsService.getConfigSync();
 				const namingService = new NamingService(config);
 				const folderName = namingService.generateMovieFolderName({
@@ -844,7 +846,8 @@ export class SmartListService {
 					year,
 					tmdbId: item.tmdbId,
 					imdbId,
-					collectionName: movieDetails.belongs_to_collection?.name ?? undefined
+					collectionName: movieDetails.belongs_to_collection?.name ?? undefined,
+					localizedTitles
 				} as MediaNamingInfo);
 
 				// Honor the list's language profile; otherwise inherit (NULL) — the
@@ -861,6 +864,7 @@ export class SmartListService {
 						tmdbId: item.tmdbId,
 						imdbId,
 						title: movieDetails.title,
+						originalLanguage: movieDetails.original_language,
 						originalTitle: movieDetails.original_title,
 						year,
 						overview: movieDetails.overview,
@@ -943,6 +947,7 @@ export class SmartListService {
 
 				const { tvdbId, imdbId } = await fetchSeriesExternalIds(item.tmdbId);
 
+				const localizedTitles = await resolveLocalizedTitlesForFormats('series', item.tmdbId);
 				const config = namingSettingsService.getConfigSync();
 				const namingService = new NamingService(config);
 				const folderName = namingService.generateSeriesFolderName({
@@ -951,7 +956,8 @@ export class SmartListService {
 					year,
 					tvdbId,
 					tmdbId: item.tmdbId,
-					imdbId
+					imdbId,
+					localizedTitles
 				} as MediaNamingInfo);
 
 				// Honor the list's language profile; otherwise inherit (NULL) — the
@@ -969,6 +975,7 @@ export class SmartListService {
 						tvdbId,
 						imdbId,
 						title: seriesDetails.name,
+						originalLanguage: seriesDetails.original_language,
 						originalTitle: seriesDetails.original_name,
 						year,
 						overview: seriesDetails.overview,
@@ -1475,6 +1482,7 @@ export class SmartListService {
 				// Extract external IDs before folder name so all tokens are available
 				const { imdbId } = await fetchMovieExternalIds(item.tmdbId);
 
+				const localizedTitles = await resolveLocalizedTitlesForFormats('movie', item.tmdbId);
 				const config = namingSettingsService.getConfigSync();
 				const namingService = new NamingService(config);
 				const folderName = namingService.generateMovieFolderName({
@@ -1483,7 +1491,8 @@ export class SmartListService {
 					year,
 					tmdbId: item.tmdbId,
 					imdbId,
-					collectionName: movieDetails.belongs_to_collection?.name ?? undefined
+					collectionName: movieDetails.belongs_to_collection?.name ?? undefined,
+					localizedTitles
 				} as MediaNamingInfo);
 
 				// Get the language profile if subtitles wanted
@@ -1502,6 +1511,7 @@ export class SmartListService {
 						tmdbId: item.tmdbId,
 						imdbId,
 						title: movieDetails.title,
+						originalLanguage: movieDetails.original_language,
 						originalTitle: movieDetails.original_title,
 						year,
 						overview: movieDetails.overview,
@@ -1638,6 +1648,7 @@ export class SmartListService {
 				// Get external IDs
 				const { tvdbId, imdbId } = await fetchSeriesExternalIds(item.tmdbId);
 
+				const localizedTitles = await resolveLocalizedTitlesForFormats('series', item.tmdbId);
 				const config = namingSettingsService.getConfigSync();
 				const namingService = new NamingService(config);
 				const folderName = namingService.generateSeriesFolderName({
@@ -1646,7 +1657,8 @@ export class SmartListService {
 					year,
 					tvdbId,
 					tmdbId: item.tmdbId,
-					imdbId
+					imdbId,
+					localizedTitles
 				} as MediaNamingInfo);
 
 				// Get the language profile if subtitles wanted
@@ -1666,6 +1678,7 @@ export class SmartListService {
 						tvdbId,
 						imdbId,
 						title: seriesDetails.name,
+						originalLanguage: seriesDetails.original_language,
 						originalTitle: seriesDetails.original_name,
 						year,
 						overview: seriesDetails.overview,

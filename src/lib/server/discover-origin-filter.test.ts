@@ -40,8 +40,14 @@ describe('resolveWithOriginalLanguage (discover origin filter)', () => {
 		expect(resolveWithOriginalLanguage('ja', 'ko')).toBe('ja');
 	});
 
-	it('passes the URL param through unchanged (existing handling)', () => {
-		expect(resolveWithOriginalLanguage('en-US', 'ja')).toBe('en-US');
+	it('normalizes the URL param to the TMDB base tag', () => {
+		expect(resolveWithOriginalLanguage('en-US', 'ja')).toBe('en');
+		expect(resolveWithOriginalLanguage('PT-br', null)).toBe('pt');
+	});
+
+	it('falls back to the stored filter when the URL param is a marker or junk', () => {
+		expect(resolveWithOriginalLanguage('any', 'ja')).toBe('ja');
+		expect(resolveWithOriginalLanguage('!!', 'ja')).toBe('ja');
 	});
 
 	it('treats a whitespace-only URL param as absent', () => {

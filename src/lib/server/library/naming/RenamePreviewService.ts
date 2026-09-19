@@ -1074,20 +1074,12 @@ export class RenamePreviewService {
 				return { success: false, error: 'Source folder does not exist', oldPath: currentPath };
 			}
 
-			// Before renaming the folder, delete the old entry from all enabled
-			// Jellyfin/Emby servers so the stale item is cleanly removed (cascades
-			// to child rows). This prevents the ghost-entry resurrection loop when
-			// Jellyfin's scanner finds orphaned Season/Episode rows at the old path
-			// after the folder move (jellyfin#16883). Plex is unaffected.
-			// Best-effort: failures don't block the rename.
-			// eventKind 'rename': this pre-delete is part of a rename flow, so it
-			// must respect each server's onRename toggle (not onDelete).
-			if (mediaTmdbId) {
-				const manager = getMediaBrowserManager();
-				await manager.deleteMediaItemByTmdb(mediaTmdbId, mediaType as 'movie' | 'series', {
-					eventKind: 'rename'
-				});
-			}
+			// Media-server cleanup is deliberately deferred until AFTER the disk
+			// move (below): Jellyfin/Emby `DELETE /Items/{id}` also deletes the
+			// file location (DeleteFileLocation = true upstream), so calling it
+			// while the files still exist would destroy the media. Once the move
+			// has happened the server's stored path is stale, so the delete
+			// removes only the old library entry.
 
 			// Write per-file transition rows BEFORE the disk rename so a hard
 			// process-kill between the rename and the DB update below can be
@@ -1162,6 +1154,23 @@ export class RenamePreviewService {
 					oldPath: currentPath,
 					newPath: newFolderName
 				};
+			}
+
+			// Delete the old entry from all enabled Jellyfin/Emby servers now that
+			// the move has completed and the DB is updated. The server's stored
+			// path is stale at this point, so its file-location deletion is a
+			// no-op on disk and only the stale library entry (and its children)
+			// is removed — preventing the ghost-entry resurrection loop
+			// (jellyfin#16883) without ever touching media files. Plex has no
+			// item-delete API and reconciles renames via section refreshes.
+			// Best-effort: failures don't block the rename.
+			// eventKind 'rename': this is part of a rename flow, so it respects
+			// each server's onRename toggle (not onDelete).
+			if (mediaTmdbId) {
+				const manager = getMediaBrowserManager();
+				await manager.deleteMediaItemByTmdb(mediaTmdbId, mediaType as 'movie' | 'series', {
+					eventKind: 'rename'
+				});
 			}
 
 			// Notify media servers of both folder paths: the old one as Deleted so

@@ -656,7 +656,7 @@ export class IndexerManager {
 		id: string;
 		name: string;
 		type: string;
-		language: string;
+		language?: string;
 		description?: string;
 		protocol?: string;
 	}> {

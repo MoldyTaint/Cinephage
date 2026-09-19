@@ -24,6 +24,7 @@ import { ValidationError, isAppError } from '$lib/errors';
 import { requireAuth } from '$lib/server/auth/authorization.js';
 import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
+import { resolveLocalizedTitlesForFormats } from '$lib/server/library/naming/localization.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 import { createChildLogger } from '$lib/logging';
@@ -34,23 +35,28 @@ const logger = createChildLogger({ module: 'LibrarySeriesApi', logDomain: 'scans
  * Generate a folder name for a series using the naming service
  * Uses database naming configuration instead of defaults
  */
-function generateSeriesFolderName(
+async function generateSeriesFolderName(
 	title: string,
 	year?: number,
 	tvdbId?: number,
 	tmdbId?: number,
 	imdbId?: string,
 	originalTitle?: string
-): string {
+): Promise<string> {
 	const config = namingSettingsService.getConfigSync();
 	const namingService = new NamingService(config);
+	// Parity with rename preview: localized-title tokens resolve at add time.
+	const localizedTitles = tmdbId
+		? await resolveLocalizedTitlesForFormats('series', tmdbId)
+		: {};
 	const info: MediaNamingInfo = {
 		title,
 		originalTitle,
 		year,
 		tvdbId,
 		tmdbId,
-		imdbId
+		imdbId,
+		localizedTitles
 	};
 	return namingService.generateSeriesFolderName(info);
 }
@@ -219,7 +225,7 @@ export const POST: RequestHandler = async (event) => {
 		const year = tvDetails.first_air_date
 			? new Date(tvDetails.first_air_date).getFullYear()
 			: undefined;
-		const folderName = generateSeriesFolderName(
+		const folderName = await generateSeriesFolderName(
 			tvDetails.name,
 			year,
 			tvdbId ?? undefined,
@@ -251,6 +257,7 @@ export const POST: RequestHandler = async (event) => {
 				tvdbId,
 				imdbId,
 				title: tvDetails.name,
+				originalLanguage: tvDetails.original_language,
 				originalTitle: tvDetails.original_name,
 				year,
 				overview: tvDetails.overview,

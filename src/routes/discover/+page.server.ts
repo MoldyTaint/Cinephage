@@ -60,6 +60,11 @@ export const load: PageServerLoad = async ({ url }) => {
 		urlOriginalLanguage,
 		storedOriginalFilter
 	);
+	// A content-origin filter (URL or the stored instance filter) can only be
+	// applied by the /discover endpoints. The curated rows (trending,
+	// top-rated, now-playing, default dashboard) must yield to the grid when
+	// one is active, or the stored setting would silently do nothing.
+	const originFilterActive = Boolean(withOriginalLanguage);
 
 	const { withKeywords } = params;
 	const { withoutKeywords } = params;
@@ -180,7 +185,11 @@ export const load: PageServerLoad = async ({ url }) => {
 			certification
 		});
 
-		if ((trending === 'day' || trending === 'week') && !trendingHasActiveFilters) {
+		if (
+			(trending === 'day' || trending === 'week') &&
+			!trendingHasActiveFilters &&
+			!originFilterActive
+		) {
 			const trendingResults = (await tmdb.fetch(
 				`/trending/all/${trending}?page=${page}`
 			)) as TmdbPaginatedResult;
@@ -217,7 +226,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			};
 		}
 
-		if (topRated === 'true' && !certification) {
+		if (topRated === 'true' && !certification && !originFilterActive) {
 			let endpoint: string;
 			if (type === 'movie') {
 				endpoint = `/movie/top_rated?page=${page}`;
@@ -309,7 +318,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			};
 		}
 
-		if (nowPlaying === 'true' && !hasActiveDiscoverFilters(params)) {
+		if (nowPlaying === 'true' && !hasActiveDiscoverFilters(params) && !originFilterActive) {
 			const nowPlayingResults = (await tmdb.getNowPlaying(
 				Number(page) || 1
 			)) as unknown as TmdbPaginatedResult;
@@ -345,7 +354,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			};
 		}
 
-		if (isDefaultViewCheck && page === '1') {
+		if (isDefaultViewCheck && page === '1' && !originFilterActive) {
 			// Fetch sections for the dashboard-style view.
 			// Popular/top-rated use /discover/ endpoints so the keyword blocklist
 			// injection in tmdb.fetch() fires. Trending and now-playing don't

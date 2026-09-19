@@ -15,7 +15,8 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getEpgService } from '$lib/server/livetv/epg';
 import { createChildLogger } from '$lib/logging';
-import { normalizeTmdbLanguage } from '$lib/server/languages/normalize';
+import { normalizeLanguageTag } from '$lib/server/languages/normalize';
+import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService.js';
 import { ValidationError } from '$lib/errors';
 import { z } from 'zod';
 
@@ -29,14 +30,22 @@ const paramsSchema = z.object({
 });
 
 /**
- * Resolve the optional `lang` query parameter to a canonical base language tag.
- * Returns null when absent or invalid so the request falls back to the plain
- * EPG columns (invalid input is ignored, never an error).
+ * Resolve the display language for localized EPG text (same chain as the guide
+ * route): explicit `?lang=` → instance metadata locale → null.
  */
-function resolveLangParam(url: URL): string | null {
+async function resolveLangParam(url: URL): Promise<string | null> {
 	const raw = url.searchParams.get('lang');
-	if (!raw || !raw.trim()) return null;
-	return normalizeTmdbLanguage(raw);
+	if (raw && raw.trim()) {
+		const tag = normalizeLanguageTag(raw);
+		return tag === 'und' ? null : tag;
+	}
+	try {
+		const settings = await getLanguageSettingsService().get();
+		const tag = normalizeLanguageTag(settings.metadataLocale);
+		return tag === 'und' ? null : tag;
+	} catch {
+		return null;
+	}
 }
 
 export const GET: RequestHandler = async ({ params, url }) => {
@@ -69,7 +78,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		}
 
 		// Get programs for channel
-		const programs = epgService.getChannelPrograms(channelId, start, end, resolveLangParam(url));
+		const programs = epgService.getChannelPrograms(channelId, start, end, await resolveLangParam(url));
 
 		return json({
 			success: true,

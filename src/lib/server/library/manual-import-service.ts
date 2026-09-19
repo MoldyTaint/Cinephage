@@ -12,6 +12,7 @@ import { parseRelease, extractExternalIds } from '$lib/server/indexers/parser/Re
 import { isVideoFile, mediaInfoService, MediaInfoService } from '$lib/server/library/media-info.js';
 import { unmatchedFileService } from '$lib/server/library/unmatched-file-service.js';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
+import { resolveLocalizedTitlesForFormats } from '$lib/server/library/naming/localization.js';
 import {
 	NamingService,
 	releaseToNamingInfo,
@@ -810,6 +811,10 @@ export class ManualImportService {
 				throw new Error('Selected movie root folder is missing or invalid');
 			}
 
+			const localizedTitles = await resolveLocalizedTitlesForFormats(
+				'movie',
+				request.tmdbId
+			);
 			return {
 				rootFolder,
 				folderName: movie.path,
@@ -819,7 +824,8 @@ export class ManualImportService {
 					year: movie.year ?? undefined,
 					tmdbId: request.tmdbId,
 					imdbId: movie.imdbId ?? undefined,
-					collectionName: movie.collectionName ?? undefined
+					collectionName: movie.collectionName ?? undefined,
+					localizedTitles
 				}
 			};
 		}
@@ -859,13 +865,15 @@ export class ManualImportService {
 		const year = tmdbMovie.release_date
 			? parseInt(tmdbMovie.release_date.split('-')[0], 10)
 			: undefined;
+		const localizedTitles = await resolveLocalizedTitlesForFormats('movie', request.tmdbId);
 		const folderName = this.namingService.generateMovieFolderName({
 			title: tmdbMovie.title,
 			originalTitle: tmdbMovie.original_title || undefined,
 			year,
 			tmdbId: request.tmdbId,
 			imdbId: externalIds.imdb_id ?? undefined,
-			collectionName: tmdbMovie.belongs_to_collection?.name ?? undefined
+			collectionName: tmdbMovie.belongs_to_collection?.name ?? undefined,
+			localizedTitles
 		});
 
 		return {
@@ -877,7 +885,8 @@ export class ManualImportService {
 				year,
 				tmdbId: request.tmdbId,
 				imdbId: externalIds.imdb_id ?? undefined,
-				collectionName: tmdbMovie.belongs_to_collection?.name ?? undefined
+				collectionName: tmdbMovie.belongs_to_collection?.name ?? undefined,
+				localizedTitles
 			}
 		};
 	}
@@ -926,6 +935,10 @@ export class ManualImportService {
 				throw new Error('Selected series root folder is missing or invalid');
 			}
 
+			const localizedTitles = await resolveLocalizedTitlesForFormats(
+				'series',
+				request.tmdbId
+			);
 			return {
 				rootFolder,
 				seriesFolderName: show.path,
@@ -939,7 +952,8 @@ export class ManualImportService {
 					tvdbId: show.tvdbId ?? undefined,
 					imdbId: show.imdbId ?? undefined,
 					isAnime: show.seriesType === 'anime',
-					isDaily: show.seriesType === 'daily'
+					isDaily: show.seriesType === 'daily',
+					localizedTitles
 				}
 			};
 		}
@@ -980,13 +994,15 @@ export class ManualImportService {
 		const year = tvShow.first_air_date
 			? parseInt(tvShow.first_air_date.split('-')[0], 10)
 			: undefined;
+		const localizedTitles = await resolveLocalizedTitlesForFormats('series', request.tmdbId);
 		const seriesFolderName = this.namingService.generateSeriesFolderName({
 			title: tvShow.name,
 			originalTitle: tvShow.original_name || undefined,
 			year,
 			tmdbId: request.tmdbId,
 			tvdbId: externalIds.tvdb_id ?? undefined,
-			imdbId: externalIds.imdb_id ?? undefined
+			imdbId: externalIds.imdb_id ?? undefined,
+			localizedTitles
 		});
 
 		return {
@@ -1001,7 +1017,8 @@ export class ManualImportService {
 				tmdbId: request.tmdbId,
 				tvdbId: externalIds.tvdb_id ?? undefined,
 				imdbId: externalIds.imdb_id ?? undefined,
-				isAnime: rootFolder.mediaSubType === 'anime' || isAnimeMedia
+				isAnime: rootFolder.mediaSubType === 'anime' || isAnimeMedia,
+				localizedTitles
 			}
 		};
 	}

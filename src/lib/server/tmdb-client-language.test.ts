@@ -74,11 +74,13 @@ describe('tmdb client explicit language parameter', () => {
 		);
 	});
 
-	it('getMovie without a language keeps the defaults-only behavior', async () => {
+	it('getMovie without a language applies the language_settings locale authority', async () => {
 		await seedApiKey();
 		await tmdb.getMovie(550);
 		expect(capturedUrls).toHaveLength(1);
-		expect(capturedUrls[0].searchParams.has('language')).toBe(false);
+		// The singleton is the authority even without a global_filters row (the
+		// fresh-install default is en-US from migration 140).
+		expect(capturedUrls[0].searchParams.get('language')).toBe('en-US');
 	});
 
 	it('getSeason forwards an explicit language to TMDB', async () => {
@@ -89,8 +91,12 @@ describe('tmdb client explicit language parameter', () => {
 		expect(capturedUrls[0].pathname).toBe('/3/tv/94997/season/1');
 	});
 
-	it('omits the language parameter when none is requested', async () => {
+	it('omits the language parameter only when nothing resolves', async () => {
 		await seedApiKey();
+		// No singleton and no global_filters: nothing to apply.
+		testDb.sqlite.prepare('DELETE FROM language_settings').run();
+		tmdb.invalidateSettings();
+
 		await tmdb.getSeason(94997, 2);
 		expect(capturedUrls).toHaveLength(1);
 		expect(capturedUrls[0].searchParams.has('language')).toBe(false);
@@ -166,6 +172,17 @@ describe('tmdb settings resolution (language_settings authority)', () => {
 
 		expect(capturedUrls[0].searchParams.get('language')).toBe('fr-FR');
 		expect(capturedUrls[0].searchParams.get('region')).toBe('FR');
+	});
+
+	it('honors the singleton even when global_filters is absent (fresh install)', async () => {
+		await seedLanguageSettings({ metadataLocale: 'de-DE', region: 'DE' });
+		testDb.sqlite.prepare(`DELETE FROM settings WHERE key = 'global_filters'`).run();
+		tmdb.invalidateSettings();
+
+		await tmdb.fetch('/movie/554');
+
+		expect(capturedUrls[0].searchParams.get('language')).toBe('de-DE');
+		expect(capturedUrls[0].searchParams.get('region')).toBe('DE');
 	});
 
 	it('falls back to global_filters when singleton values are unparseable', async () => {
