@@ -59,6 +59,14 @@ export interface UrlSafetyResult {
  * Check if an IP address (v4 or v6) matches any private/reserved range.
  */
 function isPrivateIp(ip: string): boolean {
+	const mappedIpv4 = ip.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+	if (mappedIpv4) {
+		const high = parseInt(mappedIpv4[1], 16);
+		const low = parseInt(mappedIpv4[2], 16);
+		const ipv4 = `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+		if (isPrivateIp(ipv4)) return true;
+	}
+
 	for (const pattern of PRIVATE_IP_PATTERNS) {
 		if (pattern.test(ip)) {
 			return true;
@@ -84,7 +92,7 @@ export function isUrlSafe(urlString: string): UrlSafetyResult {
 		}
 
 		// url.hostname strips brackets from IPv6 (e.g., "[::1]" → "::1")
-		const hostname = url.hostname.toLowerCase();
+		const hostname = normalizeHostname(url.hostname);
 
 		// Check for blocked hostnames
 		if (BLOCKED_HOSTNAMES.includes(hostname)) {
@@ -123,21 +131,22 @@ export async function resolveAndValidateUrl(urlString: string): Promise<UrlSafet
 	// Step 2: DNS resolution check
 	try {
 		const url = new URL(urlString);
-		const hostname = url.hostname;
+		const hostname = normalizeHostname(url.hostname);
 
 		// If hostname is already a literal IP, isUrlSafe already validated it
 		if (isLiteralIp(hostname)) {
 			return { safe: true };
 		}
 
-		// Resolve hostname to IP(s) — check ALL returned addresses
-		const { address } = await dns.lookup(hostname, { verbatim: true });
-
-		if (isPrivateIp(address)) {
-			return {
-				safe: false,
-				reason: `Hostname '${hostname}' resolves to private IP: ${address}`
-			};
+		// Resolve hostname to IPs and reject if any result is private/reserved.
+		const addresses = await dns.lookup(hostname, { all: true, verbatim: true });
+		for (const { address } of addresses) {
+			if (isPrivateIp(address)) {
+				return {
+					safe: false,
+					reason: `Hostname '${hostname}' resolves to private IP: ${address}`
+				};
+			}
 		}
 
 		return { safe: true };
@@ -163,6 +172,13 @@ function isLiteralIp(hostname: string): boolean {
 	return false;
 }
 
+function normalizeHostname(hostname: string): string {
+	const lowerHostname = hostname.toLowerCase();
+	return lowerHostname.startsWith('[') && lowerHostname.endsWith(']')
+		? lowerHostname.slice(1, -1)
+		: lowerHostname;
+}
+
 /**
  * Fetch with timeout using AbortController
  */
@@ -172,6 +188,10 @@ export async function fetchWithTimeout(
 	timeoutMs: number = PROXY_FETCH_TIMEOUT_MS
 ): Promise<Response> {
 	const controller = new AbortController();
+	const externalSignal = options.signal;
+	const abortFromExternal = () => controller.abort(externalSignal?.reason);
+	if (externalSignal?.aborted) abortFromExternal();
+	else externalSignal?.addEventListener('abort', abortFromExternal, { once: true });
 	const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
 	try {
@@ -181,5 +201,6 @@ export async function fetchWithTimeout(
 		});
 	} finally {
 		clearTimeout(timeoutId);
+		externalSignal?.removeEventListener('abort', abortFromExternal);
 	}
 }
