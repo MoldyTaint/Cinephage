@@ -1,4 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { afterAll, describe, it, expect, beforeEach } from 'vitest';
+import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { SubtitleScannerService } from './SubtitleScannerService';
 
 describe('SubtitleScannerService', () => {
@@ -6,6 +9,46 @@ describe('SubtitleScannerService', () => {
 
 	beforeEach(() => {
 		scanner = SubtitleScannerService.getInstance();
+	});
+
+	let tempRoot: string | undefined;
+	afterAll(async () => {
+		if (tempRoot) await rm(tempRoot, { recursive: true, force: true });
+	});
+
+	it('discovers in-root symlinked subtitle files without storing the target path', async () => {
+		tempRoot = await mkdtemp(join(tmpdir(), 'cinephage-subtitles-'));
+		const subtitlesDir = join(tempRoot, 'subs');
+		const targetsDir = join(tempRoot, 'targets');
+		await mkdir(subtitlesDir);
+		await mkdir(targetsDir);
+		await writeFile(join(targetsDir, 'Movie.en.srt'), '1\n00:00:00,000 --> 00:00:01,000\nHi\n');
+		await symlink(join(targetsDir, 'Movie.en.srt'), join(subtitlesDir, 'Movie.en.srt'));
+
+		const discovered = await scanner.discoverSubtitles(subtitlesDir, tempRoot);
+
+		expect(discovered).toHaveLength(1);
+		expect(discovered[0].path).toBe(join(subtitlesDir, 'Movie.en.srt'));
+		expect(discovered[0].relativePath).toBe('subs/Movie.en.srt');
+	});
+
+	it('ignores subtitle symlinks whose targets are outside the scan root', async () => {
+		const root = await mkdtemp(join(tmpdir(), 'cinephage-subtitles-root-'));
+		const outside = await mkdtemp(join(tmpdir(), 'cinephage-subtitles-outside-'));
+		try {
+			const subtitlesDir = join(root, 'subs');
+			await mkdir(subtitlesDir);
+			const outsideFile = join(outside, 'Movie.en.srt');
+			await writeFile(outsideFile, '1\n00:00:00,000 --> 00:00:01,000\nSecret\n');
+			await symlink(outsideFile, join(subtitlesDir, 'Movie.en.srt'));
+
+			const discovered = await scanner.discoverSubtitles(subtitlesDir, root);
+
+			expect(discovered).toEqual([]);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+			await rm(outside, { recursive: true, force: true });
+		}
 	});
 
 	describe('isSubtitleFile()', () => {

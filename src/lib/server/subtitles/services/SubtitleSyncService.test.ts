@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import * as fsPromises from 'node:fs/promises';
 import { eq } from 'drizzle-orm';
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../test/db-helper';
 import {
@@ -174,12 +175,15 @@ describe('SubtitleSyncService.getSubtitlePaths', () => {
 	it('notifies media servers after a successful sync', async () => {
 		notifierQueueUpdateMock.mockReset();
 		vi.mocked(syncSubtitles).mockReset();
-		vi.mocked(syncSubtitles).mockResolvedValue({
-			success: true,
-			offsetMs: 500,
-			splitCount: 0,
-			score: 1,
-			alignmentTimeMs: 1
+		vi.mocked(syncSubtitles).mockImplementation(async (options) => {
+			await writeFile(options.outputPath!, 'synced');
+			return {
+				success: true,
+				offsetMs: 500,
+				splitCount: 0,
+				score: 1,
+				alignmentTimeMs: 1
+			};
 		});
 
 		const files = await testDb.db.select().from(movieFiles).where(eq(movieFiles.movieId, MOVIE_ID));
@@ -208,5 +212,207 @@ describe('SubtitleSyncService.getSubtitlePaths', () => {
 			'Modified',
 			'upgrade'
 		);
+	});
+
+	it('rejects a subtitle symlink replaced with an out-of-root target', async () => {
+		vi.mocked(syncSubtitles).mockReset();
+		const files = await testDb.db.select().from(movieFiles).where(eq(movieFiles.movieId, MOVIE_ID));
+		const movieFile = files[0];
+		const mediaDir = `${ROOT_PATH}/Test Movie (2024)`;
+		const subtitlePath = `${mediaDir}/Test.Movie.2024.escape.en.srt`;
+		const inRootTarget = `${mediaDir}/safe-target.srt`;
+		const outsideDir = `${ROOT_PATH}-outside`;
+		const outsideTarget = `${outsideDir}/escape.srt`;
+		await mkdir(mediaDir, { recursive: true });
+		await mkdir(outsideDir, { recursive: true });
+		await writeFile(`${mediaDir}/${movieFile.relativePath}`, 'video');
+		await writeFile(inRootTarget, 'safe');
+		await writeFile(outsideTarget, 'outside');
+		await symlink(inRootTarget, subtitlePath);
+		await rm(subtitlePath);
+		await symlink(outsideTarget, subtitlePath);
+
+		await testDb.db.insert(subtitles).values({
+			id: 'sub-sync-escape',
+			movieId: MOVIE_ID,
+			movieFileId: movieFile.id,
+			relativePath: 'Test.Movie.2024.escape.en.srt',
+			language: 'en',
+			format: 'srt'
+		});
+
+		const result = await SubtitleSyncService.getInstance().syncSubtitle('sub-sync-escape');
+
+		expect(result.success).toBe(false);
+		expect(result.error).toBe('Subtitle file not found');
+		expect(syncSubtitles).not.toHaveBeenCalled();
+		expect(
+			await import('node:fs/promises').then(({ readFile }) => readFile(outsideTarget, 'utf8'))
+		).toBe('outside');
+		await rm(outsideDir, { recursive: true, force: true });
+	});
+
+	it('rejects an in-root symlink when applying a manual offset', async () => {
+		const files = await testDb.db.select().from(movieFiles).where(eq(movieFiles.movieId, MOVIE_ID));
+		const movieFile = files[0];
+		const mediaDir = `${ROOT_PATH}/Test Movie (2024)`;
+		const subtitlePath = `${mediaDir}/Test.Movie.2024.manual-link.en.srt`;
+		const targetPath = `${mediaDir}/manual-target.srt`;
+		const content = '1\n00:00:00,000 --> 00:00:01,000\nTarget\n';
+		await mkdir(mediaDir, { recursive: true });
+		await writeFile(`${mediaDir}/${movieFile.relativePath}`, 'video');
+		await writeFile(targetPath, content);
+		await symlink(targetPath, subtitlePath);
+
+		await testDb.db.insert(subtitles).values({
+			id: 'sub-sync-manual-link',
+			movieId: MOVIE_ID,
+			movieFileId: movieFile.id,
+			relativePath: 'Test.Movie.2024.manual-link.en.srt',
+			language: 'en',
+			format: 'srt'
+		});
+
+		const result = await SubtitleSyncService.getInstance().applyManualOffset(
+			'sub-sync-manual-link',
+			1000
+		);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toContain('symlink');
+		expect(await fsPromises.readFile(targetPath, 'utf8')).toBe(content);
+	});
+
+	it('rejects an API reference subtitle that traverses outside the media root', async () => {
+		vi.mocked(syncSubtitles).mockReset();
+		const files = await testDb.db.select().from(movieFiles).where(eq(movieFiles.movieId, MOVIE_ID));
+		const movieFile = files[0];
+		const mediaDir = `${ROOT_PATH}/Test Movie (2024)`;
+		await mkdir(mediaDir, { recursive: true });
+		await writeFile(`${mediaDir}/${movieFile.relativePath}`, 'video');
+		await writeFile(`${mediaDir}/reference.en.srt`, 'reference');
+		await writeFile(`${mediaDir}/target.en.srt`, 'target');
+
+		await testDb.db.insert(subtitles).values({
+			id: 'sub-sync-reference-traversal',
+			movieId: MOVIE_ID,
+			movieFileId: movieFile.id,
+			relativePath: 'target.en.srt',
+			language: 'en',
+			format: 'srt'
+		});
+
+		const result = await SubtitleSyncService.getInstance().syncSubtitle(
+			'sub-sync-reference-traversal',
+			{
+				referenceType: 'subtitle',
+				referencePath: '../outside.srt'
+			}
+		);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toContain('reference');
+		expect(syncSubtitles).not.toHaveBeenCalled();
+	});
+
+	it('rejects an in-root symlink as the writable sync subtitle', async () => {
+		vi.mocked(syncSubtitles).mockReset();
+		const files = await testDb.db.select().from(movieFiles).where(eq(movieFiles.movieId, MOVIE_ID));
+		const movieFile = files[0];
+		const mediaDir = `${ROOT_PATH}/Test Movie (2024)`;
+		const subtitlePath = `${mediaDir}/Test.Movie.2024.write-link.en.srt`;
+		await mkdir(mediaDir, { recursive: true });
+		await writeFile(`${mediaDir}/${movieFile.relativePath}`, 'video');
+		await writeFile(`${mediaDir}/write-target.srt`, 'target');
+		await symlink(`${mediaDir}/write-target.srt`, subtitlePath);
+
+		await testDb.db.insert(subtitles).values({
+			id: 'sub-sync-write-link',
+			movieId: MOVIE_ID,
+			movieFileId: movieFile.id,
+			relativePath: 'Test.Movie.2024.write-link.en.srt',
+			language: 'en',
+			format: 'srt'
+		});
+
+		const result = await SubtitleSyncService.getInstance().syncSubtitle('sub-sync-write-link');
+
+		expect(result.success).toBe(false);
+		expect(result.error).toContain('symlink');
+		expect(syncSubtitles).not.toHaveBeenCalled();
+	});
+
+	it('does not commit sync output after the validated subtitle path is retargeted', async () => {
+		const files = await testDb.db.select().from(movieFiles).where(eq(movieFiles.movieId, MOVIE_ID));
+		const movieFile = files[0];
+		const mediaDir = `${ROOT_PATH}/Test Movie (2024)`;
+		const subtitlePath = `${mediaDir}/Test.Movie.2024.commit-race.en.srt`;
+		const outsideDir = `${ROOT_PATH}-commit-race-outside`;
+		const outsideTarget = `${outsideDir}/target.srt`;
+		await mkdir(mediaDir, { recursive: true });
+		await mkdir(outsideDir, { recursive: true });
+		await writeFile(`${mediaDir}/${movieFile.relativePath}`, 'video');
+		await writeFile(subtitlePath, 'safe');
+		await writeFile(outsideTarget, 'outside');
+
+		await testDb.db.insert(subtitles).values({
+			id: 'sub-sync-commit-race',
+			movieId: MOVIE_ID,
+			movieFileId: movieFile.id,
+			relativePath: 'Test.Movie.2024.commit-race.en.srt',
+			language: 'en',
+			format: 'srt'
+		});
+
+		vi.mocked(syncSubtitles).mockImplementation(async (options) => {
+			await rm(options.subtitlePath);
+			await symlink(outsideTarget, options.subtitlePath);
+			await writeFile(options.outputPath!, 'synced');
+			return { success: true, offsetMs: 1, splitCount: 0, score: 1, alignmentTimeMs: 1 };
+		});
+
+		const result = await SubtitleSyncService.getInstance().syncSubtitle('sub-sync-commit-race');
+
+		expect(result.success).toBe(false);
+		expect(result.error).toContain('retargeted');
+		expect(await fsPromises.readFile(outsideTarget, 'utf8')).toBe('outside');
+		await rm(outsideDir, { recursive: true, force: true });
+	});
+
+	it('does not read or write an outside target when a subtitle link retargets after validation', async () => {
+		const files = await testDb.db.select().from(movieFiles).where(eq(movieFiles.movieId, MOVIE_ID));
+		const movieFile = files[0];
+		const mediaDir = `${ROOT_PATH}/Test Movie (2024)`;
+		const subtitlePath = `${mediaDir}/Test.Movie.2024.race.en.srt`;
+		const inRootTarget = `${mediaDir}/race-safe.srt`;
+		const outsideDir = `${ROOT_PATH}-race-outside`;
+		const outsideTarget = `${outsideDir}/race.srt`;
+		await mkdir(mediaDir, { recursive: true });
+		await mkdir(outsideDir, { recursive: true });
+		await writeFile(`${mediaDir}/${movieFile.relativePath}`, 'video');
+		await writeFile(inRootTarget, '1\n00:00:00,000 --> 00:00:01,000\nSafe\n');
+		await writeFile(outsideTarget, 'outside');
+		await symlink(inRootTarget, subtitlePath);
+
+		await testDb.db.insert(subtitles).values({
+			id: 'sub-sync-race',
+			movieId: MOVIE_ID,
+			movieFileId: movieFile.id,
+			relativePath: 'Test.Movie.2024.race.en.srt',
+			language: 'en',
+			format: 'srt'
+		});
+
+		const { openPathWithinBase, resolvePathWithinBase } = await import('../subtitle-paths.js');
+		const validatedPath = await resolvePathWithinBase(mediaDir, subtitlePath);
+		expect(validatedPath).toBe(subtitlePath);
+		await rm(subtitlePath);
+		await symlink(outsideTarget, subtitlePath);
+
+		await expect(openPathWithinBase(mediaDir, validatedPath!, 'r+')).rejects.toThrow(
+			'Path is outside the allowed base'
+		);
+		expect(await fsPromises.readFile(outsideTarget, 'utf8')).toBe('outside');
+		await rm(outsideDir, { recursive: true, force: true });
 	});
 });

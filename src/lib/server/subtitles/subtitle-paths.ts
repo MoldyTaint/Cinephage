@@ -15,10 +15,8 @@
  * Any missing owner (movie/episode/series/root folder/episode file) resolves to
  * null; callers must treat null as "cannot verify on disk".
  *
- * NOTE (Phase 3 Task 5): SubtitleSyncService still builds its own subtitle path
- * plus a paired video path in one query pass. It is intentionally left alone
- * here to avoid a behavior change (its episode no-file fallback and its
- * multi-quality video lookup); Task 5 unifies it on these helpers.
+ * SubtitleSyncService uses these helpers for both subtitle and paired video
+ * paths while retaining its multi-quality file lookup behavior.
  */
 
 import { db } from '$lib/server/db';
@@ -31,7 +29,9 @@ import {
 	subtitles
 } from '$lib/server/db/schema';
 import { inArray } from 'drizzle-orm';
-import { dirname, join, relative } from 'node:path';
+import { constants } from 'node:fs';
+import { lstat, open, realpath } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 /** A row from the `subtitles` table. */
 export type StoredSubtitleRow = typeof subtitles.$inferSelect;
@@ -67,6 +67,140 @@ export function toStoredRelativePath(absPath: string, mediaDirAbs: string): stri
 export async function resolveStoredSubtitlePath(row: StoredSubtitleRow): Promise<string | null> {
 	const resolved = await resolveStoredSubtitlePaths([row]);
 	return resolved.get(row.id) ?? null;
+}
+
+/** Resolve a stored media-relative path without following it outside its base. */
+export async function resolvePathWithinBase(
+	basePath: string,
+	storedPath: string
+): Promise<string | null> {
+	const normalizedBase = resolve(basePath);
+	const candidate = resolve(normalizedBase, storedPath.replace(/[\\/]+/g, sep));
+	if (!isWithinPath(candidate, normalizedBase)) return null;
+
+	const canonicalBase = await realpath(normalizedBase).catch(() => normalizedBase);
+	const canonicalCandidate = await realpath(candidate).catch(async () => {
+		const canonicalParent = await realpath(dirname(candidate)).catch(() => null);
+		return canonicalParent ? join(canonicalParent, basename(candidate)) : null;
+	});
+	if (canonicalCandidate && !isWithinPath(canonicalCandidate, canonicalBase)) return null;
+
+	return candidate;
+}
+
+/**
+ * Resolve a path for a destructive operation. Final symlinks are rejected;
+ * regular files are returned under their canonical parent directory. This
+ * keeps rename/unlink operations portable without following a retargetable
+ * subtitle link or relying on procfs.
+ */
+export async function resolveDestructivePathWithinBase(
+	basePath: string,
+	candidatePath: string
+): Promise<string | null> {
+	const candidate = await resolvePathWithinBase(basePath, candidatePath);
+	if (!candidate) return null;
+
+	const canonicalBase = await realpath(resolve(basePath)).catch(() => null);
+	const canonicalParent = await realpath(dirname(candidate)).catch(() => null);
+	if (!canonicalBase || !canonicalParent || !isWithinPath(canonicalParent, canonicalBase)) {
+		return null;
+	}
+
+	const stats = await lstat(candidate).catch(() => null);
+	if (stats?.isSymbolicLink()) return null;
+
+	return join(canonicalParent, basename(candidate));
+}
+
+/** Resolve an existing regular file for safe read-only use. */
+export async function resolveCanonicalRegularPathWithinBase(
+	basePath: string,
+	candidatePath: string
+): Promise<string | null> {
+	const candidate = await resolvePathWithinBase(basePath, candidatePath);
+	if (!candidate) return null;
+
+	const canonicalBase = await realpath(resolve(basePath)).catch(() => null);
+	const canonicalCandidate = await realpath(candidate).catch(() => null);
+	if (!canonicalBase || !canonicalCandidate || !isWithinPath(canonicalCandidate, canonicalBase)) {
+		return null;
+	}
+
+	const stats = await lstat(canonicalCandidate).catch(() => null);
+	return stats?.isFile() ? canonicalCandidate : null;
+}
+
+/**
+ * Open a path and verify the file selected by that open is still inside the
+ * base. The returned handle is the authority for subsequent I/O, so a later
+ * symlink retarget cannot redirect the operation to another file.
+ */
+export async function openPathWithinBase(
+	basePath: string,
+	candidatePath: string,
+	flags: Parameters<typeof open>[1] = 'r'
+) {
+	const candidate = await resolvePathWithinBase(basePath, candidatePath);
+	if (!candidate) throw new Error('Path is outside the allowed base');
+	if (isWriteMode(flags) && (await lstat(candidate).catch(() => null))?.isSymbolicLink()) {
+		throw new Error('Refusing to open a symlink for writing');
+	}
+
+	const canonicalBase = await realpath(resolve(basePath));
+	const canonicalCandidate = await realpath(candidate).catch(async () => {
+		if (!isWriteMode(flags)) throw new Error('Path does not exist');
+		const canonicalParent = await realpath(dirname(candidate));
+		return join(canonicalParent, basename(candidate));
+	});
+	if (!isWithinPath(canonicalCandidate, canonicalBase)) {
+		throw new Error('Path is outside the allowed base');
+	}
+
+	const handle = await open(canonicalCandidate, addNoFollow(flags));
+	Object.assign(handle, { canonicalPath: canonicalCandidate });
+	try {
+		return handle;
+	} catch (error) {
+		await handle.close();
+		throw error;
+	}
+
+	function addNoFollow(value: Parameters<typeof open>[1]): Parameters<typeof open>[1] {
+		if (!constants.O_NOFOLLOW) return value;
+		if (typeof value === 'number') return value | constants.O_NOFOLLOW;
+		if (typeof value !== 'string') return value;
+
+		const access = value[0];
+		const plus = value.includes('+');
+		const exclusive = value.includes('x');
+		const sync = value.includes('s');
+		let numericFlags =
+			access === 'r'
+				? plus
+					? constants.O_RDWR
+					: constants.O_RDONLY
+				: access === 'w'
+					? (plus ? constants.O_RDWR : constants.O_WRONLY) | constants.O_CREAT | constants.O_TRUNC
+					: (plus ? constants.O_RDWR : constants.O_WRONLY) | constants.O_CREAT | constants.O_APPEND;
+		if (exclusive) numericFlags |= constants.O_EXCL;
+		if (sync) numericFlags |= constants.O_SYNC;
+		return numericFlags | constants.O_NOFOLLOW;
+	}
+
+	function isWriteMode(value: Parameters<typeof open>[1]): boolean {
+		if (typeof value === 'string') return value[0] !== 'r' || value.includes('+');
+		if (typeof value !== 'number') return false;
+		return Boolean(
+			value &
+			(constants.O_WRONLY |
+				constants.O_RDWR |
+				constants.O_APPEND |
+				constants.O_CREAT |
+				constants.O_TRUNC |
+				constants.O_EXCL)
+		);
+	}
 }
 
 /**
@@ -118,12 +252,12 @@ export async function resolveStoredSubtitlePaths(
 	const rootFolderById = new Map(rootFolderRows.map((row) => [row.id, row]));
 
 	for (const row of rows) {
-		result.set(row.id, resolveRow(row));
+		result.set(row.id, await resolveRow(row));
 	}
 
 	return result;
 
-	function resolveRow(row: StoredSubtitleRow): string | null {
+	async function resolveRow(row: StoredSubtitleRow): Promise<string | null> {
 		if (row.movieId) {
 			const movie = movieById.get(row.movieId);
 			if (!movie || !movie.rootFolderId) return null;
@@ -131,7 +265,7 @@ export async function resolveStoredSubtitlePaths(
 			const rootFolder = rootFolderById.get(movie.rootFolderId);
 			if (!rootFolder) return null;
 
-			return join(rootFolder.path, movie.path, row.relativePath);
+			return resolvePathWithinBase(join(rootFolder.path, movie.path), row.relativePath);
 		}
 
 		if (row.episodeId) {
@@ -151,16 +285,19 @@ export async function resolveStoredSubtitlePaths(
 
 			// Subtitle rows carry no episode-file link, so pick the owning file
 			// deterministically (path, then id) so repeated calls agree.
-			return join(
-				rootFolder.path,
-				seriesRow.path,
-				dirname(sortByPath(candidates)[0].relativePath),
+			return resolvePathWithinBase(
+				join(rootFolder.path, seriesRow.path, dirname(sortByPath(candidates)[0].relativePath)),
 				row.relativePath
 			);
 		}
 
 		return null;
 	}
+}
+
+function isWithinPath(pathToCheck: string, basePath: string): boolean {
+	const pathFromBase = relative(basePath, pathToCheck);
+	return pathFromBase === '' || (!pathFromBase.startsWith('..') && !isAbsolute(pathFromBase));
 }
 
 /** Sort episode-file candidates deterministically by relative path then id. */

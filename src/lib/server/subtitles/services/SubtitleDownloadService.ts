@@ -52,7 +52,7 @@ import type {
 } from '../types';
 import { getSubtitleProviderManager } from './SubtitleProviderManager';
 import { isThrottleableError } from '../errors/ProviderErrors';
-import { resolveStoredSubtitlePath } from '../subtitle-paths';
+import { resolveDestructivePathWithinBase, resolveStoredSubtitlePath } from '../subtitle-paths';
 import {
 	detectSubtitleFormatFromContent,
 	isZipContent,
@@ -250,10 +250,13 @@ export class SubtitleDownloadService {
 			tx.delete(subtitles).where(eq(subtitles.id, subtitleId)).run();
 		});
 
-		if (fullPath && existsSync(fullPath)) {
+		const safeFullPath = fullPath
+			? await resolveDestructivePathWithinBase(dirname(fullPath), basename(fullPath))
+			: null;
+		if (safeFullPath && existsSync(safeFullPath)) {
 			try {
-				await unlink(fullPath);
-				logger.debug({ path: fullPath }, 'Deleted subtitle file');
+				await unlink(safeFullPath);
+				logger.debug({ path: safeFullPath }, 'Deleted subtitle file');
 			} catch (error) {
 				logger.warn(
 					{ path: fullPath, error: error instanceof Error ? error.message : String(error) },
@@ -372,8 +375,11 @@ export class SubtitleDownloadService {
 		// Ensure directory exists
 		await mkdir(options.mediaPath, { recursive: true });
 
-		const finalPath = join(options.mediaPath, subtitleFileName);
-		const tempPath = join(options.mediaPath, `.${subtitleFileName}.${randomUUID()}.tmp`);
+		const finalPath = await resolveDestructivePathWithinBase(options.mediaPath, subtitleFileName);
+		if (!finalPath) {
+			throw new Error('Refusing destructive subtitle operation on a symlink or outside path');
+		}
+		const tempPath = join(dirname(finalPath), `.${subtitleFileName}.${randomUUID()}.tmp`);
 
 		// Check for existing subtitle to upgrade/replace.
 		const existingSubtitle = await this.findExistingSubtitle(
@@ -385,7 +391,12 @@ export class SubtitleDownloadService {
 			options.movieFileId
 		);
 
-		const oldPath = existingSubtitle ? await resolveStoredSubtitlePath(existingSubtitle) : null;
+		const oldPathCandidate = existingSubtitle
+			? await resolveStoredSubtitlePath(existingSubtitle)
+			: null;
+		const oldPath = oldPathCandidate
+			? await resolveDestructivePathWithinBase(options.mediaPath, oldPathCandidate)
+			: null;
 		const oldFileExists = oldPath ? existsSync(oldPath) : false;
 
 		// An untracked sidecar already occupying the deterministic final path is
@@ -399,10 +410,21 @@ export class SubtitleDownloadService {
 		try {
 			if (oldFileExists && oldPath === finalPath) {
 				const candidateBackup = `${finalPath}.${randomUUID()}.bak`;
+				const safeOldPath = await resolveDestructivePathWithinBase(
+					dirname(oldPath),
+					basename(oldPath)
+				);
+				const safeBackupPath = await resolveDestructivePathWithinBase(
+					dirname(candidateBackup),
+					basename(candidateBackup)
+				);
+				if (!safeOldPath || !safeBackupPath) {
+					throw new Error('Refusing to move a symlinked subtitle file');
+				}
 				// Only record the backup once the rename actually succeeded, so a
 				// failed backup never causes the original file to be removed.
-				await rename(oldPath as string, candidateBackup);
-				backupPath = candidateBackup;
+				await rename(safeOldPath, safeBackupPath);
+				backupPath = safeBackupPath;
 			} else if (untrackedFileAtFinalPath) {
 				const candidateBackup = `${finalPath}.${randomUUID()}.bak`;
 				await rename(finalPath, candidateBackup);
@@ -449,9 +471,7 @@ export class SubtitleDownloadService {
 					.from(subtitles)
 					.where(
 						and(
-							options.movieId
-								? eq(subtitles.movieId, options.movieId)
-								: isNull(subtitles.movieId),
+							options.movieId ? eq(subtitles.movieId, options.movieId) : isNull(subtitles.movieId),
 							options.episodeId
 								? eq(subtitles.episodeId, options.episodeId)
 								: isNull(subtitles.episodeId),
@@ -514,11 +534,7 @@ export class SubtitleDownloadService {
 				await this.safeUnlink(finalPath);
 				await this.safeRename(backupPath, finalPath);
 			} else if (
-				!(await this.hasCommittedRowForPath(
-					options.movieId,
-					options.episodeId,
-					subtitleFileName
-				))
+				!(await this.hasCommittedRowForPath(options.movieId, options.episodeId, subtitleFileName))
 			) {
 				await this.safeUnlink(finalPath);
 			}
@@ -531,7 +547,11 @@ export class SubtitleDownloadService {
 		}
 		if (oldFileExists && oldPath && oldPath !== finalPath) {
 			try {
-				await unlink(oldPath);
+				const safeOldPath = await resolveDestructivePathWithinBase(
+					dirname(oldPath),
+					basename(oldPath)
+				);
+				if (safeOldPath) await unlink(safeOldPath);
 			} catch (error) {
 				logger.warn(
 					{ path: oldPath, error: error instanceof Error ? error.message : String(error) },
@@ -676,10 +696,7 @@ export class SubtitleDownloadService {
 				`Subtitle zip archive has too many entries (${entries.length} > ${MAX_SUBTITLE_ARCHIVE_ENTRIES})`
 			);
 		}
-		const totalUncompressed = entries.reduce(
-			(sum, entry) => sum + (entry.header?.size ?? 0),
-			0
-		);
+		const totalUncompressed = entries.reduce((sum, entry) => sum + (entry.header?.size ?? 0), 0);
 		if (totalUncompressed > MAX_SUBTITLE_UNCOMPRESSED_BYTES) {
 			throw new Error(
 				`Subtitle zip archive expands to ${Math.round(
@@ -721,7 +738,8 @@ export class SubtitleDownloadService {
 	/** Best-effort unlink that never throws. */
 	private async safeUnlink(path: string): Promise<void> {
 		try {
-			await unlink(path);
+			const safePath = await resolveDestructivePathWithinBase(dirname(path), basename(path));
+			if (safePath) await unlink(safePath);
 		} catch {
 			// Already gone or never created.
 		}
@@ -748,7 +766,10 @@ export class SubtitleDownloadService {
 	/** Best-effort rename used for rollback; never throws. */
 	private async safeRename(from: string, to: string): Promise<void> {
 		try {
-			await rename(from, to);
+			const safeFrom = await resolveDestructivePathWithinBase(dirname(from), basename(from));
+			const safeTo = await resolveDestructivePathWithinBase(dirname(to), basename(to));
+			if (!safeFrom || !safeTo) throw new Error('Refusing to rename a symlinked subtitle file');
+			await rename(safeFrom, safeTo);
 		} catch (error) {
 			logger.error(
 				{ from, to, error: error instanceof Error ? error.message : String(error) },

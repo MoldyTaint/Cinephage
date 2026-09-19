@@ -621,6 +621,46 @@ describe('SubtitleDownloadService', () => {
 		expect(historyRows[0].action).toBe('deleted');
 	});
 
+	it('rejects download replacement when the destination is a symlink', async () => {
+		const movieId = await seedMovie();
+		const mediaDir = `${ROOT_PATH}/Test Movie (2024)`;
+		const outsideDir = `${ROOT_PATH}-outside`;
+		const outsidePath = `${outsideDir}/existing.srt`;
+		const destination = `${mediaDir}/Test.Movie.2024.en.srt`;
+		await fsPromises.mkdir(mediaDir, { recursive: true });
+		await fsPromises.mkdir(outsideDir, { recursive: true });
+		await fsPromises.writeFile(outsidePath, 'outside');
+		await fsPromises.symlink(outsidePath, destination);
+
+		await expect(
+			SubtitleDownloadService.getInstance().downloadForMovie(movieId, buildSearchResult())
+		).rejects.toThrow('symlink');
+		expect(await fsPromises.readFile(outsidePath, 'utf8')).toBe('outside');
+		expect((await fsPromises.lstat(destination)).isSymbolicLink()).toBe(true);
+	});
+
+	it('does not unlink a symlinked subtitle during delete', async () => {
+		const movieId = await seedMovie();
+		const mediaDir = `${ROOT_PATH}/Test Movie (2024)`;
+		const target = `${mediaDir}/safe-target.srt`;
+		const link = `${mediaDir}/gone.en.srt`;
+		await fsPromises.mkdir(mediaDir, { recursive: true });
+		await fsPromises.writeFile(target, SRT_CONTENT);
+		await fsPromises.symlink(target, link);
+		await testDb.db.insert(subtitles).values({
+			id: 'symlink-delete',
+			movieId,
+			relativePath: 'gone.en.srt',
+			language: 'en',
+			format: 'srt'
+		});
+
+		await SubtitleDownloadService.getInstance().delete('symlink-delete');
+
+		expect(await fsPromises.readFile(target, 'utf8')).toBe(SRT_CONTENT);
+		expect((await fsPromises.lstat(link)).isSymbolicLink()).toBe(true);
+	});
+
 	it('does not clobber a row for another file when a multi-file movie has no movieFileId', async () => {
 		const { movieId } = await seedMultiFileMovie();
 

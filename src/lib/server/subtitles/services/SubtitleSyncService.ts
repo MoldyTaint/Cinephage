@@ -9,7 +9,8 @@
  */
 
 import { existsSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { rename, unlink } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { db } from '$lib/server/db';
 import {
@@ -30,6 +31,13 @@ import { getMediaBrowserNotifier } from '$lib/server/notifications/mediabrowser'
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import type { SubtitleSyncResult } from '../types';
 import { syncSubtitles } from '../sync/index.js';
+import {
+	openPathWithinBase,
+	resolveCanonicalRegularPathWithinBase,
+	resolveDestructivePathWithinBase,
+	resolvePathWithinBase,
+	resolveStoredSubtitlePath
+} from '../subtitle-paths.js';
 
 /** Sync options for subtitle synchronization */
 export interface SyncOptions {
@@ -97,7 +105,8 @@ export class SubtitleSyncService {
 		}
 
 		// Get paths
-		const { subtitlePath, videoPath } = await this.getSubtitlePaths(subtitle[0]);
+		const { subtitlePath, videoPath, subtitleBasePath, videoBasePath } =
+			await this.getSubtitlePaths(subtitle[0]);
 		if (!subtitlePath || !existsSync(subtitlePath)) {
 			return {
 				success: false,
@@ -115,7 +124,10 @@ export class SubtitleSyncService {
 		}
 
 		// Perform sync
-		const result = await this.performSync(subtitlePath, videoPath, options);
+		const result = await this.performSync(subtitlePath, videoPath, options, {
+			subtitleBasePath,
+			videoBasePath
+		});
 
 		// Update database if successful
 		if (result.success) {
@@ -179,7 +191,7 @@ export class SubtitleSyncService {
 		}
 
 		// Get path
-		const { subtitlePath } = await this.getSubtitlePaths(subtitle[0]);
+		const { subtitlePath, subtitleBasePath } = await this.getSubtitlePaths(subtitle[0]);
 		if (!subtitlePath || !existsSync(subtitlePath)) {
 			return {
 				success: false,
@@ -188,11 +200,15 @@ export class SubtitleSyncService {
 			};
 		}
 
+		let subtitleHandle;
 		try {
-			// Read and shift subtitle
-			const content = await readFile(subtitlePath, 'utf-8');
+			subtitleHandle = await openPathWithinBase(subtitleBasePath!, subtitlePath, 'r+');
+			// Read and shift subtitle through the opened handle, not the pathname.
+			const content = await subtitleHandle.readFile('utf-8');
 			const shifted = this.shiftSrtTiming(content, offsetMs);
-			await writeFile(subtitlePath, shifted, 'utf-8');
+			await subtitleHandle.truncate(0);
+			const shiftedBuffer = Buffer.from(shifted, 'utf-8');
+			await subtitleHandle.write(shiftedBuffer, 0, shiftedBuffer.length, 0);
 
 			// Update database
 			await db
@@ -226,6 +242,8 @@ export class SubtitleSyncService {
 				offsetMs: 0,
 				error: error instanceof Error ? error.message : String(error)
 			};
+		} finally {
+			await subtitleHandle?.close().catch(() => undefined);
 		}
 	}
 
@@ -241,15 +259,40 @@ export class SubtitleSyncService {
 	private async performSync(
 		subtitlePath: string,
 		videoPath: string,
-		options?: SyncOptions
+		options?: SyncOptions,
+		paths?: { subtitleBasePath?: string | null; videoBasePath?: string | null }
 	): Promise<SubtitleSyncResult> {
 		const splitPenalty = options?.splitPenalty ?? SubtitleSyncService.DEFAULT_SPLIT_PENALTY;
 		const noSplits = options?.noSplits ?? false;
 
 		try {
+			if (!paths?.subtitleBasePath || !paths.videoBasePath) {
+				throw new Error('Subtitle sync requires validated media paths');
+			}
+
+			const safeSubtitlePath = await resolveDestructivePathWithinBase(
+				paths.subtitleBasePath,
+				subtitlePath
+			);
+			if (!safeSubtitlePath) throw new Error('Refusing to sync a symlinked subtitle file');
+
+			const safeVideoPath = await resolveCanonicalRegularPathWithinBase(
+				paths.videoBasePath,
+				videoPath
+			);
+			if (!safeVideoPath) throw new Error('Video reference path is outside the allowed base');
+
 			const referenceType = options?.referenceType ?? 'video';
 			const referencePath =
-				referenceType === 'subtitle' && options?.referencePath ? options.referencePath : videoPath;
+				referenceType === 'subtitle'
+					? await resolveCanonicalRegularPathWithinBase(
+							paths.subtitleBasePath,
+							options?.referencePath ?? ''
+						)
+					: safeVideoPath;
+			if (!referencePath) throw new Error('Subtitle reference path is outside the allowed base');
+
+			const outputPath = `${safeSubtitlePath}.${randomUUID()}.sync.tmp`;
 
 			logger.debug(
 				{
@@ -265,12 +308,14 @@ export class SubtitleSyncService {
 			const result = await syncSubtitles({
 				referenceType,
 				referencePath,
-				subtitlePath,
+				subtitlePath: safeSubtitlePath,
+				outputPath,
 				splitPenalty,
 				noSplits
 			});
 
 			if (!result.success) {
+				await unlink(outputPath).catch(() => undefined);
 				logger.error({ error: result.error }, 'Native subtitle sync failed');
 				return {
 					success: false,
@@ -278,6 +323,16 @@ export class SubtitleSyncService {
 					error: this.toUserFriendlySyncError(result.error ?? 'Sync failed')
 				};
 			}
+
+			const safeFinalPath = await resolveDestructivePathWithinBase(
+				paths.subtitleBasePath,
+				safeSubtitlePath
+			);
+			if (!safeFinalPath) {
+				await unlink(outputPath).catch(() => undefined);
+				throw new Error('Refusing to replace a retargeted subtitle symlink');
+			}
+			await rename(outputPath, safeFinalPath);
 
 			logger.info(
 				{
@@ -360,12 +415,17 @@ export class SubtitleSyncService {
 	/**
 	 * Get full paths for a subtitle record
 	 */
-	private async getSubtitlePaths(
-		subtitle: typeof subtitles.$inferSelect
-	): Promise<{ subtitlePath: string | null; videoPath: string | null }> {
+	private async getSubtitlePaths(subtitle: typeof subtitles.$inferSelect): Promise<{
+		subtitlePath: string | null;
+		videoPath: string | null;
+		subtitleBasePath: string | null;
+		videoBasePath: string | null;
+	}> {
 		if (subtitle.movieId) {
 			const movie = await db.select().from(movies).where(eq(movies.id, subtitle.movieId)).limit(1);
-			if (!movie[0]) return { subtitlePath: null, videoPath: null };
+			if (!movie[0]) {
+				return { subtitlePath: null, videoPath: null, subtitleBasePath: null, videoBasePath: null };
+			}
 
 			const files = await db
 				.select()
@@ -389,8 +449,10 @@ export class SubtitleSyncService {
 			const mediaPath = join(rootPath, movie[0].path);
 
 			return {
-				subtitlePath: join(mediaPath, subtitle.relativePath),
-				videoPath: file ? join(mediaPath, file.relativePath) : null
+				subtitlePath: await resolveStoredSubtitlePath(subtitle),
+				videoPath: file ? await resolvePathWithinBase(mediaPath, file.relativePath) : null,
+				subtitleBasePath: mediaPath,
+				videoBasePath: mediaPath
 			};
 		}
 
@@ -400,14 +462,18 @@ export class SubtitleSyncService {
 				.from(episodes)
 				.where(eq(episodes.id, subtitle.episodeId))
 				.limit(1);
-			if (!episode[0]) return { subtitlePath: null, videoPath: null };
+			if (!episode[0]) {
+				return { subtitlePath: null, videoPath: null, subtitleBasePath: null, videoBasePath: null };
+			}
 
 			const seriesData = await db
 				.select()
 				.from(series)
 				.where(eq(series.id, episode[0].seriesId))
 				.limit(1);
-			if (!seriesData[0]) return { subtitlePath: null, videoPath: null };
+			if (!seriesData[0]) {
+				return { subtitlePath: null, videoPath: null, subtitleBasePath: null, videoBasePath: null };
+			}
 
 			const files = await db
 				.select()
@@ -432,12 +498,16 @@ export class SubtitleSyncService {
 				: join(rootPath, seriesData[0].path);
 
 			return {
-				subtitlePath: join(mediaPath, subtitle.relativePath),
-				videoPath: file ? join(mediaPath, basename(file.relativePath)) : null
+				subtitlePath: await resolveStoredSubtitlePath(subtitle),
+				videoPath: file
+					? await resolvePathWithinBase(mediaPath, basename(file.relativePath))
+					: null,
+				subtitleBasePath: mediaPath,
+				videoBasePath: mediaPath
 			};
 		}
 
-		return { subtitlePath: null, videoPath: null };
+		return { subtitlePath: null, videoPath: null, subtitleBasePath: null, videoBasePath: null };
 	}
 
 	private async isStreamerProfileSubtitle(

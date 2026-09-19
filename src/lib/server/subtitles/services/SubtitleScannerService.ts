@@ -17,9 +17,9 @@
  * path) and inserts/updates/deletes in one transaction per media item.
  */
 
-import { readdir, stat } from 'fs/promises';
+import { readdir, realpath, stat } from 'fs/promises';
 import { existsSync } from 'node:fs';
-import { join, basename, extname, posix } from 'path';
+import { join, basename, extname, posix, relative } from 'path';
 import { db } from '$lib/server/db';
 import {
 	subtitles,
@@ -407,6 +407,7 @@ class SubtitleScannerService {
 
 		try {
 			const entries = await readdir(directoryPath, { withFileTypes: true });
+			const realRootPath = await realpath(rootPath);
 
 			for (const entry of entries) {
 				const fullPath = join(directoryPath, entry.name);
@@ -419,10 +420,16 @@ class SubtitleScannerService {
 					// Recursively scan subdirectories
 					const subResults = await this.discoverSubtitles(fullPath, rootPath, assumedLanguage);
 					subtitleFiles.push(...subResults);
-				} else if (entry.isFile() && this.isSubtitleFile(entry.name)) {
+				} else if (this.isSubtitleFile(entry.name)) {
 					try {
 						const stats = await stat(fullPath);
-						const relativePath = fullPath.replace(rootPath + '/', '');
+						if (!stats.isFile()) continue;
+						const realFilePath = await realpath(fullPath);
+						const pathFromRoot = relative(realRootPath, realFilePath);
+						if (pathFromRoot === '..' || pathFromRoot.split(/[\\/]+/)[0] === '..') continue;
+						const relativePath = relative(rootPath, fullPath)
+							.split(/[\\/]+/)
+							.join('/');
 						const baseName = basename(fullPath);
 
 						// Try to find associated video file
@@ -436,9 +443,7 @@ class SubtitleScannerService {
 							// `unknown_subtitle_policy = assume-language` may map an
 							// undetermined filename to the configured language.
 							language:
-								detectedLanguage === 'und' && assumedLanguage
-									? assumedLanguage
-									: detectedLanguage,
+								detectedLanguage === 'und' && assumedLanguage ? assumedLanguage : detectedLanguage,
 							isForced: this.isForced(baseName),
 							isHearingImpaired: this.isHearingImpaired(baseName),
 							format: this.getFormat(baseName),
@@ -811,9 +816,7 @@ class SubtitleScannerService {
 		}
 
 		const episodeIds = uniqueStrings(files.flatMap((file) => file.episodeIds ?? []));
-		return episodeIds.length === 1
-			? { episodeIds: episodeIds, episodeFile: files[0] }
-			: null;
+		return episodeIds.length === 1 ? { episodeIds: episodeIds, episodeFile: files[0] } : null;
 	}
 
 	/**

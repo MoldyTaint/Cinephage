@@ -22,8 +22,13 @@ vi.mock('$lib/server/db', () => ({
 	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
 
-const { resolveStoredSubtitlePath, resolveStoredSubtitlePaths, toStoredRelativePath } =
-	await import('./subtitle-paths');
+const {
+	resolveDestructivePathWithinBase,
+	openPathWithinBase,
+	resolveStoredSubtitlePath,
+	resolveStoredSubtitlePaths,
+	toStoredRelativePath
+} = await import('./subtitle-paths');
 
 type Row = typeof subtitles.$inferSelect;
 
@@ -150,6 +155,61 @@ describe('subtitle-paths', () => {
 		).toBeNull();
 		expect(await resolveStoredSubtitlePath(row({ id: 'd', episodeId: 'ep-no-file' }))).toBeNull();
 		expect(await resolveStoredSubtitlePath(row({ id: 'e' }))).toBeNull();
+	});
+
+	it('rejects stored subtitle paths that traverse with either separator', async () => {
+		seedRootFolder('rf-movies', '/media/movies');
+		seedMovie('movie-traversal', 'Movie', 'rf-movies');
+
+		expect(
+			await resolveStoredSubtitlePath(
+				row({ id: 'slash-traversal', movieId: 'movie-traversal', relativePath: '../outside.srt' })
+			)
+		).toBeNull();
+		expect(
+			await resolveStoredSubtitlePath(
+				row({
+					id: 'backslash-traversal',
+					movieId: 'movie-traversal',
+					relativePath: '..\\outside.srt'
+				})
+			)
+		).toBeNull();
+	});
+
+	it('rejects symlink targets for destructive operations without procfs', async () => {
+		const base = '/tmp/cinephage-subtitle-paths-destructive';
+		const target = join(base, 'safe-target.srt');
+		const link = join(base, 'subtitle.en.srt');
+		await (await import('node:fs/promises')).rm(base, { recursive: true, force: true });
+		await (await import('node:fs/promises')).mkdir(base, { recursive: true });
+		await (await import('node:fs/promises')).writeFile(target, 'safe');
+		await (await import('node:fs/promises')).symlink(target, link);
+
+		expect(await resolveDestructivePathWithinBase(base, 'subtitle.en.srt')).toBeNull();
+		expect(await resolveDestructivePathWithinBase(base, 'safe-target.srt')).toBe(target);
+	});
+
+	it('preserves exclusive create, truncate, and append open semantics', async () => {
+		const base = '/tmp/cinephage-subtitle-paths-open-flags';
+		await (await import('node:fs/promises')).rm(base, { recursive: true, force: true });
+		await (await import('node:fs/promises')).mkdir(base, { recursive: true });
+
+		const created = await openPathWithinBase(base, 'created.srt', 'wx');
+		await created.writeFile('created');
+		await created.close();
+
+		const truncated = await openPathWithinBase(base, 'created.srt', 'w');
+		await truncated.writeFile('truncated');
+		await truncated.close();
+
+		const appended = await openPathWithinBase(base, 'created.srt', 'a');
+		await appended.writeFile('-appended');
+		await appended.close();
+
+		expect(
+			await (await import('node:fs/promises')).readFile(join(base, 'created.srt'), 'utf8')
+		).toBe('truncated-appended');
 	});
 
 	it('batch-resolves every row into a map', async () => {
