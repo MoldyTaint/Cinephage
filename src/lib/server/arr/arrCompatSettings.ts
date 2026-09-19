@@ -1,14 +1,17 @@
 /**
  * ARR COMPATIBILITY — UNSUPPORTED, BEST-EFFORT, NON-PRIORITY.
  *
- * Cinephage is its own thing. This Radarr/Sonarr-compatible surface exists
- * only as a convenience for external tools. We do not cater to the arr
- * stack: when an arr client's expectations conflict with Cinephage
- * behavior, Cinephage wins, always. Never reshape, gate, or slow down core
- * behavior to satisfy arr compatibility, and arr-only failures are not
- * release blockers.
+ * Cinephage is its own thing — completely different, proud to not be another
+ * one of them. The Radarr/Sonarr-compatible surface exists only as a
+ * convenience for external tools; it is not a product goal and we will not
+ * shape Cinephage around it. When an arr client's expectations conflict with
+ * Cinephage behavior, Cinephage wins, always. Never reshape, gate, or slow
+ * down core behavior to satisfy arr compatibility, and arr-only failures are
+ * not release blockers.
  *
- * Fuck the ARR stack and everything with it. It's not our shit nor our problem.
+ * The arr projects are good at what they are. We're just not interested in
+ * being one of them: "They're good at what they are, but fuck that."
+ * — project owner
  *
  * Toggle for the Radarr/Sonarr-compatible API layer. Off by default.
  */

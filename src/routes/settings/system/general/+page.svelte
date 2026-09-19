@@ -159,8 +159,8 @@
 		}
 	}
 
-	// Arr-compat toggle: unsupported, non-priority, not our problem. Fuck the
-	// ARR stack — Cinephage behavior wins over arr expectations.
+	// Arr-compat toggle: unsupported, non-priority. The arr projects are good
+	// at what they are, but Cinephage is its own thing — behavior here wins.
 	// =====================
 	// Radarr/Sonarr Compatibility
 	// =====================
