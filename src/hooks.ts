@@ -7,6 +7,10 @@ import type { Reroute } from '@sveltejs/kit';
  * ignored since routing happens before `handle` ever runs.
  */
 
+// Arr-compat path casing only — unsupported, non-priority, not our problem.
+// Fuck the ARR stack: if arr expectations conflict with Cinephage behavior,
+// Cinephage wins. Policy: src/lib/server/arr/arrCompatSettings.ts.
+//
 // Real Radarr/Sonarr run on ASP.NET Core, which routes case-insensitively
 // by default - arr clients (Jellyseerr/Overseerr(Seerr), autobrr, ...) rely on that
 // and send segments like `qualityProfile` instead of the lowercase route
