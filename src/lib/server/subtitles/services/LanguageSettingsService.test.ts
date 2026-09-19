@@ -22,6 +22,7 @@ describe('LanguageSettingsService', () => {
 	beforeEach(() => {
 		settingsService = LanguageSettingsService.getInstance();
 		testDb.sqlite.prepare('DELETE FROM language_settings').run();
+		testDb.sqlite.prepare('DELETE FROM language_profiles').run();
 	});
 
 	afterAll(() => {
@@ -179,9 +180,22 @@ describe('LanguageSettingsService', () => {
 
 		it('should return the configured default profile id', async () => {
 			const profileId = '11111111-1111-4111-8111-111111111111';
+			testDb.sqlite
+				.prepare(
+					`INSERT INTO language_profiles (id, name, audio, subtitles, cutoff_rank, minimum_score, upgrades_allowed)
+					 VALUES (?, 'Default', '{"preferOriginal":true,"languages":[],"mode":"prefer"}', '[{"tag":"en","variant":"regular","accessibility":"any"}]', NULL, 70, 1)`
+				)
+				.run(profileId);
+
 			await settingsService.update({ defaultProfileId: profileId });
 
 			expect(await settingsService.getDefaultProfileId()).toBe(profileId);
+		});
+
+		it('should reject a default profile id that does not exist', async () => {
+			await expect(
+				settingsService.update({ defaultProfileId: '11111111-1111-4111-8111-111111111111' })
+			).rejects.toThrow(/not found/i);
 		});
 	});
 });

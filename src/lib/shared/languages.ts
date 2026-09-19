@@ -175,7 +175,9 @@ const LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
 	'zh-hk': 'zh-Hant',
 	'es-la': 'es-419',
 	nob: 'no',
-	nno: 'no'
+	nno: 'no',
+	nb: 'no',
+	nn: 'no'
 };
 
 const LANGUAGE_LOOKUP = new Map<string, string>();

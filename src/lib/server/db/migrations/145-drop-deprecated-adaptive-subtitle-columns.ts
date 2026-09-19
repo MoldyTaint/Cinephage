@@ -9,7 +9,7 @@ const logger = createChildLogger({ logDomain: 'system' as const });
  * Version 142: Drop the deprecated per-item adaptive subtitle columns (Phase 7).
  *
  * movies/episodes.failed_subtitle_attempts and first_subtitle_search_at were
- * superseded in migration 138 by per-requirement rows in subtitle_search_state
+ * superseded in migration 141 by per-requirement rows in subtitle_search_state
  * and have had no readers since. `last_search_time` stays: the release-search
  * cooldown (CooldownStage / SearchCooldownSpecification) still reads and writes
  * it.

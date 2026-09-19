@@ -72,14 +72,6 @@ vi.mock('$lib/server/monitoring/MonitoringScheduler.js', () => ({
 	}
 }));
 
-vi.mock('$lib/server/subtitles/services/LanguageProfileService.js', () => ({
-	LanguageProfileService: {
-		getInstance: () => ({
-			getDefaultProfile: vi.fn().mockResolvedValue(undefined)
-		})
-	}
-}));
-
 vi.mock('$lib/server/subtitles/services/SubtitleImportService.js', () => ({
 	searchSubtitlesForNewMedia: vi.fn()
 }));
@@ -356,6 +348,8 @@ describe('MediaMatcherService acceptMatch root folder conflict guard (bug #488)'
 		const [created] = await testDb.db.select().from(series).where(eq(series.tmdbId, 9999));
 		expect(created.rootFolderId).toBe('rf-b');
 		expect(created.path).toBe('New Show (2020)');
+		// Writers never persist the resolved default profile onto items.
+		expect(created.languageProfileId).toBeNull();
 		expect(await countEpisodeFiles(created.id)).toBe(1);
 
 		const epRows = await testDb.db
@@ -547,5 +541,8 @@ describe('title matching hardening (issue #513 leftovers)', () => {
 		);
 		expect(result.matched).toBe(true);
 		expect(result.tmdbId).toBe(8587);
+
+		const [createdMovie] = await testDb.db.select().from(movies).where(eq(movies.tmdbId, 8587));
+		expect(createdMovie.languageProfileId).toBeNull();
 	});
 });

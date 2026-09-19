@@ -16,7 +16,7 @@
  */
 
 import { db } from '$lib/server/db';
-import { languageSettings } from '$lib/server/db/schema';
+import { languageProfiles, languageSettings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
 import {
@@ -110,6 +110,20 @@ export class LanguageSettingsService {
 	 */
 	async update(patch: LanguageSettingsUpdateInput): Promise<LanguageSettingsData> {
 		const parsed = languageSettingsUpdateSchema.parse(patch ?? {});
+
+		// A non-null default must reference a real profile; sqlite connections do
+		// not enforce FKs, so a random UUID would otherwise persist silently and
+		// resolution would fall through to "no default" with no warning.
+		if (parsed.defaultProfileId) {
+			const profileExists = await db
+				.select({ id: languageProfiles.id })
+				.from(languageProfiles)
+				.where(eq(languageProfiles.id, parsed.defaultProfileId))
+				.limit(1);
+			if (profileExists.length === 0) {
+				throw new Error(`Language profile not found: ${parsed.defaultProfileId}`);
+			}
+		}
 
 		// Make sure the singleton row exists before updating it.
 		await this.get();

@@ -623,10 +623,28 @@ export const MIGRATION_COLUMN_MAP: Record<number, Array<{ table: string; column:
 		{ table: 'libraries', column: 'language_profile_id' }
 	],
 	141: [{ table: 'subtitles', column: 'last_checked_at' }],
+	143: [
+		{ table: 'media_server_synced_items', column: 'audio_languages_raw' },
+		{ table: 'media_server_synced_items', column: 'subtitle_languages_raw' },
+		{ table: 'epg_programs', column: 'title_i18n' },
+		{ table: 'epg_programs', column: 'description_i18n' },
+		{ table: 'epg_programs', column: 'category_i18n' }
+	],
 	144: [{ table: 'language_settings', column: 'prefer_original_title' }],
+	146: [
+		{ table: 'movies', column: 'subtitle_requirements_override' },
+		{ table: 'series', column: 'subtitle_requirements_override' },
+		{ table: 'episodes', column: 'subtitle_requirements_override' }
+	],
 	147: [
 		{ table: 'movies', column: 'language_shortfall' },
 		{ table: 'series', column: 'language_shortfall' }
+	],
+	151: [
+		{ table: 'episodes', column: 'wants_subtitles_override' },
+		{ table: 'movies', column: 'language_profile_id' },
+		{ table: 'series', column: 'language_profile_id' },
+		{ table: 'smart_lists', column: 'language_profile_id' }
 	]
 };
 
@@ -642,11 +660,16 @@ export function detectAndFixSchemaDrift(sqlite: Database.Database): void {
 
 		for (const { table, column } of columns) {
 			if (tableExists(sqlite, table) && !columnExists(sqlite, table, column)) {
-				// Column should exist but doesn't - mark migration as failed so it re-runs
+				// Column should exist but doesn't - mark this migration AND every
+				// migration after it as failed so they re-run in order. Re-running
+				// only the failed version can leave a later migration's columns
+				// dropped (e.g. a table-rebuild migration) with no repair path.
 				logger.warn(
 					`[SchemaSync] Schema drift detected: ${table}.${column} missing (migration v${version})`
 				);
-				sqlite.prepare(`UPDATE schema_migrations SET success = 0 WHERE version = ?`).run(version);
+				sqlite
+					.prepare(`UPDATE schema_migrations SET success = 0 WHERE version >= ?`)
+					.run(version);
 				driftFound = true;
 			}
 		}

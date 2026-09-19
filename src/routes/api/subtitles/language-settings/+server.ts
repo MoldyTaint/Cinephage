@@ -4,6 +4,7 @@ import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService';
 import { languageSettingsUpdateSchema } from '$lib/validation/schemas';
 import { parseBody } from '$lib/server/api/validate.js';
+import { tmdb } from '$lib/server/tmdb.js';
 
 /**
  * GET /api/subtitles/language-settings
@@ -25,6 +26,10 @@ export const PUT: RequestHandler = async (event) => {
 
 	const patch = await parseBody(event.request, languageSettingsUpdateSchema);
 	const settings = await getLanguageSettingsService().update(patch);
+
+	// locale/region changes must reach TMDB immediately, not after the 5-minute
+	// settings cache TTL.
+	tmdb.invalidateSettings();
 
 	return json(settings);
 };

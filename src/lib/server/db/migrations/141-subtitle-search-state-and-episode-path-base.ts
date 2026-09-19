@@ -6,7 +6,7 @@ import { createChildLogger } from '$lib/logging';
 const logger = createChildLogger({ logDomain: 'system' as const });
 
 /**
- * Version 138: Subtitle reconciliation / backoff / upgrade rotation (Phase 3 Task 1).
+ * Version 141: Subtitle reconciliation / backoff / upgrade rotation (Phase 3 Task 1).
  *
  * - Adds subtitles.last_checked_at so the upgrade task can rotate fairly (order by
  *   last_checked_at ASC, stamping each examined row).
@@ -166,7 +166,7 @@ export const migration_v141: MigrationDefinition = {
 		// 1. Upgrade rotation column on subtitles.
 		if (tableExists(sqlite, 'subtitles') && !columnExists(sqlite, 'subtitles', 'last_checked_at')) {
 			sqlite.prepare(`ALTER TABLE "subtitles" ADD COLUMN "last_checked_at" text`).run();
-			logger.info('[migration v138] Added subtitles.last_checked_at');
+			logger.info('[migration v141] Added subtitles.last_checked_at');
 		}
 
 		// 2. Per-requirement adaptive backoff table + owner lookup index.
@@ -177,7 +177,7 @@ export const migration_v141: MigrationDefinition = {
 		const { rewritten, skipped } = rewriteEpisodeSubtitlePaths(sqlite);
 		logger.info(
 			{ rewritten, skipped },
-			'[migration v138] Rewrote episode subtitle relative paths to the episode-dir base'
+			'[migration v141] Rewrote episode subtitle relative paths to the episode-dir base'
 		);
 
 		// 4. Integrity gates (report, never fail the migration).
@@ -185,12 +185,12 @@ export const migration_v141: MigrationDefinition = {
 		if (fkViolations.length > 0) {
 			logger.warn(
 				{ count: fkViolations.length, sample: fkViolations.slice(0, 10) },
-				'[migration v138] foreign_key_check reported violations'
+				'[migration v141] foreign_key_check reported violations'
 			);
 		}
 		const quickCheck = sqlite.prepare('PRAGMA quick_check').pluck().get() as string | undefined;
 		if (quickCheck !== 'ok') {
-			logger.warn({ quickCheck }, '[migration v138] quick_check reported problems');
+			logger.warn({ quickCheck }, '[migration v141] quick_check reported problems');
 		}
 	}
 };

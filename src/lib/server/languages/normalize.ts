@@ -28,11 +28,16 @@ export function normalizeLanguageTag(raw: string | null | undefined): LanguageTa
 	if (lower === 'und') return UNKNOWN;
 	if (NON_LANGUAGE_MARKERS.has(lower)) return UNKNOWN;
 
-	const fromIso = ISO_TO_CANONICAL[lower];
-	if (fromIso) return fromIso;
-
+	// Curated registry first: its alias table wins over the generated ISO table
+	// for overlapping inputs (e.g. `nob`/`nno`/`nb`/`nn` all resolve to `no`,
+	// whereas the ISO table would emit `nb`/`nn`, which the requirement matcher
+	// cannot resolve). The ISO table then covers codes the curated registry
+	// omits (e.g. `ast`, `yue`, `fil`).
 	const fromShared = canonicalizeLanguageTag(cleaned);
 	if (fromShared) return fromShared;
+
+	const fromIso = ISO_TO_CANONICAL[lower];
+	if (fromIso) return fromIso;
 
 	return UNKNOWN;
 }

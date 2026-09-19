@@ -57,7 +57,7 @@ afterEach(() => {
 	}
 });
 
-describe('migration v139 — allow anilist/mal alternate title sources', () => {
+describe('migration v142 — allow anilist/mal alternate title sources', () => {
 	it('rebuilds the table so anilist/mal sources pass the source CHECK', () => {
 		const sqlite = createPreMigrationDatabase();
 
@@ -109,7 +109,7 @@ describe('migration v139 — allow anilist/mal alternate title sources', () => {
 				name: string;
 			}>
 		).map((r) => r.name);
-		expect(tables).not.toContain('alternate_titles__v139_new');
+		expect(tables).not.toContain('alternate_titles__v142_new');
 	});
 
 	it('is idempotent: a second apply neither errors nor loses rows', () => {

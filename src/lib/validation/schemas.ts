@@ -947,8 +947,15 @@ export const languageProfileV2CreateSchema = languageProfileV2BaseSchema
 		{ message: 'Duplicate subtitle requirements are not allowed', path: ['subtitles'] }
 	);
 
-/** Partial update payload for the combined profile. */
-export const languageProfileV2UpdateSchema = languageProfileV2BaseSchema.partial();
+/**
+ * Partial update payload for the combined profile.
+ *
+ * `.required().partial()` (not plain `.partial()`) is required: in Zod v4,
+ * `.partial()` on a schema whose fields carry `.default()` still materializes
+ * those defaults for absent fields, so a rename-only PUT would silently reset
+ * audio, cutoffRank, minimumScore, and upgradesAllowed.
+ */
+export const languageProfileV2UpdateSchema = languageProfileV2BaseSchema.required().partial();
 
 export type LanguageProfileV2Create = z.infer<typeof languageProfileV2CreateSchema>;
 export type LanguageProfileV2Update = z.infer<typeof languageProfileV2UpdateSchema>;
@@ -1960,7 +1967,9 @@ export const movieUpdateSchema = z
 		collectionName: z.string().min(1).nullable().optional(),
 		...metadataLanguageFields,
 		/** Display originalTitle instead of localized title in the UI */
-		preferOriginalTitle: z.boolean().optional()
+		// Tri-state: true/false = explicit per-item preference, null = inherit
+		// the instance default (language_settings.prefer_original_title).
+		preferOriginalTitle: z.union([z.boolean(), z.null()]).optional()
 	})
 	.superRefine((data, ctx) => validateMetadataLanguageOverride(data, ctx))
 	.transform((data) => normalizeMetadataLanguageOverride(data));
@@ -1993,7 +2002,9 @@ export const seriesUpdateSchema = z
 		episodeGroupId: z.string().nullable().optional(),
 		...metadataLanguageFields,
 		/** Display originalTitle instead of localized title in the UI */
-		preferOriginalTitle: z.boolean().optional()
+		// Tri-state: true/false = explicit per-item preference, null = inherit
+		// the instance default (language_settings.prefer_original_title).
+		preferOriginalTitle: z.union([z.boolean(), z.null()]).optional()
 	})
 	.superRefine((data, ctx) => validateMetadataLanguageOverride(data, ctx))
 	.transform((data) => normalizeMetadataLanguageOverride(data));
@@ -2221,6 +2232,10 @@ export const grabRequestSchema = z
 		size: z.number().optional(),
 		publishDate: z.string().datetime().optional(),
 		commentsUrl: z.string().optional(),
+		/** External IDs asserted by the search result, when available. */
+		tmdbId: z.number().int().optional(),
+		imdbId: z.string().optional(),
+		tvdbId: z.number().int().optional(),
 		movieId: z.string().optional(),
 		seriesId: z.string().optional(),
 		episodeIds: z.array(z.string()).optional(),

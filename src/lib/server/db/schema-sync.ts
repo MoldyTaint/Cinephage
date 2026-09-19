@@ -155,7 +155,7 @@ import {
  * Version 149: Import operations journal — durable multi-step import record for recovery and reports
  * Version 150: movie_files (movie_id, relative_path) unique index (legacy duplicates deduped)
  */
-export const CURRENT_SCHEMA_VERSION = 150;
+export const CURRENT_SCHEMA_VERSION = 152;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
@@ -470,11 +470,6 @@ const TABLE_DEFINITIONS: string[] = [
 	)`,
 
 	`CREATE TABLE IF NOT EXISTS "captcha_solver_settings" (
-		"key" text PRIMARY KEY NOT NULL,
-		"value" text NOT NULL
-	)`,
-
-	`CREATE TABLE IF NOT EXISTS "subtitle_settings" (
 		"key" text PRIMARY KEY NOT NULL,
 		"value" text NOT NULL
 	)`,
@@ -1017,7 +1012,7 @@ const TABLE_DEFINITIONS: string[] = [
 		CHECK ((movie_id IS NOT NULL AND episode_id IS NULL) OR (movie_id IS NULL AND episode_id IS NOT NULL))
 	)`,
 
-	// Subtitle Search State - per-requirement adaptive backoff (m138). One row per
+	// Subtitle Search State - per-requirement adaptive backoff (m141). One row per
 	// (owner, requirement_key) so a failure on one requirement does not gate the
 	// others. requirement_key is the stable `tag|variant|accessibility` tuple.
 	`CREATE TABLE IF NOT EXISTS "subtitle_search_state" (
@@ -1664,6 +1659,7 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_subtitles_movie" ON "subtitles" ("movie_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_subtitles_episode" ON "subtitles" ("episode_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_subtitles_movie_file" ON "subtitles" ("movie_file_id")`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_subtitles_unique_identity" ON "subtitles" (ifnull("movie_id", ''), ifnull("episode_id", ''), "language", "is_forced", "is_hearing_impaired", "relative_path")`,
 	`CREATE INDEX IF NOT EXISTS "idx_subtitle_search_state_owner" ON "subtitle_search_state" ("owner_type", "owner_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_smart_lists_enabled" ON "smart_lists" ("enabled")`,
 	`CREATE INDEX IF NOT EXISTS "idx_smart_lists_next_refresh" ON "smart_lists" ("next_refresh_time")`,

@@ -22,6 +22,13 @@ describe('normalizeLanguageTag', () => {
 		expect(normalizeLanguageTag('yue')).toBe('yue');
 	});
 
+	it('resolves Norwegian variants to the curated no tag', () => {
+		expect(normalizeLanguageTag('nob')).toBe('no');
+		expect(normalizeLanguageTag('nno')).toBe('no');
+		expect(normalizeLanguageTag('nb')).toBe('no');
+		expect(normalizeLanguageTag('nn')).toBe('no');
+	});
+
 	it('preserves valid region subtags for known languages', () => {
 		expect(normalizeLanguageTag('de-DE')).toBe('de-DE');
 		expect(normalizeLanguageTag('en-us')).toBe('en-US');

@@ -29,7 +29,7 @@ vi.mock('$lib/logging', () => ({
 }));
 
 const { GET } = await import('./+server');
-const { languageProfiles } = await import('$lib/server/db/schema');
+const { languageProfiles, languageSettings } = await import('$lib/server/db/schema');
 const { LanguageSettingsService } =
 	await import('$lib/server/subtitles/services/LanguageSettingsService');
 
@@ -111,7 +111,15 @@ describe('Effective language settings API (add flow)', () => {
 	});
 
 	it('ignores a dangling default profile id and returns null', async () => {
-		await setDefaultProfileId(PROFILE_DEFAULT);
+		// Simulate a legacy dangling reference written before the service
+		// validated that the profile exists.
+		await testDb.db
+			.insert(languageSettings)
+			.values({ id: 'singleton', defaultProfileId: PROFILE_DEFAULT })
+			.onConflictDoUpdate({
+				target: languageSettings.id,
+				set: { defaultProfileId: PROFILE_DEFAULT }
+			});
 
 		const { status, data } = await api.get<unknown>(GET, {
 			url: 'http://localhost/api/subtitles/language-settings/effective?mediaType=movie'

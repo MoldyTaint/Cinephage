@@ -49,7 +49,7 @@ const TABLES_TO_CLEAR = [
 
 /**
  * Fixed profile ids (UUID-shaped: languageSettingsSchema validates
- * defaultProfileId as a uuid, and migration 137 gives the profile reference
+ * defaultProfileId as a uuid, and migration 140 gives the profile reference
  * columns real FKs). Insert profiles BEFORE rows that reference them.
  */
 const PROFILE_OVERRIDE = 'a0000000-0000-4000-8000-000000000001';
@@ -358,6 +358,38 @@ describe('LanguageProfileService', () => {
 			expect(updated.subtitles).toHaveLength(1);
 		});
 
+		it('preserves non-default fields on a rename-only update', async () => {
+			const created = await profileService.createProfile(
+				makeCreateBody({
+					audio: { preferOriginal: false, languages: ['de'], mode: 'require' },
+					minimumScore: 25,
+					upgradesAllowed: false,
+					cutoffRank: 0
+				})
+			);
+
+			const updated = await profileService.updateProfile(created.id, { name: 'Renamed Only' });
+
+			expect(updated.name).toBe('Renamed Only');
+			expect(updated.audio).toEqual({ preferOriginal: false, languages: ['de'], mode: 'require' });
+			expect(updated.minimumScore).toBe(25);
+			expect(updated.upgradesAllowed).toBe(false);
+			expect(updated.cutoffRank).toBe(0);
+		});
+
+		it('rejects duplicate requirement tuples on update', async () => {
+			const created = await profileService.createProfile(makeCreateBody());
+
+			await expect(
+				profileService.updateProfile(created.id, {
+					subtitles: [
+						{ tag: 'en', variant: 'regular', accessibility: 'any' },
+						{ tag: 'eng', variant: 'regular', accessibility: 'any' }
+					]
+				})
+			).rejects.toThrow(/duplicate/i);
+		});
+
 		it('should delete a profile and null every reference', async () => {
 			const created = await profileService.createProfile(makeCreateBody());
 			await testDb.db.insert(movies).values({
@@ -397,6 +429,33 @@ describe('LanguageProfileService', () => {
 
 			const defaultProfile = await profileService.getDefaultProfile();
 			expect(defaultProfile?.id).toBe(created.id);
+		});
+
+		it('reports override-only episodes as missing when no series profile chain resolves', async () => {
+			const seriesId = await seedSeries('series-ovr');
+			await seedEpisode('ep-ovr', seriesId, 1);
+			await testDb.db
+				.update(episodes)
+				.set({
+					subtitleRequirementsOverride: [
+						{ tag: 'fr', variant: 'regular', accessibility: 'any' }
+					]
+				})
+				.where(eq(episodes.id, 'ep-ovr'))
+				.run();
+
+			expect(await profileService.getSeriesEpisodesMissingSubtitles(seriesId)).toEqual([
+				'ep-ovr'
+			]);
+
+			// Clearing the override removes the episode from the missing list
+			// (there is no series profile chain to inherit).
+			await testDb.db
+				.update(episodes)
+				.set({ subtitleRequirementsOverride: null })
+				.where(eq(episodes.id, 'ep-ovr'))
+				.run();
+			expect(await profileService.getSeriesEpisodesMissingSubtitles(seriesId)).toEqual([]);
 		});
 
 		it('should fall back to the default profile for movies without an assignment', async () => {

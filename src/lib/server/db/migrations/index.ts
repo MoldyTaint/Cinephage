@@ -147,6 +147,8 @@ import { migration_v147 } from './147-language-shortfall-flag.js';
 import { migration_v148 } from './148-acquisition-intents-reservations.js';
 import { migration_v149 } from './149-import-operations-journal.js';
 import { migration_v150 } from './150-movie-files-path-unique.js';
+import { migration_v151 } from './151-language-system-column-guards.js';
+import { migration_v152 } from './152-drop-subtitle-settings.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -296,5 +298,7 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v147,
 	migration_v148,
 	migration_v149,
-	migration_v150
+	migration_v150,
+	migration_v151,
+	migration_v152
 ];

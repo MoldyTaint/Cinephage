@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
 	getProfile: vi.fn(),
 	getDefaultScoringProfile: vi.fn(),
 	getEffectiveAnimeRootFolderEnforcement: vi.fn().mockResolvedValue(false),
-	getDefaultLanguageProfile: vi.fn(),
 	logWarn: vi.fn()
 }));
 
@@ -26,14 +25,6 @@ vi.mock('$lib/server/quality/index.js', () => ({
 		seedDefaultScoringProfiles: mocks.seedDefaultScoringProfiles,
 		getProfile: mocks.getProfile,
 		getDefaultScoringProfile: mocks.getDefaultScoringProfile
-	}
-}));
-
-vi.mock('$lib/server/subtitles/services/LanguageProfileService.js', () => ({
-	LanguageProfileService: {
-		getInstance: () => ({
-			getDefaultProfile: mocks.getDefaultLanguageProfile
-		})
 	}
 }));
 

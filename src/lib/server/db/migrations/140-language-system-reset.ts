@@ -1,13 +1,13 @@
 import type Database from 'better-sqlite3';
 import type { MigrationDefinition } from '../migration-helpers.js';
-import { columnExists, tableExists } from '../migration-helpers.js';
+import { columnExists, ensureColumn, tableExists } from '../migration-helpers.js';
 import { createChildLogger } from '$lib/logging';
 import { normalizeLanguageTag, normalizeMetadataLocale } from '../../languages/normalize.js';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 
 /**
- * Version 137: Language system reset (spec §3 + §8).
+ * Version 140: Language system reset (spec §3 + §8).
  *
  * - Drops the legacy language_profiles table (is_default + languages JSON) and
  *   recreates it with the v2 shape (audio/subtitles JSON, cutoff_rank).
@@ -299,14 +299,28 @@ function rebuildTable(sqlite: Database.Database, tableName: string, columnsSql: 
 	sqlite.exec(`CREATE TABLE "${tempName}" (\n${columnsSql}\n)`);
 
 	const newColumns = getColumnNames(sqlite, tempName);
-	const oldColumns = new Set(getColumnNames(sqlite, tableName));
+	const oldColumnInfo = sqlite
+		.prepare(`PRAGMA table_info("${tableName}")`)
+		.all() as Array<{ name: string; type: string }>;
+	const oldColumns = new Set(oldColumnInfo.map((column) => column.name));
 	const sharedColumns = newColumns.filter((name) => oldColumns.has(name));
 	if (sharedColumns.length === 0) {
 		throw new Error(
-			`[migration v137] No shared columns between ${tableName} and its rebuild target`
+			`[migration v140] No shared columns between ${tableName} and its rebuild target`
 		);
 	}
-	const columnList = sharedColumns.map((name) => `"${name}"`).join(', ');
+
+	// Preserve columns added by later migrations (m146 per-item overrides,
+	// m147 language_shortfall, ...). A forced re-run of this migration (drift
+	// repair) must never drop data owned by newer migrations.
+	const extraColumns: string[] = [];
+	for (const column of oldColumnInfo) {
+		if (newColumns.includes(column.name)) continue;
+		ensureColumn(sqlite, tempName, column.name, `"${column.name}" ${column.type || 'text'}`);
+		extraColumns.push(column.name);
+	}
+
+	const columnList = [...sharedColumns, ...extraColumns].map((name) => `"${name}"`).join(', ');
 
 	sqlite.exec(`INSERT INTO "${tempName}" (${columnList}) SELECT ${columnList} FROM "${tableName}"`);
 	sqlite.exec(`DROP TABLE "${tableName}"`);
@@ -319,7 +333,7 @@ function rebuildTable(sqlite: Database.Database, tableName: string, columnsSql: 
 
 	logger.info(
 		{ table: tableName, columns: sharedColumns.length, indexes: indexRows.length },
-		`[migration v137] Rebuilt ${tableName} with language system constraints`
+		`[migration v140] Rebuilt ${tableName} with language system constraints`
 	);
 }
 
@@ -361,7 +375,7 @@ function canonicalizeGlobalFilters(sqlite: Database.Database): GlobalKeyFilters 
 			.run(JSON.stringify(filters));
 		logger.info(
 			{ language: canonicalLocale, region: canonicalRegion },
-			'[migration v137] Canonicalized global_filters language/region'
+			'[migration v140] Canonicalized global_filters language/region'
 		);
 	}
 
@@ -385,7 +399,7 @@ function resetLanguageProfiles(sqlite: Database.Database): boolean {
 			if (legacyDefault) {
 				logger.info(
 					{ discardedDefaultProfileId: legacyDefault.id },
-					'[migration v137] Legacy default profile will be discarded (profiles reset)'
+					'[migration v140] Legacy default profile will be discarded (profiles reset)'
 				);
 			}
 		}
@@ -401,12 +415,12 @@ function resetLanguageProfiles(sqlite: Database.Database): boolean {
 		for (const index of indexRows) {
 			sqlite.exec(index.sql);
 		}
-		logger.info('[migration v137] Reset language_profiles to the v2 shape (legacy rows dropped)');
+		logger.info('[migration v140] Reset language_profiles to the v2 shape (legacy rows dropped)');
 		return true;
 	}
 
 	sqlite.exec(LANGUAGE_PROFILES_V2_DDL);
-	logger.info('[migration v137] Created language_profiles with the v2 shape');
+	logger.info('[migration v140] Created language_profiles with the v2 shape');
 	return true;
 }
 
@@ -470,7 +484,7 @@ function canonicalizeLanguageColumn(sqlite: Database.Database, tableName: string
 	if (updated > 0) {
 		logger.info(
 			{ table: tableName, updated },
-			`[migration v137] Canonicalized ${tableName}.language`
+			`[migration v140] Canonicalized ${tableName}.language`
 		);
 	}
 	return updated;
@@ -538,7 +552,7 @@ function canonicalizeMediaInfoLanguages(sqlite: Database.Database, tableName: st
 	if (updated > 0) {
 		logger.info(
 			{ table: tableName, updated },
-			`[migration v137] Canonicalized ${tableName}.media_info language arrays`
+			`[migration v140] Canonicalized ${tableName}.media_info language arrays`
 		);
 	}
 	return updated;
@@ -602,7 +616,7 @@ function applyMetadataLanguageMappings(
 	if (updated > 0) {
 		logger.info(
 			{ table: tableName, updated },
-			`[migration v137] Mapped ${tableName}.metadata_language onto mode/value pairs`
+			`[migration v140] Mapped ${tableName}.metadata_language onto mode/value pairs`
 		);
 	}
 	return updated;
@@ -642,7 +656,7 @@ function dedupeSubtitlesForUniqueIndex(sqlite: Database.Database): number {
 	if (result.changes > 0) {
 		logger.warn(
 			{ removed: result.changes },
-			'[migration v137] Removed duplicate subtitle rows before adding the identity unique index'
+			'[migration v140] Removed duplicate subtitle rows before adding the identity unique index'
 		);
 	}
 	return result.changes;
@@ -691,14 +705,14 @@ export const migration_v140: MigrationDefinition = {
 				'libraries'
 			]);
 			if (nulled > 0) {
-				logger.info({ nulled }, '[migration v137] Nulled dangling language profile references');
+				logger.info({ nulled }, '[migration v140] Nulled dangling language profile references');
 			}
 		}
 
 		// 6. Delete obsolete subtitle settings keys.
 		const deletedKeys = deleteObsoleteSubtitleSettings(sqlite);
 		if (deletedKeys > 0) {
-			logger.info({ deletedKeys }, '[migration v137] Deleted obsolete subtitle_settings keys');
+			logger.info({ deletedKeys }, '[migration v140] Deleted obsolete subtitle_settings keys');
 		}
 
 		// 7. Canonicalize language values in place.
@@ -715,7 +729,7 @@ export const migration_v140: MigrationDefinition = {
 		const ensure = (table: string, column: string, definition: string) => {
 			if (!tableExists(sqlite, table) || columnExists(sqlite, table, column)) return;
 			sqlite.prepare(`ALTER TABLE "${table}" ADD COLUMN ${definition}`).run();
-			logger.info(`[migration v137] Added ${table}.${column}`);
+			logger.info(`[migration v140] Added ${table}.${column}`);
 		};
 		ensure('movies', 'original_language', '"original_language" text');
 		ensure(
@@ -777,12 +791,12 @@ export const migration_v140: MigrationDefinition = {
 					count: fkViolations.length,
 					sample: fkViolations.slice(0, 10)
 				},
-				'[migration v137] foreign_key_check reported violations after reset'
+				'[migration v140] foreign_key_check reported violations after reset'
 			);
 		}
 		const quickCheck = sqlite.prepare('PRAGMA quick_check').pluck().get() as string | undefined;
 		if (quickCheck !== 'ok') {
-			logger.warn({ quickCheck }, '[migration v137] quick_check reported problems');
+			logger.warn({ quickCheck }, '[migration v140] quick_check reported problems');
 		}
 	}
 };

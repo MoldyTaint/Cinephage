@@ -4,14 +4,14 @@ import { tableExists } from '../migration-helpers.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
-// Version 139: Allow AniList/MAL title variants in alternate_titles.
+// Version 142: Allow AniList/MAL title variants in alternate_titles.
 //
 // The original v038 DDL shipped `source text NOT NULL CHECK (source IN
 // ('tmdb','user'))`, which would reject the new anime provider variants.
 // SQLite cannot alter a CHECK constraint in place, so the table is rebuilt
 // (copy → drop → rename → reindex) only when the old CHECK is still present.
 
-/** Marker of the pre-v139 source CHECK in the table DDL. */
+/** Marker of the pre-v142 source CHECK in the table DDL. */
 const LEGACY_SOURCE_CHECK_MARKER = "('tmdb','user')";
 
 const ALTERNATE_TITLES_COLUMNS = `
@@ -45,7 +45,7 @@ export const migration_v142: MigrationDefinition = {
 		if (!tableExists(sqlite, 'alternate_titles')) return;
 		if (!getTableSql(sqlite, 'alternate_titles').includes(LEGACY_SOURCE_CHECK_MARKER)) return;
 
-		const tempName = 'alternate_titles__v139_new';
+		const tempName = 'alternate_titles__v142_new';
 		const indexRows = sqlite
 			.prepare(
 				`SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name = ? AND sql IS NOT NULL`
@@ -55,7 +55,7 @@ export const migration_v142: MigrationDefinition = {
 		sqlite.exec(`DROP TABLE IF EXISTS "${tempName}"`);
 		sqlite.exec(`CREATE TABLE "${tempName}" (\n${ALTERNATE_TITLES_COLUMNS}\n)`);
 
-		// Column sets are identical between v038 and v139 — copy everything.
+		// Column sets are identical between v038 and v142 — copy everything.
 		sqlite.exec(
 			`INSERT INTO "${tempName}" (id, media_type, media_id, title, clean_title, source, language, country, created_at)
 			 SELECT id, media_type, media_id, title, clean_title, source, language, country, created_at FROM "alternate_titles"`
@@ -70,7 +70,7 @@ export const migration_v142: MigrationDefinition = {
 
 		logger.info(
 			{ rows: sqlite.prepare(`SELECT COUNT(*) FROM alternate_titles`).pluck().get() as number },
-			'[migration v139] Rebuilt alternate_titles with anilist/mal sources allowed'
+			'[migration v142] Rebuilt alternate_titles with anilist/mal sources allowed'
 		);
 
 		// Defensive: recreate the standard indexes when the old table carried none

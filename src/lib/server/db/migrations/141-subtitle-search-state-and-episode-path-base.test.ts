@@ -5,7 +5,7 @@ import { migration_v141 } from './141-subtitle-search-state-and-episode-path-bas
 const databases: Database.Database[] = [];
 
 /**
- * Minimal pre-v138 fixture. Mirrors the shipped subtitles/episode_files shapes
+ * Minimal pre-v141 fixture. Mirrors the shipped subtitles/episode_files shapes
  * (episode_files.episode_ids is a JSON array) plus the deprecated per-item
  * adaptive columns on movies/episodes, which must survive untouched.
  */
@@ -120,7 +120,7 @@ afterEach(() => {
 	}
 });
 
-describe('migration v138 — subtitle search state + episode path base', () => {
+describe('migration v141 — subtitle search state + episode path base', () => {
 	it('adds subtitles.last_checked_at and creates subtitle_search_state with its index', () => {
 		const sqlite = createPreMigrationDatabase();
 

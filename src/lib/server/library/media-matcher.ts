@@ -31,7 +31,6 @@ import { parseRelease, extractExternalIds } from '$lib/server/indexers/parser/Re
 import { getMediaParseStem } from './media-utils.js';
 import { resolveTvEpisodeIdentifier, extractSeasonFromPath } from './tv-episode-resolver.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { canonicalizeArticleTitle, calculateMatchConfidence } from './title-matching.js';
 
@@ -1007,10 +1006,9 @@ export class MediaMatcherService {
 			// Update hasFile flag
 			await db.update(movies).set({ hasFile: true }).where(eq(movies.id, movieId));
 		} else {
-			// Get default language profile for new media (language_settings is the
-			// single default authority)
-			const defaultProfile = await LanguageProfileService.getInstance().getDefaultProfile();
-			const defaultProfileId = defaultProfile?.id ?? null;
+			// Writers never persist the resolved default profile: the item-level
+			// language_profile_id stays NULL and the effective profile is resolved
+			// read-only at query time (item → library → instance default).
 			const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
 				rootFolder.id,
 				'movie'
@@ -1046,7 +1044,6 @@ export class MediaMatcherService {
 					hasFile: true,
 					monitored: rootFolder.defaultMonitored ?? true,
 					scoringProfileId: owningLibrary.qualityProfileId,
-					languageProfileId: wantsSubtitles ? defaultProfileId : null,
 					wantsSubtitles
 				})
 				.onConflictDoNothing()
@@ -1055,8 +1052,8 @@ export class MediaMatcherService {
 			if (newMovie) {
 				movieId = newMovie.id;
 				logger.debug(
-					{ movieId, title: tmdbMovie.title, languageProfileId: defaultProfileId },
-					'[MediaMatcher] Assigned default language profile to new movie'
+					{ movieId, title: tmdbMovie.title },
+					'[MediaMatcher] Created new movie'
 				);
 			} else {
 				const [concurrentMovie] = await db
@@ -1166,10 +1163,7 @@ export class MediaMatcherService {
 		if (existingSeries) {
 			seriesId = existingSeries.id;
 		} else {
-			// Get default language profile for new media (language_settings is the
-			// single default authority)
-			const defaultProfile = await LanguageProfileService.getInstance().getDefaultProfile();
-			const defaultProfileId = defaultProfile?.id ?? null;
+			// Writers never persist the resolved default profile (see movie path).
 			const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
 				rootFolder.id,
 				'tv'
@@ -1209,7 +1203,6 @@ export class MediaMatcherService {
 					seriesType: rootFolder.mediaSubType === 'anime' || animeSignal ? 'anime' : 'standard',
 					monitored: rootFolder.defaultMonitored ?? true,
 					scoringProfileId: owningLibrary.qualityProfileId,
-					languageProfileId: wantsSubtitles ? defaultProfileId : null,
 					wantsSubtitles
 				})
 				.onConflictDoNothing()
@@ -1219,8 +1212,8 @@ export class MediaMatcherService {
 				seriesId = newSeries.id;
 				createdSeries = true;
 				logger.debug(
-					{ seriesId, title: tmdbSeries.name, languageProfileId: defaultProfileId },
-					'[MediaMatcher] Assigned default language profile to new series'
+					{ seriesId, title: tmdbSeries.name },
+					'[MediaMatcher] Created new series'
 				);
 			} else {
 				const [concurrentSeries] = await db

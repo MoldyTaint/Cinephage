@@ -5,7 +5,7 @@ import { migration_v140 } from './140-language-system-reset.js';
 const databases: Database.Database[] = [];
 
 /**
- * Legacy (pre-v137) schema fixture. Faithful to the shipped TABLE_DEFINITIONS
+ * Legacy (pre-v140) schema fixture. Faithful to the shipped TABLE_DEFINITIONS
  * plus the columns real databases gained through earlier migrations
  * (metadata_provider/pinned_external v085/v086, adult v096, delay_profile_id
  * v105, desired_qualities v123, metadata_language v126, quality_profile_id
@@ -394,7 +394,7 @@ afterEach(() => {
 	}
 });
 
-describe('migration v137 — language system reset', () => {
+describe('migration v140 — language system reset', () => {
 	it('resets profiles, seeds language_settings, and canonicalizes legacy language data', () => {
 		const sqlite = createLegacyDatabase();
 
@@ -688,6 +688,14 @@ describe('migration v137 — language system reset', () => {
 			.prepare(`UPDATE movies SET language_profile_id = 'profile-v2' WHERE id = 'movie-1'`)
 			.run();
 
+		// Simulate a later migration adding a column (m146 override) with data:
+		// the rebuild must preserve it instead of dropping it.
+		sqlite.prepare(`ALTER TABLE movies ADD COLUMN subtitle_requirements_override text`).run();
+		const override = '[{"tag":"fr","variant":"regular","accessibility":"any"}]';
+		sqlite
+			.prepare(`UPDATE movies SET subtitle_requirements_override = ? WHERE id = 'movie-1'`)
+			.run(override);
+
 		expect(() => migration_v140.apply(sqlite)).not.toThrow();
 
 		// The v2 profile and its assignment survived the re-run
@@ -696,9 +704,15 @@ describe('migration v137 — language system reset', () => {
 				.count
 		).toBe(1);
 		const assignment = sqlite
-			.prepare(`SELECT language_profile_id FROM movies WHERE id = 'movie-1'`)
-			.get() as { language_profile_id: string | null };
+			.prepare(
+				`SELECT language_profile_id, subtitle_requirements_override FROM movies WHERE id = 'movie-1'`
+			)
+			.get() as {
+			language_profile_id: string | null;
+			subtitle_requirements_override: string | null;
+		};
 		expect(assignment.language_profile_id).toBe('profile-v2');
+		expect(assignment.subtitle_requirements_override).toBe(override);
 
 		// Singleton row untouched (INSERT OR IGNORE), data canonicalized once
 		const settings = sqlite

@@ -1053,7 +1053,7 @@ export const alternateTitles = sqliteTable(
 		// Normalized title for matching (lowercase, no special chars)
 		cleanTitle: text('clean_title').notNull(),
 		// Source of this title: 'tmdb' (auto-fetched), 'user' (manually added), or
-		// 'anilist'/'mal' (anime provider title variants — migration 139)
+		// 'anilist'/'mal' (anime provider title variants — migration 142)
 		source: text('source', { enum: ['tmdb', 'user', 'anilist', 'mal'] }).notNull(),
 		// ISO 639-1 language code (e.g., 'en', 'cs', 'de')
 		language: text('language'),
@@ -2111,7 +2111,7 @@ export const subtitles = sqliteTable(
 		syncOffset: integer('sync_offset').default(0),
 		wasSynced: integer('was_synced', { mode: 'boolean' }).default(false),
 
-		// Upgrade rotation (migration 138): when the upgrade task last examined this
+		// Upgrade rotation (migration 141): when the upgrade task last examined this
 		// row. Upgrades order by this ascending (NULLs first) and stamp it on examine
 		// so no subtitle is starved while others are re-checked every run.
 		lastCheckedAt: text('last_checked_at'),
@@ -2120,12 +2120,23 @@ export const subtitles = sqliteTable(
 	},
 	(table) => [
 		index('idx_subtitles_movie').on(table.movieId),
-		index('idx_subtitles_episode').on(table.episodeId)
+		index('idx_subtitles_episode').on(table.episodeId),
+		// Identity for subtitle rows: owner + language + flags + stored path.
+		// `ifnull` makes NULL owner columns participate in uniqueness (SQLite
+		// treats NULLs as distinct otherwise).
+		uniqueIndex('idx_subtitles_unique_identity').on(
+			sql`ifnull(${table.movieId}, '')`,
+			sql`ifnull(${table.episodeId}, '')`,
+			table.language,
+			table.isForced,
+			table.isHearingImpaired,
+			table.relativePath
+		)
 	]
 );
 
 /**
- * Subtitle Search State - per-requirement adaptive backoff (migration 138).
+ * Subtitle Search State - per-requirement adaptive backoff (migration 141).
  *
  * Replaces the old per-media-item columns (movies/episodes.failed_subtitle_attempts,
  * first_subtitle_search_at), which were dropped by migration 142.
@@ -2204,19 +2215,6 @@ export const subtitleBlacklist = sqliteTable('subtitle_blacklist', {
 	language: text('language').notNull(),
 
 	createdAt: text('created_at').$defaultFn(() => new Date().toISOString())
-});
-
-/**
- * Subtitle Settings - Legacy key-value store.
- *
- * Empty since the language-system reset (migration 137): all subtitle
- * defaults moved to `language_settings` (the single authority) and provider
- * settings to `subtitle_providers`. No keys are read or written by the app;
- * the table is kept only so existing databases don't need a drop migration.
- */
-export const subtitleSettings = sqliteTable('subtitle_settings', {
-	key: text('key').primaryKey(),
-	value: text('value').notNull()
 });
 
 // ============================================================================

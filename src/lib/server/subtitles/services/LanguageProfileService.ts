@@ -240,9 +240,17 @@ export class LanguageProfileService {
 
 		const parsed = languageProfileV2UpdateSchema.parse(updates ?? {});
 
-		// The update schema is partial, so re-check the cutoff invariant against
-		// the merged requirement list.
+		// The update schema is partial, so re-check the invariants against the
+		// merged requirement list.
 		const mergedSubtitles = parsed.subtitles ?? existing.subtitles;
+
+		const requirementKeys = mergedSubtitles.map(
+			(requirement) => `${requirement.tag}|${requirement.variant}|${requirement.accessibility}`
+		);
+		if (new Set(requirementKeys).size !== requirementKeys.length) {
+			throw new Error('Duplicate subtitle requirements are not allowed');
+		}
+
 		const mergedCutoffRank =
 			parsed.cutoffRank !== undefined ? parsed.cutoffRank : existing.cutoffRank;
 		if (mergedCutoffRank !== null && mergedCutoffRank >= mergedSubtitles.length) {
@@ -656,9 +664,6 @@ export class LanguageProfileService {
 	 */
 	async getSeriesEpisodesMissingSubtitles(seriesId: string): Promise<string[]> {
 		const base = await this.getEffectiveSubtitleRequirements({ seriesId });
-		if (!base) {
-			return [];
-		}
 
 		const seriesEpisodes = await db
 			.select({
@@ -668,6 +673,16 @@ export class LanguageProfileService {
 			.from(episodes)
 			.where(eq(episodes.seriesId, seriesId));
 		if (seriesEpisodes.length === 0) return [];
+
+		// No series-level resolution at all: only episodes with an explicit
+		// override can be missing anything (their requirements are still real).
+		if (!base) {
+			const overrideOnly = seriesEpisodes.filter(
+				(episode) =>
+					episode.subtitleRequirementsOverride && episode.subtitleRequirementsOverride.length > 0
+			);
+			if (overrideOnly.length === 0) return [];
+		}
 
 		const allRows = await db
 			.select()
@@ -689,9 +704,15 @@ export class LanguageProfileService {
 
 		for (const episode of seriesEpisodes) {
 			const override = episode.subtitleRequirementsOverride;
-			const requirements = override && override.length > 0 ? override : base.requirements;
+			const requirements = override && override.length > 0 ? override : (base?.requirements ?? []);
+			if (requirements.length === 0) continue;
+
 			const cutoff =
-				override && override.length > 0 ? { rank: null, applies: false } : cutoffOf(base);
+				override && override.length > 0
+					? { rank: null, applies: false }
+					: base
+						? cutoffOf(base)
+						: { rank: null, applies: false };
 
 			const status = await this.calculateStatus(
 				requirements,
@@ -948,8 +969,11 @@ export class LanguageProfileService {
 		}
 
 		// Guard against legacy placeholder records that may have been stored with non-file paths.
+		// `.idx` is deliberately excluded: it is a VobSub index companion with no
+		// subtitle text, so it can never satisfy a requirement on its own (the
+		// paired `.sub` carries the text and satisfies it instead).
 		const extension = extname(subtitle.relativePath ?? '').toLowerCase();
-		const knownExternalExtensions = new Set(['.srt', '.ass', '.ssa', '.sub', '.vtt', '.idx']);
+		const knownExternalExtensions = new Set(['.srt', '.ass', '.ssa', '.sub', '.vtt']);
 		return knownExternalExtensions.has(extension);
 	}
 }

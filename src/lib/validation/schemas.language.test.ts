@@ -83,6 +83,14 @@ describe('languageProfileV2UpdateSchema', () => {
 			minimumScore: 50
 		});
 	});
+
+	it('does not materialize defaults for absent fields (rename-only update)', () => {
+		expect(languageProfileV2UpdateSchema.parse({ name: 'Renamed' })).toEqual({ name: 'Renamed' });
+	});
+
+	it('parses an empty object to an empty patch', () => {
+		expect(languageProfileV2UpdateSchema.parse({})).toEqual({});
+	});
 });
 
 describe('subtitleRequirementsOverrideSchema', () => {
