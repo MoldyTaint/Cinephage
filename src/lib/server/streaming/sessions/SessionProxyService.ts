@@ -11,6 +11,7 @@ import type { PlaybackSession } from '../types';
 import { getPlaybackSessionStore } from './session-store';
 import { rewriteSessionPlaylist } from './playlist-rewriter';
 import { rewriteDashManifest } from './dash-rewriter';
+import { appendBasePath } from '../url.js';
 
 const streamLog = { logDomain: 'streams' as const };
 const DEFAULT_USER_AGENT =
@@ -52,6 +53,16 @@ function buildUpstreamHeaders(session: PlaybackSession, request?: Request): Reco
 
 	if (!headers.Referer && !headers.referer && session.requestHeaders.referer) {
 		headers.Referer = session.requestHeaders.referer;
+	}
+
+	// Origin is a browser-enforced CORS request header. Forwarding it to media
+	// origins triggers hotlink/anti-leech rules on some CDNs (observed: a
+	// subtitle segment returns 404 only when Origin is present) and is not
+	// needed for server-side media fetches.
+	for (const name of Object.keys(headers)) {
+		if (name.toLowerCase() === 'origin') {
+			delete headers[name];
+		}
 	}
 
 	if (request) {
@@ -216,19 +227,23 @@ async function readBodyWithLimit(response: Response, maxBytes: number): Promise<
 	const chunks: Uint8Array[] = [];
 	let totalSize = 0;
 
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) {
-			break;
-		}
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) {
+				break;
+			}
 
-		totalSize += value.byteLength;
-		if (totalSize > maxBytes) {
-			await reader.cancel();
-			throw new Error(`Response exceeded ${maxBytes} bytes`);
-		}
+			totalSize += value.byteLength;
+			if (totalSize > maxBytes) {
+				await reader.cancel();
+				throw new Error(`Response exceeded ${maxBytes} bytes`);
+			}
 
-		chunks.push(value);
+			chunks.push(value);
+		}
+	} finally {
+		reader.releaseLock();
 	}
 
 	return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
@@ -269,6 +284,7 @@ async function fetchUpstream(
 			if (!location) {
 				return response;
 			}
+			await response.body?.cancel();
 
 			if (redirectCount >= MAX_REDIRECTS) {
 				throw new Error('Too many redirects');
@@ -389,7 +405,14 @@ export class SessionProxyService {
 		}
 
 		if (resource.kind === 'playlist') {
-			return this.renderPlaylistResponse(session, resource.url, baseUrl, apiKey, false);
+			return this.renderPlaylistResponse(
+				session,
+				resource.url,
+				baseUrl,
+				apiKey,
+				false,
+				resource.segmentFallbackExtension
+			);
 		}
 
 		let resourceUrl = resource.url;
@@ -468,8 +491,7 @@ export class SessionProxyService {
 		}
 
 		const fileUrl = new URL(
-			`/api/streaming/session/${session.token}/subtitle/${subtitle.id}.vtt`,
-			baseUrl
+			appendBasePath(baseUrl, `/api/streaming/session/${session.token}/subtitle/${subtitle.id}.vtt`)
 		);
 		if (apiKey) {
 			fileUrl.searchParams.set('api_key', apiKey);
@@ -490,7 +512,7 @@ ${fileUrl.toString()}
 				'Content-Type': 'application/vnd.apple.mpegurl',
 				'Access-Control-Allow-Origin': '*',
 				'Access-Control-Allow-Methods': 'GET, OPTIONS',
-				'Cache-Control': 'public, max-age=3600'
+				'Cache-Control': 'no-cache'
 			}
 		});
 	}
@@ -540,7 +562,8 @@ ${fileUrl.toString()}
 		playlistUrl: string,
 		baseUrl: string,
 		apiKey: string | undefined,
-		injectSubtitles: boolean
+		injectSubtitles: boolean,
+		segmentFallbackExtension?: string
 	): Promise<Response> {
 		const response = await fetchUpstream(playlistUrl, buildUpstreamHeaders(session));
 		if (!response.ok) {
@@ -570,8 +593,15 @@ ${fileUrl.toString()}
 			session,
 			apiKey,
 			injectSubtitles,
-			registerResource: (url, kind, extension) => {
-				const resource = this.store.registerResource(session.token, url, kind, extension);
+			segmentFallbackExtension,
+			registerResource: (url, kind, extension, childSegmentFallbackExtension) => {
+				const resource = this.store.registerResource(
+					session.token,
+					url,
+					kind,
+					extension,
+					childSegmentFallbackExtension
+				);
 				if (!resource) {
 					throw new Error('Unable to register playback resource');
 				}
@@ -587,7 +617,7 @@ ${fileUrl.toString()}
 				'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
 				'Access-Control-Allow-Headers':
 					'Range, If-Range, If-None-Match, If-Modified-Since, Content-Type',
-				'Cache-Control': 'public, max-age=300'
+				'Cache-Control': 'no-cache'
 			}
 		});
 	}

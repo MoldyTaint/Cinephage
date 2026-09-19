@@ -132,6 +132,54 @@ describe('rewriteSessionPlaylist', () => {
 		expect(registered[0].kind).toBe('playlist');
 	});
 
+	it('preserves explicit WebVTT segment extensions', () => {
+		const result = rewrite(
+			'#EXTM3U\n#EXT-X-TARGETDURATION:10\n#EXTINF:10.0,\ncaptions.vtt\n#EXT-X-ENDLIST',
+			'https://cdn.example.com/subtitles.m3u8'
+		);
+
+		expect(result).toContain('/segment/res-0.vtt');
+		expect(registered[0]).toMatchObject({
+			url: 'https://cdn.example.com/captions.vtt',
+			kind: 'segment',
+			extension: 'vtt'
+		});
+	});
+
+	it('uses the inherited subtitle fallback only for extensionless segments', () => {
+		registered.length = 0;
+		const result = rewriteSessionPlaylist({
+			playlist:
+				'#EXTM3U\n#EXT-X-TARGETDURATION:10\n#EXTINF:10.0,\nsubtitle-segment\n#EXTINF:10.0,\nsubtitle-segment.m4s\n#EXT-X-ENDLIST',
+			playlistUrl: 'https://cdn.example.com/subtitles.m3u8',
+			baseUrl: 'http://192.168.1.1:3000',
+			session: createMockSession(),
+			registerResource,
+			injectSubtitles: false,
+			segmentFallbackExtension: 'vtt'
+		});
+
+		expect(result).toContain('/segment/res-0.vtt');
+		expect(result).toContain('/segment/res-1.m4s');
+		expect(result).not.toContain('/segment/res-0.ts');
+	});
+
+	it('rewrites LL-HLS part and preload hint resources as segments', () => {
+		const result = rewrite(
+			[
+				'#EXTM3U',
+				'#EXT-X-PART:DURATION=0.333,URI="part0.m4s"',
+				'#EXT-X-PRELOAD-HINT:TYPE=PART,URI="part1.m4s"'
+			].join('\n')
+		);
+
+		expect(registered).toHaveLength(2);
+		expect(registered[0].kind).toBe('segment');
+		expect(registered[1].kind).toBe('segment');
+		expect(result).toContain('/segment/res-0.m4s');
+		expect(result).toContain('/segment/res-1.m4s');
+	});
+
 	describe('#EXT-X-MAP: (fMP4 init segment)', () => {
 		it('classifies #EXT-X-MAP as segment with proper extension', () => {
 			const playlist = [

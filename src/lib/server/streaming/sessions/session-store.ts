@@ -195,7 +195,8 @@ export class PlaybackSessionStore {
 		token: string,
 		url: string,
 		kind: SessionResourceKind,
-		extension: string
+		extension: string,
+		segmentFallbackExtension?: string
 	): PlaybackSessionResource | null {
 		const session = this.getSession(token);
 		if (!session) {
@@ -203,7 +204,7 @@ export class PlaybackSessionStore {
 		}
 
 		const normalizedExtension = extension.replace(/^\./, '') || 'bin';
-		const key = `${kind}:${url}`;
+		const key = `${kind}:${segmentFallbackExtension ?? ''}:${url}`;
 		const existingId = session.resourceIdsByKey[key];
 		if (existingId) {
 			return session.resources[existingId] ?? null;
@@ -214,6 +215,7 @@ export class PlaybackSessionStore {
 			url,
 			kind,
 			extension: normalizedExtension,
+			segmentFallbackExtension,
 			createdAt: Date.now()
 		};
 

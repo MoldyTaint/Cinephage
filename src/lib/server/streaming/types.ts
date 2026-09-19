@@ -156,6 +156,7 @@ export interface PlaybackSessionResource {
 	url: string;
 	kind: SessionResourceKind;
 	extension: string;
+	segmentFallbackExtension?: string;
 	createdAt: number;
 }
 
