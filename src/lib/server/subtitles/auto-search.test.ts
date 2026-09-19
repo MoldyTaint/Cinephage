@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import {
 	autoSearchEpisode,
 	autoSearchMovie,
@@ -127,6 +127,15 @@ const baseEpisode: EpisodeLike = {
 };
 
 const baseSeries: SeriesLike = { id: 'series-1', monitored: true, wantsSubtitles: true };
+
+beforeAll(async () => {
+	// autoSearchMovie/autoSearchEpisode always record outcomes via
+	// subtitle-search-state.js, which hits the real singleton db (unmocked).
+	// Ensure its schema is synced before any test in this file runs — CI runs
+	// from a fresh, unmigrated database.
+	const { initializeDatabase } = await import('$lib/server/db/index.js');
+	await initializeDatabase();
+});
 
 beforeEach(() => {
 	vi.clearAllMocks();
