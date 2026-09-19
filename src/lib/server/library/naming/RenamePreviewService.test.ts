@@ -180,8 +180,7 @@ describe('RenamePreviewService', () => {
 
 			// Jellyfin/Emby DELETE removes the file location too: the call must
 			// never happen before the disk rename or the media file is destroyed.
-			const renameOrder = (mockFs.rename as ReturnType<typeof vi.fn>).mock
-				.invocationCallOrder[0];
+			const renameOrder = (mockFs.rename as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0];
 			const deleteOrder = notifierMocks.deleteMediaItemByTmdb.mock.invocationCallOrder[0];
 			expect(renameOrder).toBeLessThan(deleteOrder);
 		});

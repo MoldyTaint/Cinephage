@@ -422,9 +422,8 @@ export const load: PageServerLoad = async ({ url }) => {
 		);
 
 		// Instance display default for items with no explicit per-item flag.
-		const preferOriginalTitleDefault = (
-			await getLanguageSettingsService().get()
-		).preferOriginalTitle;
+		const preferOriginalTitleDefault = (await getLanguageSettingsService().get())
+			.preferOriginalTitle;
 
 		return {
 			series: filteredSeries,

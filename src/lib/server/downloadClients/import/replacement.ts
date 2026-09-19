@@ -52,8 +52,7 @@ export function computeMovieReplacement(input: MovieReplacementInput): string[] 
 		return input.existingFiles
 			.filter(
 				(file) =>
-					!keep.has(file.id) &&
-					(file.quality?.resolution ?? undefined) === input.newResolution
+					!keep.has(file.id) && (file.quality?.resolution ?? undefined) === input.newResolution
 			)
 			.map((file) => file.id);
 	}

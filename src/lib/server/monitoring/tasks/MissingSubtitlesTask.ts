@@ -466,10 +466,7 @@ async function searchMissingEpisodeSubtitles(
 							.select({ id: episodes.id })
 							.from(episodes)
 							.where(
-								and(
-									eq(episodes.seriesId, series.id),
-									eq(episodes.wantsSubtitlesOverride, true)
-								)
+								and(eq(episodes.seriesId, series.id), eq(episodes.wantsSubtitlesOverride, true))
 							)
 					)
 				)

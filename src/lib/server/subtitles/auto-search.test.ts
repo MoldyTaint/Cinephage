@@ -266,11 +266,7 @@ describe('per-item override awareness', () => {
 
 		const result = await autoSearchMovie(baseMovie);
 
-		expect(searchService.searchForMovie).toHaveBeenCalledWith(
-			'movie-1',
-			['fr'],
-			expect.anything()
-		);
+		expect(searchService.searchForMovie).toHaveBeenCalledWith('movie-1', ['fr'], expect.anything());
 		expect(result.downloaded).toBe(1);
 	});
 
@@ -289,11 +285,7 @@ describe('per-item override awareness', () => {
 
 		const result = await autoSearchMovie(baseMovie);
 
-		expect(searchService.searchForMovie).toHaveBeenCalledWith(
-			'movie-1',
-			['fr'],
-			expect.anything()
-		);
+		expect(searchService.searchForMovie).toHaveBeenCalledWith('movie-1', ['fr'], expect.anything());
 		expect(result.downloaded).toBe(1);
 	});
 
@@ -312,11 +304,7 @@ describe('per-item override awareness', () => {
 
 		const result = await autoSearchEpisode(baseEpisode, baseSeries);
 
-		expect(searchService.searchForEpisode).toHaveBeenCalledWith(
-			'ep-1',
-			['fr'],
-			expect.anything()
-		);
+		expect(searchService.searchForEpisode).toHaveBeenCalledWith('ep-1', ['fr'], expect.anything());
 		expect(result.downloaded).toBe(1);
 	});
 });

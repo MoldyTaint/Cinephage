@@ -77,8 +77,7 @@ export class GrabDecisionPipeline {
 	 */
 	async evaluateIdentity(ctx: GrabDecisionContext): Promise<StageResult> {
 		const stage = this.stages.find((candidate) => candidate.name === 'identity') as
-			| IdentityStage
-			| undefined;
+			IdentityStage | undefined;
 		if (!stage || !stage.isEnabled(ctx)) {
 			return { accepted: true };
 		}

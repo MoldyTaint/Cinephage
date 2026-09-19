@@ -299,9 +299,10 @@ function rebuildTable(sqlite: Database.Database, tableName: string, columnsSql: 
 	sqlite.exec(`CREATE TABLE "${tempName}" (\n${columnsSql}\n)`);
 
 	const newColumns = getColumnNames(sqlite, tempName);
-	const oldColumnInfo = sqlite
-		.prepare(`PRAGMA table_info("${tableName}")`)
-		.all() as Array<{ name: string; type: string }>;
+	const oldColumnInfo = sqlite.prepare(`PRAGMA table_info("${tableName}")`).all() as Array<{
+		name: string;
+		type: string;
+	}>;
 	const oldColumns = new Set(oldColumnInfo.map((column) => column.name));
 	const sharedColumns = newColumns.filter((name) => oldColumns.has(name));
 	if (sharedColumns.length === 0) {

@@ -133,9 +133,8 @@ describe('StreamingHandler complete-series routing', () => {
 		expect(seasonPackSpy.mock.calls.map((call) => call[4])).toEqual([1, 2]);
 
 		// The single-episode fallthrough must not have run.
-		const strmInstance = (
-			await import('$lib/server/streaming/index.js')
-		).strmService as unknown as {
+		const strmInstance = (await import('$lib/server/streaming/index.js'))
+			.strmService as unknown as {
 			createStrmFile: ReturnType<typeof vi.fn>;
 		};
 		expect(strmInstance.createStrmFile).not.toHaveBeenCalled();

@@ -667,9 +667,7 @@ export function detectAndFixSchemaDrift(sqlite: Database.Database): void {
 				logger.warn(
 					`[SchemaSync] Schema drift detected: ${table}.${column} missing (migration v${version})`
 				);
-				sqlite
-					.prepare(`UPDATE schema_migrations SET success = 0 WHERE version >= ?`)
-					.run(version);
+				sqlite.prepare(`UPDATE schema_migrations SET success = 0 WHERE version >= ?`).run(version);
 				driftFound = true;
 			}
 		}

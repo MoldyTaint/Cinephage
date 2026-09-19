@@ -349,7 +349,10 @@ export class AcquisitionService {
 			};
 		}
 
-		logger.info({ queueId, intentId: result.intentId }, 'Re-armed acquisition intent for queue retry');
+		logger.info(
+			{ queueId, intentId: result.intentId },
+			'Re-armed acquisition intent for queue retry'
+		);
 		return { ok: true, intentId: result.intentId };
 	}
 

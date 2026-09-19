@@ -437,16 +437,12 @@ describe('LanguageProfileService', () => {
 			await testDb.db
 				.update(episodes)
 				.set({
-					subtitleRequirementsOverride: [
-						{ tag: 'fr', variant: 'regular', accessibility: 'any' }
-					]
+					subtitleRequirementsOverride: [{ tag: 'fr', variant: 'regular', accessibility: 'any' }]
 				})
 				.where(eq(episodes.id, 'ep-ovr'))
 				.run();
 
-			expect(await profileService.getSeriesEpisodesMissingSubtitles(seriesId)).toEqual([
-				'ep-ovr'
-			]);
+			expect(await profileService.getSeriesEpisodesMissingSubtitles(seriesId)).toEqual(['ep-ovr']);
 
 			// Clearing the override removes the episode from the missing list
 			// (there is no series profile chain to inherit).

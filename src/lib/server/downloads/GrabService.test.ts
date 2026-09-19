@@ -30,7 +30,9 @@ describe('GrabService.resolveTarget - desiredQualities threading', () => {
 		destroyTestDb(testDb);
 	});
 	beforeEach(() => {
-		testDb.sqlite.exec('DELETE FROM acquisition_reservations; DELETE FROM acquisition_intents; DELETE FROM movies;');
+		testDb.sqlite.exec(
+			'DELETE FROM acquisition_reservations; DELETE FROM acquisition_intents; DELETE FROM movies;'
+		);
 	});
 
 	it('threads movie desiredQualities into the resolved context', async () => {

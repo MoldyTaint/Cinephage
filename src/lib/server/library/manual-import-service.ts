@@ -811,10 +811,7 @@ export class ManualImportService {
 				throw new Error('Selected movie root folder is missing or invalid');
 			}
 
-			const localizedTitles = await resolveLocalizedTitlesForFormats(
-				'movie',
-				request.tmdbId
-			);
+			const localizedTitles = await resolveLocalizedTitlesForFormats('movie', request.tmdbId);
 			return {
 				rootFolder,
 				folderName: movie.path,
@@ -935,10 +932,7 @@ export class ManualImportService {
 				throw new Error('Selected series root folder is missing or invalid');
 			}
 
-			const localizedTitles = await resolveLocalizedTitlesForFormats(
-				'series',
-				request.tmdbId
-			);
+			const localizedTitles = await resolveLocalizedTitlesForFormats('series', request.tmdbId);
 			return {
 				rootFolder,
 				seriesFolderName: show.path,

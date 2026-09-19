@@ -1051,10 +1051,7 @@ export class MediaMatcherService {
 
 			if (newMovie) {
 				movieId = newMovie.id;
-				logger.debug(
-					{ movieId, title: tmdbMovie.title },
-					'[MediaMatcher] Created new movie'
-				);
+				logger.debug({ movieId, title: tmdbMovie.title }, '[MediaMatcher] Created new movie');
 			} else {
 				const [concurrentMovie] = await db
 					.select({ id: movies.id })
@@ -1211,10 +1208,7 @@ export class MediaMatcherService {
 			if (newSeries) {
 				seriesId = newSeries.id;
 				createdSeries = true;
-				logger.debug(
-					{ seriesId, title: tmdbSeries.name },
-					'[MediaMatcher] Created new series'
-				);
+				logger.debug({ seriesId, title: tmdbSeries.name }, '[MediaMatcher] Created new series');
 			} else {
 				const [concurrentSeries] = await db
 					.select({ id: series.id })

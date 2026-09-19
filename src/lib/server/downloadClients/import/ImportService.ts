@@ -422,9 +422,7 @@ export class ImportService extends EventEmitter {
 	}
 
 	/** Whether the journal's recorded replacement row still exists. */
-	private importOperationReplacementExists(
-		op: typeof importOperations.$inferSelect
-	): boolean {
+	private importOperationReplacementExists(op: typeof importOperations.$inferSelect): boolean {
 		if (!op.newFileId) return true;
 		if (op.mediaType === 'episode') {
 			return (
@@ -448,12 +446,7 @@ export class ImportService extends EventEmitter {
 
 	/** Synchronous best-effort episode-file retirement used by journal recovery. */
 	private retireEpisodeFileNow(fileId: string, seriesId: string): boolean {
-		const row = db
-			.select()
-			.from(episodeFiles)
-			.where(eq(episodeFiles.id, fileId))
-			.limit(1)
-			.all()[0];
+		const row = db.select().from(episodeFiles).where(eq(episodeFiles.id, fileId)).limit(1).all()[0];
 		if (!row) return true;
 
 		const show = db
@@ -1204,12 +1197,7 @@ export class ImportService extends EventEmitter {
 		const movieFolder = join(rootFolder.path, movie.path);
 		const allowStrmProbe = movie.scoringProfileId !== 'streamer';
 		const mediaInfo = await mediaInfoService.extractMediaInfo(mainFile.path, { allowStrmProbe });
-		const destFileName = await this.buildMovieFileName(
-			movie,
-			mainFile.path,
-			queueItem,
-			mediaInfo
-		);
+		const destFileName = await this.buildMovieFileName(movie, mainFile.path, queueItem, mediaInfo);
 		const destPath = join(movieFolder, destFileName);
 
 		// Check for existing file (upgrade scenario)

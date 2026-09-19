@@ -83,7 +83,11 @@ export class DebridHandler {
 				if (recheck.blocked) {
 					acquisitionService.cancelIntent(request.options.intentId, recheck.reason);
 					logger.info(
-						{ title: request.release.title, infoHash: prepared.value.infoHash, reason: recheck.reason },
+						{
+							title: request.release.title,
+							infoHash: prepared.value.infoHash,
+							reason: recheck.reason
+						},
 						'[DebridHandler] Blocked duplicate after metadata resolution'
 					);
 					return { success: false, error: recheck.reason };

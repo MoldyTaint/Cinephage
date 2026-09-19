@@ -78,7 +78,12 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		}
 
 		// Get programs for channel
-		const programs = epgService.getChannelPrograms(channelId, start, end, await resolveLangParam(url));
+		const programs = epgService.getChannelPrograms(
+			channelId,
+			start,
+			end,
+			await resolveLangParam(url)
+		);
 
 		return json({
 			success: true,

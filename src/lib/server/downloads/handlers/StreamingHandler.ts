@@ -512,9 +512,7 @@ export class StreamingHandler {
 			}
 		}
 
-		return (
-			successResult ?? { success: false, error: lastError ?? 'Failed to create .strm files' }
-		);
+		return successResult ?? { success: false, error: lastError ?? 'Failed to create .strm files' };
 	}
 
 	private async handleSeasonPack(

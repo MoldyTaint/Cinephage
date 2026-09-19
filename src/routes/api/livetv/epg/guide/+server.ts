@@ -117,7 +117,12 @@ export const GET: RequestHandler = async ({ url }) => {
 		);
 		const guideMap = mapGuideDataToRequestedChannels(
 			resolvedPlan,
-			epgService.getGuideData(resolvedPlan.sourceChannelIds, start, end, await resolveLangParam(url))
+			epgService.getGuideData(
+				resolvedPlan.sourceChannelIds,
+				start,
+				end,
+				await resolveLangParam(url)
+			)
 		);
 
 		// Convert map to object for JSON

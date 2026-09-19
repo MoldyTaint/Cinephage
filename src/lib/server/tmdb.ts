@@ -318,9 +318,7 @@ export const tmdb = {
 						}
 						// Filter by Excluded Genres
 						if (excludedGenreIds.length > 0 && item.genre_ids) {
-							const hasExcludedGenre = item.genre_ids.some((id) =>
-								excludedGenreIds.includes(id)
-							);
+							const hasExcludedGenre = item.genre_ids.some((id) => excludedGenreIds.includes(id));
 							if (hasExcludedGenre) {
 								return false;
 							}

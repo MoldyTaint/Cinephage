@@ -165,7 +165,9 @@ describe('PATCH /api/library/episodes/[id]', () => {
 	it('clears the override with null (inherit via series)', async () => {
 		await testDb.db
 			.update(episodes)
-			.set({ subtitleRequirementsOverride: [{ tag: 'en', variant: 'regular', accessibility: 'any' }] })
+			.set({
+				subtitleRequirementsOverride: [{ tag: 'en', variant: 'regular', accessibility: 'any' }]
+			})
 			.where(eq(episodes.id, EPISODE_ID))
 			.run();
 

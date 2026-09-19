@@ -9,13 +9,7 @@ import type { LogDomain } from '$lib/logging';
  * Types of workers supported by the system.
  */
 export type WorkerType =
-	| 'stream'
-	| 'import'
-	| 'scan'
-	| 'monitoring'
-	| 'search'
-	| 'portal-scan'
-	| 'channel-sync';
+	'stream' | 'import' | 'scan' | 'monitoring' | 'search' | 'portal-scan' | 'channel-sync';
 
 /**
  * Worker lifecycle status.

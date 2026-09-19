@@ -46,9 +46,7 @@ async function generateSeriesFolderName(
 	const config = namingSettingsService.getConfigSync();
 	const namingService = new NamingService(config);
 	// Parity with rename preview: localized-title tokens resolve at add time.
-	const localizedTitles = tmdbId
-		? await resolveLocalizedTitlesForFormats('series', tmdbId)
-		: {};
+	const localizedTitles = tmdbId ? await resolveLocalizedTitlesForFormats('series', tmdbId) : {};
 	const info: MediaNamingInfo = {
 		title,
 		originalTitle,

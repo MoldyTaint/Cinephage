@@ -583,7 +583,9 @@ export class SubtitleProviderManager {
 		// those clear at their reset time, not on the next successful call.
 		// (`lastError` stores `${errorType}: ${message}`.)
 		const activeErrorType = (config?.lastError ?? '').split(':')[0]?.trim() ?? '';
-		const preserveHardThrottle = Boolean(wasThrottled && HARD_THROTTLE_ERROR_NAMES.has(activeErrorType));
+		const preserveHardThrottle = Boolean(
+			wasThrottled && HARD_THROTTLE_ERROR_NAMES.has(activeErrorType)
+		);
 
 		// Clear transient error sliding window on success
 		this.clearTransientErrors(id);

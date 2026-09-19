@@ -107,7 +107,11 @@ export class IdentityStage implements DecisionStage<GrabDecisionContext> {
 		if (release.tmdbId != null && info.tmdbId != null && release.tmdbId === info.tmdbId) {
 			return 'tmdb';
 		}
-		if (release.imdbId && info.imdbId && release.imdbId.toLowerCase() === info.imdbId.toLowerCase()) {
+		if (
+			release.imdbId &&
+			info.imdbId &&
+			release.imdbId.toLowerCase() === info.imdbId.toLowerCase()
+		) {
 			return 'imdb';
 		}
 		if (release.tvdbId != null && info.tvdbId != null && release.tvdbId === info.tvdbId) {

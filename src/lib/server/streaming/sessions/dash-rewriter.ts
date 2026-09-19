@@ -46,9 +46,7 @@ export function rewriteDashManifest(options: RewriteDashOptions): string {
 
 	/** Preserve a reverse-proxy subpath configured in the base URL. */
 	function resolveAgainstBase(path: string): URL {
-		const normalizedBase = options.baseUrl.endsWith('/')
-			? options.baseUrl
-			: `${options.baseUrl}/`;
+		const normalizedBase = options.baseUrl.endsWith('/') ? options.baseUrl : `${options.baseUrl}/`;
 		return new URL(path.replace(/^\/+/, ''), normalizedBase);
 	}
 

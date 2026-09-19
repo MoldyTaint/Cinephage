@@ -73,8 +73,17 @@ vi.mock('$lib/server/db/schema.js', () => ({
 	movieFiles: { id: 'id', movieId: 'movieId' },
 	movies: { id: 'id', hasFile: 'hasFile' },
 	delayProfiles: { id: 'id', enabled: 'enabled', isDefault: 'isDefault' },
-	acquisitionIntents: { id: 'id', status: 'status', queueId: 'queueId', identityValue: 'identityValue' },
-	acquisitionReservations: { intentId: 'intentId', targetKey: 'targetKey', releasedAt: 'releasedAt' }
+	acquisitionIntents: {
+		id: 'id',
+		status: 'status',
+		queueId: 'queueId',
+		identityValue: 'identityValue'
+	},
+	acquisitionReservations: {
+		intentId: 'intentId',
+		targetKey: 'targetKey',
+		releasedAt: 'releasedAt'
+	}
 }));
 
 const { GrabDecisionPipeline } = await import('./GrabDecisionPipeline.js');

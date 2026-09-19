@@ -102,7 +102,8 @@ function aggregateItems(
 				existing.serverBreakdown.push({
 					serverId: row.serverId,
 					serverName: server.name,
-					serverType: server.serverType as AggregatedMediaItem['serverBreakdown'][number]['serverType'],
+					serverType:
+						server.serverType as AggregatedMediaItem['serverBreakdown'][number]['serverType'],
 					playCount: row.playCount ?? 0,
 					lastPlayedDate: row.lastPlayedDate ?? null,
 					videoCodec: row.videoCodec ?? null,
