@@ -301,7 +301,6 @@ class WorkerManagerImpl extends EventEmitter {
 			scan: { active: 0, completed: 0, failed: 0 },
 			monitoring: { active: 0, completed: 0, failed: 0 },
 			search: { active: 0, completed: 0, failed: 0 },
-			'subtitle-search': { active: 0, completed: 0, failed: 0 },
 			'portal-scan': { active: 0, completed: 0, failed: 0 },
 			'channel-sync': { active: 0, completed: 0, failed: 0 }
 		};

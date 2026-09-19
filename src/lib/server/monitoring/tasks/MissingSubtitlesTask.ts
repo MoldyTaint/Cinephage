@@ -12,7 +12,7 @@
 
 import { db } from '$lib/server/db/index.js';
 import { movies, series, episodes, monitoringHistory } from '$lib/server/db/schema.js';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, or, exists } from 'drizzle-orm';
 import { getSubtitleSearchService } from '$lib/server/subtitles/services/SubtitleSearchService.js';
 import { getSubtitleDownloadService } from '$lib/server/subtitles/services/SubtitleDownloadService.js';
 import { getSubtitleProviderManager } from '$lib/server/subtitles/services/SubtitleProviderManager.js';
@@ -324,7 +324,9 @@ async function searchMissingMovieSubtitles(
 						(r) => r.accessibility === 'require-hi'
 					);
 					const results = await searchService.searchForMovie(movie.id, languages, {
-						requireHearingImpaired
+						requireHearingImpaired,
+						requirements: activeMissing,
+						minimumScore: minScore
 					});
 
 					// Download best match for each missing requirement
@@ -448,11 +450,31 @@ async function searchMissingEpisodeSubtitles(
 	let downloaded = 0;
 	let errorCount = 0;
 
-	// Get series with language profiles that want subtitles
+	// Get monitored series that either want subtitles or have at least one
+	// episode forcing them on (tri-state episode override wins over the series
+	// opt-out, so an opted-out series with a force-on episode must be included).
 	const seriesWithProfiles = await db
 		.select()
 		.from(series)
-		.where(and(eq(series.wantsSubtitles, true), eq(series.monitored, true)));
+		.where(
+			and(
+				eq(series.monitored, true),
+				or(
+					eq(series.wantsSubtitles, true),
+					exists(
+						db
+							.select({ id: episodes.id })
+							.from(episodes)
+							.where(
+								and(
+									eq(episodes.seriesId, series.id),
+									eq(episodes.wantsSubtitlesOverride, true)
+								)
+							)
+					)
+				)
+			)
+		);
 
 	logger.debug(
 		{
@@ -476,15 +498,15 @@ async function searchMissingEpisodeSubtitles(
 
 		try {
 			// Effective profile (item override → library → instance default),
-			// resolved read-only — never persisted back onto the series.
+			// resolved read-only — never persisted back onto the series. May be
+			// null for override-only episodes: requirements still resolve per
+			// episode, policy falls back to the default score.
 			const effective = await profileService.getEffectiveProfileForSeries(show.id);
-			if (!effective) continue;
-			const profile = effective.profile;
-
-			const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
+			const minScore = effective?.profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
 
 			// Get episodes missing subtitles
 			const episodesMissing = await profileService.getSeriesEpisodesMissingSubtitles(show.id);
+			if (episodesMissing.length === 0) continue;
 
 			// Process episodes in batches
 			for (let i = 0; i < episodesMissing.length; i += MAX_CONCURRENT_SEARCHES) {
@@ -567,7 +589,9 @@ async function searchMissingEpisodeSubtitles(
 								(r) => r.accessibility === 'require-hi'
 							);
 							const results = await searchService.searchForEpisode(episodeId, languages, {
-								requireHearingImpaired
+								requireHearingImpaired,
+								requirements: activeMissing,
+								minimumScore: minScore
 							});
 
 							for (const requirement of activeMissing) {

@@ -558,6 +558,32 @@ describe('SubtitleDownloadService', () => {
 		expect((await testDb.db.select().from(subtitleHistory)).length).toBe(0);
 	});
 
+	it('preserves an untracked sidecar at the deterministic path when the DB transaction fails', async () => {
+		const movieId = await seedMovie();
+		const service = SubtitleDownloadService.getInstance();
+
+		const mediaDir = `${ROOT_PATH}/Test Movie (2024)`;
+		const finalName = 'Test.Movie.2024.en.srt';
+		await fsPromises.mkdir(mediaDir, { recursive: true });
+		await fsPromises.writeFile(`${mediaDir}/${finalName}`, 'untracked original');
+
+		const txSpy = vi.spyOn(testDb.db, 'transaction').mockImplementation(() => {
+			throw new Error('transaction failed');
+		});
+		try {
+			await expect(service.downloadForMovie(movieId, buildSearchResult())).rejects.toThrow(
+				'transaction failed'
+			);
+		} finally {
+			txSpy.mockRestore();
+		}
+
+		// The untracked file is the only copy we know of: never destroy it.
+		expect(await fsPromises.readFile(`${mediaDir}/${finalName}`, 'utf-8')).toBe(
+			'untracked original'
+		);
+	});
+
 	it('notifies media servers when a subtitle is created', async () => {
 		const movieId = await seedMovie();
 		const service = SubtitleDownloadService.getInstance();

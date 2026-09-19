@@ -22,8 +22,14 @@ import { getSubtitleProviderManager } from '$lib/server/subtitles/services/Subti
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { selectCandidates } from '$lib/server/subtitles/acquisition.js';
 import { matchesRequirement } from '$lib/server/subtitles/requirement-matcher.js';
+import {
+	filterSearchEligible,
+	recordSearchFailure,
+	resetSearchFailure
+} from '$lib/server/subtitles/subtitle-search-state.js';
 import { createChildLogger } from '$lib/logging/index.js';
 import { normalizeLanguageCode } from '$lib/shared/languages';
+import { requirementKey } from '$lib/shared/language-profile.js';
 import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
 import type { TaskResult } from '../MonitoringScheduler.js';
 import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
@@ -167,23 +173,49 @@ export async function executeSubtitleUpgradeTask(
 }
 
 /**
+ * How specifically a requirement constrains a subtitle. Exact variants
+ * (regular/forced) beat `both`; explicit HI rules beat `any`/`prefer-hi`.
+ * A regular row matching `[en|both, en|regular]` must map to the regular
+ * requirement, or an upgrade could replace it with a forced candidate and
+ * flip the regular requirement to missing.
+ */
+function requirementSpecificity(requirement: SubtitleRequirement): number {
+	let score = 0;
+	if (requirement.variant !== 'both') score += 2;
+	if (requirement.accessibility === 'require-hi' || requirement.accessibility === 'exclude-hi') {
+		score += 1;
+	}
+	return score;
+}
+
+/**
  * Find the profile requirement an existing subtitle satisfies, if any.
- * Used to keep upgrades within the same requirement tuple.
+ * Used to keep upgrades within the same requirement tuple. When several
+ * requirements match, the most specific one wins (ties keep profile order).
  */
 function requirementForSubtitle(
 	profileRequirements: SubtitleRequirement[],
 	subtitle: typeof subtitles.$inferSelect
 ): SubtitleRequirement | undefined {
-	return profileRequirements.find((requirement) =>
-		matchesRequirement(
+	let best: SubtitleRequirement | undefined;
+	let bestScore = -1;
+	for (const requirement of profileRequirements) {
+		const matches = matchesRequirement(
 			{
 				language: subtitle.language,
 				isForced: subtitle.isForced,
 				isHearingImpaired: subtitle.isHearingImpaired
 			},
 			requirement
-		)
-	);
+		);
+		if (!matches) continue;
+		const score = requirementSpecificity(requirement);
+		if (score > bestScore) {
+			best = requirement;
+			bestScore = score;
+		}
+	}
+	return best;
 }
 
 /**
@@ -320,6 +352,12 @@ async function searchMovieSubtitleUpgrades(
 						const requirement = requirementForSubtitle(requirements, existingSub);
 						if (!requirement) continue;
 
+						// Upgrade attempts share the per-requirement backoff gate:
+						// a provider outage must not be retried for the whole
+						// capped set on every run.
+						const eligible = await filterSearchEligible('movie', movie.id, [requirement]);
+						if (eligible.length === 0) continue;
+
 						const currentScore = existingSub.matchScore ?? 0;
 
 						// Tuple-valid candidates only, then require a real improvement.
@@ -340,6 +378,7 @@ async function searchMovieSubtitleUpgrades(
 								});
 								upgraded++;
 								movieUpgraded++;
+								await resetSearchFailure('movie', movie.id, requirementKey(requirement));
 
 								// History is owned by SubtitleDownloadService (single write,
 								// including replacedSubtitleId).
@@ -358,6 +397,7 @@ async function searchMovieSubtitleUpgrades(
 								errorCount++;
 								movieError =
 									downloadError instanceof Error ? downloadError.message : String(downloadError);
+								await recordSearchFailure('movie', movie.id, requirementKey(requirement));
 								logger.warn(
 									{
 										movieId: movie.id,
@@ -367,6 +407,10 @@ async function searchMovieSubtitleUpgrades(
 									'[SubtitleUpgradeTask] Failed to download upgraded subtitle'
 								);
 							}
+						} else {
+							// No better candidate yet: back off this requirement so
+							// upgrade checks do not hammer providers every run.
+							await recordSearchFailure('movie', movie.id, requirementKey(requirement));
 						}
 					}
 
@@ -555,6 +599,10 @@ async function searchEpisodeSubtitleUpgrades(
 						const requirement = requirementForSubtitle(requirements, existingSub);
 						if (!requirement) continue;
 
+						// Same per-requirement backoff gate as movies.
+						const eligible = await filterSearchEligible('episode', episode.id, [requirement]);
+						if (eligible.length === 0) continue;
+
 						const currentScore = existingSub.matchScore ?? 0;
 
 						// Tuple-valid candidates only, then require a real improvement.
@@ -570,6 +618,7 @@ async function searchEpisodeSubtitleUpgrades(
 								await downloadService.downloadForEpisode(episode.id, betterMatch);
 								upgraded++;
 								episodeUpgraded++;
+								await resetSearchFailure('episode', episode.id, requirementKey(requirement));
 
 								// History is owned by SubtitleDownloadService (single write,
 								// including replacedSubtitleId).
@@ -588,6 +637,7 @@ async function searchEpisodeSubtitleUpgrades(
 								errorCount++;
 								episodeError =
 									downloadError instanceof Error ? downloadError.message : String(downloadError);
+								await recordSearchFailure('episode', episode.id, requirementKey(requirement));
 								logger.warn(
 									{
 										episodeId: episode.id,
@@ -597,6 +647,8 @@ async function searchEpisodeSubtitleUpgrades(
 									'[SubtitleUpgradeTask] Failed to download upgraded subtitle'
 								);
 							}
+						} else {
+							await recordSearchFailure('episode', episode.id, requirementKey(requirement));
 						}
 					}
 

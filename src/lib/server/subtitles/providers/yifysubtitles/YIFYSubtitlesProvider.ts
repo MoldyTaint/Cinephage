@@ -6,7 +6,11 @@
  * Site: https://yifysubtitles.ch (or .org)
  */
 
-import { BaseSubtitleProvider } from '../BaseProvider';
+import {
+	BaseSubtitleProvider,
+	DEFAULT_CAPABILITIES,
+	type ProviderCapabilities
+} from '../BaseProvider';
 import type {
 	SubtitleSearchCriteria,
 	SubtitleSearchResult,
@@ -27,6 +31,11 @@ import { YIFY_LANGUAGES, YIFY_LANGUAGE_REVERSE } from './types';
 const BASE_URL = 'https://yifysubtitles.ch';
 
 export class YIFYSubtitlesProvider extends BaseSubtitleProvider {
+	// Parses isHi per search result.
+	protected override _capabilities: ProviderCapabilities = {
+		...DEFAULT_CAPABILITIES,
+		hearingImpairedVerifiable: true
+	};
 	get implementation(): string {
 		return 'yifysubtitles';
 	}

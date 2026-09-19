@@ -30,6 +30,12 @@ const { searchService, downloadService, profileService } = vi.hoisted(() => {
 		getProfile: vi.fn().mockResolvedValue(profile),
 		getEffectiveProfileForMovie: vi.fn().mockResolvedValue({ profile, source: 'movie' }),
 		getEffectiveProfileForSeries: vi.fn().mockResolvedValue({ profile, source: 'series' }),
+		getEffectiveSubtitleRequirements: vi.fn().mockResolvedValue({
+			requirements: [{ tag: 'en', variant: 'regular', accessibility: 'any' }],
+			source: 'movie',
+			profile,
+			cutoffApplies: true
+		}),
 		getMovieSubtitleStatus: vi
 			.fn()
 			.mockResolvedValue({ satisfied: false, missing: [], existing: [] }),
@@ -146,9 +152,15 @@ describe('SubtitleImportService HI gating', () => {
 
 		await searchSubtitlesForNewMedia('movie', 'import-hi-movie');
 
-		expect(searchService.searchForMovie).toHaveBeenCalledWith('import-hi-movie', ['en'], {
-			requireHearingImpaired: true
-		});
+		expect(searchService.searchForMovie).toHaveBeenCalledWith(
+			'import-hi-movie',
+			['en'],
+			expect.objectContaining({
+				requireHearingImpaired: true,
+				minimumScore: 80,
+				requirements: [expect.objectContaining({ accessibility: 'require-hi' })]
+			})
+		);
 	});
 
 	it('passes requireHearingImpaired for an episode with a require-hi missing requirement', async () => {
@@ -184,9 +196,15 @@ describe('SubtitleImportService HI gating', () => {
 
 		await searchSubtitlesForNewMedia('episode', 'import-hi-episode');
 
-		expect(searchService.searchForEpisode).toHaveBeenCalledWith('import-hi-episode', ['en'], {
-			requireHearingImpaired: true
-		});
+		expect(searchService.searchForEpisode).toHaveBeenCalledWith(
+			'import-hi-episode',
+			['en'],
+			expect.objectContaining({
+				requireHearingImpaired: true,
+				minimumScore: 80,
+				requirements: [expect.objectContaining({ accessibility: 'require-hi' })]
+			})
+		);
 	});
 
 	it('does not require HI verification for a non-HI requirement', async () => {
@@ -212,8 +230,10 @@ describe('SubtitleImportService HI gating', () => {
 
 		await searchSubtitlesForNewMedia('movie', 'import-plain-movie');
 
-		expect(searchService.searchForMovie).toHaveBeenCalledWith('import-plain-movie', ['en'], {
-			requireHearingImpaired: false
-		});
+		expect(searchService.searchForMovie).toHaveBeenCalledWith(
+			'import-plain-movie',
+			['en'],
+			expect.objectContaining({ requireHearingImpaired: false, minimumScore: 80 })
+		);
 	});
 });

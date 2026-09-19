@@ -278,6 +278,36 @@ describe('SubtitleScannerService scanSeriesSubtitles association', () => {
 		expect(paths.subtitlePath).toBe(expectedAbs);
 	});
 
+	it('creates one row per episode for a multi-episode sidecar and is scan-stable', async () => {
+		await seedRootAndSeries();
+		await seedEpisode('ep-1', 1, 1);
+		await seedEpisode('ep-2', 1, 2);
+		await seedEpisodeFile('ef-both', 'Season 01/Show S01E01E02.mkv', ['ep-1', 'ep-2']);
+
+		const service = SubtitleScannerService.getInstance();
+		mockDiscovery(service, [
+			sidecar({
+				relativePath: 'Season 01/Show S01E01E02.en.srt',
+				videoFileName: 'Show S01E01E02'
+			})
+		]);
+
+		const first = await service.scanSeriesSubtitles(SERIES_ID);
+
+		expect(first.added).toBe(2);
+		const saved = await savedSubtitles();
+		expect(saved).toHaveLength(2);
+		expect(saved.map((row) => row.episodeId).sort()).toEqual(['ep-1', 'ep-2']);
+		expect(new Set(saved.map((row) => row.relativePath))).toEqual(
+			new Set(['Show S01E01E02.en.srt'])
+		);
+
+		// A second scan must not delete the sibling episode's row.
+		const second = await service.scanSeriesSubtitles(SERIES_ID);
+		expect(second.removed).toBe(0);
+		expect(await savedSubtitles()).toHaveLength(2);
+	});
+
 	it('reassigns a stored row whose file now belongs to a different episode', async () => {
 		await seedRootAndSeries();
 		await seedEpisode('ep-1', 1, 1);

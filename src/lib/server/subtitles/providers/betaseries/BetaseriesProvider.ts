@@ -25,6 +25,7 @@ import {
 } from './types';
 import { extractFromZip } from '../mixins';
 import { AuthenticationError, ConfigurationError } from '../../errors/ProviderErrors';
+import { languageSatisfies } from '../../requirement-matcher';
 
 /**
  * Betaseries Provider
@@ -222,7 +223,7 @@ export class BetaseriesProvider extends BaseSubtitleProvider implements ISubtitl
 				continue;
 			}
 
-			if (!languages.includes(langCode)) {
+			if (!languages.some((requested) => languageSatisfies(langCode, requested))) {
 				continue;
 			}
 

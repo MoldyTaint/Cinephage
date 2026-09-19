@@ -14,7 +14,6 @@ export type WorkerType =
 	| 'scan'
 	| 'monitoring'
 	| 'search'
-	| 'subtitle-search'
 	| 'portal-scan'
 	| 'channel-sync';
 
@@ -80,7 +79,6 @@ export const DEFAULT_WORKER_CONFIG: WorkerManagerConfig = {
 		scan: parseInt(process.env.WORKER_MAX_SCANS || '2', 10) || 2,
 		monitoring: parseInt(process.env.WORKER_MAX_MONITORING || '5', 10) || 5,
 		search: parseInt(process.env.WORKER_MAX_SEARCH || '3', 10) || 3,
-		'subtitle-search': parseInt(process.env.WORKER_MAX_SUBTITLE_SEARCH || '3', 10) || 3,
 		'portal-scan': parseInt(process.env.WORKER_MAX_PORTAL_SCANS || '2', 10) || 2,
 		'channel-sync': parseInt(process.env.WORKER_MAX_CHANNEL_SYNCS || '3', 10) || 3
 	},
@@ -116,8 +114,6 @@ export function workerTypeToLogCategory(type: WorkerType): LogDomain {
 			return 'monitoring';
 		case 'search':
 			return 'indexers';
-		case 'subtitle-search':
-			return 'subtitles';
 		case 'portal-scan':
 			return 'scans';
 		case 'channel-sync':
@@ -190,19 +186,6 @@ export interface SearchWorkerMetadata {
 	itemsSearched: number;
 	itemsFound: number;
 	itemsGrabbed: number;
-	[key: string]: unknown;
-}
-
-/**
- * Subtitle search worker specific metadata.
- */
-export interface SubtitleSearchWorkerMetadata {
-	mediaType: 'movie' | 'series';
-	mediaId: string;
-	title: string;
-	languageProfileId: string;
-	subtitlesDownloaded: number;
-	errors: string[];
 	[key: string]: unknown;
 }
 

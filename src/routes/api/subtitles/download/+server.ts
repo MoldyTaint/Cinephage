@@ -1,6 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getSubtitleDownloadService } from '$lib/server/subtitles/services/SubtitleDownloadService';
+import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
+import { matchesRequirement } from '$lib/server/subtitles/requirement-matcher';
+import { resetSearchFailure } from '$lib/server/subtitles/subtitle-search-state';
+import { requirementKey } from '$lib/shared/language-profile';
 import { subtitleDownloadSchema } from '$lib/validation/schemas';
 import { db } from '$lib/server/db';
 import { movies, episodes } from '$lib/server/db/schema';
@@ -8,6 +12,39 @@ import { eq } from 'drizzle-orm';
 import type { SubtitleSearchResult } from '$lib/server/subtitles/types';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import { parseBody, assertFound } from '$lib/server/api/validate.js';
+
+/**
+ * A manual download is a user override: reset the per-requirement search
+ * backoff for every requirement the placed subtitle satisfies, so a later
+ * deletion of that file does not leave the requirement stuck in weekly
+ * backoff from earlier failed attempts. Best-effort.
+ */
+async function resetSatisfiedRequirements(
+	ownerType: 'movie' | 'episode',
+	ownerId: string,
+	subtitle: { language: string; isForced?: boolean; isHearingImpaired?: boolean }
+): Promise<void> {
+	try {
+		const effective = await LanguageProfileService.getInstance().getEffectiveSubtitleRequirements(
+			ownerType === 'movie' ? { movieId: ownerId } : { episodeId: ownerId }
+		);
+		for (const requirement of effective?.requirements ?? []) {
+			const satisfied = matchesRequirement(
+				{
+					language: subtitle.language,
+					isForced: subtitle.isForced,
+					isHearingImpaired: subtitle.isHearingImpaired
+				},
+				requirement
+			);
+			if (satisfied) {
+				await resetSearchFailure(ownerType, ownerId, requirementKey(requirement));
+			}
+		}
+	} catch {
+		// Best-effort only; never fail a successful download because of state reset.
+	}
+}
 
 /**
  * POST /api/subtitles/download
@@ -53,6 +90,11 @@ export const POST: RequestHandler = async ({ request }) => {
 		assertFound(movie, 'Movie', validated.movieId);
 
 		const downloadResult = await downloadService.downloadForMovie(validated.movieId, searchResult);
+		await resetSatisfiedRequirements('movie', validated.movieId, {
+			language: downloadResult.language,
+			isForced: searchResult.isForced,
+			isHearingImpaired: searchResult.isHearingImpaired
+		});
 		libraryMediaEvents.emitMovieUpdated(validated.movieId);
 
 		return json({
@@ -75,6 +117,11 @@ export const POST: RequestHandler = async ({ request }) => {
 			validated.episodeId,
 			searchResult
 		);
+		await resetSatisfiedRequirements('episode', validated.episodeId, {
+			language: downloadResult.language,
+			isForced: searchResult.isForced,
+			isHearingImpaired: searchResult.isHearingImpaired
+		});
 		libraryMediaEvents.emitSeriesUpdated(episode.seriesId);
 
 		return json({

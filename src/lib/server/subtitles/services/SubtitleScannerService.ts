@@ -10,7 +10,7 @@
  *   (including the season folder when present).
  * Both are produced by `toStoredRelativePath` and read back by
  * `resolveStoredSubtitlePath`, so scanner, download/delete and sync share one
- * definition. Migration 138 rewrote legacy episode rows onto this base.
+ * definition. Migration 141 rewrote legacy episode rows onto this base.
  *
  * Reconciliation replaces the old insert-only behavior: a scan compares
  * discovered sidecars against stored rows (identity = owner + stored relative
@@ -42,6 +42,8 @@ import {
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { normalizeLanguageCode } from '$lib/shared/languages';
+import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
+import { LanguageSettingsService } from './LanguageSettingsService.js';
 
 /** Common subtitle file extensions */
 const SUBTITLE_EXTENSIONS = ['.srt', '.sub', '.ass', '.ssa', '.vtt', '.idx'];
@@ -396,7 +398,11 @@ class SubtitleScannerService {
 	/**
 	 * Discover subtitle files in a directory
 	 */
-	async discoverSubtitles(directoryPath: string, rootPath: string): Promise<DiscoveredSubtitle[]> {
+	async discoverSubtitles(
+		directoryPath: string,
+		rootPath: string,
+		assumedLanguage?: LanguageCode | null
+	): Promise<DiscoveredSubtitle[]> {
 		const subtitleFiles: DiscoveredSubtitle[] = [];
 
 		try {
@@ -411,7 +417,7 @@ class SubtitleScannerService {
 						continue;
 					}
 					// Recursively scan subdirectories
-					const subResults = await this.discoverSubtitles(fullPath, rootPath);
+					const subResults = await this.discoverSubtitles(fullPath, rootPath, assumedLanguage);
 					subtitleFiles.push(...subResults);
 				} else if (entry.isFile() && this.isSubtitleFile(entry.name)) {
 					try {
@@ -422,11 +428,17 @@ class SubtitleScannerService {
 						// Try to find associated video file
 						const videoFileName = this.findAssociatedVideoFileName(baseName);
 
+						const detectedLanguage = this.detectLanguage(baseName);
 						subtitleFiles.push({
 							path: fullPath,
 							relativePath,
 							size: stats.size,
-							language: this.detectLanguage(baseName),
+							// `unknown_subtitle_policy = assume-language` may map an
+							// undetermined filename to the configured language.
+							language:
+								detectedLanguage === 'und' && assumedLanguage
+									? assumedLanguage
+									: detectedLanguage,
 							isForced: this.isForced(baseName),
 							isHearingImpaired: this.isHearingImpaired(baseName),
 							format: this.getFormat(baseName),
@@ -445,12 +457,36 @@ class SubtitleScannerService {
 	}
 
 	/**
+	 * Resolve the configured assumed language for undetermined subtitles.
+	 * Returns null unless `unknown_subtitle_policy` is 'assume-language' and the
+	 * configured language canonicalizes to a real tag (never English by default).
+	 */
+	private async resolveAssumedLanguage(): Promise<LanguageCode | null> {
+		try {
+			const settings = await LanguageSettingsService.getInstance().get();
+			if (settings.unknownSubtitlePolicy !== 'assume-language' || !settings.assumedLanguage) {
+				return null;
+			}
+			const tag = normalizeLanguageTag(settings.assumedLanguage);
+			return tag === 'und' ? null : (tag as LanguageCode);
+		} catch (error) {
+			logger.warn(
+				{ error: error instanceof Error ? error.message : String(error) },
+				'Failed to resolve assumed subtitle language; falling back to und'
+			);
+			return null;
+		}
+	}
+
+	/**
 	 * Extract likely video filename from subtitle filename
 	 * E.g., "Movie.2024.en.srt" -> "Movie.2024"
 	 */
 	private findAssociatedVideoFileName(subtitleFileName: string): string | undefined {
-		// Remove extension
-		let name = this.videoBaseName(subtitleFileName);
+		// Strip the extension, then re-add a trailing separator sentinel so an
+		// end-of-name token ("Movie.2024.1080p.en") still matches the
+		// `\.lang\.`-style suffix patterns that rely on a trailing delimiter.
+		let name = `${this.videoBaseName(subtitleFileName)}.`;
 
 		// Remove language tags
 		for (const { pattern } of LANGUAGE_PATTERNS) {
@@ -511,7 +547,11 @@ class SubtitleScannerService {
 			}
 
 			const moviePath = join(rootFolder.path, movie.path);
-			const discovered = await this.discoverSubtitles(moviePath, moviePath);
+			const discovered = await this.discoverSubtitles(
+				moviePath,
+				moviePath,
+				await this.resolveAssumedLanguage()
+			);
 			result.discovered = discovered.length;
 
 			// Load this movie's files so each sidecar can be linked to the specific
@@ -608,7 +648,11 @@ class SubtitleScannerService {
 			}
 
 			const seriesPath = join(rootFolder.path, seriesData.path);
-			const discovered = await this.discoverSubtitles(seriesPath, seriesPath);
+			const discovered = await this.discoverSubtitles(
+				seriesPath,
+				seriesPath,
+				await this.resolveAssumedLanguage()
+			);
 			result.discovered = discovered.length;
 
 			// Get all episode files to match subtitles
@@ -629,20 +673,32 @@ class SubtitleScannerService {
 					continue;
 				}
 
+				const episodeIds = uniqueStrings(association.episodeIds);
+				if (episodeIds.length === 0) {
+					result.skipped++;
+					result.ambiguous.push(`${sub.relativePath}: episode file has no episode id`);
+					continue;
+				}
+
 				const episodeDir = relativeDir(association.episodeFile.relativePath);
 				const baseDirAbs = episodeDir ? join(seriesPath, episodeDir) : seriesPath;
+				const storedRelativePath = toStoredRelativePath(sub.path, baseDirAbs);
 
-				desired.push({
-					ownerId: association.episodeId,
-					relativePath: toStoredRelativePath(sub.path, baseDirAbs),
-					absPath: sub.path,
-					language: sub.language,
-					isForced: sub.isForced,
-					isHearingImpaired: sub.isHearingImpaired,
-					format: sub.format,
-					size: sub.size,
-					movieFileId: null
-				});
+				// A multi-episode file's sidecar satisfies every episode it holds:
+				// one subtitle row per episode, so each can be marked satisfied.
+				for (const episodeId of episodeIds) {
+					desired.push({
+						ownerId: episodeId,
+						relativePath: storedRelativePath,
+						absPath: sub.path,
+						language: sub.language,
+						isForced: sub.isForced,
+						isHearingImpaired: sub.isHearingImpaired,
+						format: sub.format,
+						size: sub.size,
+						movieFileId: null
+					});
+				}
 			}
 
 			const storedRows =
@@ -686,7 +742,7 @@ class SubtitleScannerService {
 	private associateSeriesSidecar(
 		sub: DiscoveredSubtitle,
 		filesByDir: Map<string, EpisodeFileRow[]>
-	): { episodeId: string; episodeFile: EpisodeFileRow } | { skipped: string } {
+	): { episodeIds: string[]; episodeFile: EpisodeFileRow } | { skipped: string } {
 		const sidecarDir = relativeDir(sub.relativePath);
 		const candidates = filesByDir.get(sidecarDir) ?? [];
 		const context = sidecarDir === '' ? 'series root' : `"${sidecarDir}"`;
@@ -729,7 +785,7 @@ class SubtitleScannerService {
 		if (candidates.length === 1) {
 			const ids = uniqueStrings(candidates[0].episodeIds ?? []);
 			if (ids.length >= 1) {
-				return { episodeId: ids[0], episodeFile: candidates[0] };
+				return { episodeIds: ids, episodeFile: candidates[0] };
 			}
 			return { skipped: `episode file has no episode id in ${context}` };
 		}
@@ -740,22 +796,24 @@ class SubtitleScannerService {
 	}
 
 	/**
-	 * Turn the files matched by association step (a)/(b) into an episode.
-	 * A single matched file is unambiguous at file level (its first episode id
-	 * wins for combined multi-episode files). Multiple matched files only
+	 * Turn the files matched by association step (a)/(b) into the episodes they
+	 * hold. A single matched file yields ALL its episode ids (a combined
+	 * multi-episode file satisfies each of them). Multiple matched files only
 	 * resolve when they all reference the same episode; otherwise it is ambiguous.
 	 */
 	private pickEpisodeFromMatches(
 		matches: EpisodeFileRow[]
-	): { episodeId: string; episodeFile: EpisodeFileRow } | null {
+	): { episodeIds: string[]; episodeFile: EpisodeFileRow } | null {
 		const files = [...new Map(matches.map((file) => [file.id, file])).values()];
 		if (files.length === 1) {
 			const ids = uniqueStrings(files[0].episodeIds ?? []);
-			return ids.length >= 1 ? { episodeId: ids[0], episodeFile: files[0] } : null;
+			return ids.length >= 1 ? { episodeIds: ids, episodeFile: files[0] } : null;
 		}
 
 		const episodeIds = uniqueStrings(files.flatMap((file) => file.episodeIds ?? []));
-		return episodeIds.length === 1 ? { episodeId: episodeIds[0], episodeFile: files[0] } : null;
+		return episodeIds.length === 1
+			? { episodeIds: episodeIds, episodeFile: files[0] }
+			: null;
 	}
 
 	/**

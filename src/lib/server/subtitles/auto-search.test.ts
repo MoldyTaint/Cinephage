@@ -37,10 +37,12 @@ const { searchService, downloadService, profileState } = vi.hoisted(() => {
 
 	const profileState: {
 		profile: unknown;
+		effective: unknown;
 		movieStatus: { satisfied: boolean; missing: SubtitleRequirement[]; existing: [] };
 		episodeStatus: { satisfied: boolean; missing: SubtitleRequirement[]; existing: [] };
 	} = {
 		profile: undefined,
+		effective: undefined,
 		movieStatus: { satisfied: false, missing: [], existing: [] },
 		episodeStatus: { satisfied: false, missing: [], existing: [] }
 	};
@@ -62,6 +64,7 @@ vi.mock('./services/LanguageProfileService.js', async (importOriginal) => {
 			getInstance: () => ({
 				getProfileForMovie: vi.fn(async () => profileState.profile),
 				getProfileForSeries: vi.fn(async () => profileState.profile),
+				getEffectiveSubtitleRequirements: vi.fn(async () => profileState.effective),
 				getMovieSubtitleStatus: vi.fn(async () => profileState.movieStatus),
 				getEpisodeSubtitleStatus: vi.fn(async () => profileState.episodeStatus)
 			})
@@ -128,6 +131,12 @@ const baseSeries: SeriesLike = { id: 'series-1', monitored: true, wantsSubtitles
 beforeEach(() => {
 	vi.clearAllMocks();
 	profileState.profile = profile();
+	profileState.effective = {
+		requirements: [requirement],
+		source: 'instance',
+		profile: profile(),
+		cutoffApplies: true
+	};
 	profileState.movieStatus = { satisfied: false, missing: [requirement], existing: [] };
 	profileState.episodeStatus = { satisfied: false, missing: [requirement], existing: [] };
 	searchService.searchForMovie.mockResolvedValue({ results: [] });
@@ -172,6 +181,7 @@ describe('autoSearchMovie outcomes', () => {
 
 	it('reports no_profile when no profile resolves', async () => {
 		profileState.profile = undefined;
+		profileState.effective = null;
 		const result = await autoSearchMovie(baseMovie);
 
 		expect(result.skipped).toBe('no_profile');
@@ -237,6 +247,77 @@ describe('autoSearchMovie outcomes', () => {
 		expect(result.downloaded).toBe(0);
 		expect(result.outcomes[0].reason).toBe('error');
 		expect(result.outcomes[0].error).toBe('disk full');
+	});
+});
+
+describe('per-item override awareness', () => {
+	it('queries providers with override requirement languages, not the profile chain', async () => {
+		const fr: SubtitleRequirement = { tag: 'fr', variant: 'regular', accessibility: 'any' };
+		profileState.effective = {
+			requirements: [fr],
+			source: 'movie',
+			profile: profile(), // chain profile only lists English
+			cutoffApplies: false
+		};
+		profileState.movieStatus = { satisfied: false, missing: [fr], existing: [] };
+		searchService.searchForMovie.mockResolvedValue({
+			results: [candidate({ language: 'fr', matchScore: 85 })]
+		});
+
+		const result = await autoSearchMovie(baseMovie);
+
+		expect(searchService.searchForMovie).toHaveBeenCalledWith(
+			'movie-1',
+			['fr'],
+			expect.anything()
+		);
+		expect(result.downloaded).toBe(1);
+	});
+
+	it('searches override-only items with no profile chain using the default threshold', async () => {
+		const fr: SubtitleRequirement = { tag: 'fr', variant: 'regular', accessibility: 'any' };
+		profileState.effective = {
+			requirements: [fr],
+			source: 'movie',
+			profile: null,
+			cutoffApplies: false
+		};
+		profileState.movieStatus = { satisfied: false, missing: [fr], existing: [] };
+		searchService.searchForMovie.mockResolvedValue({
+			results: [candidate({ language: 'fr', matchScore: 75 })]
+		});
+
+		const result = await autoSearchMovie(baseMovie);
+
+		expect(searchService.searchForMovie).toHaveBeenCalledWith(
+			'movie-1',
+			['fr'],
+			expect.anything()
+		);
+		expect(result.downloaded).toBe(1);
+	});
+
+	it('uses episode overrides for episode searches', async () => {
+		const fr: SubtitleRequirement = { tag: 'fr', variant: 'regular', accessibility: 'any' };
+		profileState.effective = {
+			requirements: [fr],
+			source: 'episode',
+			profile: profile(),
+			cutoffApplies: false
+		};
+		profileState.episodeStatus = { satisfied: false, missing: [fr], existing: [] };
+		searchService.searchForEpisode.mockResolvedValue({
+			results: [candidate({ language: 'fr', matchScore: 85 })]
+		});
+
+		const result = await autoSearchEpisode(baseEpisode, baseSeries);
+
+		expect(searchService.searchForEpisode).toHaveBeenCalledWith(
+			'ep-1',
+			['fr'],
+			expect.anything()
+		);
+		expect(result.downloaded).toBe(1);
 	});
 });
 

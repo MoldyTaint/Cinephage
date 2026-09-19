@@ -6,7 +6,11 @@
  * API: https://subdl.com/api
  */
 
-import { BaseSubtitleProvider } from '../BaseProvider';
+import {
+	BaseSubtitleProvider,
+	DEFAULT_CAPABILITIES,
+	type ProviderCapabilities
+} from '../BaseProvider';
 import type {
 	SubtitleSearchCriteria,
 	SubtitleSearchResult,
@@ -23,11 +27,17 @@ import {
 	ConfigurationError
 } from '../../errors/ProviderErrors';
 import { SUBDL_LANGUAGES, SUBDL_LANGUAGE_REVERSE, type SubDLSubtitle } from './types';
+import { languageSatisfies } from '../../requirement-matcher';
 
 const API_BASE_URL = 'https://api.subdl.com/api/v1/subtitles';
 const DOWNLOAD_BASE_URL = 'https://dl.subdl.com';
 
 export class SubDLProvider extends BaseSubtitleProvider {
+	// Parses the `hi` flag per result.
+	protected override _capabilities: ProviderCapabilities = {
+		...DEFAULT_CAPABILITIES,
+		hearingImpairedVerifiable: true
+	};
 	get implementation(): string {
 		return 'subdl';
 	}
@@ -118,8 +128,9 @@ export class SubDLProvider extends BaseSubtitleProvider {
 				// Map SubDL language back to ISO code
 				const isoLang = SUBDL_LANGUAGE_REVERSE[sub.lang.toLowerCase()] || sub.lang;
 
-				// Check if this language was requested
-				if (!criteria.languages.includes(isoLang)) {
+				// Check if this language was requested (base/region aware: a `pt`
+				// request accepts a `pt-BR` result).
+				if (!criteria.languages.some((requested) => languageSatisfies(isoLang, requested))) {
 					continue;
 				}
 

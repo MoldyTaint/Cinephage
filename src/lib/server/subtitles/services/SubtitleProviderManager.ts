@@ -7,7 +7,7 @@
 
 import { db } from '$lib/server/db';
 import { subtitleProviders } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { createChildLogger } from '$lib/logging';
 
@@ -47,7 +47,17 @@ const TRANSIENT_ERROR_NAMES = new Set([
  * Hard error types (DownloadLimitExceeded, SearchLimitReached, AuthenticationError,
  * IPAddressBlocked, ConfigurationError) are NOT in the transient set and therefore
  * throttle immediately on first occurrence.
+ *
+ * A success call must never clear one of these still-active throttles — they
+ * only clear at their reset time (quota) or after reconfiguration (auth/config).
  */
+const HARD_THROTTLE_ERROR_NAMES = new Set([
+	'DownloadLimitExceeded',
+	'SearchLimitReached',
+	'AuthenticationError',
+	'ConfigurationError',
+	'IPAddressBlocked'
+]);
 
 /** Number of transient errors within the window before throttling */
 const TRANSIENT_THROTTLE_COUNT = 5;
@@ -430,7 +440,19 @@ export class SubtitleProviderManager {
 		const config = await this.getProvider(id);
 		if (!config) return;
 
-		const failures = config.consecutiveFailures + 1;
+		// Atomic increment: read-modify-write loses increments when providers
+		// fail concurrently (Promise.all tier searches), which under-counts
+		// failures and never trips auto-disable.
+		db.update(subtitleProviders)
+			.set({
+				consecutiveFailures: sql`${subtitleProviders.consecutiveFailures} + 1`,
+				updatedAt: new Date().toISOString()
+			})
+			.where(eq(subtitleProviders.id, id))
+			.run();
+		const refreshed = await this.getProvider(id);
+		const failures = refreshed?.consecutiveFailures ?? config.consecutiveFailures + 1;
+
 		let throttledUntil: string | undefined;
 		let errorType = 'UnknownError';
 		let throttleDescription = 'unknown duration';
@@ -514,7 +536,7 @@ export class SubtitleProviderManager {
 			.set({
 				lastError: `${errorType}: ${errorMessage}`,
 				lastErrorAt: new Date().toISOString(),
-				consecutiveFailures: failures,
+				// consecutiveFailures was incremented atomically above.
 				throttledUntil,
 				updatedAt: new Date().toISOString()
 			})
@@ -557,6 +579,12 @@ export class SubtitleProviderManager {
 		const wasThrottled = config && this.isThrottled(config);
 		const hadErrors = config && config.consecutiveFailures > 0;
 
+		// A success must not clear a quota/auth throttle that is still active:
+		// those clear at their reset time, not on the next successful call.
+		// (`lastError` stores `${errorType}: ${message}`.)
+		const activeErrorType = (config?.lastError ?? '').split(':')[0]?.trim() ?? '';
+		const preserveHardThrottle = Boolean(wasThrottled && HARD_THROTTLE_ERROR_NAMES.has(activeErrorType));
+
 		// Clear transient error sliding window on success
 		this.clearTransientErrors(id);
 
@@ -564,12 +592,24 @@ export class SubtitleProviderManager {
 			.update(subtitleProviders)
 			.set({
 				consecutiveFailures: 0,
-				throttledUntil: null,
-				lastError: null,
-				lastErrorAt: null,
+				...(preserveHardThrottle
+					? {}
+					: { throttledUntil: null, lastError: null, lastErrorAt: null }),
 				updatedAt: new Date().toISOString()
 			})
 			.where(eq(subtitleProviders.id, id));
+
+		if (preserveHardThrottle) {
+			logger.debug(
+				{
+					providerId: id,
+					providerName: config?.name,
+					errorType: activeErrorType,
+					throttledUntil: config?.throttledUntil
+				},
+				'Provider succeeded but a quota/auth throttle remains active'
+			);
+		}
 
 		// Log recovery from error state
 		if (wasThrottled || hadErrors) {

@@ -155,8 +155,13 @@ export async function autoSearchMovie(
 	if (skip) return emptyResult('movie', movie.id, movie.title, skip);
 
 	const profileService = LanguageProfileService.getInstance();
-	const profile = await profileService.getProfileForMovie(movie.id);
-	if (!profile) return emptyResult('movie', movie.id, movie.title, 'no_profile');
+	// Effective requirements (per-item override → profile chain). Override-only
+	// items (no profile in the chain) are still searchable: policy defaults
+	// apply, requirements are explicit.
+	const effective = await profileService.getEffectiveSubtitleRequirements({ movieId: movie.id });
+	if (!effective || effective.requirements.length === 0) {
+		return emptyResult('movie', movie.id, movie.title, 'no_profile');
+	}
 
 	const status = await profileService.getMovieSubtitleStatus(movie.id);
 	if (status.satisfied || status.missing.length === 0) {
@@ -175,7 +180,7 @@ export async function autoSearchMovie(
 		? status.missing.filter((r) => requirementKey(r) === requirementKey(options.requirement!))
 		: status.missing;
 
-	const languages = profileLanguages(profile, options.languages);
+	const languages = requirementLanguages(effective.requirements, options.languages);
 	if (languages.length === 0) return emptyResult('movie', movie.id, movie.title, 'no_profile');
 
 	// Per-requirement backoff: attempt only requirements whose window is open.
@@ -193,9 +198,11 @@ export async function autoSearchMovie(
 		};
 	}
 
-	const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
+	const minScore = effective.profile?.minimumScore ?? DEFAULT_MINIMUM_SCORE;
 	const searchResults = await getSubtitleSearchService().searchForMovie(movie.id, languages, {
-		requireHearingImpaired: activeMissing.some((r) => r.accessibility === 'require-hi')
+		requireHearingImpaired: activeMissing.some((r) => r.accessibility === 'require-hi'),
+		requirements: activeMissing,
+		minimumScore: minScore
 	});
 
 	return acquireRequirements(
@@ -219,8 +226,14 @@ export async function autoSearchEpisode(
 	if (skip) return emptyResult('episode', episode.id, title, skip);
 
 	const profileService = LanguageProfileService.getInstance();
-	const profile = await profileService.getProfileForSeries(series.id);
-	if (!profile) return emptyResult('episode', episode.id, title, 'no_profile');
+	// Episode chain: episode override → series resolution (series override →
+	// library default → instance default).
+	const effective = await profileService.getEffectiveSubtitleRequirements({
+		episodeId: episode.id
+	});
+	if (!effective || effective.requirements.length === 0) {
+		return emptyResult('episode', episode.id, title, 'no_profile');
+	}
 
 	const status = await profileService.getEpisodeSubtitleStatus(episode.id);
 	if (status.satisfied || status.missing.length === 0) {
@@ -239,7 +252,7 @@ export async function autoSearchEpisode(
 		? status.missing.filter((r) => requirementKey(r) === requirementKey(options.requirement!))
 		: status.missing;
 
-	const languages = profileLanguages(profile, options.languages);
+	const languages = requirementLanguages(effective.requirements, options.languages);
 	if (languages.length === 0) return emptyResult('episode', episode.id, title, 'no_profile');
 
 	// Per-requirement backoff: attempt only requirements whose window is open.
@@ -257,9 +270,11 @@ export async function autoSearchEpisode(
 		};
 	}
 
-	const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
+	const minScore = effective.profile?.minimumScore ?? DEFAULT_MINIMUM_SCORE;
 	const searchResults = await getSubtitleSearchService().searchForEpisode(episode.id, languages, {
-		requireHearingImpaired: activeMissing.some((r) => r.accessibility === 'require-hi')
+		requireHearingImpaired: activeMissing.some((r) => r.accessibility === 'require-hi'),
+		requirements: activeMissing,
+		minimumScore: minScore
 	});
 
 	return acquireRequirements(
@@ -272,12 +287,19 @@ export async function autoSearchEpisode(
 	);
 }
 
-function profileLanguages(
-	profile: { subtitles: SubtitleRequirement[] },
+/**
+ * Unique language tags to query providers with.
+ *
+ * Derived from the EFFECTIVE requirements (per-item override wins over the
+ * profile chain) so an override-only language is actually searched for. An
+ * explicit caller language list still wins (manual language selection).
+ */
+function requirementLanguages(
+	requirements: SubtitleRequirement[],
 	languages: string[] | undefined
 ): string[] {
 	if (languages && languages.length > 0) return [...new Set(languages)];
-	return [...new Set(profile.subtitles.map((requirement) => requirement.tag))];
+	return [...new Set(requirements.map((requirement) => requirement.tag))];
 }
 
 async function acquireRequirements(

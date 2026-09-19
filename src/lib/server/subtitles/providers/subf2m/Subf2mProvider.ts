@@ -6,7 +6,11 @@
  * Site: https://subf2m.co
  */
 
-import { BaseSubtitleProvider } from '../BaseProvider';
+import {
+	BaseSubtitleProvider,
+	DEFAULT_CAPABILITIES,
+	type ProviderCapabilities
+} from '../BaseProvider';
 import type {
 	SubtitleSearchCriteria,
 	SubtitleSearchResult,
@@ -27,6 +31,11 @@ import { SUBF2M_LANGUAGES } from './types';
 const BASE_URL = 'https://subf2m.co';
 
 export class Subf2mProvider extends BaseSubtitleProvider {
+	// Parses isHi per search result.
+	protected override _capabilities: ProviderCapabilities = {
+		...DEFAULT_CAPABILITIES,
+		hearingImpairedVerifiable: true
+	};
 	get implementation(): string {
 		return 'subf2m';
 	}

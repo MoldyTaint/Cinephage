@@ -83,6 +83,14 @@ export interface SubtitleSearchOptions {
 	 * `selectBestCandidate` for this requirement.
 	 */
 	requirement?: SubtitleRequirement;
+	/**
+	 * All requirements currently being acquired. When provided (and no single
+	 * `requirement`), the priority cascade only stops once every requirement has
+	 * an acceptable candidate in the accumulated results — otherwise a tier
+	 * with a weak candidate for one language would hide better candidates for
+	 * the others in lower-priority providers.
+	 */
+	requirements?: SubtitleRequirement[];
 	/** Minimum match score for the tier-acceptance check (default 70). */
 	minimumScore?: number;
 }
@@ -567,7 +575,13 @@ export class SubtitleSearchService {
 				}
 			}
 
-			const accepted = this.tierAccepted(tierResultsAll, criteria, options);
+			// Blacklisted results must not satisfy tier acceptance — otherwise a
+			// blacklisted-but-acceptable result stops the cascade and lower tiers
+			// (which could hold a usable candidate) are never queried.
+			const eligibleTierResults = tierResultsAll.filter(
+				(r) => !blacklist.has(`${r.providerId}:${r.providerSubtitleId}`)
+			);
+			const accepted = this.tierAccepted(eligibleTierResults, criteria, options);
 			tierTimings.push({
 				priority,
 				providerIds: tierProviders.map((p) => p.id),
@@ -664,6 +678,16 @@ export class SubtitleSearchService {
 				options.minimumScore ?? DEFAULT_MINIMUM_SCORE
 			);
 			return Boolean(selection.best);
+		}
+
+		if (options?.requirements && options.requirements.length > 0) {
+			const minScore = options.minimumScore ?? DEFAULT_MINIMUM_SCORE;
+			// Accumulated tier results: accept only when EVERY acquired
+			// requirement has an acceptable candidate so lower tiers still get a
+			// chance to fill the gaps.
+			return options.requirements.every((requirement) =>
+				Boolean(selectBestCandidate(tierResults, requirement, minScore).best)
+			);
 		}
 
 		const minScore = options?.minimumScore ?? 0;

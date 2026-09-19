@@ -278,17 +278,21 @@ describe('MissingSubtitlesTask monitored gating', () => {
 
 		expect(result.itemsProcessed).toBe(2);
 		expect(searchService.searchForMovie).toHaveBeenCalledTimes(1);
-		expect(searchService.searchForMovie).toHaveBeenCalledWith(monitoredMovieId, ['en'], {
-			requireHearingImpaired: false
-		});
+		expect(searchService.searchForMovie).toHaveBeenCalledWith(
+			monitoredMovieId,
+			['en'],
+			expect.objectContaining({ requireHearingImpaired: false })
+		);
 		expect(
 			searchService.searchForMovie.mock.calls.some((call) => call[0] === unmonitoredMovieId)
 		).toBe(false);
 
 		expect(searchService.searchForEpisode).toHaveBeenCalledTimes(1);
-		expect(searchService.searchForEpisode).toHaveBeenCalledWith(monitoredEpisodeId, ['en'], {
-			requireHearingImpaired: false
-		});
+		expect(searchService.searchForEpisode).toHaveBeenCalledWith(
+			monitoredEpisodeId,
+			['en'],
+			expect.objectContaining({ requireHearingImpaired: false })
+		);
 		expect(
 			searchService.searchForEpisode.mock.calls.some(
 				(call) => call[0] === unmonitoredEpisodeId || call[0] === unmonitoredSeriesEpisodeId
@@ -330,9 +334,11 @@ describe('MissingSubtitlesTask monitored gating', () => {
 		const result = await executeMissingSubtitlesTask(null);
 
 		expect(result.itemsProcessed).toBe(1);
-		expect(searchService.searchForMovie).toHaveBeenCalledWith('movie-inherit', ['en'], {
-			requireHearingImpaired: false
-		});
+		expect(searchService.searchForMovie).toHaveBeenCalledWith(
+			'movie-inherit',
+			['en'],
+			expect.objectContaining({ requireHearingImpaired: false })
+		);
 
 		// The resolved profile must NOT be persisted as an item override.
 		const [row] = testDb.db.select().from(movies).all();
@@ -471,17 +477,21 @@ describe('SubtitleUpgradeTask monitored gating', () => {
 
 		expect(result.itemsProcessed).toBe(2);
 		expect(searchService.searchForMovie).toHaveBeenCalledTimes(1);
-		expect(searchService.searchForMovie).toHaveBeenCalledWith(monitoredMovieId, ['en'], {
-			requireHearingImpaired: false
-		});
+		expect(searchService.searchForMovie).toHaveBeenCalledWith(
+			monitoredMovieId,
+			['en'],
+			expect.objectContaining({ requireHearingImpaired: false })
+		);
 		expect(
 			searchService.searchForMovie.mock.calls.some((call) => call[0] === unmonitoredMovieId)
 		).toBe(false);
 
 		expect(searchService.searchForEpisode).toHaveBeenCalledTimes(1);
-		expect(searchService.searchForEpisode).toHaveBeenCalledWith(monitoredEpisodeId, ['en'], {
-			requireHearingImpaired: false
-		});
+		expect(searchService.searchForEpisode).toHaveBeenCalledWith(
+			monitoredEpisodeId,
+			['en'],
+			expect.objectContaining({ requireHearingImpaired: false })
+		);
 		expect(
 			searchService.searchForEpisode.mock.calls.some(
 				(call) => call[0] === unmonitoredEpisodeId || call[0] === unmonitoredSeriesEpisodeId
@@ -511,9 +521,15 @@ describe('HI gating on scheduled/import searches', () => {
 
 		await executeMissingSubtitlesTask(null);
 
-		expect(searchService.searchForMovie).toHaveBeenCalledWith('hi-movie', ['en'], {
-			requireHearingImpaired: true
-		});
+		expect(searchService.searchForMovie).toHaveBeenCalledWith(
+			'hi-movie',
+			['en'],
+			expect.objectContaining({
+				requireHearingImpaired: true,
+				minimumScore: 80,
+				requirements: [expect.objectContaining({ accessibility: 'require-hi' })]
+			})
+		);
 	});
 
 	it('MissingSubtitlesTask passes requireHearingImpaired for a require-hi episode', async () => {
@@ -546,9 +562,15 @@ describe('HI gating on scheduled/import searches', () => {
 
 		await executeMissingSubtitlesTask(null);
 
-		expect(searchService.searchForEpisode).toHaveBeenCalledWith(episodeId, ['en'], {
-			requireHearingImpaired: true
-		});
+		expect(searchService.searchForEpisode).toHaveBeenCalledWith(
+			episodeId,
+			['en'],
+			expect.objectContaining({
+				requireHearingImpaired: true,
+				minimumScore: 80,
+				requirements: [expect.objectContaining({ accessibility: 'require-hi' })]
+			})
+		);
 	});
 
 	it('SubtitleUpgradeTask passes requireHearingImpaired for a require-hi profile', async () => {

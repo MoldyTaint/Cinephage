@@ -25,7 +25,7 @@ import {
 	episodeFiles,
 	rootFolders
 } from '$lib/server/db/schema';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { writeFile, mkdir, unlink, rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -35,7 +35,15 @@ import { getSubtitleSyncService } from './SubtitleSyncService';
 import { getMediaBrowserNotifier } from '$lib/server/notifications/mediabrowser';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
-import { normalizeLanguageCode } from '$lib/shared/languages';
+
+/**
+ * Hostile/misbehaving providers must not be able to exhaust memory: subtitles
+ * are tiny, so anything beyond these caps is rejected before extraction.
+ */
+const MAX_SUBTITLE_DOWNLOAD_BYTES = 25 * 1024 * 1024; // 25 MB (multi-sub archives)
+const MAX_SUBTITLE_ARCHIVE_ENTRIES = 200;
+const MAX_SUBTITLE_UNCOMPRESSED_BYTES = 50 * 1024 * 1024; // 50 MB
+import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
 import type {
 	SubtitleSearchResult,
 	SubtitleDownloadResult,
@@ -326,6 +334,15 @@ export class SubtitleDownloadService {
 			throw error;
 		}
 
+		// Size cap before any parsing/extraction.
+		if (content.length > MAX_SUBTITLE_DOWNLOAD_BYTES) {
+			throw new Error(
+				`Downloaded subtitle payload from ${result.providerName} is too large (${Math.round(
+					content.length / (1024 * 1024)
+				)} MB)`
+			);
+		}
+
 		// Handle zip files: choose the entry that matches the requirement.
 		if (isZipContent(content)) {
 			content = this.extractSubtitleFromZip(content, result, options);
@@ -339,7 +356,9 @@ export class SubtitleDownloadService {
 			);
 		}
 
-		const normalizedLanguage = normalizeLanguageCode(result.language);
+		// Canonicalize through the server boundary: unknown provider language
+		// values become `und`, never an invented or raw non-canonical tag.
+		const normalizedLanguage = normalizeLanguageTag(result.language);
 
 		// Generate filename using the detected extension (never a hardcoded srt).
 		const subtitleFileName = this.generateFileName(
@@ -369,6 +388,11 @@ export class SubtitleDownloadService {
 		const oldPath = existingSubtitle ? await resolveStoredSubtitlePath(existingSubtitle) : null;
 		const oldFileExists = oldPath ? existsSync(oldPath) : false;
 
+		// An untracked sidecar already occupying the deterministic final path is
+		// the only copy we know of — preserve it via backup instead of blindly
+		// overwriting (and never unlink it on a DB failure).
+		const untrackedFileAtFinalPath = !existingSubtitle && existsSync(finalPath);
+
 		// Preserve the old file when the new sidecar would overwrite the same path,
 		// so a DB failure can restore it.
 		let backupPath: string | null = null;
@@ -378,6 +402,10 @@ export class SubtitleDownloadService {
 				// Only record the backup once the rename actually succeeded, so a
 				// failed backup never causes the original file to be removed.
 				await rename(oldPath as string, candidateBackup);
+				backupPath = candidateBackup;
+			} else if (untrackedFileAtFinalPath) {
+				const candidateBackup = `${finalPath}.${randomUUID()}.bak`;
+				await rename(finalPath, candidateBackup);
 				backupPath = candidateBackup;
 			}
 
@@ -412,8 +440,36 @@ export class SubtitleDownloadService {
 		// if the transaction fails we roll the file back to its previous state.
 		try {
 			db.transaction((tx) => {
+				// Re-check the unique identity inside the transaction. A concurrent
+				// trigger (import hook + scheduled task, double-click "Search now")
+				// may have committed the same identity between the pre-check above
+				// and this write; replace its row instead of failing the insert.
+				const identityRows = tx
+					.select({ id: subtitles.id })
+					.from(subtitles)
+					.where(
+						and(
+							options.movieId
+								? eq(subtitles.movieId, options.movieId)
+								: isNull(subtitles.movieId),
+							options.episodeId
+								? eq(subtitles.episodeId, options.episodeId)
+								: isNull(subtitles.episodeId),
+							eq(subtitles.language, normalizedLanguage),
+							eq(subtitles.isForced, result.isForced),
+							eq(subtitles.isHearingImpaired, result.isHearingImpaired),
+							eq(subtitles.relativePath, subtitleFileName)
+						)
+					)
+					.all();
+
 				if (existingSubtitle) {
 					tx.delete(subtitles).where(eq(subtitles.id, existingSubtitle.id)).run();
+				}
+				for (const duplicate of identityRows) {
+					if (duplicate.id !== existingSubtitle?.id) {
+						tx.delete(subtitles).where(eq(subtitles.id, duplicate.id)).run();
+					}
 				}
 
 				tx.insert(subtitles)
@@ -451,9 +507,20 @@ export class SubtitleDownloadService {
 					.run();
 			});
 		} catch (dbError) {
-			await this.safeUnlink(finalPath);
+			// Never blind-unlink a path another writer may own. Restore our backup
+			// when we took one; otherwise only remove the file if no committed row
+			// references this exact owner+path.
 			if (backupPath) {
+				await this.safeUnlink(finalPath);
 				await this.safeRename(backupPath, finalPath);
+			} else if (
+				!(await this.hasCommittedRowForPath(
+					options.movieId,
+					options.episodeId,
+					subtitleFileName
+				))
+			) {
+				await this.safeUnlink(finalPath);
 			}
 			throw dbError;
 		}
@@ -603,7 +670,25 @@ export class SubtitleDownloadService {
 			);
 		}
 
-		const selection = selectSubtitleZipEntry(zip.getEntries(), {
+		const entries = zip.getEntries();
+		if (entries.length > MAX_SUBTITLE_ARCHIVE_ENTRIES) {
+			throw new Error(
+				`Subtitle zip archive has too many entries (${entries.length} > ${MAX_SUBTITLE_ARCHIVE_ENTRIES})`
+			);
+		}
+		const totalUncompressed = entries.reduce(
+			(sum, entry) => sum + (entry.header?.size ?? 0),
+			0
+		);
+		if (totalUncompressed > MAX_SUBTITLE_UNCOMPRESSED_BYTES) {
+			throw new Error(
+				`Subtitle zip archive expands to ${Math.round(
+					totalUncompressed / (1024 * 1024)
+				)} MB, above the ${Math.round(MAX_SUBTITLE_UNCOMPRESSED_BYTES / (1024 * 1024))} MB cap`
+			);
+		}
+
+		const selection = selectSubtitleZipEntry(entries, {
 			language: result.language,
 			isForced: result.isForced,
 			isHearingImpaired: result.isHearingImpaired,
@@ -640,6 +725,24 @@ export class SubtitleDownloadService {
 		} catch {
 			// Already gone or never created.
 		}
+	}
+
+	/** Whether a committed subtitle row references this owner + stored path. */
+	private async hasCommittedRowForPath(
+		movieId: string | undefined,
+		episodeId: string | undefined,
+		relativePath: string
+	): Promise<boolean> {
+		const conditions = [eq(subtitles.relativePath, relativePath)];
+		if (movieId) conditions.push(eq(subtitles.movieId, movieId));
+		if (episodeId) conditions.push(eq(subtitles.episodeId, episodeId));
+
+		const rows = await db
+			.select({ id: subtitles.id })
+			.from(subtitles)
+			.where(and(...conditions))
+			.limit(1);
+		return rows.length > 0;
 	}
 
 	/** Best-effort rename used for rollback; never throws. */
@@ -687,7 +790,7 @@ export class SubtitleDownloadService {
 			}
 		}
 
-		const normalizedLanguage = normalizeLanguageCode(language);
+		const normalizedLanguage = normalizeLanguageTag(language);
 		const languageValues =
 			normalizedLanguage === language ? [language] : [language, normalizedLanguage];
 

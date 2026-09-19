@@ -11,7 +11,8 @@ import { movies, series, episodes } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { getSubtitleSearchService } from './SubtitleSearchService.js';
 import { getSubtitleDownloadService } from './SubtitleDownloadService.js';
-import { LanguageProfileService, type LanguageProfile } from './LanguageProfileService.js';
+import { LanguageProfileService } from './LanguageProfileService.js';
+import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
 import { selectBestCandidate } from '../acquisition.js';
 import {
 	filterSearchEligible,
@@ -24,10 +25,15 @@ import { createChildLogger } from '$lib/logging';
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { normalizeLanguageCode } from '$lib/shared/languages';
 import { isMovieMonitored } from '$lib/server/monitoring/specifications/MonitoredSpecification.js';
+import { LanguageSettingsService } from './LanguageSettingsService.js';
 
-/** Unique language tags for a profile's requirements (search criteria input). */
-function profileLanguages(profile: LanguageProfile): string[] {
-	return [...new Set(profile.subtitles.map((requirement) => requirement.tag))];
+/**
+ * Unique language tags for an effective requirement list (search criteria
+ * input). Derived from the EFFECTIVE requirements so per-item overrides are
+ * actually queried — never from the profile chain alone.
+ */
+function requirementLanguages(requirements: SubtitleRequirement[]): string[] {
+	return [...new Set(requirements.map((requirement) => requirement.tag))];
 }
 
 /**
@@ -44,7 +50,6 @@ export interface ImportSearchResult {
  * Called by:
  * - ImportService after movie/episode imports complete
  * - MediaMatcher after TMDB metadata matching
- * - SubtitleSearchWorker for background manual searches
  *
  * @param mediaType - 'movie' or 'episode'
  * @param mediaId - The ID of the movie or episode
@@ -55,6 +60,18 @@ export async function searchSubtitlesForNewMedia(
 	mediaId: string
 ): Promise<ImportSearchResult> {
 	const result: ImportSearchResult = { downloaded: 0, errors: [] };
+
+	// Auto-sync gate (language_settings singleton): governs import-triggered
+	// searches only. Manual "Search now" and scheduled tasks call auto-search
+	// directly and intentionally ignore this switch.
+	const languageSettings = await LanguageSettingsService.getInstance().get();
+	if (!languageSettings.autoSyncSubtitles) {
+		logger.debug(
+			{ mediaType, mediaId },
+			'[SubtitleImportService] autoSyncSubtitles disabled; skipping import search'
+		);
+		return result;
+	}
 
 	const searchService = getSubtitleSearchService();
 	const downloadService = getSubtitleDownloadService();
@@ -141,22 +158,22 @@ async function searchForMovie(
 		return result;
 	}
 
-	// Effective profile (item override → library → instance default), resolved
-	// read-only — never persisted back onto the item.
-	const effective = await profileService.getEffectiveProfileForMovie(movieId);
-	if (!effective) {
+	// Effective requirements (per-item override → profile chain), resolved
+	// read-only — never persisted back onto the item. Override-only items
+	// (no profile in the chain) are still searched: requirements are explicit.
+	const effective = await profileService.getEffectiveSubtitleRequirements({ movieId });
+	if (!effective || effective.requirements.length === 0) {
 		logger.debug(
 			{
 				movieId,
 				title: movie.title
 			},
-			'[SubtitleImportService] Movie has subtitles enabled but no effective profile'
+			'[SubtitleImportService] Movie has subtitles enabled but no effective requirements'
 		);
 		return result;
 	}
-	const profile = effective.profile;
 
-	const languages = profileLanguages(profile);
+	const languages = requirementLanguages(effective.requirements);
 	if (languages.length === 0) {
 		return result;
 	}
@@ -188,10 +205,12 @@ async function searchForMovie(
 	// requirement is `require-hi`, otherwise such a requirement could hit a
 	// provider that cannot prove HI status.
 	const requireHearingImpaired = activeMissing.some((r) => r.accessibility === 'require-hi');
+	const minScore = effective.profile?.minimumScore ?? DEFAULT_MINIMUM_SCORE;
 	const searchResults = await searchService.searchForMovie(movieId, languages, {
-		requireHearingImpaired
+		requireHearingImpaired,
+		requirements: activeMissing,
+		minimumScore: minScore
 	});
-	const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
 
 	logger.info(
 		{
@@ -341,23 +360,23 @@ async function searchForEpisode(
 		return result;
 	}
 
-	// Effective profile (series override → library → instance default), resolved
-	// read-only — never persisted back onto the series.
-	const effective = await profileService.getEffectiveProfileForSeries(seriesData.id);
-	if (!effective) {
+	// Effective requirements (episode override → series override → library →
+	// instance default), resolved read-only — never persisted back onto the
+	// series. Override-only episodes are still searched.
+	const effective = await profileService.getEffectiveSubtitleRequirements({ episodeId });
+	if (!effective || effective.requirements.length === 0) {
 		logger.debug(
 			{
 				episodeId,
 				seriesId: seriesData.id,
 				seriesTitle: seriesData.title
 			},
-			'[SubtitleImportService] Series has subtitles enabled but no effective profile'
+			'[SubtitleImportService] Episode has subtitles enabled but no effective requirements'
 		);
 		return result;
 	}
-	const profile = effective.profile;
 
-	const languages = profileLanguages(profile);
+	const languages = requirementLanguages(effective.requirements);
 	if (languages.length === 0) {
 		return result;
 	}
@@ -391,10 +410,12 @@ async function searchForEpisode(
 	// requirement is `require-hi`, otherwise such a requirement could hit a
 	// provider that cannot prove HI status.
 	const requireHearingImpaired = activeMissing.some((r) => r.accessibility === 'require-hi');
+	const minScore = effective.profile?.minimumScore ?? DEFAULT_MINIMUM_SCORE;
 	const searchResults = await searchService.searchForEpisode(episodeId, languages, {
-		requireHearingImpaired
+		requireHearingImpaired,
+		requirements: activeMissing,
+		minimumScore: minScore
 	});
-	const minScore = profile.minimumScore ?? DEFAULT_MINIMUM_SCORE;
 
 	logger.info(
 		{

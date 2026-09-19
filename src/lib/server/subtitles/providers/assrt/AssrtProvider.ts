@@ -27,6 +27,7 @@ import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { extractFromZip } from '../mixins';
+import { languageSatisfies } from '../../requirement-matcher';
 import { ConfigurationError } from '../../errors/ProviderErrors';
 
 /**
@@ -133,7 +134,7 @@ export class AssrtProvider extends BaseSubtitleProvider implements ISubtitleProv
 				}
 			}
 
-			if (!languages.includes(langCode) && !languages.includes('zh')) {
+			if (!languages.some((requested) => languageSatisfies(langCode, requested))) {
 				continue;
 			}
 

@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as fsPromises from 'node:fs/promises';
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../test/db-helper';
 import { movieFiles, movies, rootFolders, subtitleHistory, subtitles } from '$lib/server/db/schema';
 
@@ -93,8 +94,9 @@ describe('SubtitleScannerService scanMovieSubtitles movie-file linking', () => {
 		mockLogger.warn.mockClear();
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
 		vi.restoreAllMocks();
+		await fsPromises.rm(ROOT_PATH, { recursive: true, force: true });
 	});
 
 	afterAll(() => {
@@ -122,6 +124,22 @@ describe('SubtitleScannerService scanMovieSubtitles movie-file linking', () => {
 		const sub1080p = savedSubtitles.find((s) => s.relativePath === 'Movie.2024.1080p.en.srt');
 		expect(sub2160p?.movieFileId).toBe('movie-file-2160p');
 		expect(sub1080p?.movieFileId).toBe('movie-file-1080p');
+	});
+
+	it('links a standard Name.lang.srt sidecar to the movie file via real discovery', async () => {
+		await seedRootFolderAndMovie();
+		await seedMovieFile('movie-file-1080p', 'Movie.2024.1080p.mkv');
+
+		const mediaDir = `${ROOT_PATH}/Test Movie (2024)`;
+		await fsPromises.mkdir(mediaDir, { recursive: true });
+		await fsPromises.writeFile(`${mediaDir}/Movie.2024.1080p.en.srt`, 'subtitle');
+
+		const service = SubtitleScannerService.getInstance();
+		const result = await service.scanMovieSubtitles(MOVIE_ID);
+
+		expect(result.registered).toBe(1);
+		const [row] = await testDb.db.select().from(subtitles);
+		expect(row.movieFileId).toBe('movie-file-1080p');
 	});
 
 	it('leaves movieFileId null for a sidecar that matches no movie file', async () => {

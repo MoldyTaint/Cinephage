@@ -1,11 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getSubtitleSearchService } from '$lib/server/subtitles/services/SubtitleSearchService';
-import {
-	LanguageProfileService,
-	type LanguageProfile
-} from '$lib/server/subtitles/services/LanguageProfileService';
+import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
 import { normalizeLanguageCode } from '$lib/shared/languages';
+import {
+	DEFAULT_MINIMUM_SCORE,
+	type EffectiveSubtitleRequirements
+} from '$lib/shared/language-profile';
 import {
 	selectBestCandidate,
 	type CandidateRejectionReason,
@@ -18,7 +19,7 @@ import { eq } from 'drizzle-orm';
 import type { SubtitleSearchCriteria } from '$lib/server/subtitles/types';
 import { parseBody } from '$lib/server/api/validate.js';
 
-/** Why no result would be auto-downloaded for the effective profile. */
+/** Why no result would be auto-downloaded for the effective requirements. */
 interface RejectionSummary {
 	effectiveMinimumScore?: number;
 	bestRejectedScore?: number;
@@ -26,14 +27,14 @@ interface RejectionSummary {
 }
 
 /**
- * Search languages for the effective profile: the canonicalized tags of its
- * subtitle requirements, deduped in requirement order (v2 shape — there is no
- * v1 preference list anymore).
+ * Search languages for the effective requirements: canonicalized tags deduped
+ * in requirement order. Derived from the EFFECTIVE list (per-item override
+ * wins) so override-only languages are actually queried.
  */
-function profileSearchLanguages(profile: LanguageProfile): string[] {
+function requirementSearchLanguages(requirements: Array<{ tag: string }>): string[] {
 	const seen = new Set<string>();
 	const languages: string[] = [];
-	for (const requirement of profile.subtitles) {
+	for (const requirement of requirements) {
 		const code = normalizeLanguageCode(requirement.tag);
 		if (code === '' || seen.has(code)) continue;
 		seen.add(code);
@@ -43,7 +44,7 @@ function profileSearchLanguages(profile: LanguageProfile): string[] {
 }
 
 /**
- * Best score that failed the effective profile, so the UI can say
+ * Best score that failed the effective requirements, so the UI can say
  * "N results, best score X below threshold Y" instead of "No subtitles found"
  * when results exist but none is acceptable.
  *
@@ -54,14 +55,14 @@ function profileSearchLanguages(profile: LanguageProfile): string[] {
  */
 function summarizeRejections(
 	results: readonly SearchResultLike[],
-	profile?: LanguageProfile
+	effective: EffectiveSubtitleRequirements | null
 ): RejectionSummary {
-	if (!profile || results.length === 0) return {};
+	if (!effective || effective.requirements.length === 0 || results.length === 0) return {};
 
-	const minimumScore = profile.minimumScore;
+	const minimumScore = effective.profile?.minimumScore ?? DEFAULT_MINIMUM_SCORE;
 	let bestRejected: { score: number; reason: CandidateRejectionReason } | undefined;
 
-	for (const requirement of profile.subtitles) {
+	for (const requirement of effective.requirements) {
 		const selection = selectBestCandidate(results, requirement, minimumScore);
 		if (selection.best) {
 			return { effectiveMinimumScore: minimumScore };
@@ -102,14 +103,17 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json({ error: 'Movie not found' }, { status: 404 });
 		}
 
-		// Resolve languages and the rejection summary from the effective profile.
-		const profile = await profileService.getProfileForMovie(validated.movieId);
+		// Resolve languages and the rejection summary from the effective
+		// requirements (per-item override wins over the profile chain).
+		const effective = await profileService.getEffectiveSubtitleRequirements({
+			movieId: validated.movieId
+		});
 		let languages = validated.languages || [];
-		if (languages.length === 0 && profile) {
-			languages = profileSearchLanguages(profile);
+		if (languages.length === 0 && effective) {
+			languages = requirementSearchLanguages(effective.requirements);
 		}
 		if (languages.length === 0) {
-			languages = ['en']; // Default to English
+			languages = ['en']; // Manual-search display default when nothing is configured
 		}
 
 		const results = await searchService.searchForMovie(validated.movieId, languages, {
@@ -122,7 +126,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({
 			...results,
 			languages,
-			...summarizeRejections(results.results, profile)
+			...summarizeRejections(results.results, effective)
 		});
 	}
 
@@ -144,14 +148,17 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json({ error: 'Series not found' }, { status: 404 });
 		}
 
-		// Resolve languages and the rejection summary from the effective profile.
-		const profile = await profileService.getProfileForSeries(seriesData.id);
+		// Resolve languages and the rejection summary from the effective
+		// requirements (episode override → series chain).
+		const effective = await profileService.getEffectiveSubtitleRequirements({
+			episodeId: validated.episodeId
+		});
 		let languages = validated.languages || [];
-		if (languages.length === 0 && profile) {
-			languages = profileSearchLanguages(profile);
+		if (languages.length === 0 && effective) {
+			languages = requirementSearchLanguages(effective.requirements);
 		}
 		if (languages.length === 0) {
-			languages = ['en']; // Default to English
+			languages = ['en']; // Manual-search display default when nothing is configured
 		}
 
 		const results = await searchService.searchForEpisode(validated.episodeId, languages, {
@@ -164,7 +171,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({
 			...results,
 			languages,
-			...summarizeRejections(results.results, profile)
+			...summarizeRejections(results.results, effective)
 		});
 	}
 
