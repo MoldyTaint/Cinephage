@@ -90,6 +90,8 @@
 		scoreLoading?: boolean;
 		/** Requirement-aware subtitle progress from the movie loader (null when no effective profile). */
 		subtitleProgress?: SubtitleRequirementProgress | null;
+		/** Instance default for items with no explicit prefer-original flag. */
+		preferOriginalTitleDefault?: boolean | null;
 		onMonitorToggle?: (newValue: boolean) => void;
 		onAutoSearch?: () => void;
 		onSearch?: () => void;
@@ -113,6 +115,7 @@
 		scoreInfo = null,
 		scoreLoading = false,
 		subtitleProgress = null,
+		preferOriginalTitleDefault = false,
 		onMonitorToggle,
 		onAutoSearch,
 		onSearch,
@@ -507,7 +510,7 @@
 				<div class="flex min-w-0 flex-1 flex-col gap-4">
 					<div class="min-w-0">
 						<h1 class="text-2xl font-bold md:text-3xl">
-							{displayTitle(movie)}
+							{displayTitle(movie, preferOriginalTitleDefault)}
 							{#if movie.year}
 								<span class="font-normal text-base-content/60">({movie.year})</span>
 							{/if}

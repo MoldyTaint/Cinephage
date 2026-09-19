@@ -91,6 +91,8 @@
 		percentComplete?: number;
 		/** Aggregate requirement progress across file-bearing episodes. */
 		subtitleProgress?: SubtitleRequirementProgress | null;
+		/** Instance default for items with no explicit prefer-original flag. */
+		preferOriginalTitleDefault?: boolean | null;
 		totalSeriesSize?: number;
 		downloadingCount?: number;
 		partiallyMonitored?: boolean;
@@ -123,6 +125,7 @@
 		episodeFileCount = null,
 		percentComplete = 0,
 		subtitleProgress = null,
+		preferOriginalTitleDefault = false,
 		totalSeriesSize = 0,
 		downloadingCount = 0,
 		partiallyMonitored = false,
@@ -368,7 +371,7 @@
 				<div class="flex min-w-0 flex-1 flex-col gap-4">
 					<div class="min-w-0">
 						<h1 class="text-2xl font-bold md:text-3xl">
-							{displayTitle(series)}
+							{displayTitle(series, preferOriginalTitleDefault)}
 							{#if series.year}
 								<span class="font-normal text-base-content/60">({series.year})</span>
 							{/if}

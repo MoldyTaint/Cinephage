@@ -101,7 +101,7 @@
 		episodeGroupId?: string | null;
 		metadataLanguageMode: 'inherit' | 'original' | 'explicit';
 		metadataLanguageValue: string | null;
-		preferOriginalTitle?: boolean;
+		preferOriginalTitle?: boolean | null;
 	}
 
 	let {
@@ -143,7 +143,7 @@
 	let episodeGroupsLoading = $state(false);
 	let metadataLanguageMode = $state<'inherit' | 'original' | 'explicit'>('inherit');
 	let metadataLanguageValue = $state<string | null>('en-US');
-	let preferOriginalTitle = $state(false);
+	let preferOriginalTitle = $state<boolean | null>(null);
 	/** Subtitle profile override; '' = inherit (no per-item override). */
 	let languageProfileOverride = $state('');
 
@@ -332,7 +332,8 @@
 			const resolvedMetadataLanguage = resolveMetadataLanguage(series);
 			metadataLanguageMode = resolvedMetadataLanguage.mode;
 			metadataLanguageValue = resolvedMetadataLanguage.value;
-			preferOriginalTitle = series.preferOriginalTitle === true;
+			// Preserve the tri-state: null = inherit the instance default.
+			preferOriginalTitle = series.preferOriginalTitle ?? null;
 			languageProfileOverride = series.languageProfileId ?? '';
 			void loadAnimeRoutingContext(series.tmdbId);
 			if (series.id) {
@@ -759,16 +760,28 @@
 						{/each}
 					</select>
 				</div>
-				<label class="label cursor-pointer">
-					<span class="label-text text-xs text-base-content/80"
-						>{m.library_metadata_preferOriginalTitle()}</span
-					>
-					<input
-						type="checkbox"
-						class="toggle toggle-primary toggle-sm"
-						bind:checked={preferOriginalTitle}
-					/>
-				</label>
+				<div class="flex items-center justify-between gap-2">
+					<label class="label cursor-pointer">
+						<span class="label-text text-xs text-base-content/80"
+							>{m.library_metadata_preferOriginalTitle()}</span
+						>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary toggle-sm"
+							checked={preferOriginalTitle === true}
+							onchange={(event) => (preferOriginalTitle = event.currentTarget.checked)}
+						/>
+					</label>
+					{#if preferOriginalTitle !== null}
+						<button
+							type="button"
+							class="btn btn-ghost btn-xs"
+							onclick={() => (preferOriginalTitle = null)}
+						>
+							{m.library_subtitleRequirements_reset()}
+						</button>
+					{/if}
+				</div>
 			</div>
 		</section>
 	</div>

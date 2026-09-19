@@ -30,6 +30,8 @@
 		onManualGrab?: (id: string) => void;
 		downloadingIds?: Set<string>;
 		autoSearchingIds?: Set<string>;
+		/** Instance default for items with no explicit prefer-original flag. */
+		preferOriginalTitleDefault?: boolean | null;
 	}
 
 	let {
@@ -47,7 +49,8 @@
 		onAutoGrab,
 		onManualGrab,
 		downloadingIds = new Set(),
-		autoSearchingIds = new Set()
+		autoSearchingIds = new Set(),
+		preferOriginalTitleDefault = false
 	}: Props = $props();
 
 	let actionLoadingRows = new SvelteSet<string>();
@@ -154,6 +157,7 @@
 				onManualGrab={onManualGrab ? handleManualGrab : undefined}
 				onDelete={handleDelete}
 				onNavigate={() => navigateToItem(item.id)}
+				{preferOriginalTitleDefault}
 			/>
 		{/each}
 	</div>
@@ -192,6 +196,7 @@
 						onManualGrab={onManualGrab ? handleManualGrab : undefined}
 						onDelete={handleDelete}
 						onNavigate={() => navigateToItem(item.id)}
+						{preferOriginalTitleDefault}
 					/>
 				{/each}
 			</tbody>

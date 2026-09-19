@@ -46,6 +46,8 @@
 		onManualGrab?: (id: string) => void;
 		onDelete: (id: string) => void;
 		onNavigate: () => void;
+		/** Instance default for items with no explicit prefer-original flag. */
+		preferOriginalTitleDefault?: boolean | null;
 	}
 
 	let {
@@ -64,7 +66,8 @@
 		onAutoGrab,
 		onManualGrab,
 		onDelete,
-		onNavigate
+		onNavigate,
+		preferOriginalTitleDefault = false
 	}: Props = $props();
 
 	const itemIsMovie = $derived(isMovie(item));
@@ -127,7 +130,7 @@
 			href={resolvePath(`/library/${mediaType}/${item.id}`)}
 			class="block max-w-xs truncate text-base font-medium hover:text-primary"
 		>
-			{displayTitle(item)}
+			{displayTitle(item, preferOriginalTitleDefault)}
 		</a>
 		{#if itemIsMovie && 'collectionName' in item && item.collectionName}
 			<span class="mt-0.5 badge badge-outline badge-xs">{item.collectionName}</span>

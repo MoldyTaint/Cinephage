@@ -38,6 +38,7 @@ import { getLibraryEntityService } from '$lib/server/library/LibraryEntityServic
 import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { seriesUpdateSchema } from '$lib/validation/schemas.js';
+import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
 import { tmdb } from '$lib/server/tmdb.js';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
 import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
@@ -475,7 +476,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			updateData.metadataLanguageMode = nextMetadataLanguageMode;
 			updateData.metadataLanguageValue = nextMetadataLanguageValue;
 		}
-		if (typeof preferOriginalTitle === 'boolean') {
+		if (preferOriginalTitle === null || typeof preferOriginalTitle === 'boolean') {
 			updateData.preferOriginalTitle = preferOriginalTitle;
 		}
 
@@ -900,6 +901,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 					}
 				}
 				// Delete queue record
+				acquisitionService.cancelByQueueId(queueItem.id, 'media removed from library');
 				await db.delete(downloadQueue).where(eq(downloadQueue.id, queueItem.id));
 			}
 

@@ -18,6 +18,7 @@ import { getLibraryEntityService } from '$lib/server/library/LibraryEntityServic
 import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 import { createChildLogger } from '$lib/logging';
+import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService.js';
 
 const logger = createChildLogger({ module: 'LibraryTvListPage', logDomain: 'scans' });
 
@@ -74,6 +75,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				monitored: series.monitored,
 				seasonFolder: series.seasonFolder,
 				wantsSubtitles: series.wantsSubtitles,
+				preferOriginalTitle: series.preferOriginalTitle,
 				added: series.added,
 				episodeCount: series.episodeCount,
 				episodeFileCount: series.episodeFileCount
@@ -419,11 +421,17 @@ export const load: PageServerLoad = async ({ url }) => {
 				(resolutionOrder.indexOf(b) === -1 ? 999 : resolutionOrder.indexOf(b))
 		);
 
+		// Instance display default for items with no explicit per-item flag.
+		const preferOriginalTitleDefault = (
+			await getLanguageSettingsService().get()
+		).preferOriginalTitle;
+
 		return {
 			series: filteredSeries,
 			total: filteredSeries.length,
 			totalUnfiltered: seriesInSelectedLibrary.length,
 			downloadingSeriesIds: [...downloadingSeriesIds],
+			preferOriginalTitleDefault,
 			filters: {
 				sort,
 				library: selectedLibrary?.slug ?? '',
@@ -464,6 +472,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			total: 0,
 			totalUnfiltered: 0,
 			downloadingSeriesIds: [] as string[],
+			preferOriginalTitleDefault: false,
 			filters: {
 				sort,
 				library: '',

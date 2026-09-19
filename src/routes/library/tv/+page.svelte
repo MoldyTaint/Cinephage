@@ -786,6 +786,7 @@
 									selectable={showCheckboxes}
 									selected={selectedSeries.has(show.id)}
 									onSelectChange={handleItemSelectChange}
+									preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 								/>
 							{/each}
 						</div>
@@ -803,6 +804,7 @@
 							onDelete={handleDeleteSeries}
 							onAutoGrab={handleAutoGrab}
 							onManualGrab={handleManualGrab}
+							preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 						/>
 					{/if}
 

@@ -13,6 +13,7 @@ import type { LibraryMovie, MovieFile, QualityProfileSummary } from '$lib/types/
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ module: 'LibraryMoviesListPage', logDomain: 'scans' });
@@ -69,6 +70,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				monitored: movies.monitored,
 				minimumAvailability: movies.minimumAvailability,
 				wantsSubtitles: movies.wantsSubtitles,
+				preferOriginalTitle: movies.preferOriginalTitle,
 				added: movies.added,
 				hasFile: movies.hasFile,
 				tmdbCollectionId: movies.tmdbCollectionId,
@@ -324,11 +326,17 @@ export const load: PageServerLoad = async ({ url }) => {
 				(resolutionOrder.indexOf(b) === -1 ? 999 : resolutionOrder.indexOf(b))
 		);
 
+		// Instance display default for items with no explicit per-item flag.
+		const preferOriginalTitleDefault = (
+			await getLanguageSettingsService().get()
+		).preferOriginalTitle;
+
 		return {
 			movies: filteredMovies,
 			total: filteredMovies.length,
 			totalUnfiltered: moviesInSelectedLibrary.length,
 			downloadingMovieIds: [...downloadingMovieIds],
+			preferOriginalTitleDefault,
 			filters: {
 				sort,
 				library: selectedLibrary?.slug ?? '',
@@ -367,6 +375,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		return {
 			movies: emptyMovies,
 			total: 0,
+			preferOriginalTitleDefault: false,
 			totalUnfiltered: 0,
 			downloadingMovieIds: [] as string[],
 			filters: {

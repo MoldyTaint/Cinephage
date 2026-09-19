@@ -1776,6 +1776,7 @@
 		{missingSearchResult}
 		{partiallyMonitored}
 		subtitleProgress={seriesSubtitleProgress}
+		preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 		onMonitorToggle={handleMonitorToggle}
 		onSearch={handleSearch}
 		onSearchMissing={handleSearchMissing}

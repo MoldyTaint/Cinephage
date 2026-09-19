@@ -24,6 +24,7 @@ import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import { tmdb } from '$lib/server/tmdb.js';
 import { movieUpdateSchema } from '$lib/validation/schemas';
 import { parseBody } from '$lib/server/api/validate.js';
+import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
 import {
 	validateRootFolder,
 	getAnimeSubtypeEnforcement
@@ -448,7 +449,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		updateData.metadataLanguageMode = nextMetadataLanguageMode;
 		updateData.metadataLanguageValue = nextMetadataLanguageValue;
 	}
-	if (typeof preferOriginalTitle === 'boolean') {
+	if (preferOriginalTitle === null || typeof preferOriginalTitle === 'boolean') {
 		updateData.preferOriginalTitle = preferOriginalTitle;
 	}
 
@@ -768,7 +769,9 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 						);
 					}
 				}
-				// Delete queue record
+				// Delete queue record — cancel the acquisition intent first so the
+				// slot is released rather than leaking until restart.
+				acquisitionService.cancelByQueueId(queueItem.id, 'media removed from library');
 				await db.delete(downloadQueue).where(eq(downloadQueue.id, queueItem.id));
 			}
 

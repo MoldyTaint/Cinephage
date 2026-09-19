@@ -942,6 +942,7 @@
 													selected={selectedMovies.has(movie.id)}
 													onSelectChange={handleItemSelectChange}
 													collectionName={movie.collectionName ?? undefined}
+													preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 												/>
 											{/each}
 										</div>
@@ -959,6 +960,7 @@
 												onDelete={handleDeleteMovie}
 												onAutoGrab={handleAutoGrab}
 												onManualGrab={handleManualGrab}
+												preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 											/>
 										</div>
 									{/if}
@@ -977,6 +979,7 @@
 										selected={selectedMovies.has(movie.id)}
 										onSelectChange={handleItemSelectChange}
 										collectionName={movie.collectionName ?? undefined}
+										preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 									/>
 								{/each}
 							</div>
@@ -993,6 +996,7 @@
 								onDelete={handleDeleteMovie}
 								onAutoGrab={handleAutoGrab}
 								onManualGrab={handleManualGrab}
+								preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 							/>
 						{/if}
 

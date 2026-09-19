@@ -923,6 +923,7 @@
 		{scoreInfo}
 		{scoreLoading}
 		subtitleProgress={subtitleRequirementProgress}
+		preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 	/>
 
 	<!-- Subtitle requirements (per-item override editing) -->
