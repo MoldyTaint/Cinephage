@@ -309,7 +309,10 @@ export class DiskScanService extends EventEmitter {
 					try {
 						const stats = await stat(fullPath);
 
-						if (stats.size < DOWNLOAD.MIN_SCAN_SIZE_BYTES && !entry.name.endsWith('.strm')) {
+						if (
+							stats.size < DOWNLOAD.MIN_SCAN_SIZE_BYTES &&
+							!entry.name.toLowerCase().endsWith('.strm')
+						) {
 							continue;
 						}
 
@@ -345,7 +348,10 @@ export class DiskScanService extends EventEmitter {
 							continue;
 						}
 
-						if (stats.size < DOWNLOAD.MIN_SCAN_SIZE_BYTES && !entry.name.endsWith('.strm')) {
+						if (
+							stats.size < DOWNLOAD.MIN_SCAN_SIZE_BYTES &&
+							!entry.name.toLowerCase().endsWith('.strm')
+						) {
 							continue;
 						}
 

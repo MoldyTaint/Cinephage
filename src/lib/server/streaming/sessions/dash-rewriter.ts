@@ -44,10 +44,17 @@ export function rewriteDashManifest(options: RewriteDashOptions): string {
 	const origin = base.origin;
 	const mpdDirPath = base.pathname.substring(0, base.pathname.lastIndexOf('/') + 1);
 
+	/** Preserve a reverse-proxy subpath configured in the base URL. */
+	function resolveAgainstBase(path: string): URL {
+		const normalizedBase = options.baseUrl.endsWith('/')
+			? options.baseUrl
+			: `${options.baseUrl}/`;
+		return new URL(path.replace(/^\/+/, ''), normalizedBase);
+	}
+
 	function buildDashProxyUrl(relativePath: string): string {
-		const url = new URL(
-			`/api/streaming/session/${options.session.token}/dash/${relativePath}`,
-			options.baseUrl
+		const url = resolveAgainstBase(
+			`api/streaming/session/${options.session.token}/dash/${relativePath}`
 		);
 		if (options.apiKey) {
 			url.searchParams.set('api_key', options.apiKey);
@@ -60,9 +67,8 @@ export function rewriteDashManifest(options: RewriteDashOptions): string {
 			? inferExtension(absoluteUrl)
 			: 'bin';
 		const resourceId = options.registerResource(absoluteUrl, 'segment', extension);
-		const url = new URL(
-			`/api/streaming/session/${options.session.token}/segment/${resourceId}.${extension}`,
-			options.baseUrl
+		const url = resolveAgainstBase(
+			`api/streaming/session/${options.session.token}/segment/${resourceId}.${extension}`
 		);
 		if (options.apiKey) {
 			url.searchParams.set('api_key', options.apiKey);

@@ -117,6 +117,10 @@ export class StreamingHandler {
 
 		const baseUrl = await getStreamingBaseUrl('http://localhost:5173');
 
+		if (parsed.isCompleteSeries && mediaType === 'tv' && seriesId) {
+			return this.handleCompleteSeries(request, resolved, parsed, baseUrl);
+		}
+
 		if (parsed.isSeasonPack && mediaType === 'tv' && seriesId && parsed.season !== undefined) {
 			return this.handleSeasonPack(request, resolved, parsed, baseUrl);
 		}
@@ -456,15 +460,73 @@ export class StreamingHandler {
 		};
 	}
 
-	private async handleSeasonPack(
+	/**
+	 * Complete-series (`stream://tv/{id}/all`) grabs: expand into per-season
+	 * packs and import each, so indexer results that emit `/all` are handled
+	 * instead of failing the single-episode path.
+	 */
+	private async handleCompleteSeries(
 		request: GrabRequest,
 		resolved: ResolvedContext,
 		parsedStream: NonNullable<ReturnType<typeof StrmService.parseStreamUrl>>,
 		baseUrl: string
 	): Promise<HandlerResult> {
+		const { seriesId } = resolved;
+		if (!seriesId) {
+			return { success: false, error: 'seriesId is required for a complete-series grab' };
+		}
+
+		const show = await db.query.series.findFirst({
+			where: eq(series.id, seriesId)
+		});
+		if (!show) {
+			return { success: false, error: 'Series not found' };
+		}
+
+		const seriesEpisodes = await db.query.episodes.findMany({
+			where: eq(episodes.seriesId, seriesId)
+		});
+		const seasonNumbers = [...new Set(seriesEpisodes.map((episode) => episode.seasonNumber))]
+			.filter((seasonNumber) => seasonNumber > 0) // Season 0 (specials) is excluded
+			.sort((a, b) => a - b);
+
+		if (seasonNumbers.length === 0) {
+			return { success: false, error: 'Series has no episodes to stream' };
+		}
+
+		let successResult: HandlerResult | null = null;
+		let lastError: string | undefined;
+
+		for (const seasonNumber of seasonNumbers) {
+			const seasonResult = await this.handleSeasonPack(
+				request,
+				resolved,
+				parsedStream,
+				baseUrl,
+				seasonNumber
+			);
+			if (seasonResult.success) {
+				successResult ??= seasonResult;
+			} else {
+				lastError = seasonResult.error;
+			}
+		}
+
+		return (
+			successResult ?? { success: false, error: lastError ?? 'Failed to create .strm files' }
+		);
+	}
+
+	private async handleSeasonPack(
+		request: GrabRequest,
+		resolved: ResolvedContext,
+		parsedStream: NonNullable<ReturnType<typeof StrmService.parseStreamUrl>>,
+		baseUrl: string,
+		seasonNumberOverride?: number
+	): Promise<HandlerResult> {
 		const { release, options } = request;
 		const { seriesId } = resolved;
-		const seasonNumber = parsedStream.season!;
+		const seasonNumber = seasonNumberOverride ?? parsedStream.season!;
 		const isUpgrade = options.isUpgrade;
 
 		if (!seriesId) {

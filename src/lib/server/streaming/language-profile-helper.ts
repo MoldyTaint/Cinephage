@@ -11,8 +11,8 @@ import { movies, series } from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
 import { logger } from '$lib/logging';
-import { normalizeLanguageCode } from '$lib/shared/languages';
 import { materializeAudioPreference } from '$lib/server/languages/audio-preference-resolver';
+import type { SubtitleRequirement } from '$lib/shared/language-profile';
 import {
 	DEFAULT_EFFECTIVE_AUDIO_PREFERENCE,
 	type EffectiveAudioPreference
@@ -113,45 +113,55 @@ export async function getAudioPreferenceFor(
 }
 
 /**
- * Resolve the ordered subtitle language preferences for a movie or episode,
- * from the item's effective subtitle requirements (episode override → series
- * override → library → instance default; requirement order preserved).
+ * Resolve the ordered subtitle requirements for a movie or episode, from the
+ * item's effective requirements (episode override → series override → library
+ * → instance default; requirement order preserved), gated by the
+ * wants-subtitles switches (movie flag, series flag with episode tri-state
+ * override).
  *
- * Used by playback to mark the DEFAULT subtitle track in HLS playlists: the
- * first provider track satisfying the highest-priority language wins.
- * Returns an empty array when nothing is resolvable (media not in the
- * library, no requirements) so callers fall back to positional defaulting.
- * Never throws.
+ * Used by playback to mark the DEFAULT subtitle track: the first provider
+ * track satisfying the highest-priority requirement (language + variant +
+ * accessibility via the shared matcher) wins. Returns an empty array when
+ * nothing is resolvable or subtitles are opted out, so callers fall back to
+ * positional defaulting. Never throws.
  */
-export async function getPreferredSubtitleLanguagesFor(
+export async function getPreferredSubtitleRequirementsFor(
 	mediaType: PlaybackMediaType,
 	tmdbId: number,
 	season?: number,
 	episode?: number
-): Promise<string[]> {
+): Promise<SubtitleRequirement[]> {
 	try {
 		const profileService = getLanguageProfileService();
 
 		if (mediaType === 'movie') {
 			const movie = (
-				await db.select({ id: movies.id }).from(movies).where(eq(movies.tmdbId, tmdbId)).limit(1)
+				await db
+					.select({ id: movies.id, wantsSubtitles: movies.wantsSubtitles })
+					.from(movies)
+					.where(eq(movies.tmdbId, tmdbId))
+					.limit(1)
 			)[0];
-			if (!movie) return [];
+			if (!movie || movie.wantsSubtitles === false) return [];
 			const effective = await profileService.getEffectiveSubtitleRequirements({
 				movieId: movie.id
 			});
-			return normalizePreferred(effective?.requirements ?? []);
+			return effective?.requirements ?? [];
 		}
 
 		const show = (
-			await db.select({ id: series.id }).from(series).where(eq(series.tmdbId, tmdbId)).limit(1)
+			await db
+				.select({ id: series.id, wantsSubtitles: series.wantsSubtitles })
+				.from(series)
+				.where(eq(series.tmdbId, tmdbId))
+				.limit(1)
 		)[0];
 		if (!show || season === undefined || episode === undefined) return [];
 
 		const { episodes } = await import('$lib/server/db/schema');
 		const episodeRow = (
 			await db
-				.select({ id: episodes.id })
+				.select({ id: episodes.id, wantsSubtitlesOverride: episodes.wantsSubtitlesOverride })
 				.from(episodes)
 				.where(
 					and(
@@ -164,10 +174,14 @@ export async function getPreferredSubtitleLanguagesFor(
 		)[0];
 		if (!episodeRow) return [];
 
+		// Tri-state gate: episode override wins over the series flag.
+		const wantsSubtitles = episodeRow.wantsSubtitlesOverride ?? show.wantsSubtitles;
+		if (wantsSubtitles === false) return [];
+
 		const effective = await profileService.getEffectiveSubtitleRequirements({
 			episodeId: episodeRow.id
 		});
-		return normalizePreferred(effective?.requirements ?? []);
+		return effective?.requirements ?? [];
 	} catch (error) {
 		logger.warn(
 			{
@@ -178,21 +192,8 @@ export async function getPreferredSubtitleLanguagesFor(
 				...streamLog,
 				error: error instanceof Error ? error.message : String(error)
 			},
-			'Failed to resolve preferred subtitle languages; using positional defaulting'
+			'Failed to resolve preferred subtitles; using positional defaulting'
 		);
 		return [];
 	}
-}
-
-/** Canonicalize + dedupe requirement tags, preserving requirement order. */
-function normalizePreferred(requirements: Array<{ tag: string }>): string[] {
-	const seen = new Set<string>();
-	const languages: string[] = [];
-	for (const requirement of requirements) {
-		const tag = normalizeLanguageCode(requirement.tag);
-		if (tag === '' || seen.has(tag)) continue;
-		seen.add(tag);
-		languages.push(tag);
-	}
-	return languages;
 }

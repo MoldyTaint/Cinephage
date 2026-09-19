@@ -66,13 +66,28 @@ export function isVttFormat(content: string): boolean {
 }
 
 /**
- * Ensure subtitle content is in VTT format
- * Converts from SRT if necessary
+ * Detect if content is ASS/SSA (Advanced SubStation Alpha).
  *
- * @param content - Subtitle content (SRT or VTT)
- * @returns VTT subtitle content
+ * These are styled formats with no WebVTT equivalent; relabeling them as VTT
+ * produces visible garbage in players, so callers must not serve them as VTT.
  */
-export function ensureVttFormat(content: string): string {
+export function isAssFormat(content: string): boolean {
+	const head = content.slice(0, 4096);
+	return (
+		/^\s*\[Script Info\]/im.test(head) ||
+		/^\s*\[V4\+?\s*Styles\]/im.test(head) ||
+		/\bDialogue:\s*(?:Marked=)?\d+,/.test(head)
+	);
+}
+
+/**
+ * Ensure subtitle content is in VTT format.
+ *
+ * Returns null when the content is neither VTT nor SRT (ASS/SSA and unknown
+ * binary formats are not silently relabeled as VTT — callers must reject the
+ * track instead of serving garbage to players).
+ */
+export function ensureVttFormat(content: string): string | null {
 	if (isVttFormat(content)) {
 		return content;
 	}
@@ -81,6 +96,5 @@ export function ensureVttFormat(content: string): string {
 		return convertSrtToVtt(content);
 	}
 
-	// Unknown format - wrap in VTT header anyway
-	return `WEBVTT\n\n${content.trim()}\n`;
+	return null;
 }

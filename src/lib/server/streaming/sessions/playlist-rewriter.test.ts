@@ -471,4 +471,48 @@ describe('pickDefaultSubtitleIndex', () => {
 		expect(pickDefaultSubtitleIndex(subtitles)).toBeNull();
 		expect(pickDefaultSubtitleIndex(subtitles, [])).toBeNull();
 	});
+
+	it('uses the full requirement tuple when requirements are provided', () => {
+		const base = tracks(['en', 'en', 'en']);
+		const subtitles = [
+			{ ...base[0], isForced: false, isHearingImpaired: false },
+			{ ...base[1], isForced: true, isHearingImpaired: false },
+			{ ...base[2], isForced: false, isHearingImpaired: true }
+		];
+
+		expect(
+			pickDefaultSubtitleIndex(subtitles, undefined, [
+				{ tag: 'en', variant: 'forced', accessibility: 'any' }
+			])
+		).toBe(1);
+
+		expect(
+			pickDefaultSubtitleIndex(subtitles, undefined, [
+				{ tag: 'en', variant: 'regular', accessibility: 'require-hi' }
+			])
+		).toBe(2);
+
+		// A regular requirement must not accept the forced track, and
+		// exclude-hi must skip the HI track.
+		expect(
+			pickDefaultSubtitleIndex(subtitles, undefined, [
+				{ tag: 'en', variant: 'regular', accessibility: 'exclude-hi' }
+			])
+		).toBe(0);
+	});
+
+	it('honors requirement order over track order', () => {
+		const base = tracks(['fr', 'de']);
+		const subtitles = [
+			{ ...base[0], isForced: false, isHearingImpaired: false },
+			{ ...base[1], isForced: false, isHearingImpaired: false }
+		];
+
+		expect(
+			pickDefaultSubtitleIndex(subtitles, undefined, [
+				{ tag: 'de', variant: 'regular', accessibility: 'any' },
+				{ tag: 'fr', variant: 'regular', accessibility: 'any' }
+			])
+		).toBe(1);
+	});
 });

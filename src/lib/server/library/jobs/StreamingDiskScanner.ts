@@ -188,7 +188,10 @@ export class StreamingDiskScanner {
 
 					if (entry.isSymbolicLink() && !stats.isFile()) continue;
 
-					if (stats.size < DOWNLOAD.MIN_SCAN_SIZE_BYTES && !entry.name.endsWith('.strm')) {
+					if (
+					stats.size < DOWNLOAD.MIN_SCAN_SIZE_BYTES &&
+					!entry.name.toLowerCase().endsWith('.strm')
+				) {
 						continue;
 					}
 

@@ -3,6 +3,7 @@
  */
 
 import type { EffectiveAudioPreference } from './language-utils';
+import type { SubtitleRequirement } from '$lib/shared/language-profile';
 
 export type StreamType = 'hls' | 'm3u8' | 'mp4' | 'dash' | 'file';
 
@@ -13,6 +14,10 @@ export interface StreamSubtitle {
 	label: string;
 	language: string;
 	isDefault?: boolean;
+	/** Provider-reported forced flag. */
+	isForced?: boolean;
+	/** Provider-reported hearing-impaired flag. */
+	isHearingImpaired?: boolean;
 }
 
 export interface StreamSource {
@@ -142,6 +147,8 @@ export interface PlaybackSessionSubtitle {
 	label: string;
 	language: string;
 	isDefault?: boolean;
+	isForced?: boolean;
+	isHearingImpaired?: boolean;
 }
 
 export interface PlaybackSessionResource {
@@ -199,6 +206,13 @@ export interface PlaybackSession {
 	 * the provider default or the first track.
 	 */
 	preferredSubtitleLanguages?: string[];
+	/**
+	 * Full effective subtitle requirements snapshot (tag + variant +
+	 * accessibility) captured at session creation. The playlist rewriter marks
+	 * DEFAULT=YES using the shared requirement matcher when present; absent on
+	 * sessions created before requirement-aware selection existed.
+	 */
+	preferredSubtitleRequirements?: SubtitleRequirement[];
 	lastAccessedAt: number;
 	attempts: PlaybackSessionAttempt[];
 	resourceIdsByKey: Record<string, string>;

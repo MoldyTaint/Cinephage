@@ -1,20 +1,42 @@
 import type { PlaybackSession, PlaybackSessionSubtitle, SessionResourceKind } from '../types';
+import type { SubtitleRequirement } from '$lib/shared/language-profile';
 import { resolveHlsUrl } from '../utils/hls-rewrite.js';
-import { languageSatisfies } from '$lib/server/subtitles/requirement-matcher.js';
+import { languageSatisfies, matchesRequirement } from '$lib/server/subtitles/requirement-matcher.js';
 import { normalizeLanguageCode } from '$lib/shared/languages';
 
 /**
  * Index of the track that should carry DEFAULT=YES, chosen from the item's
- * effective subtitle requirements: the first track satisfying the
- * highest-priority preferred language wins (then the next preference, and so
- * on — base-tag matching per the shared requirement matcher). Returns null
- * when no preference matches so the caller falls back to the provider
- * default / first-track rule.
+ * effective subtitle requirements.
+ *
+ * Requirement-aware mode (full tuple: language + variant + accessibility via
+ * the shared matcher): the first track satisfying the highest-priority
+ * requirement wins. Legacy mode (language list only, sessions created before
+ * requirement snapshots existed): the first track whose language satisfies the
+ * preferred language. Returns null when nothing matches so the caller falls
+ * back to the provider default / first-track rule.
  */
 export function pickDefaultSubtitleIndex(
 	subtitles: PlaybackSessionSubtitle[],
-	preferredLanguages?: string[]
+	preferredLanguages?: string[],
+	preferredRequirements?: SubtitleRequirement[]
 ): number | null {
+	if (preferredRequirements?.length) {
+		for (const requirement of preferredRequirements) {
+			const index = subtitles.findIndex((subtitle) =>
+				matchesRequirement(
+					{
+						language: subtitle.language,
+						isForced: subtitle.isForced,
+						isHearingImpaired: subtitle.isHearingImpaired
+					},
+					requirement
+				)
+			);
+			if (index >= 0) return index;
+		}
+		return null;
+	}
+
 	if (!preferredLanguages?.length) return null;
 
 	const normalized = subtitles.map((subtitle) => ({
@@ -101,6 +123,16 @@ function inferResourceKind(url: string, previousWasExtinf: boolean): SessionReso
 	return 'asset';
 }
 
+/**
+ * Resolve a session path against the configured base URL while PRESERVING any
+ * reverse-proxy subpath (`https://host/cinephage` -> `.../cinephage/api/...`).
+ * A leading-slash `new URL('/api', base)` would silently drop the subpath.
+ */
+function resolveAgainstBase(baseUrl: string, path: string): URL {
+	const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+	return new URL(path.replace(/^\/+/, ''), normalizedBase);
+}
+
 function buildSessionUrl(
 	baseUrl: string,
 	token: string,
@@ -118,7 +150,7 @@ function buildSessionUrl(
 		path = `/api/streaming/session/${token}/asset/${resourceId}`;
 	}
 
-	const url = new URL(path, baseUrl);
+	const url = resolveAgainstBase(baseUrl, path);
 	if (apiKey) {
 		url.searchParams.set('api_key', apiKey);
 	}
@@ -131,7 +163,10 @@ function buildSubtitlePlaylistUrl(
 	subtitleId: string,
 	apiKey?: string
 ): string {
-	const url = new URL(`/api/streaming/session/${token}/subtitle/${subtitleId}.m3u8`, baseUrl);
+	const url = resolveAgainstBase(
+		baseUrl,
+		`/api/streaming/session/${token}/subtitle/${subtitleId}.m3u8`
+	);
 	if (apiKey) {
 		url.searchParams.set('api_key', apiKey);
 	}
@@ -151,13 +186,21 @@ function injectSubtitleTracks(
 	const lines = playlist.split('\n');
 	const defaultIndex = pickDefaultSubtitleIndex(
 		session.subtitles,
-		session.preferredSubtitleLanguages
+		session.preferredSubtitleLanguages,
+		session.preferredSubtitleRequirements
 	);
 	const mediaTags = session.subtitles.map((subtitle, index) => {
 		const playlistUrl = buildSubtitlePlaylistUrl(baseUrl, session.token, subtitle.id, apiKey);
 		const isDefault =
 			defaultIndex !== null ? index === defaultIndex : subtitle.isDefault || index === 0;
-		return `#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="cinephage-subs",NAME="${subtitle.label.replace(/"/g, '\\"')}",DEFAULT=${isDefault ? 'YES' : 'NO'},AUTOSELECT=YES,FORCED=NO,LANGUAGE="${subtitle.language || 'und'}",URI="${playlistUrl}"`;
+		// Strip CR/LF and escape backslashes/quotes so provider metadata cannot
+		// inject HLS attributes or break the playlist.
+		const label = subtitle.label.replace(/[\r\n]+/g, ' ').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+		const language = (subtitle.language || 'und')
+			.replace(/[\r\n]+/g, '')
+			.replace(/\\/g, '\\\\')
+			.replace(/"/g, '\\"');
+		return `#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="cinephage-subs",NAME="${label}",DEFAULT=${isDefault ? 'YES' : 'NO'},AUTOSELECT=YES,FORCED=${subtitle.isForced ? 'YES' : 'NO'},LANGUAGE="${language}",URI="${playlistUrl}"`;
 	});
 
 	const withMediaTags: string[] = [];

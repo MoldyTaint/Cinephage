@@ -4,6 +4,7 @@ import {
 	audioPreferencesEqual,
 	type EffectiveAudioPreference
 } from '../language-utils';
+import type { SubtitleRequirement } from '$lib/shared/language-profile';
 import type {
 	PlaybackMediaType,
 	PlaybackSession,
@@ -16,6 +17,8 @@ import type {
 } from '../types';
 
 const SESSION_TTL_MS = 30 * 60 * 1000;
+/** Absolute cap from creation so a continuously-playing session cannot live forever. */
+const SESSION_HARD_TTL_MS = 6 * 60 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 60 * 1000;
 
 interface CreatePlaybackSessionInput {
@@ -38,6 +41,8 @@ interface CreatePlaybackSessionInput {
 	chosenAudioLanguage?: string | null;
 	/** Ordered subtitle language preferences (see PlaybackSession.preferredSubtitleLanguages). */
 	preferredSubtitleLanguages?: string[];
+	/** Full effective requirement snapshot (see PlaybackSession.preferredSubtitleRequirements). */
+	preferredSubtitleRequirements?: SubtitleRequirement[];
 }
 
 export class PlaybackSessionStore {
@@ -85,6 +90,9 @@ export class PlaybackSessionStore {
 			preferredSubtitleLanguages: input.preferredSubtitleLanguages
 				? [...input.preferredSubtitleLanguages]
 				: [],
+			preferredSubtitleRequirements: input.preferredSubtitleRequirements
+				? input.preferredSubtitleRequirements.map((requirement) => ({ ...requirement }))
+				: [],
 			lastAccessedAt: now,
 			attempts: [...input.attempts],
 			resourceIdsByKey: {},
@@ -124,7 +132,8 @@ export class PlaybackSessionStore {
 		tmdbId: number,
 		season?: number,
 		episode?: number,
-		audioPreference?: EffectiveAudioPreference
+		audioPreference?: EffectiveAudioPreference,
+		preferredSubtitleRequirements?: SubtitleRequirement[]
 	): PlaybackSession | null {
 		const token = this.mediaIndex.get(this.mediaKey(mediaType, tmdbId, season, episode));
 		if (!token) {
@@ -147,6 +156,17 @@ export class PlaybackSessionStore {
 			return null;
 		}
 
+		// A changed per-item/professional subtitle requirement must take effect
+		// on the next launch rather than serving the old DEFAULT track.
+		if (
+			!subtitleRequirementsEqual(
+				session.preferredSubtitleRequirements,
+				preferredSubtitleRequirements
+			)
+		) {
+			return null;
+		}
+
 		this.reusedSessions += 1;
 		return session;
 	}
@@ -157,13 +177,17 @@ export class PlaybackSessionStore {
 			return null;
 		}
 
-		if (Date.now() > session.expiresAt) {
+		const now = Date.now();
+		if (now > session.expiresAt) {
 			this.deleteSession(token);
 			this.expiredSessions += 1;
 			return null;
 		}
 
-		session.lastAccessedAt = Date.now();
+		// Sliding idle timeout: active playback keeps refreshing its own window,
+		// capped from creation so a session cannot live forever.
+		session.lastAccessedAt = now;
+		session.expiresAt = Math.min(now + SESSION_TTL_MS, session.createdAt + SESSION_HARD_TTL_MS);
 		return session;
 	}
 
@@ -285,6 +309,24 @@ export class PlaybackSessionStore {
 		// behavior it was created with (the no-profile default).
 		return audioPreferencesEqual(effective, DEFAULT_EFFECTIVE_AUDIO_PREFERENCE);
 	}
+}
+
+/** Order-sensitive equality for requirement snapshots (reuse compatibility). */
+function subtitleRequirementsEqual(
+	stored?: SubtitleRequirement[],
+	requested?: SubtitleRequirement[]
+): boolean {
+	const left = stored ?? [];
+	const right = requested ?? [];
+	if (left.length !== right.length) return false;
+	return left.every((requirement, index) => {
+		const other = right[index];
+		return (
+			requirement.tag === other.tag &&
+			requirement.variant === other.variant &&
+			requirement.accessibility === other.accessibility
+		);
+	});
 }
 
 let playbackSessionStoreInstance: PlaybackSessionStore | null = null;

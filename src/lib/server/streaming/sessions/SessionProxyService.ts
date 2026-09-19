@@ -512,7 +512,18 @@ ${fileUrl.toString()}
 			});
 		}
 
-		const content = ensureVttFormat(await readBodyWithLimit(response, MAX_SUBTITLE_BYTES));
+		const converted = ensureVttFormat(await readBodyWithLimit(response, MAX_SUBTITLE_BYTES));
+		if (converted === null) {
+			// ASS/SSA or unknown binary content: never relabel as text/vtt.
+			return new Response(
+				JSON.stringify({ error: 'Subtitle format is not convertible to WebVTT' }),
+				{
+					status: 415,
+					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+				}
+			);
+		}
+		const content = converted;
 		return new Response(content, {
 			status: 200,
 			headers: {

@@ -9,7 +9,7 @@ import type {
 } from '../types';
 import {
 	getAudioPreferenceFor,
-	getPreferredSubtitleLanguagesFor
+	getPreferredSubtitleRequirementsFor
 } from '../language-profile-helper';
 import { getPlaybackSessionStore } from './session-store';
 
@@ -42,7 +42,9 @@ function normalizeSubtitleList(source: StreamSource): PlaybackSessionSubtitle[] 
 		url: subtitle.url,
 		label: subtitle.label,
 		language: subtitle.language,
-		isDefault: subtitle.isDefault
+		isDefault: subtitle.isDefault,
+		isForced: subtitle.isForced,
+		isHearingImpaired: subtitle.isHearingImpaired
 	}));
 }
 
@@ -54,7 +56,57 @@ export class PlaybackSessionService {
 	private readonly api = getLibraryStreamingModule();
 	private readonly store = getPlaybackSessionStore();
 
+	/**
+	 * In-flight launches keyed by media identity. Two concurrent launches for
+	 * the same item share one provider lookup/session instead of both missing
+	 * reuse and creating duplicate sessions (the second overwrote mediaIndex,
+	 * orphaning the first token until TTL).
+	 */
+	private readonly pendingLaunches = new Map<
+		string,
+		Promise<{
+			session: PlaybackSession | null;
+			extractionResult?: {
+				success: boolean;
+				sources: StreamSource[];
+				error?: string;
+				meta?: Record<string, unknown>;
+			};
+			error?: string;
+		}>
+	>();
+
 	async createOrReuseSession(params: PlaybackLaunchParams): Promise<{
+		session: PlaybackSession | null;
+		extractionResult?: {
+			success: boolean;
+			sources: StreamSource[];
+			error?: string;
+			meta?: Record<string, unknown>;
+		};
+		error?: string;
+	}> {
+		const key = `${params.type}:${params.tmdbId}:${params.season ?? 'x'}:${params.episode ?? 'x'}`;
+
+		if (!params.forceRefresh) {
+			const inFlight = this.pendingLaunches.get(key);
+			if (inFlight) return inFlight;
+		}
+
+		const run = this.createOrReuseSessionInternal(params).finally(() => {
+			if (this.pendingLaunches.get(key) === run) {
+				this.pendingLaunches.delete(key);
+			}
+		});
+
+		if (!params.forceRefresh) {
+			this.pendingLaunches.set(key, run);
+		}
+
+		return run;
+	}
+
+	private async createOrReuseSessionInternal(params: PlaybackLaunchParams): Promise<{
 		session: PlaybackSession | null;
 		extractionResult?: {
 			success: boolean;
@@ -68,9 +120,16 @@ export class PlaybackSessionService {
 			return { session: null, error: 'Aborted' };
 		}
 
-		// Resolve the CURRENT audio preference before the reuse check so a
-		// changed profile takes effect on the next launch without forceRefresh.
+		// Resolve the CURRENT audio + subtitle requirements before the reuse
+		// check so a changed profile/override takes effect on the next launch
+		// without forceRefresh.
 		const audioPreference = await getAudioPreferenceFor(
+			params.type,
+			params.tmdbId,
+			params.season,
+			params.episode
+		);
+		const preferredSubtitleRequirements = await getPreferredSubtitleRequirementsFor(
 			params.type,
 			params.tmdbId,
 			params.season,
@@ -83,7 +142,8 @@ export class PlaybackSessionService {
 				params.tmdbId,
 				params.season,
 				params.episode,
-				audioPreference
+				audioPreference,
+				preferredSubtitleRequirements
 			);
 			if (existing) {
 				return { session: existing };
@@ -137,12 +197,7 @@ export class PlaybackSessionService {
 			sourceExpiresAt: source.expiresAt,
 			audioPreference,
 			chosenAudioLanguage,
-			preferredSubtitleLanguages: await getPreferredSubtitleLanguagesFor(
-				params.type,
-				params.tmdbId,
-				params.season,
-				params.episode
-			)
+			preferredSubtitleRequirements
 		});
 
 		logger.info(
