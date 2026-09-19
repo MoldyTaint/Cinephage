@@ -92,6 +92,96 @@ const DIRECT_TS_RESPONSE_HEADERS = {
 	'X-Content-Type-Options': 'nosniff'
 } as const;
 
+const HLS_PROBE_MAX_BYTES = 8192;
+const MAX_HLS_PLAYLIST_BYTES = 5 * 1024 * 1024;
+
+async function readBoundedText(
+	body: ReadableStream<Uint8Array>,
+	maxBytes: number
+): Promise<string> {
+	const reader = body.getReader();
+	const decoder = new TextDecoder();
+	let bytesRead = 0;
+	let text = '';
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) return text + decoder.decode();
+			bytesRead += value.byteLength;
+			if (bytesRead > maxBytes) {
+				await reader.cancel();
+				throw new Error('HLS playlist exceeds the maximum allowed size');
+			}
+			text += decoder.decode(value, { stream: true });
+		}
+	} finally {
+		reader.releaseLock();
+	}
+}
+
+function hasHlsContentType(response: Response): boolean {
+	const contentType = response.headers.get('content-type')?.toLowerCase() || '';
+	return contentType.includes('mpegurl') || contentType.includes('m3u8');
+}
+
+async function inspectHlsResponse(
+	response: Response,
+	closeHlsBody = true
+): Promise<{ isHls: boolean; body: ReadableStream<Uint8Array> | null }> {
+	if (hasHlsContentType(response)) {
+		if (closeHlsBody) await response.body?.cancel();
+		return { isHls: true, body: response.body };
+	}
+
+	const contentType = response.headers.get('content-type')?.toLowerCase() || '';
+	if (
+		contentType &&
+		contentType !== 'application/octet-stream' &&
+		!contentType.startsWith('text/plain')
+	) {
+		return { isHls: false, body: response.body };
+	}
+
+	if (!response.body) {
+		return { isHls: false, body: null };
+	}
+
+	const [probeBody, passthroughBody] = response.body.tee();
+	const reader = probeBody.getReader();
+	const decoder = new TextDecoder();
+	let bytesRead = 0;
+	let prefix = '';
+
+	try {
+		while (bytesRead < HLS_PROBE_MAX_BYTES) {
+			const { done, value } = await reader.read();
+			if (done) break;
+
+			const remaining = HLS_PROBE_MAX_BYTES - bytesRead;
+			const chunk = value.subarray(0, remaining);
+			bytesRead += chunk.byteLength;
+			prefix += decoder.decode(chunk, { stream: bytesRead < HLS_PROBE_MAX_BYTES });
+			if (prefix.includes('#EXTM3U')) break;
+		}
+	} finally {
+		if (prefix.includes('#EXTM3U')) {
+			if (closeHlsBody) {
+				await Promise.all([reader.cancel(), passthroughBody.cancel()]);
+			} else {
+				void reader.cancel();
+			}
+		} else {
+			void reader.cancel();
+		}
+	}
+
+	if (prefix.includes('#EXTM3U')) {
+		return { isHls: true, body: closeHlsBody ? null : passthroughBody };
+	}
+
+	return { isHls: false, body: passthroughBody };
+}
+
 /**
  * Handle GET requests for LiveTV streams.
  *
@@ -127,7 +217,7 @@ export async function handleStreamGet(
 				'[LiveTV Stream] HLS playlist mode'
 			);
 
-			if (resolved.type === 'hls' || resolved.url.toLowerCase().includes('.m3u8')) {
+			{
 				const baseUrl = await getBaseUrlAsync(request);
 
 				// Invalidate cache BEFORE fetching — the token is consumed by the fetch
@@ -136,10 +226,12 @@ export async function handleStreamGet(
 				const { response, finalUrl } = await streamService.fetchFromUrl(
 					resolved.url,
 					resolved.providerType,
-					resolved.providerHeaders
+					resolved.providerHeaders,
+					request.signal
 				);
 
 				if (!response.ok) {
+					await response.body?.cancel();
 					// Retry once with a completely fresh URL
 					logger.warn(
 						{
@@ -155,14 +247,21 @@ export async function handleStreamGet(
 						await streamService.fetchFromUrl(
 							refreshed.url,
 							refreshed.providerType,
-							refreshed.providerHeaders
+							refreshed.providerHeaders,
+							request.signal
 						);
 
 					if (!retryResponse.ok) {
+						await retryResponse.body?.cancel();
 						throw new Error(`Failed to fetch playlist: ${retryResponse.status}`);
 					}
 
-					const playlist = await retryResponse.text();
+					const inspectedRetry = await inspectHlsResponse(retryResponse, false);
+					if (!inspectedRetry.isHls || !inspectedRetry.body) {
+						await inspectedRetry.body?.cancel();
+						throw new Error('Invalid HLS playlist received');
+					}
+					const playlist = await readBoundedText(inspectedRetry.body, MAX_HLS_PLAYLIST_BYTES);
 					if (!playlist.includes('#EXTM3U')) {
 						throw new Error('Invalid HLS playlist received');
 					}
@@ -177,7 +276,17 @@ export async function handleStreamGet(
 					return new Response(rewritten, { status: 200, headers: HLS_RESPONSE_HEADERS });
 				}
 
-				const playlist = await response.text();
+				const inspected = await inspectHlsResponse(response, false);
+				if (!inspected.isHls) {
+					if (!inspected.body) throw new Error('Stream has no body');
+					return new Response(inspected.body, {
+						status: 200,
+						headers: DIRECT_TS_RESPONSE_HEADERS
+					});
+				}
+
+				if (!inspected.body) throw new Error('HLS response has no body');
+				const playlist = await readBoundedText(inspected.body, MAX_HLS_PLAYLIST_BYTES);
 
 				if (!playlist.includes('#EXTM3U')) {
 					logger.warn(
@@ -227,7 +336,8 @@ export async function handleStreamGet(
 			const { response } = await streamService.fetchFromUrl(
 				resolved.url,
 				resolved.providerType,
-				resolved.providerHeaders
+				resolved.providerHeaders,
+				request.signal
 			);
 
 			if (!response.body) {
@@ -257,10 +367,26 @@ export async function handleStreamGet(
 				'[LiveTV Stream] HLS-to-TS conversion mode'
 			);
 
-			if (resolved.type === 'hls' || resolved.url.toLowerCase().includes('.m3u8')) {
+			const { response, finalUrl } = await streamService.fetchFromUrl(
+				resolved.url,
+				resolved.providerType,
+				resolved.providerHeaders,
+				request.signal
+			);
+
+			const inspected = await inspectHlsResponse(response, false);
+			if (inspected.isHls) {
+				if (!inspected.body) throw new Error('HLS response has no body');
+
 				// Create the HLS-to-TS conversion stream
 				const tsStream = createHlsToTsStream({
-					lineupItemId: lineupId
+					lineupItemId: lineupId,
+					signal: request.signal,
+					initialPlaylist: {
+						body: inspected.body,
+						finalUrl,
+						providerHeaders: resolved.providerHeaders
+					}
 				});
 
 				return new Response(tsStream, {
@@ -279,17 +405,11 @@ export async function handleStreamGet(
 				'[LiveTV Stream] Non-HLS stream, direct pipe'
 			);
 
-			const { response } = await streamService.fetchFromUrl(
-				resolved.url,
-				resolved.providerType,
-				resolved.providerHeaders
-			);
-
-			if (!response.body) {
+			if (!inspected.body) {
 				throw new Error('Stream has no body');
 			}
 
-			return new Response(response.body, {
+			return new Response(inspected.body, {
 				status: 200,
 				headers: DIRECT_TS_RESPONSE_HEADERS
 			});
@@ -320,25 +440,47 @@ export async function handleStreamGet(
  * @param url - The request URL (for query params like format)
  * @returns Response with appropriate headers
  */
-export async function handleStreamHead(lineupId: string, url: URL): Promise<Response> {
-	// Check for explicit format preference
-	const formatParam = url.searchParams.get('format');
-
-	// Default mode returns continuous TS stream, explicit hls returns playlist
-	const contentType = formatParam === 'hls' ? 'application/vnd.apple.mpegurl' : 'video/mp2t';
-
-	return new Response(null, {
-		status: 200,
-		headers: {
-			'Content-Type': contentType,
-			'Accept-Ranges': 'none',
-			'Access-Control-Allow-Origin': '*',
-			'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-			'Access-Control-Allow-Headers': 'Range, Content-Type',
-			'Cache-Control': 'no-store',
-			'X-Content-Type-Options': 'nosniff'
+export async function handleStreamHead(
+	lineupId: string,
+	url: URL,
+	signal?: AbortSignal
+): Promise<Response> {
+	try {
+		const formatParam = url.searchParams.get('format');
+		const format = formatParam === 'ts' ? 'ts' : 'hls';
+		const resolved = await getStreamUrlCache().getStream(lineupId, format);
+		const streamService = getLiveTvStreamService();
+		const { response } = await streamService.fetchFromUrl(
+			resolved.url,
+			resolved.providerType,
+			resolved.providerHeaders,
+			signal
+		);
+		if (!response.ok) {
+			await response.body?.cancel();
+			throw new Error(`Upstream stream validation failed: ${response.status}`);
 		}
-	});
+		await response.body?.cancel();
+
+		return new Response(null, {
+			status: 200,
+			headers: {
+				'Content-Type': response.headers.get('content-type') || 'video/mp2t',
+				'Accept-Ranges': 'none',
+				'Access-Control-Allow-Origin': '*',
+				'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+				'Access-Control-Allow-Headers': 'Range, Content-Type',
+				'Cache-Control': 'no-store',
+				'X-Content-Type-Options': 'nosniff'
+			}
+		});
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Stream validation failed';
+		return new Response(JSON.stringify({ error: message }), {
+			status: 502,
+			headers: { 'Content-Type': 'application/json' }
+		});
+	}
 }
 
 /**
