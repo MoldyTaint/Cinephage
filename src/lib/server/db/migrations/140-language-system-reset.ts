@@ -753,6 +753,16 @@ export const migration_v140: MigrationDefinition = {
 		applyMetadataLanguageMappings(sqlite, 'series', seriesMappings);
 
 		// 10. Rebuild tables to attach real FKs and constraints (only when missing).
+		// Backfill legacy NULL adult values before tightening the column to NOT NULL
+		// below — v096 no-ops if `adult` already exists, so a pre-existing weaker
+		// column definition (bare `integer`, no NOT NULL/DEFAULT) can leave real
+		// NULL rows on older databases, which would otherwise fail the rebuild.
+		if (tableExists(sqlite, 'movies')) {
+			sqlite.exec(`UPDATE "movies" SET "adult" = 0 WHERE "adult" IS NULL`);
+		}
+		if (tableExists(sqlite, 'series')) {
+			sqlite.exec(`UPDATE "series" SET "adult" = 0 WHERE "adult" IS NULL`);
+		}
 		if (tableExists(sqlite, 'movies') && !hasForeignKeyTo(sqlite, 'movies', 'language_profiles')) {
 			rebuildTable(sqlite, 'movies', MOVIES_RESET_COLUMNS);
 		}
