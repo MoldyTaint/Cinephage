@@ -46,6 +46,141 @@ export class MediaBrowserClient {
 	}
 
 	/**
+	 * Detect which product runs at `host` by probing the endpoints each server
+	 * exposes. Never infers from a version number: Jellyfin/Emby report their
+	 * ProductName, Plex answers `/identity` with a machine identifier.
+	 *
+	 * Returns null when nothing identifiable answers (unreachable, not a media
+	 * server, or all probes fail).
+	 */
+	static async detectServerType(
+		host: string,
+		apiKey?: string
+	): Promise<{
+		type: MediaBrowserServerType;
+		productName?: string;
+		version?: string;
+		serverName?: string;
+		id?: string;
+	} | null> {
+		const normalizedHost = host.replace(/\/+$/, '');
+		const timeout = AbortSignal.timeout(8000);
+
+		// Jellyfin/Emby: the public system info endpoint needs no auth and
+		// carries ProductName. Fall back to the authenticated endpoint for
+		// older builds that omit it.
+		try {
+			const response = await fetch(`${normalizedHost}/System/Info/Public`, {
+				headers: { Accept: 'application/json' },
+				signal: timeout
+			});
+			if (response.ok) {
+				const data = (await response.json()) as MediaBrowserSystemInfo;
+				const product = (data.ProductName ?? '').toLowerCase();
+				const detected = product.includes('jellyfin')
+					? 'jellyfin'
+					: product.includes('emby')
+						? 'emby'
+						: null;
+				if (detected) {
+					return {
+						type: detected,
+						productName: data.ProductName,
+						version: data.Version,
+						serverName: data.ServerName,
+						id: data.Id
+					};
+				}
+			}
+		} catch {
+			// Probe failed; try the next product.
+		}
+
+		if (apiKey) {
+			// Try each MediaBrowser auth style; Emby and Jellyfin differ on which
+			// they accept, and older builds omit ProductName from /Public.
+			for (const candidate of ['jellyfin', 'emby'] as MediaBrowserServerType[]) {
+				try {
+					const response = await fetch(`${normalizedHost}/System/Info`, {
+						headers: {
+							...MediaBrowserClient.authHeadersFor(candidate, apiKey),
+							Accept: 'application/json'
+						},
+						signal: AbortSignal.timeout(8000)
+					});
+					if (response.ok) {
+						const data = (await response.json()) as MediaBrowserSystemInfo;
+						const product = (data.ProductName ?? '').toLowerCase();
+						const detected = product.includes('jellyfin')
+							? 'jellyfin'
+							: product.includes('emby')
+								? 'emby'
+								: null;
+						if (detected) {
+							return {
+								type: detected,
+								productName: data.ProductName,
+								version: data.Version,
+								serverName: data.ServerName,
+								id: data.Id
+							};
+						}
+					}
+				} catch {
+					// Try the next auth style.
+				}
+			}
+		}
+
+		// Plex: /identity is unauthenticated and returns a MediaContainer with
+		// machineIdentifier/version.
+		try {
+			const response = await fetch(`${normalizedHost}/identity`, {
+				headers: { Accept: 'application/xml' },
+				signal: AbortSignal.timeout(8000)
+			});
+			if (response.ok) {
+				const parsed = XML_PARSER.parse(await response.text()) as {
+					MediaContainer?: PlexIdentityInfo;
+				};
+				const identity = parsed.MediaContainer;
+				if (identity?.machineIdentifier) {
+					return {
+						type: 'plex',
+						version: identity.version,
+						serverName: identity.friendlyName ?? 'Plex',
+						id: identity.machineIdentifier
+					};
+				}
+			}
+		} catch {
+			// Not Plex.
+		}
+
+		return null;
+	}
+
+	/**
+	 * Auth headers for a MediaBrowser-family server type.
+	 *
+	 * Jellyfin 12.x rejects the bare `X-Emby-Token`/`MediaBrowser Token=`
+	 * shortcuts and requires the full composite Authorization header; Emby
+	 * accepts its own token header. Shared so notifications and media-server
+	 * stats authenticate identically.
+	 */
+	static authHeadersFor(
+		serverType: MediaBrowserServerType,
+		apiKey: string
+	): Record<string, string> {
+		if (serverType === 'emby') {
+			return { 'X-Emby-Token': apiKey };
+		}
+		return {
+			Authorization: `MediaBrowser Client="Cinephage", Device="Cinephage", DeviceId="cinephage-server", Version="${resolveAppVersion()}", Token="${apiKey}"`
+		};
+	}
+
+	/**
 	 * Test connection to the MediaBrowser server
 	 */
 	async test(): Promise<MediaBrowserTestResult> {
@@ -58,6 +193,19 @@ export class MediaBrowserClient {
 
 			if (!response.ok) {
 				if (response.status === 401) {
+					// Auth rejected for the selected type. The server may be the
+					// other MediaBrowser product (Jellyfin vs Emby have different
+					// token headers): detect what actually runs and retry once.
+					const detected = await MediaBrowserClient.detectServerType(this.host, this.apiKey);
+					if (detected && detected.type !== this.serverType && detected.type !== 'plex') {
+						const retryClient = new MediaBrowserClient({
+							host: this.host,
+							apiKey: this.apiKey,
+							serverType: detected.type
+						});
+						const retry = await retryClient.test();
+						if (retry.success) return retry;
+					}
 					return { success: false, error: 'Invalid API key' };
 				}
 				return {
@@ -67,13 +215,16 @@ export class MediaBrowserClient {
 			}
 
 			const data = (await response.json()) as MediaBrowserSystemInfo;
+			const detected = await MediaBrowserClient.detectServerType(this.host, this.apiKey);
 
 			return {
 				success: true,
 				serverInfo: {
 					serverName: data.ServerName,
 					version: data.Version,
-					id: data.Id
+					id: data.Id,
+					detectedType: detected?.type ?? this.serverType,
+					productName: data.ProductName ?? detected?.productName
 				}
 			};
 		} catch (error) {
@@ -114,7 +265,8 @@ export class MediaBrowserClient {
 			serverInfo: {
 				serverName: data.friendlyName ?? 'Plex',
 				version: data.version ?? 'unknown',
-				id: data.machineIdentifier ?? 'unknown'
+				id: data.machineIdentifier ?? 'unknown',
+				detectedType: 'plex'
 			}
 		};
 	}
@@ -277,9 +429,15 @@ export class MediaBrowserClient {
 	}
 
 	/**
-	 * Delete an item from a Jellyfin/Emby server (DB-only — files on disk are untouched).
-	 * Used before renaming a series/movie folder so Jellyfin cleanly removes the old
-	 * entry + all child rows, preventing the ghost-entry loop (jellyfin#16883).
+	 * Delete an item from a Jellyfin/Emby server.
+	 *
+	 * DESTRUCTIVE: the upstream MediaBrowser API deletes the item's file
+	 * location as well (`DeleteOptions { DeleteFileLocation = true }` in
+	 * Jellyfin/Emby), and API-key auth bypasses their content-deletion
+	 * permission check. Callers MUST only invoke this once the file has
+	 * already been moved or removed locally, so the server's stored path is
+	 * stale and the file-location deletion is a no-op on disk. Used
+	 * post-rename to clear the old entry + all child rows (jellyfin#16883).
 	 *
 	 * Plex does not support item deletion via API; returns false for Plex.
 	 */
@@ -316,14 +474,15 @@ export class MediaBrowserClient {
 		const url = `${this.host}${path}`;
 
 		const headers = new Headers(options.headers);
-		// Newer Jellyfin (12.x+) rejects the bare X-MediaBrowser-Token/
-		// X-Emby-Token shortcuts outright (401, regardless of key validity) and
-		// requires the full composite Authorization header instead.
-		// Older Jellyfin/Emby accept this composite form too.
-		headers.set(
-			'Authorization',
-			`MediaBrowser Client="Cinephage", Device="Cinephage", DeviceId="cinephage-server", Version="${resolveAppVersion()}", Token="${this.apiKey}"`
-		);
+		// Shared auth header builder. Jellyfin 12.x rejects the bare
+		// X-MediaBrowser-Token/X-Emby-Token shortcuts outright (401, regardless
+		// of key validity) and requires the full composite Authorization header;
+		// Emby keeps its token header.
+		for (const [name, value] of Object.entries(
+			MediaBrowserClient.authHeadersFor(this.serverType, this.apiKey)
+		)) {
+			headers.set(name, value);
+		}
 		headers.set('Accept', 'application/json');
 
 		if (options.body) {

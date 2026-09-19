@@ -43,6 +43,10 @@ export interface MediaBrowserTestResult {
 		serverName: string;
 		version: string;
 		id: string;
+		/** Product detected from the running server (never guessed from version). */
+		detectedType?: MediaBrowserServerType;
+		/** Raw product name reported by the server (e.g. "Jellyfin Server"). */
+		productName?: string;
 	};
 }
 
@@ -117,6 +121,8 @@ export interface MediaBrowserSystemInfo {
 	ServerName: string;
 	Version: string;
 	Id: string;
+	/** Present on Jellyfin ("Jellyfin Server") and Emby ("Emby Server"). */
+	ProductName?: string;
 	LocalAddress?: string;
 	WanAddress?: string;
 	OperatingSystem?: string;

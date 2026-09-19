@@ -108,7 +108,7 @@ describe('JellyfinStatsProvider', () => {
 			'http://jellyfin:8096/Users',
 			expect.objectContaining({
 				headers: expect.objectContaining({
-					Authorization: 'MediaBrowser Token="test-api-key"'
+					Authorization: expect.stringContaining('Token="test-api-key"')
 				})
 			})
 		);
