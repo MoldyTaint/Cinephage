@@ -79,7 +79,7 @@
 		"undici": "^8.0.0",
 		"npm": "^12.0.2",
 		"tar": "7.5.22",
-		"brace-expansion": "5.0.9"
+		"brace-expansion": "5.0.12"
 	},
 	"engines": {
 		"node": ">=22.0.0"
@@ -94,7 +94,7 @@
 		"adm-zip": "^0.6.0",
 		"better-auth": "^1.6.25",
 		"better-sqlite3": "^13.0.2",
-		"camoufox-js": "^0.11.5",
+		"camoufox-js": "^0.12.0",
 		"cheerio": "^1.2.0",
 		"date-format-parse": "^0.2.7",
 		"dotenv": "^17.4.2",
