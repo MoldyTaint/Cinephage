@@ -546,3 +546,153 @@ describe('title matching hardening (issue #513 leftovers)', () => {
 		expect(createdMovie.languageProfileId).toBeNull();
 	});
 });
+
+describe('special episode title fallback (AroTheHawk report)', () => {
+	// Episode titles below are LIVE TMDB season-0 data, verified 2026-09-20
+	// (BSG tmdb 1972, Cosmos tmdb 1430). Do not "fix" them to match
+	// expectations — change the matcher instead.
+
+	it('acceptMatch resolves a title-only special via season 0 title match', async () => {
+		await insertRootFolder('rf-bsg', '/mnt/tv-bsg', 'tv');
+		await testDb.db.insert(series).values({
+			id: 's-bsg',
+			tmdbId: 1972,
+			title: 'Battlestar Galactica',
+			path: 'Battlestar Galactica (2003) {tvdb-73545}',
+			rootFolderId: 'rf-bsg',
+			libraryId: 'lib-1'
+		});
+		await testDb.db.insert(episodes).values([
+			{
+				id: 'ep-razor-1',
+				seriesId: 's-bsg',
+				seasonNumber: 0,
+				episodeNumber: 19,
+				title: 'Razor (1)',
+				airDate: '2007-11-24'
+			},
+			{
+				id: 'ep-razor-2',
+				seriesId: 's-bsg',
+				seasonNumber: 0,
+				episodeNumber: 20,
+				title: 'Razor (2)',
+				airDate: '2007-11-24'
+			}
+		]);
+		await insertUnmatchedFile({
+			id: 'uf-razor',
+			path: '/mnt/tv-bsg/Battlestar Galactica (2003) {tvdb-73545}/Razor (2007)/Razor (2007).mp4',
+			rootFolderId: 'rf-bsg',
+			mediaType: 'tv'
+		});
+		mocks.getTVShow.mockResolvedValue({ id: 1972, name: 'Battlestar Galactica', seasons: [] });
+
+		await mediaMatcherService.acceptMatch('uf-razor', 1972, 'tv');
+
+		expect(await countEpisodeFiles('s-bsg')).toBe(1);
+		const [fileRow] = await testDb.db
+			.select()
+			.from(episodeFiles)
+			.where(eq(episodeFiles.seriesId, 's-bsg'));
+		expect(fileRow.seasonNumber).toBe(0);
+		// "razor2" is contained in normalized "razor2007"; "razor1" is not.
+		expect(fileRow.episodeIds).toEqual(['ep-razor-2']);
+		expect(fileRow.relativePath).toBe('Razor (2007)/Razor (2007).mp4');
+		expect(await unmatchedStillExists('uf-razor')).toBe(false);
+	});
+
+	it('acceptMatch maps an absolute number onto the single regular season (Cosmos)', async () => {
+		await insertRootFolder('rf-cosmos', '/mnt/tv-cosmos', 'tv');
+		await testDb.db.insert(series).values({
+			id: 's-cosmos',
+			tmdbId: 1430,
+			title: 'Cosmos: A Personal Voyage',
+			path: 'Cosmos (1980) {tvdb-74995}',
+			rootFolderId: 'rf-cosmos',
+			libraryId: 'lib-1'
+		});
+		// Live shape: season 0 specials + a single regular season of 13.
+		await testDb.db.insert(episodes).values([
+			{
+				id: 'ep-cosmos-s0',
+				seriesId: 's-cosmos',
+				seasonNumber: 0,
+				episodeNumber: 1,
+				title: 'A Dialogue Between Carl Sagan And Ted Turner',
+				airDate: '1989-04-18'
+			},
+			...Array.from({ length: 12 }, (_, i) => ({
+				id: `ep-cosmos-${i + 1}`,
+				seriesId: 's-cosmos',
+				seasonNumber: 1,
+				episodeNumber: i + 1,
+				title: `Cosmos Episode ${i + 1}`,
+				airDate: null
+			})),
+			{
+				id: 'ep-cosmos-13',
+				seriesId: 's-cosmos',
+				seasonNumber: 1,
+				episodeNumber: 13,
+				title: 'Who Speaks for Earth?',
+				airDate: '1980-12-21'
+			}
+		]);
+		await insertUnmatchedFile({
+			id: 'uf-cosmos',
+			path: '/mnt/tv-cosmos/Cosmos (1980) {tvdb-74995}/Episode 13 - Quem Responde Pela Terra (Who Speaks for Earth).mkv',
+			rootFolderId: 'rf-cosmos',
+			mediaType: 'tv',
+			parsedEpisode: 13
+		});
+		mocks.getTVShow.mockResolvedValue({
+			id: 1430,
+			name: 'Cosmos: A Personal Voyage',
+			seasons: []
+		});
+
+		await mediaMatcherService.acceptMatch('uf-cosmos', 1430, 'tv');
+
+		expect(await countEpisodeFiles('s-cosmos')).toBe(1);
+		const [fileRow] = await testDb.db
+			.select()
+			.from(episodeFiles)
+			.where(eq(episodeFiles.seriesId, 's-cosmos'));
+		expect(fileRow.seasonNumber).toBe(1);
+		expect(fileRow.episodeIds).toEqual(['ep-cosmos-13']);
+	});
+
+	it('still throws when no special title matches the file', async () => {
+		await insertRootFolder('rf-bsg2', '/mnt/tv-bsg2', 'tv');
+		await testDb.db.insert(series).values({
+			id: 's-bsg2',
+			tmdbId: 1973,
+			title: 'Battlestar Galactica',
+			path: 'Battlestar Galactica (2003) {tvdb-73545}',
+			rootFolderId: 'rf-bsg2',
+			libraryId: 'lib-1'
+		});
+		await testDb.db.insert(episodes).values({
+			id: 'ep-bsg2-19',
+			seriesId: 's-bsg2',
+			seasonNumber: 0,
+			episodeNumber: 19,
+			title: 'Razor (1)',
+			airDate: '2007-11-24'
+		});
+		await insertUnmatchedFile({
+			id: 'uf-plan',
+			path: '/mnt/tv-bsg2/Battlestar Galactica (2003) {tvdb-73545}/The Plan (2009)/The Plan (2009).mp4',
+			rootFolderId: 'rf-bsg2',
+			mediaType: 'tv'
+		});
+		mocks.getTVShow.mockResolvedValue({ id: 1973, name: 'Battlestar Galactica', seasons: [] });
+
+		await expect(mediaMatcherService.acceptMatch('uf-plan', 1973, 'tv')).rejects.toThrow(
+			'Could not determine season/episode from filename'
+		);
+		expect(await countEpisodeFiles('s-bsg2')).toBe(0);
+		expect(await unmatchedStillExists('uf-plan')).toBe(true);
+	});
+});

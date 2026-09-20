@@ -29,7 +29,12 @@ import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.
 import { logger, createChildLogger } from '$lib/logging/index.js';
 import { parseRelease, extractExternalIds } from '$lib/server/indexers/parser/ReleaseParser.js';
 import { getMediaParseStem } from './media-utils.js';
-import { resolveTvEpisodeIdentifier, extractSeasonFromPath } from './tv-episode-resolver.js';
+import {
+	resolveTvEpisodeIdentifier,
+	extractSeasonFromPath,
+	matchEpisodesByIdentifier
+} from './tv-episode-resolver.js';
+import { matchSpecialEpisodeByTitle } from './episode-title-matcher.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { canonicalizeArticleTitle, calculateMatchConfidence } from './title-matching.js';
@@ -1249,23 +1254,57 @@ export class MediaMatcherService {
 				resolvedEpisode = resolvedEpisode ?? tvId.episodeNumbers[0];
 			} else if (tvId?.numbering === 'absolute') {
 				// Absolute episode - resolve to season/episode via DB (populated above)
-				const [epRecord] = await db
+				const seriesEpisodes = await db
 					.select({
 						seasonNumber: episodes.seasonNumber,
-						episodeNumber: episodes.episodeNumber
+						episodeNumber: episodes.episodeNumber,
+						absoluteEpisodeNumber: episodes.absoluteEpisodeNumber
 					})
 					.from(episodes)
-					.where(
-						and(
-							eq(episodes.seriesId, seriesId),
-							eq(episodes.absoluteEpisodeNumber, tvId.absoluteEpisode)
-						)
-					)
-					.limit(1);
-				if (epRecord) {
-					resolvedSeason = epRecord.seasonNumber;
-					resolvedEpisode = epRecord.episodeNumber;
+					.where(eq(episodes.seriesId, seriesId));
+				const [match] = matchEpisodesByIdentifier(seriesEpisodes, tvId);
+				if (match) {
+					resolvedSeason = match.seasonNumber;
+					resolvedEpisode = match.episodeNumber;
 				}
+			}
+		}
+
+		if (resolvedSeason === null || resolvedEpisode === null) {
+			// Sonarr-style fallback: title-only files match season 0 specials by
+			// contained episode title ("Razor (2007)" → the BSG special "Razor").
+			const stem = getMediaParseStem(file.path);
+			const reparsed = parseRelease(stem);
+			const seriesEpisodes = await db
+				.select()
+				.from(episodes)
+				.where(eq(episodes.seriesId, seriesId));
+			const parentFolder = basename(dirname(file.path));
+			const candidates = parentFolder !== seriesFolder ? [stem, parentFolder] : [stem];
+			const titleMatch = matchSpecialEpisodeByTitle(
+				seriesEpisodes,
+				candidates,
+				file.parsedYear ?? reparsed.year,
+				existingSeries?.title ?? tmdbSeries.name
+			);
+
+			if (titleMatch) {
+				resolvedSeason = titleMatch.episode.seasonNumber;
+				resolvedEpisode = titleMatch.episode.episodeNumber;
+				logger.info(
+					{
+						fileId: file.id,
+						filePath: file.path,
+						tmdbId,
+						season: resolvedSeason,
+						episode: resolvedEpisode,
+						method: titleMatch.method,
+						position: titleMatch.position,
+						coverage: titleMatch.coverage,
+						candidate: titleMatch.candidate
+					},
+					'[MediaMatcher] Resolved special episode by title'
+				);
 			}
 		}
 
