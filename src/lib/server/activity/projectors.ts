@@ -38,13 +38,13 @@ interface QueueActivityProjectionInput {
 function mapQueueStatus(status: string): UnifiedActivity['status'] {
 	switch (status) {
 		case 'seeding':
+		case 'seeding-imported':
 			return 'seeding';
 		case 'paused':
 			return 'paused';
 		case 'failed':
 			return 'failed';
 		case 'imported':
-		case 'seeding-imported':
 			return 'imported';
 		case 'removed':
 			return 'removed';

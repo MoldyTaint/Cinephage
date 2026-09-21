@@ -297,6 +297,7 @@ export class ActivityService {
 					'paused',
 					'stalled',
 					'seeding',
+					'seeding-imported',
 					'completed',
 					'postprocessing',
 					'importing'
@@ -323,6 +324,7 @@ export class ActivityService {
 						'queued',
 						'stalled',
 						'seeding',
+						'seeding-imported',
 						'completed',
 						'postprocessing',
 						'importing',
@@ -345,7 +347,7 @@ export class ActivityService {
 			(statusMap.get('completed') ?? 0) +
 			(statusMap.get('postprocessing') ?? 0) +
 			(statusMap.get('importing') ?? 0);
-		const seedingCount = statusMap.get('seeding') ?? 0;
+		const seedingCount = (statusMap.get('seeding') ?? 0) + (statusMap.get('seeding-imported') ?? 0);
 		const pausedCount = statusMap.get('paused') ?? 0;
 		const failedCount = historyFailed?.count ?? 0;
 		const totalCount = downloadingCount + seedingCount + pausedCount;
@@ -904,6 +906,7 @@ export class ActivityService {
 			'paused',
 			'stalled',
 			'seeding',
+			'seeding-imported',
 			'completed',
 			'postprocessing',
 			'importing'
