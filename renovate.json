@@ -31,6 +31,11 @@
 			"description": "Keep major version bumps manual",
 			"matchUpdateTypes": ["major"],
 			"automerge": false
+		},
+		{
+			"description": "better-auth 1.7 schema validation rejects our auth tables (apikey referenceId/configId drift, legacy userId) — frozen at 1.6.25 until the baseline DDL is reconciled with the plugin's expectations (see pin commit 26097734)",
+			"matchPackageNames": ["better-auth", "@better-auth/api-key"],
+			"allowedVersions": "1.6.25"
 		}
 	],
 	"lockFileMaintenance": {
