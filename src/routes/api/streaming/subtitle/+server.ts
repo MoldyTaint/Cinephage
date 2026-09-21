@@ -147,10 +147,20 @@ export const GET: RequestHandler = async ({ url }) => {
 			}
 		}
 
-		let content = await response.text();
+		const rawContent = await response.text();
 
-		// Convert to VTT if needed (handles SRT and other formats)
-		content = ensureVttFormat(content);
+		// Convert to VTT when possible. ASS/SSA and unknown binaries are not
+		// silently relabeled as text/vtt — reject them instead of serving garbage.
+		const content = ensureVttFormat(rawContent);
+		if (content === null) {
+			return new Response(
+				JSON.stringify({ error: 'Subtitle format is not convertible to WebVTT' }),
+				{
+					status: 415,
+					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+				}
+			);
+		}
 
 		logger.debug(
 			{

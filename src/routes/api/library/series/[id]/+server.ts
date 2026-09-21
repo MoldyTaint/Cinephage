@@ -38,10 +38,16 @@ import { getLibraryEntityService } from '$lib/server/library/LibraryEntityServic
 import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { seriesUpdateSchema } from '$lib/validation/schemas.js';
+import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
 import { tmdb } from '$lib/server/tmdb.js';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
 import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
-import { refreshSeriesMetadata } from '$lib/server/metadata/metadata-refresh.js';
+import { persistLinkedProviderTitleVariants } from '$lib/server/metadata/provider-resolution.js';
+import {
+	refreshSeriesMetadata,
+	metadataLanguageToLegacy,
+	warnLegacyMetadataLanguage
+} from '$lib/server/metadata/metadata-refresh.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ module: 'LibrarySeriesByIdApi', logDomain: 'scans' });
@@ -81,7 +87,8 @@ export const GET: RequestHandler = async ({ params }) => {
 				episodeFileCount: series.episodeFileCount,
 				wantsSubtitles: series.wantsSubtitles,
 				episodeGroupId: series.episodeGroupId,
-				metadataLanguage: series.metadataLanguage,
+				metadataLanguageMode: series.metadataLanguageMode,
+				metadataLanguageValue: series.metadataLanguageValue,
 				preferOriginalTitle: series.preferOriginalTitle
 			})
 			.from(series)
@@ -184,12 +191,22 @@ export const GET: RequestHandler = async ({ params }) => {
 
 		// Get overall series subtitle status (episodes missing subtitles)
 		const profileService = getLanguageProfileService();
-		const episodesMissingSubs = await profileService.getSeriesEpisodesMissingSubtitles(params.id);
+		const [episodesMissingSubs, effectiveLanguageProfile, effectiveSubtitleRequirements] =
+			await Promise.all([
+				profileService.getSeriesEpisodesMissingSubtitles(params.id),
+				profileService.getEffectiveProfileForSeries(params.id),
+				profileService.getEffectiveSubtitleRequirements({ seriesId: params.id })
+			]);
 
 		return json({
 			success: true,
 			series: {
 				...seriesItem,
+				// Legacy view derived from the v2 pair (kept one release).
+				metadataLanguage: metadataLanguageToLegacy(
+					seriesItem.metadataLanguageMode,
+					seriesItem.metadataLanguageValue
+				),
 				providerRefs: enrichedProviderRefs,
 				percentComplete:
 					seriesItem.episodeCount && seriesItem.episodeCount > 0
@@ -200,7 +217,11 @@ export const GET: RequestHandler = async ({ params }) => {
 					episodesMissingSubtitles: episodesMissingSubs.length,
 					totalSubtitles: allSubtitles.length,
 					languages: [...new Set(allSubtitles.map((s) => s.language))]
-				}
+				},
+				// The profile governing this series plus where it was resolved
+				// from (series override > library default > instance default).
+				effectiveLanguageProfile: effectiveLanguageProfile ?? null,
+				effectiveSubtitleRequirements: effectiveSubtitleRequirements ?? null
 			}
 		});
 	} catch (error) {
@@ -236,9 +257,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			rootFolderId,
 			wantsSubtitles,
 			languageProfileId,
+			subtitleRequirementsOverride,
 			delayProfileId,
 			folderPath,
 			episodeGroupId,
+			metadataLanguageMode,
+			metadataLanguageValue,
 			metadataLanguage,
 			preferOriginalTitle
 		} = body;
@@ -257,9 +281,11 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 				scoringProfileId: series.scoringProfileId,
 				wantsSubtitles: series.wantsSubtitles,
 				languageProfileId: series.languageProfileId,
+				subtitleRequirementsOverride: series.subtitleRequirementsOverride,
 				episodeGroupId: series.episodeGroupId,
 				monitorSpecials: series.monitorSpecials,
-				metadataLanguage: series.metadataLanguage
+				metadataLanguageMode: series.metadataLanguageMode,
+				metadataLanguageValue: series.metadataLanguageValue
 			})
 			.from(series)
 			.where(eq(series.id, params.id));
@@ -270,6 +296,9 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		const seriesHasFiles = (currentSeries?.episodeFileCount ?? 0) > 0;
 
 		const updateData: Record<string, unknown> = {};
+		// Track fields applied outside updateData (via service calls) so the
+		// "no valid fields" guard below stays accurate.
+		let appliedSideEffectFields = 0;
 		let moveRequest:
 			| {
 					mediaId: string;
@@ -375,8 +404,28 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		if (wantsSubtitles !== undefined) {
 			updateData.wantsSubtitles = wantsSubtitles;
 		}
+		// Per-item subtitle requirement override: validated list or null to
+		// clear (inherit from the profile chain). Replaces only the list.
+		if (subtitleRequirementsOverride !== undefined) {
+			updateData.subtitleRequirementsOverride = subtitleRequirementsOverride;
+			appliedSideEffectFields++;
+		}
+		// Language profile override: a string must reference an existing profile
+		// and is applied through the service; null clears the override so the
+		// series inherits (library default → instance default).
 		if (languageProfileId !== undefined) {
-			updateData.languageProfileId = languageProfileId;
+			const profileService = getLanguageProfileService();
+			if (languageProfileId !== null) {
+				const profile = await profileService.getProfile(languageProfileId);
+				if (!profile) {
+					return json(
+						{ success: false, error: `Language profile not found: ${languageProfileId}` },
+						{ status: 400 }
+					);
+				}
+			}
+			await profileService.assignToSeries(params.id, languageProfileId);
+			appliedSideEffectFields++;
 		}
 		if (folderPath !== undefined) {
 			const trimmed = folderPath.trim();
@@ -409,14 +458,34 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			updateData.path = trimmed;
 		}
 
-		if (metadataLanguage !== undefined) {
-			updateData.metadataLanguage = metadataLanguage;
+		// Metadata language override (v2 pair). The update schema maps the
+		// deprecated single-string form onto metadataLanguageMode/Value.
+		const metadataLanguageProvided =
+			metadataLanguageMode !== undefined ||
+			metadataLanguageValue !== undefined ||
+			metadataLanguage !== undefined;
+		const nextMetadataLanguageMode = metadataLanguageProvided
+			? (metadataLanguageMode ?? 'inherit')
+			: null;
+		const nextMetadataLanguageValue =
+			nextMetadataLanguageMode === 'explicit' ? (metadataLanguageValue ?? null) : null;
+		if (metadataLanguageProvided) {
+			if (metadataLanguage !== undefined) {
+				warnLegacyMetadataLanguage('PATCH /api/library/series/[id]');
+			}
+			updateData.metadataLanguageMode = nextMetadataLanguageMode;
+			updateData.metadataLanguageValue = nextMetadataLanguageValue;
 		}
-		if (typeof preferOriginalTitle === 'boolean') {
+		if (preferOriginalTitle === null || typeof preferOriginalTitle === 'boolean') {
 			updateData.preferOriginalTitle = preferOriginalTitle;
 		}
 
-		if (Object.keys(updateData).length === 0 && !moveRequest && episodeGroupId === undefined) {
+		if (
+			Object.keys(updateData).length === 0 &&
+			!moveRequest &&
+			episodeGroupId === undefined &&
+			appliedSideEffectFields === 0
+		) {
 			return json({ success: false, error: 'No valid fields to update' }, { status: 400 });
 		}
 
@@ -424,10 +493,23 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			await db.update(series).set(updateData).where(eq(series.id, params.id));
 		}
 
+		// Manual anime provider link: fetch the linked AniList/MAL entries and
+		// persist their title variants as alternate titles (idempotent). Runs in
+		// the background — external provider latency must not stall the PATCH.
+		if (providerRefs?.anilist || providerRefs?.mal) {
+			persistLinkedProviderTitleVariants('series', params.id, providerRefs).catch((err) => {
+				logger.warn(
+					{ seriesId: params.id, err },
+					'[API] Failed to persist linked provider title variants'
+				);
+			});
+		}
+
 		// Refresh metadata from TMDB when language override changes
 		const languageChanged =
-			metadataLanguage !== undefined &&
-			metadataLanguage !== (currentSeries?.metadataLanguage ?? null);
+			metadataLanguageProvided &&
+			(nextMetadataLanguageMode !== (currentSeries?.metadataLanguageMode ?? null) ||
+				nextMetadataLanguageValue !== (currentSeries?.metadataLanguageValue ?? null));
 		if (languageChanged) {
 			refreshSeriesMetadata(params.id).catch((err) => {
 				logger.error(
@@ -650,16 +732,21 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			);
 		}
 
-		// Check if subtitle monitoring was just enabled
+		// Check if subtitle monitoring was just enabled, or the requirement
+		// override changed while the gate is on. Requirements may come from the
+		// profile chain (library/instance default), so the gate alone enables.
 		if (currentSeries) {
-			const wasSubtitlesEnabled =
-				currentSeries.wantsSubtitles === true && currentSeries.languageProfileId;
+			const wasSubtitlesEnabled = currentSeries.wantsSubtitles === true;
 			const newWantsSubtitles = wantsSubtitles ?? currentSeries.wantsSubtitles;
-			const newProfileId = languageProfileId ?? currentSeries.languageProfileId;
-			const isNowSubtitlesEnabled = newWantsSubtitles === true && newProfileId;
+			const isNowSubtitlesEnabled = newWantsSubtitles === true;
+			const overrideChanged =
+				subtitleRequirementsOverride !== undefined &&
+				JSON.stringify(subtitleRequirementsOverride) !==
+					JSON.stringify(currentSeries.subtitleRequirementsOverride ?? null);
 
-			// Trigger subtitle search for all episodes with files if just enabled
-			if (!wasSubtitlesEnabled && isNowSubtitlesEnabled) {
+			// Trigger subtitle search for all episodes with files if just
+			// enabled or the requirements changed while enabled.
+			if (isNowSubtitlesEnabled && (!wasSubtitlesEnabled || overrideChanged)) {
 				const settings = await monitoringScheduler.getSettings();
 
 				if (settings.subtitleSearchOnImportEnabled) {
@@ -814,6 +901,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 					}
 				}
 				// Delete queue record
+				acquisitionService.cancelByQueueId(queueItem.id, 'media removed from library');
 				await db.delete(downloadQueue).where(eq(downloadQueue.id, queueItem.id));
 			}
 

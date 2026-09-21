@@ -55,7 +55,8 @@ describe('SubtitleScoringService', () => {
 			const textScore = scoringService.score(textResult, movieCriteria);
 
 			expect(hashScore).toBeGreaterThan(textScore);
-			expect(hashScore).toBeGreaterThanOrEqual(100); // Hash match base is 100
+			// Hash match is exactly the top of the normalized 0-100 scale.
+			expect(hashScore).toBe(100);
 		});
 
 		it('should give base score for title match', () => {
@@ -152,15 +153,40 @@ describe('SubtitleScoringService', () => {
 			const hashResult = createResult({ isHashMatch: true });
 			const hashScore = scoringService.score(hashResult, episodeCriteria);
 
-			// Episode hash match is 300
-			expect(hashScore).toBeGreaterThanOrEqual(300);
+			// Episode hash match is the top of the shared 0-100 scale
+			expect(hashScore).toBe(100);
 		});
 
 		it('should add season and episode match bonuses', () => {
 			const score = scoringService.score(createResult(), episodeCriteria);
 
 			// Should include series match + season match + episode match
-			expect(score).toBeGreaterThan(150); // At least series match
+			expect(score).toBeGreaterThan(30); // At least series match
+		});
+
+		it('regression: a mediocre episode result fails a 70 threshold', () => {
+			// Series/season/episode match (the unconditional "it was returned"
+			// signals) but nothing else: year absent, no release name, no
+			// downloads/rating. This used to score 210+ and clear every threshold.
+			const mediocre = createResult({
+				title: 'Test Series',
+				releaseName: undefined,
+				fileName: undefined,
+				downloadCount: 0,
+				rating: 0
+			});
+			const noYearCriteria: SubtitleSearchCriteria = {
+				title: 'Test Episode',
+				seriesTitle: 'Test Series',
+				season: 1,
+				episode: 5,
+				languages: ['en']
+			};
+
+			const score = scoringService.score(mediocre, noYearCriteria);
+
+			expect(score).toBeLessThan(70);
+			expect(scoringService.meetsThreshold({ ...mediocre, matchScore: score }, 70)).toBe(false);
 		});
 	});
 

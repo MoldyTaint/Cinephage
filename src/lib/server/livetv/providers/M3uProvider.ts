@@ -25,6 +25,7 @@ import type {
 	LiveTvCategory,
 	ChannelSyncResult,
 	EpgProgram,
+	EpgLocalizedText,
 	LiveTvAccountTestResult,
 	M3uChannelData,
 	M3uConfig
@@ -739,10 +740,17 @@ export class M3uProvider implements LiveTvProvider {
 					// Keep any programme that overlaps the requested window.
 					if (progEnd < startTime || progStart > endTime) continue;
 
-					// Extract program info
+					// Extract program info. The plain columns intentionally keep the
+					// pre-i18n behavior (first element's text) so existing readers are
+					// unaffected; the full per-language variant lists are preserved
+					// alongside for display-time selection (migration 140).
 					const title = this.extractXmltvText(prog.title);
 					const description = this.extractXmltvText(prog.desc);
 					const category = this.extractXmltvText(prog.category);
+
+					const titleI18n = this.extractXmltvTexts(prog.title);
+					const descriptionI18n = this.extractXmltvTexts(prog.desc);
+					const categoryI18n = this.extractXmltvTexts(prog.category);
 
 					// Handle credits (director, actors)
 					let director: string | null = null;
@@ -770,6 +778,9 @@ export class M3uProvider implements LiveTvProvider {
 							title: title || 'Unknown',
 							description,
 							category,
+							titleI18n: titleI18n.length > 0 ? titleI18n : null,
+							descriptionI18n: descriptionI18n.length > 0 ? descriptionI18n : null,
+							categoryI18n: categoryI18n.length > 0 ? categoryI18n : null,
 							director,
 							actor,
 							startTime: progStart.toISOString(),
@@ -865,13 +876,61 @@ export class M3uProvider implements LiveTvProvider {
 		return null;
 	}
 
+	/**
+	 * Extract ALL localized text variants from an XMLTV text element.
+	 *
+	 * XMLTV text elements (title/desc/category) may repeat with different `lang`
+	 * attributes. fast-xml-parser is configured in fetchEpg with
+	 * `attributeNamePrefix: '@_'`, so a parsed element looks like
+	 * `{ '#text': 'News', '@_lang': 'en' }` (or a plain string when the element
+	 * has no attributes), and repeated elements become an array. Every variant
+	 * is collected as `{ lang, text }` with `lang` being the lower-cased
+	 * `@_lang` value or null; elements without text are skipped. Source order is
+	 * preserved.
+	 */
+	private extractXmltvTexts(value: unknown): EpgLocalizedText[] {
+		if (!value) return [];
+		const elements = Array.isArray(value) ? value : [value];
+		const texts: EpgLocalizedText[] = [];
+		for (const element of elements) {
+			if (element == null) continue;
+			let text: string | null = null;
+			let lang: string | null = null;
+			if (typeof element === 'string') {
+				text = element;
+			} else if (typeof element === 'object') {
+				const record = element as Record<string, unknown>;
+				if (record['#text'] != null) {
+					text = String(record['#text']);
+				}
+				if (typeof record['@_lang'] === 'string' && record['@_lang'].trim() !== '') {
+					lang = record['@_lang'].trim().toLowerCase();
+				}
+			}
+			if (text == null) continue;
+			texts.push({ lang, text });
+		}
+		return texts;
+	}
+
+	/**
+	 * Build a normalization key for matching M3U channels against XMLTV ones.
+	 *
+	 * NFKD-normalizes, strips combining marks, lower-cases, then keeps only
+	 * Unicode letters and numbers (`\p{L}`/`\p{N}`), so Latin diacritics
+	 * collapse ('Café' → 'cafe') while non-Latin scripts (CJK, Cyrillic,
+	 * Arabic, …) keep a stable key instead of collapsing to nothing. Returns
+	 * null when nothing usable remains — null keys are never entered into or
+	 * looked up in the lookup map, so two punctuation-only names can never
+	 * cross-match.
+	 */
 	private normalizeChannelLookupKey(value: string | undefined): string | null {
 		if (!value) return null;
 		const normalized = value
 			.normalize('NFKD')
 			.replace(/[\u0300-\u036f]/g, '')
 			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, '');
+			.replace(/[^\p{L}\p{N}]+/gu, '');
 		return normalized || null;
 	}
 

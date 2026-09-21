@@ -4,8 +4,6 @@
  * Provides streaming functionality for Cinephage including:
  * - Cinephage API-backed playback sessions
  * - HLS playlist parsing and best quality selection
- * - Stream validation for playability verification
- * - Caching for stream URLs
  * - STRM file generation and management
  * - Shared HTTP utilities for providers
  */
@@ -18,9 +16,6 @@ export * from './constants';
 
 // HLS parsing
 export * from './hls';
-
-// Stream validation
-export { getStreamValidator, createStreamValidator, quickValidateStream } from './validation';
 
 // STRM file service
 export * from './StrmService';

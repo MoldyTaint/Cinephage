@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlaybackSession, SessionResourceKind } from '../types';
-import { rewriteSessionPlaylist } from './playlist-rewriter';
+import { pickDefaultSubtitleIndex, rewriteSessionPlaylist } from './playlist-rewriter';
 
 function createMockSession(): PlaybackSession {
 	return {
@@ -130,6 +130,54 @@ describe('rewriteSessionPlaylist', () => {
 
 		expect(result).toContain('/playlist/res-0.m3u8');
 		expect(registered[0].kind).toBe('playlist');
+	});
+
+	it('preserves explicit WebVTT segment extensions', () => {
+		const result = rewrite(
+			'#EXTM3U\n#EXT-X-TARGETDURATION:10\n#EXTINF:10.0,\ncaptions.vtt\n#EXT-X-ENDLIST',
+			'https://cdn.example.com/subtitles.m3u8'
+		);
+
+		expect(result).toContain('/segment/res-0.vtt');
+		expect(registered[0]).toMatchObject({
+			url: 'https://cdn.example.com/captions.vtt',
+			kind: 'segment',
+			extension: 'vtt'
+		});
+	});
+
+	it('uses the inherited subtitle fallback only for extensionless segments', () => {
+		registered.length = 0;
+		const result = rewriteSessionPlaylist({
+			playlist:
+				'#EXTM3U\n#EXT-X-TARGETDURATION:10\n#EXTINF:10.0,\nsubtitle-segment\n#EXTINF:10.0,\nsubtitle-segment.m4s\n#EXT-X-ENDLIST',
+			playlistUrl: 'https://cdn.example.com/subtitles.m3u8',
+			baseUrl: 'http://192.168.1.1:3000',
+			session: createMockSession(),
+			registerResource,
+			injectSubtitles: false,
+			segmentFallbackExtension: 'vtt'
+		});
+
+		expect(result).toContain('/segment/res-0.vtt');
+		expect(result).toContain('/segment/res-1.m4s');
+		expect(result).not.toContain('/segment/res-0.ts');
+	});
+
+	it('rewrites LL-HLS part and preload hint resources as segments', () => {
+		const result = rewrite(
+			[
+				'#EXTM3U',
+				'#EXT-X-PART:DURATION=0.333,URI="part0.m4s"',
+				'#EXT-X-PRELOAD-HINT:TYPE=PART,URI="part1.m4s"'
+			].join('\n')
+		);
+
+		expect(registered).toHaveLength(2);
+		expect(registered[0].kind).toBe('segment');
+		expect(registered[1].kind).toBe('segment');
+		expect(result).toContain('/segment/res-0.m4s');
+		expect(result).toContain('/segment/res-1.m4s');
 	});
 
 	describe('#EXT-X-MAP: (fMP4 init segment)', () => {
@@ -428,5 +476,91 @@ describe('rewriteSessionPlaylist', () => {
 			expect(registered[1].kind).toBe('playlist');
 			expect(result).not.toContain('/asset/');
 		});
+	});
+});
+
+describe('pickDefaultSubtitleIndex', () => {
+	const tracks = (languages: string[]) =>
+		languages.map((language, i) => ({
+			id: `sub-${i}`,
+			url: `https://cdn.example.com/${i}.vtt`,
+			label: `Track ${i}`,
+			language,
+			isDefault: false
+		}));
+
+	it('prefers the track matching the highest-priority language', () => {
+		const subtitles = tracks(['en', 'fr', 'de']);
+		expect(pickDefaultSubtitleIndex(subtitles, ['fr', 'de'])).toBe(1);
+	});
+
+	it('falls through to later preferences when the first has no match', () => {
+		const subtitles = tracks(['en', 'de', 'fr']);
+		expect(pickDefaultSubtitleIndex(subtitles, ['es', 'de'])).toBe(1);
+	});
+
+	it('matches region/script variants of a base-tag preference', () => {
+		const subtitles = tracks(['en', 'pt-BR']);
+		expect(pickDefaultSubtitleIndex(subtitles, ['pt'])).toBe(1);
+	});
+
+	it('requires exact canonical tags for regional preferences', () => {
+		const subtitles = tracks(['en', 'zh']);
+		expect(pickDefaultSubtitleIndex(subtitles, ['zh-Hans'])).toBeNull();
+	});
+
+	it('ignores unresolvable track languages', () => {
+		const subtitles = tracks(['en', 'und']);
+		expect(pickDefaultSubtitleIndex(subtitles, ['fr'])).toBeNull();
+	});
+
+	it('returns null without preferences (positional fallback)', () => {
+		const subtitles = tracks(['en', 'fr']);
+		expect(pickDefaultSubtitleIndex(subtitles)).toBeNull();
+		expect(pickDefaultSubtitleIndex(subtitles, [])).toBeNull();
+	});
+
+	it('uses the full requirement tuple when requirements are provided', () => {
+		const base = tracks(['en', 'en', 'en']);
+		const subtitles = [
+			{ ...base[0], isForced: false, isHearingImpaired: false },
+			{ ...base[1], isForced: true, isHearingImpaired: false },
+			{ ...base[2], isForced: false, isHearingImpaired: true }
+		];
+
+		expect(
+			pickDefaultSubtitleIndex(subtitles, undefined, [
+				{ tag: 'en', variant: 'forced', accessibility: 'any' }
+			])
+		).toBe(1);
+
+		expect(
+			pickDefaultSubtitleIndex(subtitles, undefined, [
+				{ tag: 'en', variant: 'regular', accessibility: 'require-hi' }
+			])
+		).toBe(2);
+
+		// A regular requirement must not accept the forced track, and
+		// exclude-hi must skip the HI track.
+		expect(
+			pickDefaultSubtitleIndex(subtitles, undefined, [
+				{ tag: 'en', variant: 'regular', accessibility: 'exclude-hi' }
+			])
+		).toBe(0);
+	});
+
+	it('honors requirement order over track order', () => {
+		const base = tracks(['fr', 'de']);
+		const subtitles = [
+			{ ...base[0], isForced: false, isHearingImpaired: false },
+			{ ...base[1], isForced: false, isHearingImpaired: false }
+		];
+
+		expect(
+			pickDefaultSubtitleIndex(subtitles, undefined, [
+				{ tag: 'de', variant: 'regular', accessibility: 'any' },
+				{ tag: 'fr', variant: 'regular', accessibility: 'any' }
+			])
+		).toBe(1);
 	});
 });

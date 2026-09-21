@@ -35,13 +35,15 @@ function matchesIdentifyingKey(key: {
 }
 
 function aggregateItems(
-	rows: (typeof mediaServerSyncedItems.$inferSelect)[]
+	rows: (typeof mediaServerSyncedItems.$inferSelect)[],
+	serverById: Map<string, { name: string; serverType: string }>
 ): AggregatedMediaItem[] {
 	const map = new Map<string, AggregatedMediaItem>();
 
 	for (const row of rows) {
 		const key = `${row.tmdbId ?? 'null'}-${row.tvdbId ?? 'null'}-${row.title}`;
 		const existing = map.get(key);
+		const server = row.serverId ? serverById.get(row.serverId) : undefined;
 		if (existing) {
 			existing.totalPlayCount += row.playCount ?? 0;
 			if (
@@ -50,11 +52,12 @@ function aggregateItems(
 			) {
 				existing.lastPlayedDate = row.lastPlayedDate;
 			}
-			if (row.serverId) {
+			if (row.serverId && server) {
 				existing.serverBreakdown.push({
 					serverId: row.serverId,
-					serverName: '',
-					serverType: 'jellyfin',
+					serverName: server.name,
+					serverType:
+						server.serverType as AggregatedMediaItem['serverBreakdown'][number]['serverType'],
 					playCount: row.playCount ?? 0,
 					lastPlayedDate: row.lastPlayedDate ?? null,
 					videoCodec: row.videoCodec ?? null,
@@ -74,22 +77,24 @@ function aggregateItems(
 				itemType: row.itemType,
 				totalPlayCount: row.playCount ?? 0,
 				lastPlayedDate: row.lastPlayedDate ?? null,
-				serverBreakdown: row.serverId
-					? [
-							{
-								serverId: row.serverId,
-								serverName: '',
-								serverType: 'jellyfin',
-								playCount: row.playCount ?? 0,
-								lastPlayedDate: row.lastPlayedDate ?? null,
-								videoCodec: row.videoCodec ?? null,
-								width: row.width ?? null,
-								height: row.height ?? null,
-								isHDR: (row.isHDR ?? 0) === 1,
-								containerFormat: row.containerFormat ?? null
-							}
-						]
-					: []
+				serverBreakdown:
+					row.serverId && server
+						? [
+								{
+									serverId: row.serverId,
+									serverName: server.name,
+									serverType:
+										server.serverType as AggregatedMediaItem['serverBreakdown'][number]['serverType'],
+									playCount: row.playCount ?? 0,
+									lastPlayedDate: row.lastPlayedDate ?? null,
+									videoCodec: row.videoCodec ?? null,
+									width: row.width ?? null,
+									height: row.height ?? null,
+									isHDR: (row.isHDR ?? 0) === 1,
+									containerFormat: row.containerFormat ?? null
+								}
+							]
+						: []
 			});
 		}
 	}
@@ -206,6 +211,11 @@ export const GET: RequestHandler = async () => {
 			.limit(10)
 	]);
 
+	// Server metadata for breakdown entries (real type/name, never hardcoded).
+	const serverById = new Map(
+		servers.map((server) => [server.id, { name: server.name, serverType: server.serverType }])
+	);
+
 	// Latest sync run per server - one small limited query per (bounded, small) server
 	// list instead of loading the whole run-history table.
 	const syncRuns = (
@@ -271,11 +281,11 @@ export const GET: RequestHandler = async () => {
 		count: r.count
 	}));
 
-	const topPlayedItems = aggregateItems(topPlayedRows)
+	const topPlayedItems = aggregateItems(topPlayedRows, serverById)
 		.sort((a, b) => b.totalPlayCount - a.totalPlayCount)
 		.slice(0, 25);
 
-	const largestAggregated = aggregateItems(largestDetailRows);
+	const largestAggregated = aggregateItems(largestDetailRows, serverById);
 	const largestItems = largestRawRows.map((item) => {
 		const agg = largestAggregated.find(
 			(a) => a.tmdbId === item.tmdbId && a.tvdbId === item.tvdbId && a.title === item.title

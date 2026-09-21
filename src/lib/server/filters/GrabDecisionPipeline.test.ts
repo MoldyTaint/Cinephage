@@ -25,7 +25,7 @@ vi.mock('$lib/server/db/index.js', () => ({
 	db: {
 		select: () => ({
 			from: () => ({
-				where: () => Object.assign([], { limit: () => [] })
+				where: () => Object.assign([], { limit: () => ({ all: () => [], get: () => undefined }) })
 			})
 		}),
 		query: {
@@ -54,7 +54,12 @@ vi.mock('$lib/server/monitoring/specifications/utils.js', () => ({
 vi.mock('drizzle-orm', () => ({
 	and: vi.fn(),
 	eq: vi.fn(),
-	inArray: vi.fn()
+	inArray: vi.fn(),
+	isNull: vi.fn(),
+	like: vi.fn(),
+	or: vi.fn(),
+	notInArray: vi.fn(),
+	sql: vi.fn()
 }));
 
 vi.mock('$lib/server/db/schema.js', () => ({
@@ -67,7 +72,18 @@ vi.mock('$lib/server/db/schema.js', () => ({
 	},
 	movieFiles: { id: 'id', movieId: 'movieId' },
 	movies: { id: 'id', hasFile: 'hasFile' },
-	delayProfiles: { id: 'id', enabled: 'enabled', isDefault: 'isDefault' }
+	delayProfiles: { id: 'id', enabled: 'enabled', isDefault: 'isDefault' },
+	acquisitionIntents: {
+		id: 'id',
+		status: 'status',
+		queueId: 'queueId',
+		identityValue: 'identityValue'
+	},
+	acquisitionReservations: {
+		intentId: 'intentId',
+		targetKey: 'targetKey',
+		releasedAt: 'releasedAt'
+	}
 }));
 
 const { GrabDecisionPipeline } = await import('./GrabDecisionPipeline.js');
@@ -184,10 +200,12 @@ describe('GrabDecisionPipeline', () => {
 
 		const stageNames = decision.audit.stages.map((s) => s.name);
 		expect(stageNames).toEqual([
+			'identity',
 			'blocklist',
 			'scoring',
 			'bannedFormat',
 			'requiredFormats',
+			'language',
 			'sizeValidation',
 			'protocol',
 			'minimumScore',

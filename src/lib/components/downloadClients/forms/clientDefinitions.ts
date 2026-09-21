@@ -21,7 +21,7 @@ export const clientDefinitions: DownloadClientDefinition[] = [
 		description: 'Lightweight, cross-platform BitTorrent client',
 		defaultPort: 9091,
 		protocol: 'torrent',
-		supportsCategories: false,
+		supportsCategories: true,
 		supportsPriority: true,
 		supportsSeedingLimits: true
 	},

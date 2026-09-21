@@ -1,11 +1,16 @@
 import { logger } from '$lib/logging';
 import { getLibraryStreamingModule } from '$lib/server/cinephage/modules/library-streaming/LibraryStreamingModule.js';
+import { resolveAudioPreferenceBucket, sortSourcesByAudioPreference } from '../language-utils';
 import type {
 	PlaybackMediaType,
 	PlaybackSession,
 	PlaybackSessionSubtitle,
 	StreamSource
 } from '../types';
+import {
+	getAudioPreferenceFor,
+	getPreferredSubtitleRequirementsFor
+} from '../language-profile-helper';
 import { getPlaybackSessionStore } from './session-store';
 
 const streamLog = { logDomain: 'streams' as const };
@@ -37,7 +42,9 @@ function normalizeSubtitleList(source: StreamSource): PlaybackSessionSubtitle[] 
 		url: subtitle.url,
 		label: subtitle.label,
 		language: subtitle.language,
-		isDefault: subtitle.isDefault
+		isDefault: subtitle.isDefault,
+		isForced: subtitle.isForced,
+		isHearingImpaired: subtitle.isHearingImpaired
 	}));
 }
 
@@ -49,7 +56,57 @@ export class PlaybackSessionService {
 	private readonly api = getLibraryStreamingModule();
 	private readonly store = getPlaybackSessionStore();
 
+	/**
+	 * In-flight launches keyed by media identity. Two concurrent launches for
+	 * the same item share one provider lookup/session instead of both missing
+	 * reuse and creating duplicate sessions (the second overwrote mediaIndex,
+	 * orphaning the first token until TTL).
+	 */
+	private readonly pendingLaunches = new Map<
+		string,
+		Promise<{
+			session: PlaybackSession | null;
+			extractionResult?: {
+				success: boolean;
+				sources: StreamSource[];
+				error?: string;
+				meta?: Record<string, unknown>;
+			};
+			error?: string;
+		}>
+	>();
+
 	async createOrReuseSession(params: PlaybackLaunchParams): Promise<{
+		session: PlaybackSession | null;
+		extractionResult?: {
+			success: boolean;
+			sources: StreamSource[];
+			error?: string;
+			meta?: Record<string, unknown>;
+		};
+		error?: string;
+	}> {
+		const key = `${params.type}:${params.tmdbId}:${params.season ?? 'x'}:${params.episode ?? 'x'}`;
+
+		if (!params.forceRefresh) {
+			const inFlight = this.pendingLaunches.get(key);
+			if (inFlight) return inFlight;
+		}
+
+		const run = this.createOrReuseSessionInternal(params).finally(() => {
+			if (this.pendingLaunches.get(key) === run) {
+				this.pendingLaunches.delete(key);
+			}
+		});
+
+		if (!params.forceRefresh) {
+			this.pendingLaunches.set(key, run);
+		}
+
+		return run;
+	}
+
+	private async createOrReuseSessionInternal(params: PlaybackLaunchParams): Promise<{
 		session: PlaybackSession | null;
 		extractionResult?: {
 			success: boolean;
@@ -63,12 +120,30 @@ export class PlaybackSessionService {
 			return { session: null, error: 'Aborted' };
 		}
 
+		// Resolve the CURRENT audio + subtitle requirements before the reuse
+		// check so a changed profile/override takes effect on the next launch
+		// without forceRefresh.
+		const audioPreference = await getAudioPreferenceFor(
+			params.type,
+			params.tmdbId,
+			params.season,
+			params.episode
+		);
+		const preferredSubtitleRequirements = await getPreferredSubtitleRequirementsFor(
+			params.type,
+			params.tmdbId,
+			params.season,
+			params.episode
+		);
+
 		if (!params.forceRefresh) {
 			const existing = this.store.findReusableSession(
 				params.type,
 				params.tmdbId,
 				params.season,
-				params.episode
+				params.episode,
+				audioPreference,
+				preferredSubtitleRequirements
 			);
 			if (existing) {
 				return { session: existing };
@@ -95,9 +170,16 @@ export class PlaybackSessionService {
 			};
 		}
 
-		// The API now returns a single pre-validated stream.
-		// Skip probing and use it directly for instant playback startup.
-		const source = lookup.sources[0];
+		// The API returns pre-validated sources; rank them by the resolved audio
+		// preference (original language first, then profile fallback languages,
+		// then untagged/neutral, then everything else — stable within buckets)
+		// and use the winner directly for instant playback startup.
+		const rankedSources = sortSourcesByAudioPreference(lookup.sources, audioPreference);
+		const source = rankedSources[0];
+
+		const chosenBucket = resolveAudioPreferenceBucket(source, audioPreference);
+		const chosenAudioLanguage =
+			source.language ?? (chosenBucket === 0 ? (audioPreference.originalLanguage ?? null) : null);
 
 		const session = this.store.createSession({
 			mediaType: params.type,
@@ -112,7 +194,10 @@ export class PlaybackSessionService {
 			requestHeaders: buildSourceHeaders(source),
 			subtitles: normalizeSubtitleList(source),
 			attempts: [],
-			sourceExpiresAt: source.expiresAt
+			sourceExpiresAt: source.expiresAt,
+			audioPreference,
+			chosenAudioLanguage,
+			preferredSubtitleRequirements
 		});
 
 		logger.info(
@@ -123,6 +208,8 @@ export class PlaybackSessionService {
 				entryUrl: source.url,
 				quality: source.quality,
 				language: source.language,
+				chosenAudioLanguage: session.chosenAudioLanguage,
+				audioPreference: session.audioPreference,
 				tmdbId: params.tmdbId,
 				mediaType: params.type,
 				season: params.season,

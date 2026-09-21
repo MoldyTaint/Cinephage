@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as fsPromises from 'node:fs/promises';
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../test/db-helper';
 import { movieFiles, movies, rootFolders, subtitleHistory, subtitles } from '$lib/server/db/schema';
 
@@ -93,8 +94,9 @@ describe('SubtitleScannerService scanMovieSubtitles movie-file linking', () => {
 		mockLogger.warn.mockClear();
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
 		vi.restoreAllMocks();
+		await fsPromises.rm(ROOT_PATH, { recursive: true, force: true });
 	});
 
 	afterAll(() => {
@@ -122,6 +124,22 @@ describe('SubtitleScannerService scanMovieSubtitles movie-file linking', () => {
 		const sub1080p = savedSubtitles.find((s) => s.relativePath === 'Movie.2024.1080p.en.srt');
 		expect(sub2160p?.movieFileId).toBe('movie-file-2160p');
 		expect(sub1080p?.movieFileId).toBe('movie-file-1080p');
+	});
+
+	it('links a standard Name.lang.srt sidecar to the movie file via real discovery', async () => {
+		await seedRootFolderAndMovie();
+		await seedMovieFile('movie-file-1080p', 'Movie.2024.1080p.mkv');
+
+		const mediaDir = `${ROOT_PATH}/Test Movie (2024)`;
+		await fsPromises.mkdir(mediaDir, { recursive: true });
+		await fsPromises.writeFile(`${mediaDir}/Movie.2024.1080p.en.srt`, 'subtitle');
+
+		const service = SubtitleScannerService.getInstance();
+		const result = await service.scanMovieSubtitles(MOVIE_ID);
+
+		expect(result.registered).toBe(1);
+		const [row] = await testDb.db.select().from(subtitles);
+		expect(row.movieFileId).toBe('movie-file-1080p');
 	});
 
 	it('leaves movieFileId null for a sidecar that matches no movie file', async () => {
@@ -186,20 +204,23 @@ describe('SubtitleScannerService scanMovieSubtitles movie-file linking', () => {
 		expect(savedSubtitles[0].movieFileId).toBe('movie-file-2160p');
 	});
 
-	it('registers a sidecar with null movieFileId when the movie has no movie files', async () => {
+	it('skips discovery entirely when the movie has no movie files (arr parity)', async () => {
 		await seedRootFolderAndMovie();
 
 		const service = SubtitleScannerService.getInstance();
-		vi.spyOn(service, 'discoverSubtitles').mockResolvedValue([buildSidecar('Movie.2024.2160p')]);
+		const discoverSpy = vi
+			.spyOn(service, 'discoverSubtitles')
+			.mockResolvedValue([buildSidecar('Movie.2024.2160p')]);
 
 		const result = await service.scanMovieSubtitles(MOVIE_ID);
 
-		expect(result.registered).toBe(1);
+		// No files means no folder read — nothing to discover or register.
+		expect(discoverSpy).not.toHaveBeenCalled();
+		expect(result.registered).toBe(0);
 		expect(result.errors).toHaveLength(0);
 
 		const savedSubtitles = await testDb.db.select().from(subtitles);
-		expect(savedSubtitles).toHaveLength(1);
-		expect(savedSubtitles[0].movieFileId).toBeNull();
+		expect(savedSubtitles).toHaveLength(0);
 	});
 
 	it('registers a sidecar with null movieFileId when videoFileName is undefined', async () => {
@@ -228,5 +249,111 @@ describe('SubtitleScannerService scanMovieSubtitles movie-file linking', () => {
 		const savedSubtitles = await testDb.db.select().from(subtitles);
 		expect(savedSubtitles).toHaveLength(1);
 		expect(savedSubtitles[0].movieFileId).toBeNull();
+	});
+
+	it('returns a full reconcile report with all counters', async () => {
+		await seedRootFolderAndMovie();
+
+		const service = SubtitleScannerService.getInstance();
+		vi.spyOn(service, 'discoverSubtitles').mockResolvedValue([]);
+
+		const result = await service.scanMovieSubtitles(MOVIE_ID);
+
+		expect(result).toMatchObject({
+			discovered: 0,
+			added: 0,
+			registered: 0,
+			updated: 0,
+			removed: 0,
+			unchanged: 0,
+			skipped: 0,
+			ambiguous: []
+		});
+	});
+
+	it('updates changed metadata on an existing row instead of inserting a duplicate', async () => {
+		await seedRootFolderAndMovie();
+		await seedMovieFile('movie-file-2160p', 'Movie.2024.2160p.mkv');
+		await testDb.db.insert(subtitles).values({
+			id: 'sub-existing',
+			movieId: MOVIE_ID,
+			movieFileId: 'movie-file-2160p',
+			relativePath: 'Movie.2024.2160p.en.srt',
+			language: 'de',
+			isForced: true,
+			isHearingImpaired: false,
+			format: 'srt',
+			size: 1
+		});
+
+		const service = SubtitleScannerService.getInstance();
+		vi.spyOn(service, 'discoverSubtitles').mockResolvedValue([buildSidecar('Movie.2024.2160p')]);
+
+		const result = await service.scanMovieSubtitles(MOVIE_ID);
+
+		expect(result.added).toBe(0);
+		expect(result.updated).toBe(1);
+		expect(result.registered).toBe(0);
+
+		const saved = await testDb.db.select().from(subtitles);
+		expect(saved).toHaveLength(1);
+		expect(saved[0].id).toBe('sub-existing');
+		expect(saved[0].language).toBe('en');
+		expect(saved[0].isForced).toBe(false);
+		expect(saved[0].size).toBe(100);
+		expect(saved[0].movieFileId).toBe('movie-file-2160p');
+	});
+
+	it('counts an already-current row as unchanged', async () => {
+		await seedRootFolderAndMovie();
+		await seedMovieFile('movie-file-2160p', 'Movie.2024.2160p.mkv');
+		await testDb.db.insert(subtitles).values({
+			id: 'sub-current',
+			movieId: MOVIE_ID,
+			movieFileId: 'movie-file-2160p',
+			relativePath: 'Movie.2024.2160p.en.srt',
+			language: 'en',
+			isForced: false,
+			isHearingImpaired: false,
+			format: 'srt',
+			size: 100
+		});
+
+		const service = SubtitleScannerService.getInstance();
+		vi.spyOn(service, 'discoverSubtitles').mockResolvedValue([buildSidecar('Movie.2024.2160p')]);
+
+		const result = await service.scanMovieSubtitles(MOVIE_ID);
+
+		expect(result.unchanged).toBe(1);
+		expect(result.added).toBe(0);
+		expect(result.updated).toBe(0);
+
+		const saved = await testDb.db.select().from(subtitles);
+		expect(saved).toHaveLength(1);
+	});
+
+	it('removes a stored row whose file no longer exists and records deleted history', async () => {
+		await seedRootFolderAndMovie();
+		await testDb.db.insert(subtitles).values({
+			id: 'sub-gone',
+			movieId: MOVIE_ID,
+			relativePath: 'Gone.en.srt',
+			language: 'en',
+			isForced: false,
+			isHearingImpaired: false,
+			format: 'srt',
+			size: 10
+		});
+
+		const service = SubtitleScannerService.getInstance();
+		vi.spyOn(service, 'discoverSubtitles').mockResolvedValue([]);
+
+		const result = await service.scanMovieSubtitles(MOVIE_ID);
+
+		expect(result.removed).toBe(1);
+		expect(await testDb.db.select().from(subtitles)).toHaveLength(0);
+
+		const history = await testDb.db.select().from(subtitleHistory);
+		expect(history.filter((h) => h.action === 'deleted')).toHaveLength(1);
 	});
 });

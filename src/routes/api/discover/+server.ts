@@ -1,7 +1,10 @@
-import { getDiscoverResults } from '$lib/server/discover';
+import { getDiscoverResults, resolveWithOriginalLanguage } from '$lib/server/discover';
 import { contentFilterPipeline } from '$lib/server/filters/ContentFilterPipeline.js';
 import { enrichWithReleaseDates } from '$lib/server/release-enrichment.js';
 import { tmdb } from '$lib/server/tmdb';
+import { db } from '$lib/server/db/index.js';
+import { languageSettings } from '$lib/server/db/schema.js';
+import { eq } from 'drizzle-orm';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
@@ -57,10 +60,27 @@ export const GET: RequestHandler = async ({ url }) => {
 	const params = result.data;
 
 	try {
+		// Content-origin filter: URL param wins (normalized), then the stored
+		// instance setting. The curated top_rated endpoint cannot filter, so it
+		// yields to the discover grid when a filter is active.
+		let storedOriginalFilter: string | null = null;
+		try {
+			const languageRow = await db.query.languageSettings.findFirst({
+				where: eq(languageSettings.id, 'singleton')
+			});
+			storedOriginalFilter = languageRow?.discoverOriginalFilter ?? null;
+		} catch {
+			// Non-fatal: no stored filter.
+		}
+		const effectiveOriginalLanguage = resolveWithOriginalLanguage(
+			params.with_original_language,
+			storedOriginalFilter
+		);
+
 		let results: Array<{ id: number }>;
 		let pagination: { page: number; total_pages: number; total_results: number };
 
-		if (params.top_rated === 'true') {
+		if (params.top_rated === 'true' && !effectiveOriginalLanguage) {
 			// Handle top_rated endpoint
 			if (params.type === 'movie') {
 				const data = (await tmdb.fetch(
@@ -110,7 +130,7 @@ export const GET: RequestHandler = async ({ url }) => {
 				withGenres: params.with_genres,
 				withKeywords: params.with_keywords,
 				withoutKeywords: params.without_keywords,
-				withOriginalLanguage: params.with_original_language,
+				withOriginalLanguage: effectiveOriginalLanguage,
 				minDate: params['primary_release_date.gte'],
 				maxDate: params['primary_release_date.lte'],
 				minRating: params['vote_average.gte'],

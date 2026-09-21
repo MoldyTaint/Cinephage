@@ -168,7 +168,11 @@
 		}
 		pinnedMenuSections = next;
 		if (browser) {
-			localStorage.setItem(PINNED_SECTIONS_STORAGE_KEY, JSON.stringify([...next]));
+			try {
+				localStorage.setItem(PINNED_SECTIONS_STORAGE_KEY, JSON.stringify([...next]));
+			} catch {
+				// storage unavailable (blocked cookies / ETP)
+			}
 		}
 	}
 
@@ -379,11 +383,18 @@
 
 	$effect(() => {
 		if (!browser) return;
-		const stored = localStorage.getItem(SIDEBAR_EXPANDED_STORAGE_KEY);
+		// Storage access throws when site data is blocked (Firefox ETP etc.)
+		let stored: string | null = null;
+		let storedPinned: string | null = null;
+		try {
+			stored = localStorage.getItem(SIDEBAR_EXPANDED_STORAGE_KEY);
+			storedPinned = localStorage.getItem(PINNED_SECTIONS_STORAGE_KEY);
+		} catch {
+			// storage unavailable (blocked cookies / ETP)
+		}
 		if (stored === 'true' || stored === 'false') {
 			layoutState.isSidebarExpanded = stored === 'true';
 		}
-		const storedPinned = localStorage.getItem(PINNED_SECTIONS_STORAGE_KEY);
 		if (storedPinned) {
 			try {
 				const keys = JSON.parse(storedPinned);
@@ -398,7 +409,11 @@
 
 	$effect(() => {
 		if (!browser) return;
-		localStorage.setItem(SIDEBAR_EXPANDED_STORAGE_KEY, String(layoutState.isSidebarExpanded));
+		try {
+			localStorage.setItem(SIDEBAR_EXPANDED_STORAGE_KEY, String(layoutState.isSidebarExpanded));
+		} catch {
+			// storage unavailable (blocked cookies / ETP)
+		}
 	});
 
 	// Global scan SSE - lives in the root layout so toast notifications fire

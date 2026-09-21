@@ -10,6 +10,7 @@ import { getProvider } from '$lib/server/livetv/providers';
 import { createChildLogger } from '$lib/logging';
 import { toFriendlyLiveTvTestError } from '$lib/livetv/errorMessages';
 import { probeStalkerEndpoint } from '$lib/server/livetv/stalker/StalkerPortalClient';
+import { stalkerLanguageSchema } from '$lib/validation/schemas.js';
 import { z } from 'zod';
 import { ValidationError } from '$lib/errors';
 import type { LiveTvAccount } from '$lib/types/livetv';
@@ -29,6 +30,7 @@ const liveTvAccountTestSchema = z.object({
 			deviceId2: z.string().optional(),
 			model: z.string().optional(),
 			timezone: z.string().optional(),
+			language: stalkerLanguageSchema.optional(),
 			username: z.string().optional(),
 			password: z.string().optional()
 		})

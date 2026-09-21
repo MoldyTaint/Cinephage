@@ -3,6 +3,8 @@
 	import type { TVShowDetails } from '$lib/types/tmdb';
 	import { displayTitle } from '$lib/types/library';
 	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
+	import SubtitleRequirementBadge from './SubtitleRequirementBadge.svelte';
+	import type { SubtitleRequirementProgress } from '$lib/utils/subtitle-status-display.js';
 	import CrewList from '$lib/components/tmdb/CrewList.svelte';
 	import WatchProviders from '$lib/components/tmdb/WatchProviders.svelte';
 	import MonitorToggle from './MonitorToggle.svelte';
@@ -87,6 +89,10 @@
 		episodeCount?: number | null;
 		episodeFileCount?: number | null;
 		percentComplete?: number;
+		/** Aggregate requirement progress across file-bearing episodes. */
+		subtitleProgress?: SubtitleRequirementProgress | null;
+		/** Instance default for items with no explicit prefer-original flag. */
+		preferOriginalTitleDefault?: boolean | null;
 		totalSeriesSize?: number;
 		downloadingCount?: number;
 		partiallyMonitored?: boolean;
@@ -118,6 +124,8 @@
 		episodeCount = null,
 		episodeFileCount = null,
 		percentComplete = 0,
+		subtitleProgress = null,
+		preferOriginalTitleDefault = false,
 		totalSeriesSize = 0,
 		downloadingCount = 0,
 		partiallyMonitored = false,
@@ -363,7 +371,7 @@
 				<div class="flex min-w-0 flex-1 flex-col gap-4">
 					<div class="min-w-0">
 						<h1 class="text-2xl font-bold md:text-3xl">
-							{displayTitle(series)}
+							{displayTitle(series, preferOriginalTitleDefault)}
 							{#if series.year}
 								<span class="font-normal text-base-content/60">({series.year})</span>
 							{/if}
@@ -487,6 +495,9 @@
 										<Download size={12} class="animate-pulse" />
 										{downloadingCount}
 									</span>
+								{/if}
+								{#if subtitleProgress}
+									<SubtitleRequirementBadge progress={subtitleProgress} size="sm" />
 								{/if}
 							</div>
 						{/if}

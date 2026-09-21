@@ -349,7 +349,13 @@
 	let loadMoreTrigger = $state<HTMLElement>();
 
 	let debugMode = $state(
-		typeof localStorage !== 'undefined' && localStorage.getItem('discover_debugMode') === 'true'
+		(() => {
+			try {
+				return localStorage.getItem('discover_debugMode') === 'true';
+			} catch {
+				return false;
+			}
+		})()
 	);
 	let filteredOutResults = $state<ResultsType>([]);
 	let debugLoading = $state(false);
@@ -387,7 +393,11 @@
 
 	function toggleDebug() {
 		debugMode = !debugMode;
-		localStorage.setItem('discover_debugMode', String(debugMode));
+		try {
+			localStorage.setItem('discover_debugMode', String(debugMode));
+		} catch {
+			// storage unavailable (blocked cookies / ETP)
+		}
 		if (debugMode) {
 			debugResultsLoaded = false;
 			loadDebugResults();

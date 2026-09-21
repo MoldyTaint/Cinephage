@@ -13,6 +13,7 @@ import { invalidateBlockedCache } from '$lib/server/library/status.js';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager.js';
 import { deleteAllAlternateTitles } from '$lib/server/services/index.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 
@@ -213,6 +214,7 @@ class BlockedMediaService {
 					);
 				}
 			}
+			acquisitionService.cancelByQueueId(queueItem.id, 'media removed from library');
 			await db.delete(downloadQueue).where(eq(downloadQueue.id, queueItem.id));
 		}
 
@@ -260,6 +262,7 @@ class BlockedMediaService {
 					);
 				}
 			}
+			acquisitionService.cancelByQueueId(queueItem.id, 'media removed from library');
 			await db.delete(downloadQueue).where(eq(downloadQueue.id, queueItem.id));
 		}
 

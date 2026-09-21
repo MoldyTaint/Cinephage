@@ -17,6 +17,7 @@ import {
 	type EpgProgramRecord
 } from '$lib/server/db/schema';
 import { createChildLogger } from '$lib/logging';
+import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
 import { getProvider } from '../providers';
 import { liveTvEvents } from '../LiveTvEvents';
 import {
@@ -26,6 +27,7 @@ import {
 } from './epg-utils';
 import type {
 	EpgProgram,
+	EpgLocalizedText,
 	EpgProgramWithProgress,
 	EpgSyncResult,
 	ChannelNowNext,
@@ -519,6 +521,9 @@ export class EpgService {
 				title: string;
 				description: string | null;
 				category: string | null;
+				titleI18n: EpgLocalizedText[] | null;
+				descriptionI18n: EpgLocalizedText[] | null;
+				categoryI18n: EpgLocalizedText[] | null;
 				director: string | null;
 				actor: string | null;
 				startTime: string;
@@ -551,6 +556,9 @@ export class EpgService {
 				title: program.title,
 				description: program.description,
 				category: program.category,
+				titleI18n: program.titleI18n ?? null,
+				descriptionI18n: program.descriptionI18n ?? null,
+				categoryI18n: program.categoryI18n ?? null,
 				director: program.director,
 				actor: program.actor,
 				startTime: program.startTime,
@@ -571,6 +579,9 @@ export class EpgService {
 			title: string;
 			description: string | null;
 			category: string | null;
+			titleI18n: EpgLocalizedText[] | null;
+			descriptionI18n: EpgLocalizedText[] | null;
+			categoryI18n: EpgLocalizedText[] | null;
 			director: string | null;
 			actor: string | null;
 			startTime: string;
@@ -636,6 +647,9 @@ export class EpgService {
 						title: sql`excluded.title`,
 						description: sql`excluded.description`,
 						category: sql`excluded.category`,
+						titleI18n: sql`excluded.title_i18n`,
+						descriptionI18n: sql`excluded.description_i18n`,
+						categoryI18n: sql`excluded.category_i18n`,
 						director: sql`excluded.director`,
 						actor: sql`excluded.actor`,
 						endTime: sql`excluded.end_time`,
@@ -746,8 +760,15 @@ export class EpgService {
 	 * @param channelIds - Array of local channel IDs
 	 * @param start - Start time
 	 * @param end - End time
+	 * @param lang - Optional display language (validated base tag). When omitted,
+	 *   the plain title/description/category columns are returned unchanged.
 	 */
-	getGuideData(channelIds: string[], start: Date, end: Date): Map<string, EpgProgram[]> {
+	getGuideData(
+		channelIds: string[],
+		start: Date,
+		end: Date,
+		lang?: string | null
+	): Map<string, EpgProgram[]> {
 		if (channelIds.length === 0) {
 			return new Map();
 		}
@@ -775,7 +796,7 @@ export class EpgService {
 
 		for (const program of programs) {
 			const existing = result.get(program.channelId) || [];
-			existing.push(this.programRecordToEpgProgram(program));
+			existing.push(this.programRecordToEpgProgram(program, lang));
 			result.set(program.channelId, existing);
 		}
 
@@ -784,8 +805,15 @@ export class EpgService {
 
 	/**
 	 * Get programs for a single channel
+	 * @param lang - Optional display language (validated base tag). When omitted,
+	 *   the plain title/description/category columns are returned unchanged.
 	 */
-	getChannelPrograms(channelId: string, start: Date, end: Date): EpgProgram[] {
+	getChannelPrograms(
+		channelId: string,
+		start: Date,
+		end: Date,
+		lang?: string | null
+	): EpgProgram[] {
 		const startIso = start.toISOString();
 		const endIso = end.toISOString();
 
@@ -802,7 +830,7 @@ export class EpgService {
 			.orderBy(epgPrograms.startTime)
 			.all();
 
-		return programs.map((p) => this.programRecordToEpgProgram(p));
+		return programs.map((p) => this.programRecordToEpgProgram(p, lang));
 	}
 
 	/**
@@ -860,18 +888,95 @@ export class EpgService {
 	}
 
 	/**
+	 * Parse a stored i18n JSON column into its entry list.
+	 * Defensive against legacy/malformed values: anything that is not an array
+	 * of usable entries yields null so the plain column wins.
+	 */
+	private parseI18nList(value: unknown): EpgLocalizedText[] | null {
+		if (!Array.isArray(value)) return null;
+		const entries: EpgLocalizedText[] = [];
+		for (const entry of value) {
+			if (typeof entry !== 'object' || entry === null) continue;
+			const text = (entry as { text?: unknown }).text;
+			if (typeof text !== 'string' || text === '') continue;
+			const lang = (entry as { lang?: unknown }).lang;
+			entries.push({
+				lang: typeof lang === 'string' && lang !== '' ? lang.toLowerCase() : null,
+				text
+			});
+		}
+		return entries.length > 0 ? entries : null;
+	}
+
+	/**
+	 * Display-time localized text selection (migration 140).
+	 *
+	 * Selection chain for a program with a stored i18n list
+	 * (`[{ lang: string | null, text: string }, ...]`) and an optional requested
+	 * display language:
+	 *
+	 *   1. exact tag match        — entry.lang equals the requested tag
+	 *                               (case-insensitive)
+	 *   2. base-language match    — entry.lang's base tag equals the requested
+	 *                               base tag (stored "en-US" matches "en")
+	 *   3. first stored entry     — source order fallback when nothing matched
+	 *   4. plain column fallback  — the pre-i18n title/description/category text,
+	 *                               also used when no language was requested or
+	 *                               no i18n list is stored
+	 *
+	 * With no requested language the plain column is always returned, which is
+	 * exactly the pre-migration behavior.
+	 */
+	private selectLocalizedText(
+		i18n: EpgLocalizedText[] | null | undefined,
+		lang: string | null | undefined,
+		fallback: string | null
+	): string | null {
+		const entries = this.parseI18nList(i18n);
+		if (!lang || !entries) {
+			return fallback;
+		}
+
+		// Canonicalize both sides through the server registry so ISO 639-2
+		// stored tags (`ger`, `zho`) and alias variants match a `de`/`zh`
+		// request instead of silently falling back to the first variant.
+		const requested = normalizeLanguageTag(lang);
+		if (requested === 'und') return fallback;
+
+		const canonicalEntries = entries.map((entry) => ({
+			entry,
+			canonical: entry.lang ? normalizeLanguageTag(entry.lang) : 'und'
+		}));
+
+		const exact = canonicalEntries.find(({ canonical }) => canonical === requested);
+		if (exact) {
+			return exact.entry.text;
+		}
+
+		const requestedBase = requested.split('-')[0];
+		const baseMatch = canonicalEntries.find(
+			({ canonical }) => canonical !== 'und' && canonical.split('-')[0] === requestedBase
+		);
+		if (baseMatch) {
+			return baseMatch.entry.text;
+		}
+
+		return entries[0].text ?? fallback;
+	}
+
+	/**
 	 * Convert database record to EpgProgram type
 	 */
-	private programRecordToEpgProgram(record: EpgProgramRecord): EpgProgram {
+	private programRecordToEpgProgram(record: EpgProgramRecord, lang?: string | null): EpgProgram {
 		return {
 			id: record.id,
 			channelId: record.channelId,
 			externalChannelId: record.externalChannelId,
 			accountId: record.accountId,
 			providerType: record.providerType as LiveTvProviderType,
-			title: record.title,
-			description: record.description,
-			category: record.category,
+			title: this.selectLocalizedText(record.titleI18n, lang, record.title) ?? record.title,
+			description: this.selectLocalizedText(record.descriptionI18n, lang, record.description),
+			category: this.selectLocalizedText(record.categoryI18n, lang, record.category),
 			director: record.director,
 			actor: record.actor,
 			startTime: record.startTime,

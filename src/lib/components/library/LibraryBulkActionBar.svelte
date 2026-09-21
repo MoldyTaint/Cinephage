@@ -1,16 +1,18 @@
 <script lang="ts">
-	import { X, Eye, EyeOff, Sliders, Trash2, Loader2 } from 'lucide-svelte';
+	import { X, Eye, EyeOff, Sliders, Trash2, Loader2, Languages } from 'lucide-svelte';
 	import { mediaTypeCountLabel, type MediaType } from '$lib/utils/media-type';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface Props {
 		selectedCount: number;
 		loading: boolean;
-		currentAction: 'monitor' | 'unmonitor' | 'quality' | 'delete' | null;
+		currentAction: 'monitor' | 'unmonitor' | 'quality' | 'delete' | 'language' | null;
 		mediaType: MediaType;
 		onMonitor: () => void;
 		onUnmonitor: () => void;
 		onChangeQuality: () => void;
+		/** Optional bulk language profile action. */
+		onLanguage?: () => void;
 		onDelete: () => void;
 		onClear: () => void;
 	}
@@ -23,6 +25,7 @@
 		onMonitor,
 		onUnmonitor,
 		onChangeQuality,
+		onLanguage,
 		onDelete,
 		onClear
 	}: Props = $props();
@@ -86,6 +89,22 @@
 					{/if}
 					<span class="hidden sm:inline">{m.common_quality()}</span>
 				</button>
+
+				{#if onLanguage}
+					<button
+						class="btn gap-1.5 btn-ghost btn-sm"
+						onclick={onLanguage}
+						disabled={loading}
+						title="{m.library_subtitleProfile_label()} (bulk)"
+					>
+						{#if loading && currentAction === 'language'}
+							<Loader2 size={16} class="animate-spin" />
+						{:else}
+							<Languages size={16} />
+						{/if}
+						<span class="hidden sm:inline">{m.library_subtitleProfile_label()}</span>
+					</button>
+				{/if}
 
 				<button
 					class="btn gap-1.5 btn-ghost text-error btn-sm hover:bg-error/10"

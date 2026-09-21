@@ -886,6 +886,29 @@ describe('SearchOrchestrator.filterBySeasonEpisode', () => {
 describe('SearchOrchestrator.filterByIdOrTitleMatch', () => {
 	const orchestrator = new SearchOrchestrator();
 
+	// The 2026-09-17 wrong-target incident: substring containment matched
+	// "Halloween" (1978) to "Detective Conan: The Bride of Halloween" (2022).
+	it('removes Detective Conan: The Bride of Halloween from automatic Halloween searches', () => {
+		const releases = [
+			createRelease({
+				title: 'Detective.Conan.The.Bride.of.Halloween.2022.1080p.BDRip.x264',
+				indexerName: 'FakeIndexer'
+			}),
+			createRelease({ title: 'Halloween.1978.1080p.BluRay.x264', indexerName: 'FakeIndexer' })
+		];
+
+		const criteria = createMovieCriteria({
+			query: 'Halloween',
+			searchTitles: ['Halloween'],
+			tmdbId: 1104,
+			year: 1978
+		});
+
+		const filtered = privateApi(orchestrator).filterByIdOrTitleMatch(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toBe('Halloween.1978.1080p.BluRay.x264');
+	});
+
 	it('keeps season packs whose title year is the season air year, not the series first-air year', () => {
 		const releases = [createRelease({ title: 'Mr.Robot.S03.2017.1080p.WEB-DL.DDP5.1.H.264' })];
 
@@ -938,7 +961,7 @@ describe('SearchOrchestrator.filterByIdOrTitleMatch', () => {
 		expect(titles).toEqual(['Now.You.See.Me.Now.You.Dont.2025.1080p.WEB-DL.DDP5.1.H.265']);
 	});
 
-	it('keeps movie releases with unknown year when IDs are absent', () => {
+	it('removes year-less movie releases from automatic searches when IDs are absent', () => {
 		const releases = [
 			createRelease({
 				title: 'Now.You.See.Me.Now.You.Dont.1080p.WEB-DL.REPACK',
@@ -954,8 +977,29 @@ describe('SearchOrchestrator.filterByIdOrTitleMatch', () => {
 		});
 
 		const filtered = privateApi(orchestrator).filterByIdOrTitleMatch(releases, criteria);
+		// A year-less title cannot prove which same-titled movie it is; automatic
+		// search treats missing year evidence as uncertainty, not proof.
+		expect(filtered).toHaveLength(0);
+	});
+
+	it('keeps year-less movie releases visible for interactive searches', () => {
+		const releases = [
+			createRelease({
+				title: 'Now.You.See.Me.Now.You.Dont.1080p.WEB-DL.REPACK',
+				indexerName: 'FakeIndexer'
+			})
+		];
+
+		const criteria = createMovieCriteria({
+			searchSource: 'interactive',
+			query: "Now You See Me: Now You Don't",
+			imdbId: 'tt4712810',
+			tmdbId: 425274,
+			year: 2025
+		});
+
+		const filtered = privateApi(orchestrator).filterByIdOrTitleMatch(releases, criteria);
 		expect(filtered).toHaveLength(1);
-		expect(filtered[0].title).toBe('Now.You.See.Me.Now.You.Dont.1080p.WEB-DL.REPACK');
 	});
 
 	it('keeps interactive movie results when title is localized and year is missing on localized trackers', () => {
@@ -1215,14 +1259,17 @@ describe('SearchOrchestrator.filterByTitleRelevance', () => {
 		const releases = [
 			createRelease({
 				title:
-					'War Machine (Patrick Hughes) [2026, UK, Australia, New Zealand, USA, sci-fi, action, WEB-DLRip] Dub + Sub (Rus, Eng)'
+					'War Machine (Patrick Hughes) [2026, UK, Australia, New Zealand, USA, sci-fi, action, WEB-DLRip] Dub + Sub (Rus, Eng)',
+				indexerName: 'FakeIndexer'
 			}),
 			createRelease({
-				title: 'Completely Different Movie [2026, USA, WEB-DLRip]'
+				title: 'Completely Different Movie [2026, USA, WEB-DLRip]',
+				indexerName: 'FakeIndexer'
 			})
 		];
 
 		const criteria = createMovieCriteria({
+			searchSource: 'interactive',
 			query: 'War Machine',
 			searchTitles: ['War Machine', 'Máquina de Guerra']
 		});
@@ -1235,16 +1282,19 @@ describe('SearchOrchestrator.filterByTitleRelevance', () => {
 	it('matches localized unicode movie titles when expected title is localized', () => {
 		const releases = [
 			createRelease({
-				title: 'Особенности национальной охоты [1995, комедия, DVDRip]'
+				title: 'Особенности национальной охоты [1995, комедия, DVDRip]',
+				indexerName: 'RuTracker.org'
 			}),
 			createRelease({
-				title: 'Другой фильм [1995, драма, DVDRip]'
+				title: 'Другой фильм [1997, драма, DVDRip]',
+				indexerName: 'RuTracker.org'
 			})
 		];
 
 		const criteria = createMovieCriteria({
 			query: 'Особенности национальной охоты',
-			searchTitles: ['Особенности национальной охоты']
+			searchTitles: ['Особенности национальной охоты'],
+			year: 1995
 		});
 
 		const filtered = privateApi(orchestrator).filterByIdOrTitleMatch(releases, criteria);
@@ -1270,16 +1320,19 @@ describe('SearchOrchestrator.filterByTitleRelevance', () => {
 	it('keeps TV releases with long tracker metadata when series title matches', () => {
 		const releases = [
 			createRelease({
-				title: 'The Night Agent / Ночной агент S03E10 [2026, WEB-DL 1080p, Dub, Sub Rus, Eng]'
+				title: 'The Night Agent / Ночной агент S03E10 [2026, WEB-DL 1080p, Dub, Sub Rus, Eng]',
+				indexerName: 'RuTracker.org'
 			}),
 			createRelease({
-				title: 'Different Show S03E10 [2026, WEB-DL 1080p]'
+				title: 'Different Show S03E10 [2026, WEB-DL 1080p]',
+				indexerName: 'RuTracker.org'
 			})
 		];
 
 		const criteria = createTvCriteria({
 			query: 'The Night Agent',
-			searchTitles: ['The Night Agent']
+			searchTitles: ['The Night Agent'],
+			season: 3
 		});
 
 		const filtered = privateApi(orchestrator).filterByIdOrTitleMatch(releases, criteria);

@@ -5,6 +5,10 @@
  * and detects new, changed, or removed files by comparing against the database.
  */
 
+import {
+	recalculateMovieShortfall,
+	recalculateSeriesShortfall
+} from '$lib/server/languages/language-shortfall';
 import { readdir, stat } from 'fs/promises';
 import { join, dirname, relative, basename } from 'path';
 import { db } from '$lib/server/db/index.js';
@@ -34,6 +38,10 @@ import {
 import { libraryMediaEvents } from './LibraryMediaEvents.js';
 import { getMediaParseStem } from './media-utils.js';
 import { matchEpisodesByIdentifier, resolveTvEpisodeIdentifier } from './tv-episode-resolver.js';
+import {
+	matchSpecialEpisodeByTitle,
+	type SpecialEpisodeTitleMatch
+} from './episode-title-matcher.js';
 import { StreamingDiskScanner } from './jobs/StreamingDiskScanner.js';
 import { libraryOperationLock } from './library-operation-lock.js';
 
@@ -305,7 +313,10 @@ export class DiskScanService extends EventEmitter {
 					try {
 						const stats = await stat(fullPath);
 
-						if (stats.size < DOWNLOAD.MIN_SCAN_SIZE_BYTES && !entry.name.endsWith('.strm')) {
+						if (
+							stats.size < DOWNLOAD.MIN_SCAN_SIZE_BYTES &&
+							!entry.name.toLowerCase().endsWith('.strm')
+						) {
 							continue;
 						}
 
@@ -341,7 +352,10 @@ export class DiskScanService extends EventEmitter {
 							continue;
 						}
 
-						if (stats.size < DOWNLOAD.MIN_SCAN_SIZE_BYTES && !entry.name.endsWith('.strm')) {
+						if (
+							stats.size < DOWNLOAD.MIN_SCAN_SIZE_BYTES &&
+							!entry.name.toLowerCase().endsWith('.strm')
+						) {
 							continue;
 						}
 
@@ -1194,6 +1208,7 @@ export class DiskScanService extends EventEmitter {
 			.select({
 				id: series.id,
 				path: series.path,
+				title: series.title,
 				seasonFolder: series.seasonFolder,
 				seriesType: series.seriesType
 			})
@@ -1214,11 +1229,6 @@ export class DiskScanService extends EventEmitter {
 						s.seriesType === 'anime' || s.seriesType === 'daily' ? s.seriesType : 'standard'
 				});
 
-				if (!identifier) {
-					logger.debug({ fileName }, '[DiskScan] Could not resolve episode mapping from filename');
-					return false;
-				}
-
 				const existingFile = await db
 					.select()
 					.from(episodeFiles)
@@ -1231,20 +1241,44 @@ export class DiskScanService extends EventEmitter {
 				}
 
 				const seriesEpisodes = await db.select().from(episodes).where(eq(episodes.seriesId, s.id));
-				const matchingEpisodes = matchEpisodesByIdentifier(seriesEpisodes, identifier);
+
+				let matchingEpisodes: (typeof episodes.$inferSelect)[];
+				let titleMatch: SpecialEpisodeTitleMatch<typeof episodes.$inferSelect> | null = null;
+
+				if (identifier) {
+					matchingEpisodes = matchEpisodesByIdentifier(seriesEpisodes, identifier);
+				} else {
+					// Sonarr-style fallback: title-only files ("Razor (2007).mp4")
+					// match season 0 specials by contained episode title. The
+					// series folder itself is not a candidate — a special sharing
+					// the series title would self-match.
+					const parentFolder = basename(dirname(file.path));
+					const candidates =
+						parentFolder !== basename(seriesFullPath) ? [fileName, parentFolder] : [fileName];
+					titleMatch = matchSpecialEpisodeByTitle(seriesEpisodes, candidates, parsed.year, s.title);
+					matchingEpisodes = titleMatch ? [titleMatch.episode] : [];
+				}
+
 				const episodeIds = matchingEpisodes.map((ep) => ep.id);
 				const seasonNum = matchingEpisodes[0]?.seasonNumber;
 				const episodeNums = matchingEpisodes.map((ep) => ep.episodeNumber);
 
 				if (episodeIds.length === 0 || seasonNum === undefined) {
-					logger.debug(
-						{
-							fileName,
-							identifier,
-							seriesId: s.id
-						},
-						'[DiskScan] No matching episodes in DB for file'
-					);
+					if (!identifier) {
+						logger.debug(
+							{ fileName },
+							'[DiskScan] Could not resolve episode mapping from filename'
+						);
+					} else {
+						logger.debug(
+							{
+								fileName,
+								identifier,
+								seriesId: s.id
+							},
+							'[DiskScan] No matching episodes in DB for file'
+						);
+					}
 					return false;
 				}
 
@@ -1278,14 +1312,29 @@ export class DiskScanService extends EventEmitter {
 
 				await this.updateSeriesAndSeasonStats(s.id);
 
-				logger.info(
-					{
-						relativePath,
-						season: seasonNum,
-						episodes: episodeNums
-					},
-					'[DiskScan] Auto-linked episode file'
-				);
+				if (titleMatch) {
+					logger.info(
+						{
+							relativePath,
+							season: seasonNum,
+							episodes: episodeNums,
+							method: titleMatch.method,
+							position: titleMatch.position,
+							coverage: titleMatch.coverage,
+							candidate: titleMatch.candidate
+						},
+						'[DiskScan] Auto-linked special by title'
+					);
+				} else {
+					logger.info(
+						{
+							relativePath,
+							season: seasonNum,
+							episodes: episodeNums
+						},
+						'[DiskScan] Auto-linked episode file'
+					);
+				}
 				return true;
 			}
 		}
@@ -1387,6 +1436,12 @@ export class DiskScanService extends EventEmitter {
 					mediaInfo
 				})
 				.where(eq(movieFiles.id, fileId));
+			const [row] = await db
+				.select({ movieId: movieFiles.movieId })
+				.from(movieFiles)
+				.where(eq(movieFiles.id, fileId))
+				.limit(1);
+			if (row?.movieId) await recalculateMovieShortfall(row.movieId);
 		} else {
 			await db
 				.update(episodeFiles)
@@ -1395,6 +1450,12 @@ export class DiskScanService extends EventEmitter {
 					mediaInfo
 				})
 				.where(eq(episodeFiles.id, fileId));
+			const [row] = await db
+				.select({ seriesId: episodeFiles.seriesId })
+				.from(episodeFiles)
+				.where(eq(episodeFiles.id, fileId))
+				.limit(1);
+			if (row?.seriesId) await recalculateSeriesShortfall(row.seriesId);
 		}
 	}
 

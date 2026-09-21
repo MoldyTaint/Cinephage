@@ -81,6 +81,12 @@ export interface ReleaseResult {
 	// Metadata (if indexer provides it)
 	/** IMDB ID if known */
 	imdbId?: string;
+	/** Audio languages reported by the indexer as structured data (torznab/newznab
+	 * `language` attr). Title-parsed tokens live on `parsed.languages` instead —
+	 * these are indexer-asserted, not filename-derived. */
+	languages?: string[];
+	/** Subtitle languages reported by the indexer (torznab/newznab `subs` attr) */
+	subtitleLanguages?: string[];
 	/** TMDB ID if known */
 	tmdbId?: number;
 	/** TVDB ID if known */
@@ -92,6 +98,16 @@ export interface ReleaseResult {
 
 	/** Source indexer language (ISO 639-1 code) - where the release came from */
 	sourceLanguage?: string;
+
+	/**
+	 * Annotated during interactive searches when the release matches the
+	 * blocklist (hash or exact title). Interactive searches keep the release
+	 * in results and surface it through the existing rejected-releases
+	 * machinery (rejected + rejections['Blocklisted']) so the showRejected
+	 * toggle and rejection badges display it like any other rejection.
+	 * Automatic searches remove blocklisted releases outright.
+	 */
+	blocklisted?: boolean;
 }
 
 /**

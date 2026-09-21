@@ -20,7 +20,20 @@ export const GET: RequestHandler = async ({ params, request, url }) => {
 
 	const rawPath = params.path ?? '';
 	const segments = rawPath.split('/').filter(Boolean);
-	if (segments.length === 0 || segments.some((part) => part === '..')) {
+	if (
+		segments.length === 0 ||
+		segments.some(
+			(part) =>
+				part === '..' ||
+				part === '.' ||
+				// Backslashes are normalized to '/' by WHATWG URL, so `..\x`
+				// would climb out of the MPD directory undetected otherwise.
+				part.includes('\\') ||
+				part.includes('\0') ||
+				// Absolute/scheme-like segments must never be appended.
+				/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(part)
+		)
+	) {
 		return new Response(JSON.stringify({ error: 'Invalid DASH resource path' }), {
 			status: 400,
 			headers: { 'Content-Type': 'application/json' }
@@ -32,6 +45,13 @@ export const GET: RequestHandler = async ({ params, request, url }) => {
 		const entry = new URL(session.entryUrl);
 		const mpdDir = entry.pathname.substring(0, entry.pathname.lastIndexOf('/') + 1);
 		const upstream = new URL(`${mpdDir}${segments.join('/')}`, entry.origin);
+		// Containment re-check after URL normalization (`..` folding).
+		if (!upstream.pathname.startsWith(mpdDir)) {
+			return new Response(JSON.stringify({ error: 'Invalid DASH resource path' }), {
+				status: 400,
+				headers: { 'Content-Type': 'application/json' }
+			});
+		}
 		for (const [name, value] of url.searchParams) {
 			if (name !== 'api_key') upstream.searchParams.append(name, value);
 		}

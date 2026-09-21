@@ -1,4 +1,5 @@
 export { BlocklistStage } from './BlocklistStage.js';
+export { IdentityStage } from './IdentityStage.js';
 export { ScoringStage } from './ScoringStage.js';
 export { BannedFormatStage } from './BannedFormatStage.js';
 export { SizeValidationStage } from './SizeValidationStage.js';
@@ -20,5 +21,6 @@ export type {
 	MovieTarget,
 	EpisodeTarget,
 	SeasonTarget,
-	SeriesTarget
+	SeriesTarget,
+	TargetIdentityInfo
 } from './types.js';

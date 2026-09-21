@@ -11,7 +11,8 @@
 
 import { buildMetadataProviderRegistry } from './provider-registry.js';
 import { resolveAnimeProviderRef } from './provider-ref-resolver.js';
-import type { MetadataDetails, MetadataMediaType } from './providers/types.js';
+import type { MetadataDetails, MetadataMediaType, MetadataProviderId } from './providers/types.js';
+import { storeProviderTitleVariants } from '$lib/server/services/AlternateTitleService.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
@@ -88,4 +89,67 @@ export async function enrichAnimeMetadata(
 	);
 
 	return result;
+}
+
+/**
+ * Persist the title variants carried by anime enrichment details
+ * (enrichment.details from enrichAnimeMetadata) as alternate titles with
+ * source 'anilist'/'mal'. Storage is idempotent (dedupe by source+cleanTitle),
+ * so repeat refreshes never duplicate rows. Never throws.
+ */
+export async function persistEnrichmentTitleVariants(
+	mediaType: 'movie' | 'series',
+	mediaId: string,
+	details: Record<string, MetadataDetails>
+): Promise<number> {
+	let stored = 0;
+	for (const providerId of ['anilist', 'mal'] as const) {
+		const variants = details[providerId]?.alternateTitles;
+		if (!variants || variants.length === 0) continue;
+		stored += await storeProviderTitleVariants(mediaType, mediaId, providerId, variants);
+	}
+	return stored;
+}
+
+/**
+ * Fetch details for already-linked anime provider refs (manual link path) and
+ * persist their title variants as alternate titles. Used when a user sets
+ * anilist/mal ids directly on a movie/series; storage is idempotent. Never throws.
+ */
+export async function persistLinkedProviderTitleVariants(
+	mediaType: 'movie' | 'series',
+	mediaId: string,
+	refs: Partial<Record<MetadataProviderId, string>> | null | undefined
+): Promise<number> {
+	if (!refs?.anilist && !refs?.mal) return 0;
+
+	try {
+		const { providers } = await buildMetadataProviderRegistry();
+		let stored = 0;
+
+		for (const providerId of ['anilist', 'mal'] as const) {
+			const ref = refs[providerId];
+			if (!ref) continue;
+			const provider = providers.get(providerId);
+			if (!provider?.isConfigured()) continue;
+
+			const details = await provider.getDetails(ref, 'anime');
+			if (!details?.alternateTitles?.length) continue;
+			stored += await storeProviderTitleVariants(
+				mediaType,
+				mediaId,
+				providerId,
+				details.alternateTitles
+			);
+		}
+
+		return stored;
+	} catch (err) {
+		const error = err instanceof Error ? err.message : String(err);
+		logger.warn(
+			{ mediaType, mediaId, error },
+			'[AnimeEnrichment] Failed to persist linked provider title variants - skipping'
+		);
+		return 0;
+	}
 }

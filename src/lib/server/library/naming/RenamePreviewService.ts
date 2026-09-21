@@ -31,10 +31,13 @@ import { moveFile, fileExists } from '$lib/server/downloadClients/import/FileTra
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
 import { rename, stat, readdir, rmdir, mkdir } from 'node:fs/promises';
 import { chooseBestParsedRelease, resolveAudioLanguages } from './preview-metadata';
+import { extractLanguageCodes, resolveLocalizedTitles } from './localization';
 import {
 	getMediaBrowserManager,
 	getMediaBrowserNotifier
 } from '$lib/server/notifications/mediabrowser';
+import { syncSubtitleRowsForRenames } from '$lib/server/subtitles/subtitle-rename-sync';
+import { isSubtitleExtension } from '$lib/server/subtitles/subtitle-content';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 
@@ -148,7 +151,6 @@ export class RenamePreviewService {
 		bitDepth?: string;
 		audioCodec?: string;
 		audioChannels?: string;
-		audioLanguages?: string[];
 		releaseGroup?: string;
 		edition?: string;
 		proper?: boolean;
@@ -165,12 +167,45 @@ export class RenamePreviewService {
 			bitDepth: parsed.bitDepth !== 'unknown' ? parsed.bitDepth : undefined,
 			audioCodec: parsed.audioCodec ?? undefined,
 			audioChannels: parsed.audioChannels ?? undefined,
-			audioLanguages: resolveAudioLanguages(undefined, parsed.languages),
 			releaseGroup: parsed.releaseGroup ?? undefined,
 			edition: parsed.edition ?? undefined,
 			proper: parsed.isProper,
 			repack: parsed.isRepack
 		};
+	}
+
+	/**
+	 * Resolve localized titles ({Title:xx}/{CleanTitle:xx}) for a movie or
+	 * series so renames render the same localized names folder creation does.
+	 * No-op unless the active naming formats actually use a localized-title
+	 * token, so default configs never hit TMDB.
+	 *
+	 * Results come from the shared per-title+language cache, so preview and
+	 * execute (and reorganize) share one fetch per title + language.
+	 */
+	private async resolveLocalizedTitlesFor(
+		tmdbId: number | null | undefined,
+		kind: 'movie' | 'series'
+	): Promise<Record<string, string>> {
+		if (!tmdbId) return {};
+		const config = this.namingService.getConfig();
+		const formats =
+			kind === 'movie'
+				? [config.movieFolderFormat, config.movieFileFormat]
+				: [
+						config.seriesFolderFormat,
+						config.episodeFileFormat,
+						config.dailyEpisodeFormat,
+						config.animeEpisodeFormat
+					];
+		const codes = extractLanguageCodes(formats.join(' '));
+		if (codes.length === 0) return {};
+		try {
+			return await resolveLocalizedTitles(tmdbId, codes, kind);
+		} catch {
+			// Non-fatal: fall back to the base title.
+			return {};
+		}
 	}
 
 	/**
@@ -213,9 +248,16 @@ export class RenamePreviewService {
 			const rootFolderPath = rootFolder?.path ?? '';
 			const rootFolderReadOnly = rootFolder?.readOnly ?? false;
 			const files = filesByMovieId.get(movie.id) ?? [];
+			const localizedTitles = await this.resolveLocalizedTitlesFor(movie.tmdbId, 'movie');
 
 			for (const file of files) {
-				const item = this.buildMoviePreviewItem(movie, file, rootFolderPath, rootFolderReadOnly);
+				const item = this.buildMoviePreviewItem(
+					movie,
+					file,
+					rootFolderPath,
+					rootFolderReadOnly,
+					localizedTitles
+				);
 				result.totalFiles++;
 
 				if (item.status === 'error') {
@@ -284,9 +326,16 @@ export class RenamePreviewService {
 			const rootFolderPath = rootFolder?.path ?? '';
 			const rootFolderReadOnly = rootFolder?.readOnly ?? false;
 			const files = filesByMovieId.get(movie.id) ?? [];
+			const localizedTitles = await this.resolveLocalizedTitlesFor(movie.tmdbId, 'movie');
 
 			for (const file of files) {
-				const item = this.buildMoviePreviewItem(movie, file, rootFolderPath, rootFolderReadOnly);
+				const item = this.buildMoviePreviewItem(
+					movie,
+					file,
+					rootFolderPath,
+					rootFolderReadOnly,
+					localizedTitles
+				);
 				result.totalFiles++;
 
 				if (item.status === 'error') {
@@ -361,6 +410,7 @@ export class RenamePreviewService {
 			const seriesEpisodes = episodesBySeriesId.get(show.id) ?? [];
 			const episodeMap = new Map(seriesEpisodes.map((ep) => [ep.id, ep]));
 			const absoluteEpisodeMap = this.buildAbsoluteEpisodeFallbackMap(seriesEpisodes);
+			const localizedTitles = await this.resolveLocalizedTitlesFor(show.tmdbId, 'series');
 
 			for (const file of files) {
 				const item = this.buildEpisodePreviewItem(
@@ -369,7 +419,8 @@ export class RenamePreviewService {
 					episodeMap,
 					rootFolderPath,
 					absoluteEpisodeMap,
-					rootFolderReadOnly
+					rootFolderReadOnly,
+					localizedTitles
 				);
 				result.totalFiles++;
 
@@ -451,6 +502,7 @@ export class RenamePreviewService {
 			const seriesEpisodes = episodesBySeriesId.get(show.id) ?? [];
 			const episodeMap = new Map(seriesEpisodes.map((ep) => [ep.id, ep]));
 			const absoluteEpisodeMap = this.buildAbsoluteEpisodeFallbackMap(seriesEpisodes);
+			const localizedTitles = await this.resolveLocalizedTitlesFor(show.tmdbId, 'series');
 
 			for (const file of files) {
 				const item = this.buildEpisodePreviewItem(
@@ -459,7 +511,8 @@ export class RenamePreviewService {
 					episodeMap,
 					rootFolderPath,
 					absoluteEpisodeMap,
-					rootFolderReadOnly
+					rootFolderReadOnly,
+					localizedTitles
 				);
 				result.totalFiles++;
 
@@ -519,9 +572,16 @@ export class RenamePreviewService {
 		}
 
 		const files = db.select().from(movieFiles).where(eq(movieFiles.movieId, movieId)).all();
+		const localizedTitles = await this.resolveLocalizedTitlesFor(movie.tmdbId, 'movie');
 
 		for (const file of files) {
-			const item = this.buildMoviePreviewItem(movie, file, rootFolderPath, rootFolderReadOnly);
+			const item = this.buildMoviePreviewItem(
+				movie,
+				file,
+				rootFolderPath,
+				rootFolderReadOnly,
+				localizedTitles
+			);
 			result.totalFiles++;
 
 			if (item.status === 'error') {
@@ -579,6 +639,7 @@ export class RenamePreviewService {
 		const allEpisodes = db.select().from(episodes).where(eq(episodes.seriesId, seriesId)).all();
 		const episodeMap = new Map(allEpisodes.map((ep) => [ep.id, ep]));
 		const absoluteEpisodeMap = this.buildAbsoluteEpisodeFallbackMap(allEpisodes);
+		const localizedTitles = await this.resolveLocalizedTitlesFor(show.tmdbId, 'series');
 
 		for (const file of files) {
 			const item = this.buildEpisodePreviewItem(
@@ -587,7 +648,8 @@ export class RenamePreviewService {
 				episodeMap,
 				rootFolderPath,
 				absoluteEpisodeMap,
-				rootFolderReadOnly
+				rootFolderReadOnly,
+				localizedTitles
 			);
 			result.totalFiles++;
 
@@ -952,6 +1014,10 @@ export class RenamePreviewService {
 			// Compute the target folder name using the current naming config.
 			const config = namingSettingsService.getConfigSync();
 			const naming = new NamingService(config);
+			// Parity: folder names must localize {Title:xx} exactly like the
+			// preview/execute paths above (shared cache makes this free after
+			// the first lookup).
+			const localizedTitles = await this.resolveLocalizedTitlesFor(mediaTmdbId, mediaType);
 
 			let newFolderName: string;
 			if (mediaType === 'movie') {
@@ -962,7 +1028,8 @@ export class RenamePreviewService {
 					year: movie.year ?? undefined,
 					tmdbId: movie.tmdbId,
 					imdbId: movie.imdbId ?? undefined,
-					collectionName: movie.collectionName ?? undefined
+					collectionName: movie.collectionName ?? undefined,
+					localizedTitles
 				});
 			} else {
 				const show = db.select().from(series).where(eq(series.id, mediaId)).get()!;
@@ -972,7 +1039,8 @@ export class RenamePreviewService {
 					year: show.year ?? undefined,
 					tvdbId: show.tvdbId ?? undefined,
 					tmdbId: show.tmdbId,
-					imdbId: show.imdbId ?? undefined
+					imdbId: show.imdbId ?? undefined,
+					localizedTitles
 				});
 			}
 
@@ -1006,20 +1074,12 @@ export class RenamePreviewService {
 				return { success: false, error: 'Source folder does not exist', oldPath: currentPath };
 			}
 
-			// Before renaming the folder, delete the old entry from all enabled
-			// Jellyfin/Emby servers so the stale item is cleanly removed (cascades
-			// to child rows). This prevents the ghost-entry resurrection loop when
-			// Jellyfin's scanner finds orphaned Season/Episode rows at the old path
-			// after the folder move (jellyfin#16883). Plex is unaffected.
-			// Best-effort: failures don't block the rename.
-			// eventKind 'rename': this pre-delete is part of a rename flow, so it
-			// must respect each server's onRename toggle (not onDelete).
-			if (mediaTmdbId) {
-				const manager = getMediaBrowserManager();
-				await manager.deleteMediaItemByTmdb(mediaTmdbId, mediaType as 'movie' | 'series', {
-					eventKind: 'rename'
-				});
-			}
+			// Media-server cleanup is deliberately deferred until AFTER the disk
+			// move (below): Jellyfin/Emby `DELETE /Items/{id}` also deletes the
+			// file location (DeleteFileLocation = true upstream), so calling it
+			// while the files still exist would destroy the media. Once the move
+			// has happened the server's stored path is stale, so the delete
+			// removes only the old library entry.
 
 			// Write per-file transition rows BEFORE the disk rename so a hard
 			// process-kill between the rename and the DB update below can be
@@ -1094,6 +1154,23 @@ export class RenamePreviewService {
 					oldPath: currentPath,
 					newPath: newFolderName
 				};
+			}
+
+			// Delete the old entry from all enabled Jellyfin/Emby servers now that
+			// the move has completed and the DB is updated. The server's stored
+			// path is stale at this point, so its file-location deletion is a
+			// no-op on disk and only the stale library entry (and its children)
+			// is removed — preventing the ghost-entry resurrection loop
+			// (jellyfin#16883) without ever touching media files. Plex has no
+			// item-delete API and reconciles renames via section refreshes.
+			// Best-effort: failures don't block the rename.
+			// eventKind 'rename': this is part of a rename flow, so it respects
+			// each server's onRename toggle (not onDelete).
+			if (mediaTmdbId) {
+				const manager = getMediaBrowserManager();
+				await manager.deleteMediaItemByTmdb(mediaTmdbId, mediaType as 'movie' | 'series', {
+					eventKind: 'rename'
+				});
 			}
 
 			// Notify media servers of both folder paths: the old one as Deleted so
@@ -1305,7 +1382,14 @@ export class RenamePreviewService {
 				if (movie) {
 					const rootFolderPath = this.resolveRootFolderPath(movie.rootFolderId, allRootFolders);
 					const readOnly = readOnlyByFolderId.get(movie.rootFolderId ?? '') ?? false;
-					const item = this.buildMoviePreviewItem(movie, movieFile, rootFolderPath, readOnly);
+					const localizedTitles = await this.resolveLocalizedTitlesFor(movie.tmdbId, 'movie');
+					const item = this.buildMoviePreviewItem(
+						movie,
+						movieFile,
+						rootFolderPath,
+						readOnly,
+						localizedTitles
+					);
 					if (
 						item.status !== 'error' &&
 						item.currentRelativePath === item.newRelativePath &&
@@ -1333,13 +1417,15 @@ export class RenamePreviewService {
 					const absoluteEpisodeMap = this.buildAbsoluteEpisodeFallbackMap(allEpisodes);
 					const rootFolderPath = this.resolveRootFolderPath(show.rootFolderId, allRootFolders);
 					const readOnly = readOnlyByFolderId.get(show.rootFolderId ?? '') ?? false;
+					const localizedTitles = await this.resolveLocalizedTitlesFor(show.tmdbId, 'series');
 					const item = this.buildEpisodePreviewItem(
 						show,
 						episodeFile,
 						episodeMap,
 						rootFolderPath,
 						absoluteEpisodeMap,
-						readOnly
+						readOnly,
+						localizedTitles
 					);
 					if (
 						item.status !== 'error' &&
@@ -1620,7 +1706,10 @@ export class RenamePreviewService {
 
 			// Carry stem-matched sibling subtitles along on in-place renames so
 			// external subs stay associated with the renamed video.
-			await this.renameSubtitleCompanions(item.currentFullPath, item.newFullPath, warnings);
+			await this.renameSubtitleCompanions(item.currentFullPath, item.newFullPath, warnings, {
+				mediaType: item.mediaType,
+				mediaId: item.mediaId
+			});
 
 			return {
 				fileId: item.fileId,
@@ -1659,7 +1748,8 @@ export class RenamePreviewService {
 	private async renameSubtitleCompanions(
 		oldPath: string,
 		newPath: string,
-		warnings: string[]
+		warnings: string[],
+		context: { mediaType: 'movie' | 'episode'; mediaId: string }
 	): Promise<void> {
 		const dir = dirname(oldPath);
 		if (dir !== dirname(newPath)) return;
@@ -1672,6 +1762,7 @@ export class RenamePreviewService {
 		// "Ep.forced.srt", "Ep.sdh.cc.sub"
 		const suffixRe =
 			/^(\.[a-z]{2,3}(-[a-zA-Z]{2,4})?|\.(forced|cc|sdh|default))*(\.(srt|ass|ssa|sub|vtt))$/i;
+		const renamed: Array<{ from: string; to: string }> = [];
 		try {
 			const entries = await readdir(dir);
 			for (const entry of entries) {
@@ -1685,6 +1776,7 @@ export class RenamePreviewService {
 				if (await fileExists(to)) continue;
 				try {
 					await rename(from, to);
+					renamed.push({ from, to });
 					logger.info({ from, to }, '[RenamePreviewService] Renamed subtitle companion');
 				} catch (err) {
 					const message = err instanceof Error ? err.message : String(err);
@@ -1695,6 +1787,24 @@ export class RenamePreviewService {
 		} catch (err) {
 			// Directory unreadable — non-fatal.
 			logger.warn({ err, dir }, '[RenamePreviewService] Could not scan for subtitle companions');
+		}
+
+		// Keep DB rows pointing at the renamed sidecars (best-effort).
+		if (renamed.length > 0) {
+			try {
+				await syncSubtitleRowsForRenames({
+					mediaType: context.mediaType,
+					mediaId: context.mediaId,
+					mappings: renamed
+				});
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				warnings.push(`Subtitle database paths could not be updated after rename: ${message}`);
+				logger.warn(
+					{ err, mediaType: context.mediaType, mediaId: context.mediaId },
+					'[RenamePreviewService] Failed to sync subtitle rows after companion rename'
+				);
+			}
 		}
 	}
 
@@ -1806,6 +1916,7 @@ export class RenamePreviewService {
 			try {
 				const entries = await readdir(oldFolder, { withFileTypes: true });
 				const unmatchedCompanions: string[] = [];
+				const movedSubtitles: Array<{ from: string; to: string }> = [];
 
 				for (const entry of entries) {
 					if (!entry.isFile()) continue;
@@ -1831,6 +1942,33 @@ export class RenamePreviewService {
 						await rename(src, dest);
 					} catch {
 						await moveFile(src, dest);
+					}
+					if (isSubtitleExtension(extname(entry.name))) {
+						movedSubtitles.push({ from: src, to: dest });
+					}
+				}
+
+				// Keep subtitle rows resolving to the moved sidecars. The media path
+				// was already updated above, so this uses the destination-dir fallback
+				// matching in syncSubtitleRowsForRenames; most rows already resolve
+				// correctly and are left untouched.
+				if (movedSubtitles.length > 0) {
+					try {
+						await syncSubtitleRowsForRenames({
+							mediaType,
+							mediaId,
+							mappings: movedSubtitles
+						});
+					} catch (err) {
+						warnings.push(
+							`Subtitle database paths could not be updated after the folder move: ${
+								err instanceof Error ? err.message : String(err)
+							}`
+						);
+						logger.warn(
+							{ err, mediaId, mediaType },
+							'[RenamePreviewService] Failed to sync subtitle rows after folder move'
+						);
 					}
 				}
 
@@ -2041,7 +2179,8 @@ export class RenamePreviewService {
 		movie: typeof movies.$inferSelect,
 		file: typeof movieFiles.$inferSelect,
 		rootFolderPath: string,
-		rootFolderReadOnly = false
+		rootFolderReadOnly = false,
+		localizedTitles: Record<string, string> = {}
 	): RenamePreviewItem {
 		if (rootFolderReadOnly) {
 			const movieFolderPath = join(rootFolderPath, movie.path);
@@ -2088,6 +2227,8 @@ export class RenamePreviewService {
 			//   1. file.mediaInfo (from FFprobe scan - PREFERRED, as release names are often wrong)
 			//   2. parsedFromFilename (fallback if no scan data)
 			//
+			// For AUDIO LANGUAGES: only FFprobe scan data is evidence. Filename-
+			// parsed languages are never proof — absent scan data renders `und`.
 			// Rationale: Audio codec in release names is frequently mislabeled (e.g., labeled as
 			// DTS but actually contains EAC3). FFprobe scans the actual file and reports what's
 			// really there, so renamed files will reflect the true audio format.
@@ -2098,6 +2239,7 @@ export class RenamePreviewService {
 				tmdbId: movie.tmdbId,
 				imdbId: movie.imdbId ?? undefined,
 				collectionName: movie.collectionName ?? undefined,
+				localizedTitles,
 				edition: file.edition ?? parsedFromFilename.edition ?? undefined,
 
 				// Video info: prefer release parsing, fall back to filename, then mediaInfo
@@ -2112,10 +2254,9 @@ export class RenamePreviewService {
 				audioCodec: file.mediaInfo?.audioCodec ?? parsedFromFilename.audioCodec,
 				audioChannels:
 					formatAudioChannels(file.mediaInfo?.audioChannels) ?? parsedFromFilename.audioChannels,
-				audioLanguages: resolveAudioLanguages(
-					file.mediaInfo?.audioLanguages,
-					parsedFromFilename.audioLanguages
-				),
+				// Audio languages need real scan evidence: filename-parsed values are
+				// never audio proof, so absent scan data renders as `und`.
+				audioLanguages: resolveAudioLanguages(file.mediaInfo?.audioLanguages),
 
 				releaseGroup: file.releaseGroup ?? parsedFromFilename.releaseGroup,
 				proper: parsedFromFilename.proper,
@@ -2175,7 +2316,8 @@ export class RenamePreviewService {
 		episodeMap: Map<string, typeof episodes.$inferSelect>,
 		rootFolderPath: string,
 		absoluteEpisodeMap: Map<string, number>,
-		rootFolderReadOnly = false
+		rootFolderReadOnly = false,
+		localizedTitles: Record<string, string> = {}
 	): RenamePreviewItem {
 		if (rootFolderReadOnly) {
 			const seriesFolderPath = join(rootFolderPath, show.path);
@@ -2240,6 +2382,8 @@ export class RenamePreviewService {
 			//   1. file.mediaInfo (from FFprobe scan - PREFERRED, as release names are often wrong)
 			//   2. parsedFromFilename (fallback if no scan data)
 			//
+			// For AUDIO LANGUAGES: only FFprobe scan data is evidence. Filename-
+			// parsed languages are never proof — absent scan data renders `und`.
 			// Rationale: Audio codec in release names is frequently mislabeled (e.g., labeled as
 			// DTS but actually contains EAC3). FFprobe scans the actual file and reports what's
 			// really there, so renamed files will reflect the true audio format.
@@ -2249,6 +2393,7 @@ export class RenamePreviewService {
 				year: show.year ?? undefined,
 				tvdbId: show.tvdbId ?? undefined,
 				tmdbId: show.tmdbId,
+				localizedTitles,
 				seasonNumber: file.seasonNumber,
 				episodeNumbers,
 				episodeTitle: firstEpisode.title ?? undefined,
@@ -2273,10 +2418,7 @@ export class RenamePreviewService {
 				audioCodec: file.mediaInfo?.audioCodec ?? parsedFromFilename.audioCodec,
 				audioChannels:
 					formatAudioChannels(file.mediaInfo?.audioChannels) ?? parsedFromFilename.audioChannels,
-				audioLanguages: resolveAudioLanguages(
-					file.mediaInfo?.audioLanguages,
-					parsedFromFilename.audioLanguages
-				),
+				audioLanguages: resolveAudioLanguages(file.mediaInfo?.audioLanguages),
 				releaseGroup: file.releaseGroup ?? parsedFromFilename.releaseGroup,
 				proper: parsedFromFilename.proper,
 				repack: parsedFromFilename.repack,

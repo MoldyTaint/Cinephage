@@ -195,7 +195,8 @@
 				implementation: provider.implementation,
 				apiKey: provider.apiKey,
 				username: provider.username,
-				password: provider.password
+				password: provider.password,
+				settings: provider.settings
 			});
 			return payload;
 		} catch (e) {
@@ -385,7 +386,8 @@
 				implementation: formData.implementation as SubtitleProviderImplementation,
 				apiKey: resolvedApiKey,
 				username: formData.username,
-				password: resolvedPassword
+				password: resolvedPassword,
+				settings: formData.settings
 			});
 			return { success: Boolean(result.success), error: result.error };
 		} catch (e) {

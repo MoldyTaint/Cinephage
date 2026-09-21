@@ -574,6 +574,29 @@ export class SuperSubtitlesProvider extends BaseSubtitleProvider {
 		const releaseName =
 			selectBestRelease(candidate.releases, criteria.filePath) ?? candidate.fileName;
 		const isEpisode = candidate.season !== undefined && candidate.episode !== undefined;
+		const scoreBreakdown = {
+			hashMatch: 0,
+			titleMatch: isEpisode ? 150 : 50,
+			yearMatch: !isEpisode && candidate.year === criteria.year ? 20 : 0,
+			releaseGroupMatch: releaseName ? 15 : 0,
+			sourceMatch: releaseName && sourceToken(releaseName) ? 10 : 0,
+			codecMatch: 0,
+			hiPenalty: 0,
+			forcedBonus: candidate.isForced && criteria.includeForced ? 10 : 0
+		};
+		// matchScore is 0-100 everywhere (SubtitleSearchService re-scores through
+		// the shared scoring service; the provider value must already be sane for
+		// direct consumers/tests).
+		const matchScore = Math.min(
+			100,
+			scoreBreakdown.hashMatch +
+				scoreBreakdown.titleMatch +
+				scoreBreakdown.yearMatch +
+				scoreBreakdown.releaseGroupMatch +
+				scoreBreakdown.sourceMatch +
+				scoreBreakdown.codecMatch +
+				scoreBreakdown.forcedBonus
+		);
 		return {
 			providerId: this.id,
 			providerName: this.name,
@@ -588,17 +611,8 @@ export class SuperSubtitlesProvider extends BaseSubtitleProvider {
 			isHearingImpaired: false,
 			format: subtitleFormat(candidate.fileName),
 			isHashMatch: false,
-			matchScore: isEpisode ? 210 : 70,
-			scoreBreakdown: {
-				hashMatch: 0,
-				titleMatch: isEpisode ? 150 : 50,
-				yearMatch: !isEpisode && candidate.year === criteria.year ? 20 : 0,
-				releaseGroupMatch: releaseName ? 15 : 0,
-				sourceMatch: releaseName && sourceToken(releaseName) ? 10 : 0,
-				codecMatch: 0,
-				hiPenalty: 0,
-				forcedBonus: candidate.isForced && criteria.includeForced ? 10 : 0
-			},
+			matchScore,
+			scoreBreakdown,
 			downloadUrl: candidate.downloadUrl,
 			uploader: candidate.uploader,
 			pageLink: candidate.pageLink

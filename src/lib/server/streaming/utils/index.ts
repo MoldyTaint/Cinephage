@@ -13,4 +13,10 @@ export {
 
 export { rewriteHlsPlaylistUrls, resolveHlsUrl, type ProxyUrlBuilder } from './hls-rewrite';
 
-export { convertSrtToVtt, isSrtFormat, isVttFormat, ensureVttFormat } from './srt-to-vtt';
+export {
+	convertSrtToVtt,
+	isSrtFormat,
+	isVttFormat,
+	isAssFormat,
+	ensureVttFormat
+} from './srt-to-vtt';

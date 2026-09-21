@@ -1,14 +1,19 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getSubtitleSearchService } from '$lib/server/subtitles/services/SubtitleSearchService';
-import { getSubtitleDownloadService } from '$lib/server/subtitles/services/SubtitleDownloadService';
-import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
 import { db } from '$lib/server/db';
 import { movies, episodes, series } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { subtitleRequirementSchema } from '$lib/validation/schemas.js';
 import { createChildLogger } from '$lib/logging';
 import { parseBody, assertFound } from '$lib/server/api/validate.js';
+import {
+	autoSearchEpisode,
+	autoSearchMovie,
+	summarizeAutoSearchReason,
+	type AutoSearchItemResult,
+	type AutoSearchReason
+} from '$lib/server/subtitles/auto-search.js';
 
 const logger = createChildLogger({ module: 'SubtitleAutoSearchApi', logDomain: 'subtitles' });
 
@@ -16,11 +21,47 @@ const autoSearchSchema = z
 	.object({
 		movieId: z.string().uuid().optional(),
 		episodeId: z.string().uuid().optional(),
-		languages: z.array(z.string()).optional()
+		languages: z.array(z.string()).optional(),
+		/** Target a single requirement row ("Search now" from details pages). */
+		requirement: subtitleRequirementSchema.optional()
 	})
 	.refine((data) => data.movieId || data.episodeId, {
 		message: 'Either movieId or episodeId is required'
 	});
+
+const REASON_MESSAGES: Record<AutoSearchReason | 'satisfied', string> = {
+	no_file: 'Media has no file on disk',
+	not_monitored: 'Media is not monitored',
+	opted_out: 'Subtitles are disabled for this media',
+	no_profile: 'No language profile is assigned or set as default',
+	no_results: 'No subtitle results found from providers',
+	below_threshold: 'Results were found but none satisfied the requirement at the minimum score',
+	downloaded: 'Subtitle downloaded',
+	error: 'Subtitle search or download failed',
+	satisfied: 'No missing subtitles'
+};
+
+/** Build the single-item JSON response from an orchestration result. */
+function toResponse(result: AutoSearchItemResult) {
+	const reason = summarizeAutoSearchReason(result);
+	const rejected = result.outcomes.find((outcome) => outcome.reason === 'below_threshold');
+	const downloaded = result.outcomes.find((outcome) => outcome.reason === 'downloaded');
+
+	return {
+		success: result.downloaded > 0,
+		searched: result.searched,
+		downloaded: result.downloaded > 0,
+		reason,
+		message: REASON_MESSAGES[reason],
+		downloadedCount: result.downloaded,
+		outcomes: result.outcomes,
+		bestRejectedScore: rejected?.bestRejectedScore,
+		bestRejectedReason: rejected?.bestRejectedReason,
+		bestScore: rejected?.bestRejectedScore,
+		subtitle: result.subtitle,
+		matchScore: downloaded?.matchScore
+	};
+}
 
 /**
  * POST /api/subtitles/auto-search
@@ -28,161 +69,61 @@ const autoSearchSchema = z
  */
 export const POST: RequestHandler = async ({ request }) => {
 	const validated = await parseBody(request, autoSearchSchema);
-	const searchService = getSubtitleSearchService();
-	const downloadService = getSubtitleDownloadService();
-	const profileService = LanguageProfileService.getInstance();
 
 	// Auto-search for movie
 	if (validated.movieId) {
-		const movie = await db.query.movies.findFirst({
-			where: eq(movies.id, validated.movieId)
+		const movie = assertFound(
+			await db.query.movies.findFirst({ where: eq(movies.id, validated.movieId) }),
+			'Movie',
+			validated.movieId
+		);
+
+		const result = await autoSearchMovie(movie, {
+			languages: validated.languages,
+			requirement: validated.requirement
 		});
-
-		assertFound(movie, 'Movie', validated.movieId);
-
-		// Get language profile
-		const profile = await profileService.getProfileForMovie(validated.movieId);
-		let languages = validated.languages || [];
-
-		if (languages.length === 0 && profile) {
-			languages = profile.languages.map((l) => l.code);
-		}
-		if (languages.length === 0) {
-			languages = ['en'];
-		}
-
-		// Get minimum score from profile
-		const minScore = profile?.minimumScore ?? 60;
-
-		// Search for subtitles
-		const searchResults = await searchService.searchForMovie(validated.movieId, languages);
-
-		if (!searchResults.results || searchResults.results.length === 0) {
-			return json({
-				success: false,
-				message: 'No subtitles found',
-				searched: true,
-				downloaded: false
-			});
-		}
-
-		// Find best result above minimum score
-		const bestResult = searchResults.results
-			.filter((r) => r.matchScore >= minScore)
-			.sort((a, b) => b.matchScore - a.matchScore)[0];
-
-		if (!bestResult) {
-			return json({
-				success: false,
-				message: `No subtitles found with score >= ${minScore}`,
-				searched: true,
-				downloaded: false,
-				bestScore: searchResults.results[0]?.matchScore
-			});
-		}
-
-		// Download best match
-		const downloadResult = await downloadService.downloadForMovie(validated.movieId, bestResult);
 
 		logger.info(
 			{
 				movieId: validated.movieId,
-				language: bestResult.language,
-				score: bestResult.matchScore
+				reason: summarizeAutoSearchReason(result),
+				downloaded: result.downloaded
 			},
-			'[AutoSearch] Downloaded subtitle for movie'
+			'[AutoSearch] Movie auto-search complete'
 		);
 
-		return json({
-			success: true,
-			searched: true,
-			downloaded: true,
-			subtitle: downloadResult,
-			matchScore: bestResult.matchScore
-		});
+		return json(toResponse(result));
 	}
 
 	// Auto-search for episode
 	if (validated.episodeId) {
 		const episode = assertFound(
-			await db.query.episodes.findFirst({
-				where: eq(episodes.id, validated.episodeId)
-			}),
+			await db.query.episodes.findFirst({ where: eq(episodes.id, validated.episodeId) }),
 			'Episode',
 			validated.episodeId
 		);
 
 		const seriesData = assertFound(
-			await db.query.series.findFirst({
-				where: eq(series.id, episode.seriesId)
-			}),
+			await db.query.series.findFirst({ where: eq(series.id, episode.seriesId) }),
 			'Series',
 			episode.seriesId
 		);
 
-		// Get language profile
-		const profile = await profileService.getProfileForSeries(seriesData.id);
-		let languages = validated.languages || [];
-
-		if (languages.length === 0 && profile) {
-			languages = profile.languages.map((l) => l.code);
-		}
-		if (languages.length === 0) {
-			languages = ['en'];
-		}
-
-		// Get minimum score from profile
-		const minScore = profile?.minimumScore ?? 60;
-
-		// Search for subtitles
-		const searchResults = await searchService.searchForEpisode(validated.episodeId, languages);
-
-		if (!searchResults.results || searchResults.results.length === 0) {
-			return json({
-				success: false,
-				message: 'No subtitles found',
-				searched: true,
-				downloaded: false
-			});
-		}
-
-		// Find best result above minimum score
-		const bestResult = searchResults.results
-			.filter((r) => r.matchScore >= minScore)
-			.sort((a, b) => b.matchScore - a.matchScore)[0];
-
-		if (!bestResult) {
-			return json({
-				success: false,
-				message: `No subtitles found with score >= ${minScore}`,
-				searched: true,
-				downloaded: false,
-				bestScore: searchResults.results[0]?.matchScore
-			});
-		}
-
-		// Download best match
-		const downloadResult = await downloadService.downloadForEpisode(
-			validated.episodeId,
-			bestResult
-		);
+		const result = await autoSearchEpisode(episode, seriesData, {
+			languages: validated.languages,
+			requirement: validated.requirement
+		});
 
 		logger.info(
 			{
 				episodeId: validated.episodeId,
-				language: bestResult.language,
-				score: bestResult.matchScore
+				reason: summarizeAutoSearchReason(result),
+				downloaded: result.downloaded
 			},
-			'[AutoSearch] Downloaded subtitle for episode'
+			'[AutoSearch] Episode auto-search complete'
 		);
 
-		return json({
-			success: true,
-			searched: true,
-			downloaded: true,
-			subtitle: downloadResult,
-			matchScore: bestResult.matchScore
-		});
+		return json(toResponse(result));
 	}
 
 	return json({ error: 'Either movieId or episodeId is required' }, { status: 400 });

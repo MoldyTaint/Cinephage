@@ -1,7 +1,8 @@
 import type {
-	SubtitleSettingsUpdate,
-	LanguageProfileCreate,
-	LanguageProfileUpdate,
+	LanguageProfileV2Create,
+	LanguageProfileV2Update,
+	LanguageSettingsUpdateInput,
+	LanguageSettingsValues,
 	SubtitleProviderCreate,
 	SubtitleProviderUpdate,
 	SubtitleProviderTest,
@@ -50,18 +51,6 @@ export async function downloadSubtitle(payload: {
 	return apiPost('/api/subtitles/download', payload);
 }
 
-export async function getSubtitleSettings() {
-	return apiGet('/api/subtitles/settings');
-}
-
-export async function updateSubtitleSettings(payload: SubtitleSettingsUpdate) {
-	return apiPut('/api/subtitles/settings', payload);
-}
-
-export async function resetSubtitleSettings() {
-	return apiDelete('/api/subtitles/settings');
-}
-
 export async function syncSubtitle(
 	subtitleId: string,
 	options?: {
@@ -82,16 +71,64 @@ export async function getLanguageProfiles() {
 	return apiGet('/api/subtitles/language-profiles');
 }
 
-export async function createLanguageProfile(payload: LanguageProfileCreate) {
+export async function createLanguageProfile(payload: LanguageProfileV2Create) {
 	return apiPost('/api/subtitles/language-profiles', payload);
 }
 
-export async function updateLanguageProfile(id: string, payload: LanguageProfileUpdate) {
+export async function updateLanguageProfile(id: string, payload: LanguageProfileV2Update) {
 	return apiPut(`/api/subtitles/language-profiles/${id}`, payload);
 }
 
 export async function deleteLanguageProfile(id: string) {
 	return apiDelete(`/api/subtitles/language-profiles/${id}`);
+}
+
+/**
+ * Read the global language settings singleton (default profile, metadata
+ * locale/region, discover filter, unknown-subtitle policy, auto-sync).
+ */
+export async function getLanguageSettings(): Promise<LanguageSettingsValues> {
+	return apiGet<LanguageSettingsValues>('/api/subtitles/language-settings');
+}
+
+/** Partially update the global language settings singleton. */
+export async function updateLanguageSettings(
+	payload: LanguageSettingsUpdateInput
+): Promise<LanguageSettingsValues> {
+	return apiPut<LanguageSettingsValues>('/api/subtitles/language-settings', payload);
+}
+
+/**
+ * Where an effective subtitle profile was resolved from. The add-flow
+ * endpoint only resolves the instance default for NEW items; existing items
+ * can also resolve from the item override or the library.
+ */
+export type EffectiveSubtitleProfileSource = 'movie' | 'series' | 'library' | 'default';
+
+/** The subtitle profile a new library item will inherit, plus its source. */
+export interface EffectiveSubtitleProfile {
+	profile: {
+		id: string;
+		name: string;
+		/** Requirement list used to seed the add-flow customize editor. */
+		subtitles?: Array<{ tag: string; variant: string; accessibility: string }>;
+	};
+	source: EffectiveSubtitleProfileSource;
+}
+
+/**
+ * Resolve the effective subtitle profile for a NEW library item
+ * (?mediaType=movie|series). Returns null when no default profile is
+ * configured — the add flow surfaces this as a warning.
+ */
+export async function getEffectiveSubtitleProfile(
+	mediaType: 'movie' | 'series',
+	libraryId?: string
+): Promise<EffectiveSubtitleProfile | null> {
+	const libraryParam = libraryId ? `&libraryId=${encodeURIComponent(libraryId)}` : '';
+	return apiGet<EffectiveSubtitleProfile | null>(
+		`/api/subtitles/language-settings/effective?mediaType=${mediaType}${libraryParam}`
+	);
 }
 
 export async function getSubtitleProviders() {

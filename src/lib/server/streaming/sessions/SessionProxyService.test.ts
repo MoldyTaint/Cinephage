@@ -66,6 +66,44 @@ describe('SessionProxyService.renderLaunchMedia', () => {
 		expect(upstreamInit.headers.range).toBe('bytes=0-3');
 	});
 
+	it('does not forward the browser-only Origin header upstream', async () => {
+		fetchWithTimeoutMock.mockResolvedValue(
+			new Response(new Uint8Array([0x00, 0x01]), {
+				status: 200,
+				headers: { 'Content-Type': 'video/mp4' }
+			})
+		);
+
+		const { getPlaybackSessionStore } = await import('./session-store');
+		const { getSessionProxyService } = await import('./SessionProxyService');
+
+		const session = getPlaybackSessionStore().createSession({
+			mediaType: 'movie',
+			tmdbId: 541135,
+			entryUrl: 'https://cdn.example.com/movie.mp4',
+			sourceType: 'mp4',
+			requestHeaders: {
+				Origin: 'https://cinema.army',
+				Referer: 'https://cinema.army/',
+				'User-Agent': 'player-agent'
+			},
+			attempts: []
+		});
+
+		await getSessionProxyService().renderLaunchMedia(
+			session,
+			BASE_URL,
+			'api-key',
+			new Request(`${BASE_URL}/api/streaming/session/movie/541135`)
+		);
+
+		const [, upstreamInit] = fetchWithTimeoutMock.mock.calls[0];
+		expect(upstreamInit.headers.Origin).toBeUndefined();
+		expect(upstreamInit.headers.origin).toBeUndefined();
+		expect(upstreamInit.headers.Referer).toBe('https://cinema.army/');
+		expect(upstreamInit.headers['User-Agent']).toBe('player-agent');
+	});
+
 	it('returns the upstream error when an mp4 source fails', async () => {
 		fetchWithTimeoutMock.mockResolvedValue(
 			new Response(JSON.stringify({ error: 'gone' }), { status: 404 })
@@ -131,9 +169,92 @@ describe('SessionProxyService.renderLaunchMedia', () => {
 
 		expect(response.status).toBe(200);
 		expect(response.headers.get('Content-Type')).toBe('application/vnd.apple.mpegurl');
+		expect(response.headers.get('Cache-Control')).toBe('no-cache');
 		const playlist = await response.text();
 		expect(playlist).toContain('#EXTM3U');
 		expect(playlist).toContain(`${BASE_URL}/api/streaming/session/${session.token}/segment/`);
+	});
+
+	it('cancels a redirect response body before following the redirect', async () => {
+		const cancelMock = vi.fn();
+		const redirectResponse = {
+			status: 302,
+			headers: new Headers({ Location: 'https://cdn.example.com/final.m3u8' }),
+			body: { cancel: cancelMock }
+		} as unknown as Response;
+		fetchWithTimeoutMock
+			.mockResolvedValueOnce(redirectResponse)
+			.mockResolvedValueOnce(new Response('#EXTM3U\n#EXT-X-ENDLIST\n', { status: 200 }));
+
+		const { getPlaybackSessionStore } = await import('./session-store');
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const session = getPlaybackSessionStore().createSession({
+			mediaType: 'movie',
+			tmdbId: 541134,
+			entryUrl: 'https://cdn.example.com/master.m3u8',
+			sourceType: 'hls',
+			requestHeaders: {},
+			attempts: []
+		});
+
+		await getSessionProxyService().renderLaunchMedia(
+			session,
+			BASE_URL,
+			'api-key',
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`)
+		);
+
+		expect(cancelMock).toHaveBeenCalled();
+	});
+
+	it.each([
+		['releases the reader lock after success', false, false],
+		['releases the reader lock after overflow', true, false],
+		['releases the reader lock after a read error', false, true]
+	])('%s', async (_name, overflow, readError) => {
+		const releaseLockMock = vi.fn();
+		const cancelMock = vi.fn();
+		const reader = {
+			read: vi
+				.fn()
+				.mockImplementationOnce(async () => {
+					if (readError) throw new Error('read failed');
+					return {
+						done: false,
+						value: overflow ? new Uint8Array(5 * 1024 * 1024 + 1) : new Uint8Array([0x23])
+					};
+				})
+				.mockResolvedValueOnce({ done: true, value: undefined }),
+			cancel: cancelMock,
+			releaseLock: releaseLockMock
+		};
+		const upstream = new Response(null, {
+			status: 200,
+			headers: { 'Content-Type': 'application/vnd.apple.mpegurl' }
+		});
+		Object.defineProperty(upstream, 'body', { value: { getReader: () => reader } });
+		fetchWithTimeoutMock.mockResolvedValue(upstream);
+
+		const { getPlaybackSessionStore } = await import('./session-store');
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const session = getPlaybackSessionStore().createSession({
+			mediaType: 'movie',
+			tmdbId: 541134,
+			entryUrl: 'https://cdn.example.com/master.m3u8',
+			sourceType: 'hls',
+			requestHeaders: {},
+			attempts: []
+		});
+
+		const render = getSessionProxyService().renderLaunchMedia(
+			session,
+			BASE_URL,
+			'api-key',
+			new Request(`${BASE_URL}/api/streaming/session/movie/541134`)
+		);
+		if (overflow || readError) await expect(render).rejects.toThrow();
+		else await render;
+		expect(releaseLockMock).toHaveBeenCalled();
 	});
 
 	it('overrides an obfuscated image type with authoritative container metadata', async () => {
@@ -419,6 +540,108 @@ describe('SessionProxyService.renderRegisteredResource', () => {
 
 		expect(fetchWithTimeoutMock.mock.calls[0][0]).toBe(
 			'https://segments.example.com/video-00042.m4s?token=signed'
+		);
+	});
+
+	it('uses a .vtt URL for extensionless segments in native subtitle renditions', async () => {
+		fetchWithTimeoutMock
+			.mockResolvedValueOnce(
+				new Response(
+					[
+						'#EXTM3U',
+						'#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="English",URI="subtitles.m3u8"',
+						'#EXT-X-STREAM-INF:BANDWIDTH=1000000,SUBTITLES="subs"',
+						'video.m3u8'
+					].join('\n'),
+					{ status: 200, headers: { 'Content-Type': 'application/vnd.apple.mpegurl' } }
+				)
+			)
+			.mockResolvedValueOnce(
+				new Response('#EXTM3U\n#EXTINF:10.0,\nsubtitle-segment\n#EXT-X-ENDLIST', {
+					status: 200,
+					headers: { 'Content-Type': 'application/vnd.apple.mpegurl' }
+				})
+			);
+
+		const { getPlaybackSessionStore } = await import('./session-store');
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const store = getPlaybackSessionStore();
+		const session = store.createSession({
+			mediaType: 'tv',
+			tmdbId: 615,
+			season: 11,
+			episode: 6,
+			entryUrl: 'https://cdn.example.com/master.m3u8',
+			sourceType: 'hls',
+			requestHeaders: {},
+			attempts: []
+		});
+
+		const masterResponse = await getSessionProxyService().renderLaunchMedia(
+			session,
+			BASE_URL,
+			'api-key',
+			new Request(`${BASE_URL}/api/streaming/session/tv/615/11/6`)
+		);
+		const master = await masterResponse.text();
+		const subtitlePlaylistId = master.match(/\/playlist\/([^/.]+)\.m3u8/)?.[1];
+		expect(subtitlePlaylistId).toBeDefined();
+
+		const subtitleResponse = await getSessionProxyService().renderRegisteredResource(
+			session,
+			subtitlePlaylistId!,
+			BASE_URL,
+			'api-key',
+			new Request(
+				`${BASE_URL}/api/streaming/session/${session.token}/playlist/${subtitlePlaylistId}.m3u8`
+			)
+		);
+		const subtitlePlaylist = await subtitleResponse.text();
+
+		expect(subtitlePlaylist).toContain('/segment/');
+		expect(subtitlePlaylist).toContain('.vtt?api_key=api-key');
+		expect(subtitlePlaylist).not.toContain('.ts?api_key=api-key');
+	});
+});
+
+describe('SessionProxyService.renderSubtitlePlaylist', () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		resolveAndValidateUrlMock.mockResolvedValue({ safe: true });
+		const { getPlaybackSessionStore } = await import('./session-store');
+		getPlaybackSessionStore().clear();
+	});
+
+	it('does not cache subtitle playlists and preserves the base path', async () => {
+		const { getPlaybackSessionStore } = await import('./session-store');
+		const { getSessionProxyService } = await import('./SessionProxyService');
+		const session = getPlaybackSessionStore().createSession({
+			mediaType: 'movie',
+			tmdbId: 541134,
+			entryUrl: 'https://cdn.example.com/master.m3u8',
+			sourceType: 'hls',
+			requestHeaders: {},
+			attempts: [],
+			subtitles: [
+				{
+					id: 'sub-1',
+					url: 'https://cdn.example.com/subtitles.vtt',
+					label: 'English',
+					language: 'en',
+					isDefault: true
+				}
+			]
+		});
+
+		const response = await getSessionProxyService().renderSubtitlePlaylist(
+			session,
+			'sub-1',
+			'https://media.example.com/cinephage'
+		);
+
+		expect(response.headers.get('Cache-Control')).toBe('no-cache');
+		expect(await response.text()).toContain(
+			`https://media.example.com/cinephage/api/streaming/session/${session.token}/subtitle/sub-1.vtt`
 		);
 	});
 });

@@ -16,7 +16,6 @@ export type {
 	ScanWorkerMetadata,
 	MonitoringWorkerMetadata,
 	SearchWorkerMetadata,
-	SubtitleSearchWorkerMetadata,
 	PortalScanWorkerMetadata,
 	ChannelSyncWorkerMetadata
 } from './types.js';
@@ -33,6 +32,5 @@ export { workerManager, ConcurrencyLimitError } from './WorkerManager.js';
 export { StreamWorker, streamWorkerRegistry, type StreamWorkerOptions } from './StreamWorker.js';
 export { ImportWorker, type ImportWorkerOptions } from './ImportWorker.js';
 export { SearchWorker, type SearchWorkerOptions, type SearchResult } from './SearchWorker.js';
-export { SubtitleSearchWorker, type SubtitleSearchWorkerOptions } from './SubtitleSearchWorker.js';
 export { PortalScanWorker, type PortalScanOptions } from './PortalScanWorker.js';
 export { ChannelSyncWorker, type ChannelSyncWorkerOptions } from './ChannelSyncWorker.js';

@@ -153,6 +153,14 @@ search:
       selector: "newznab|attr[name='tvdbid']"
       attribute: value
       optional: true
+    language:
+      selector: "newznab|attr[name='language']"
+      attribute: value
+      optional: true
+    subs:
+      selector: "newznab|attr[name='subs']"
+      attribute: value
+      optional: true
     # Usenet-specific fields
     poster:
       selector: "newznab|attr[name='poster']"

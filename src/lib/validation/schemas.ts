@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PROVIDER_IMPLEMENTATIONS } from '$lib/server/subtitles/types';
+import { normalizeTmdbLanguage } from '$lib/server/languages/normalize.js';
 import { TMDB } from '$lib/config/constants.js';
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -783,6 +784,8 @@ export const libraryCreateSchema = z.object({
 	defaultSearchOnAdd: z.boolean().default(true),
 	defaultWantsSubtitles: z.boolean().default(true),
 	qualityProfileId: z.string().nullable().optional(),
+	/** Library-wide default language profile; null/omitted = inherit the instance default */
+	languageProfileId: z.string().nullable().optional(),
 	sortOrder: z.number().int().min(0).default(100),
 	scanMode: z.enum(['manual', 'scheduled', 'scheduled_daily', 'watch']).default('scheduled'),
 	scanConfig: z
@@ -865,26 +868,12 @@ export const subtitleProviderTestSchema = z.object({
 // Language Profile Schemas
 // ============================================================
 
-import { isValidLanguageCode } from '$lib/shared/languages';
+import {
+	canonicalizeLanguageTag,
+	isValidLanguageCode,
+	type LanguageTag
+} from '$lib/shared/languages';
 import { CAPTURED_LOG_LEVELS, CAPTURED_LOG_DOMAINS } from '$lib/logging/log-capture';
-
-/**
- * Schema for language preference in a profile.
- * Validates language codes against the centralized SUPPORTED_LANGUAGES list.
- */
-export const languagePreferenceSchema = z.object({
-	code: z
-		.string()
-		.min(2)
-		.max(10)
-		.refine((code) => isValidLanguageCode(code), {
-			message: 'Invalid language code. Please use a valid ISO 639-1 code (e.g., en, es, pt-br)'
-		}),
-	forced: z.boolean().default(false),
-	hearingImpaired: z.boolean().default(false),
-	excludeHi: z.boolean().default(false),
-	isCutoff: z.boolean().default(false)
-});
 
 /**
  * Schema for validating a language code
@@ -898,21 +887,176 @@ export const languageCodeSchema = z
 	});
 
 /**
- * Schema for creating a language profile.
+ * Canonical language tag input. Canonicalizes aliases before validation so
+ * 'ENG', 'ger', 'pob', 'zh-tw' are stored canonically; unknown codes fail.
  */
-export const languageProfileCreateSchema = z.object({
-	name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or less'),
-	languages: z.array(languagePreferenceSchema).min(1, 'At least one language is required'),
-	cutoffIndex: z.number().int().min(0).default(0),
-	upgradesAllowed: z.boolean().default(true),
-	minimumScore: z.number().int().min(0).max(360).default(60),
-	isDefault: z.boolean().default(false)
+export const languageTagSchema = z
+	.string()
+	.min(2)
+	.max(35)
+	.transform((value) => canonicalizeLanguageTag(value) || value.trim().toLowerCase())
+	.refine((value): value is LanguageTag => isValidLanguageCode(value), {
+		message: 'Invalid language code'
+	});
+
+/**
+ * One subtitle requirement: language + variant + accessibility policy.
+ * This replaces the boolean (forced, hearingImpaired, excludeHi, isCutoff)
+ * combination once the pipeline migrates (Phase 3).
+ */
+export const subtitleRequirementSchema = z.object({
+	tag: languageTagSchema,
+	variant: z.enum(['regular', 'forced', 'both']).default('regular'),
+	accessibility: z.enum(['any', 'prefer-hi', 'require-hi', 'exclude-hi']).default('any')
+});
+
+/** Combined profile audio preferences. */
+export const audioPreferenceSchema = z.object({
+	preferOriginal: z.boolean().default(true),
+	languages: z.array(languageTagSchema).default([]),
+	mode: z.enum(['prefer', 'require']).default('prefer')
+});
+
+const languageProfileV2BaseSchema = z.object({
+	name: z.string().min(1, 'Name is required').max(60, 'Name must be 60 characters or less'),
+	audio: audioPreferenceSchema.default({ preferOriginal: true, languages: [], mode: 'prefer' }),
+	subtitles: z
+		.array(subtitleRequirementSchema)
+		.min(1, 'At least one subtitle language is required'),
+	cutoffRank: z.number().int().min(0).nullable().default(null),
+	minimumScore: z.number().int().min(0).max(100).default(70),
+	upgradesAllowed: z.boolean().default(true)
+});
+
+/** Create payload for the combined profile (Phase 2 persistence). */
+export const languageProfileV2CreateSchema = languageProfileV2BaseSchema
+	.refine(
+		(profile) => profile.cutoffRank === null || profile.cutoffRank < profile.subtitles.length,
+		{
+			message: 'Cutoff rank must reference a subtitle requirement',
+			path: ['cutoffRank']
+		}
+	)
+	.refine(
+		(profile) => {
+			const keys = profile.subtitles.map(
+				(requirement) => `${requirement.tag}|${requirement.variant}|${requirement.accessibility}`
+			);
+			return new Set(keys).size === keys.length;
+		},
+		{ message: 'Duplicate subtitle requirements are not allowed', path: ['subtitles'] }
+	);
+
+/**
+ * Partial update payload for the combined profile.
+ *
+ * `.required().partial()` (not plain `.partial()`) is required: in Zod v4,
+ * `.partial()` on a schema whose fields carry `.default()` still materializes
+ * those defaults for absent fields, so a rename-only PUT would silently reset
+ * audio, cutoffRank, minimumScore, and upgradesAllowed.
+ */
+export const languageProfileV2UpdateSchema = languageProfileV2BaseSchema.required().partial();
+
+export type LanguageProfileV2Create = z.infer<typeof languageProfileV2CreateSchema>;
+export type LanguageProfileV2Update = z.infer<typeof languageProfileV2UpdateSchema>;
+
+/**
+ * Per-item subtitle requirement override (movies, series, episodes).
+ *
+ * Replaces ONLY the requirement list of the effective profile — audio,
+ * scoring, and upgrade policy still come from the profile chain. An explicit
+ * list means "acquire exactly these": empty arrays are rejected (turn the
+ * wants-subtitles gate off instead) and duplicates are rejected (identity is
+ * the tag|variant|accessibility tuple).
+ */
+export const subtitleRequirementsOverrideSchema = z
+	.array(subtitleRequirementSchema)
+	.min(1, 'At least one subtitle language is required')
+	.max(10, 'At most 10 subtitle languages are allowed')
+	.refine(
+		(requirements) => {
+			const keys = requirements.map(
+				(requirement) => `${requirement.tag}|${requirement.variant}|${requirement.accessibility}`
+			);
+			return new Set(keys).size === keys.length;
+		},
+		{ message: 'Duplicate subtitle requirements are not allowed', path: ['subtitles'] }
+	);
+
+export type SubtitleRequirementsOverride = z.infer<typeof subtitleRequirementsOverrideSchema>;
+
+/** Canonical BCP-47 metadata locale (canonicalized via Intl). */
+const languageMetadataLocaleSchema = z
+	.string()
+	.refine(
+		(value) => {
+			try {
+				Intl.getCanonicalLocales(value);
+				return true;
+			} catch {
+				return false;
+			}
+		},
+		{ message: 'Invalid metadata locale' }
+	)
+	.transform((value) => Intl.getCanonicalLocales(value)[0] ?? value);
+
+/** Two-letter country code, upper-cased. */
+const languageRegionSchema = z
+	.string()
+	.regex(/^[A-Za-z]{2}$/, 'Region must be a two-letter country code')
+	.transform((value) => value.toUpperCase());
+
+/** Canonical base language tag or null (canonicalized via the TMDB normalizer). */
+const languageDiscoverOriginalFilterSchema = z
+	.string()
+	.nullable()
+	.refine((value) => value === null || normalizeTmdbLanguage(value) !== null, {
+		message: 'Must be a resolvable language tag or null'
+	})
+	.transform((value) => (value === null ? null : normalizeTmdbLanguage(value)));
+
+/**
+ * Language settings singleton (camelCase view of the language_settings row).
+ * defaultProfileId is the single default-profile authority; metadataLocale
+ * must be a valid BCP-47 locale (canonicalized via Intl); region is a
+ * two-letter country code (upper-cased); discoverOriginalFilter is null or a
+ * canonical base language tag (canonicalized via the server normalizer).
+ */
+export const languageSettingsSchema = z.object({
+	defaultProfileId: z.string().uuid().nullable().default(null),
+	metadataLocale: languageMetadataLocaleSchema,
+	region: languageRegionSchema,
+	discoverOriginalFilter: languageDiscoverOriginalFilterSchema,
+	unknownSubtitlePolicy: z.enum(['und', 'assume-language']).default('und'),
+	assumedLanguage: z.string().min(1).nullable().optional(),
+	autoSyncSubtitles: z.boolean().default(true),
+	/** Instance default: display originalTitle when a per-item flag is unset */
+	preferOriginalTitle: z.boolean().default(false)
 });
 
 /**
- * Schema for updating a language profile.
+ * Partial update payload for the language settings singleton.
+ *
+ * NOTE: this is NOT `languageSettingsSchema.partial()`. In zod v4 `.partial()`
+ * still applies field defaults for absent keys, which would silently reset
+ * every omitted field (e.g. defaultProfileId) to its default on each partial
+ * write. Every field here is genuinely optional so the service only persists
+ * the keys the caller actually sent.
  */
-export const languageProfileUpdateSchema = languageProfileCreateSchema.required().partial();
+export const languageSettingsUpdateSchema = z.object({
+	defaultProfileId: z.string().uuid().nullable().optional(),
+	metadataLocale: languageMetadataLocaleSchema.optional(),
+	region: languageRegionSchema.optional(),
+	discoverOriginalFilter: languageDiscoverOriginalFilterSchema.optional(),
+	unknownSubtitlePolicy: z.enum(['und', 'assume-language']).optional(),
+	assumedLanguage: z.string().min(1).nullable().optional(),
+	autoSyncSubtitles: z.boolean().optional(),
+	preferOriginalTitle: z.boolean().optional()
+});
+
+export type LanguageSettingsValues = z.infer<typeof languageSettingsSchema>;
+export type LanguageSettingsUpdateInput = z.input<typeof languageSettingsUpdateSchema>;
 
 // ============================================================
 // Subtitle Search Schemas
@@ -949,15 +1093,37 @@ export const subtitleSearchSchema = z.object({
 
 /**
  * Schema for subtitle download request.
+ *
+ * The interactive search modal submits the full selected search result (not
+ * just the provider ids) so the download service can forward provider-specific
+ * fields such as `downloadUrl`/`pageLink`/`releaseName` to the provider. The
+ * fields mirror `SubtitleSearchResult`; unknown keys are stripped by Zod.
  */
 export const subtitleDownloadSchema = z.object({
 	providerId: z.string().uuid(),
+	providerName: z.string().min(1),
 	providerSubtitleId: z.string().min(1),
 	movieId: z.string().uuid().optional(),
 	episodeId: z.string().uuid().optional(),
+	// Target movie file for multi-file movies (prevents cross-tier clobber).
+	movieFileId: z.string().uuid().optional(),
 	language: languageCodeSchema,
+	title: z.string().min(1),
+	releaseName: z.string().optional(),
+	fileName: z.string().optional(),
 	isForced: z.boolean().default(false),
-	isHearingImpaired: z.boolean().default(false)
+	isHearingImpaired: z.boolean().default(false),
+	format: z.enum(['srt', 'ass', 'sub', 'vtt', 'ssa', 'unknown']).default('srt'),
+	isHashMatch: z.boolean().default(false),
+	// Normalized 0-100 scoring scale shared by movies and episodes.
+	matchScore: z.number().min(0).max(100).default(0),
+	// Provider URLs are opaque; only require non-empty when present (some
+	// providers expose non-http download tokens in these fields).
+	downloadUrl: z.string().min(1).optional(),
+	pageLink: z.string().min(1).optional(),
+	fileSize: z.number().int().nonnegative().optional(),
+	uploadDate: z.string().optional(),
+	downloadCount: z.number().int().nonnegative().optional()
 });
 
 /**
@@ -1008,25 +1174,11 @@ export const subtitleBlacklistSchema = z.object({
 // Subtitle Settings Schemas
 // ============================================================
 
-/**
- * Schema for updating subtitle settings.
- *
- * NOTE: Scheduling-related settings (searchOnImport, searchTrigger, intervals)
- * have been consolidated into MonitoringScheduler settings.
- */
-export const subtitleSettingsUpdateSchema = z.object({
-	defaultLanguageProfileId: z.string().uuid().nullable().optional(),
-	defaultFallbackLanguage: z.string().min(2).max(5).optional()
-});
-
 // Subtitle Type Exports
 export type SubtitleProviderImplementation = z.infer<typeof subtitleProviderImplementationSchema>;
 export type SubtitleProviderCreate = z.infer<typeof subtitleProviderCreateSchema>;
 export type SubtitleProviderUpdate = z.infer<typeof subtitleProviderUpdateSchema>;
 export type SubtitleProviderTest = z.infer<typeof subtitleProviderTestSchema>;
-export type LanguagePreference = z.infer<typeof languagePreferenceSchema>;
-export type LanguageProfileCreate = z.infer<typeof languageProfileCreateSchema>;
-export type LanguageProfileUpdate = z.infer<typeof languageProfileUpdateSchema>;
 export type SubtitleSearchRequest = z.infer<typeof subtitleSearchSchema>;
 export type SubtitleDownloadRequest = z.infer<typeof subtitleDownloadSchema>;
 export type SubtitleSyncRequest = z.infer<typeof subtitleSyncSchema>;
@@ -1038,24 +1190,26 @@ export const subtitleBatchAutoSearchSchema = z.discriminatedUnion('type', [
 	z.object({
 		type: z.literal('season'),
 		seriesId: z.string().uuid(),
-		seasonNumber: z.number().int().min(0)
+		seasonNumber: z.number().int().min(0),
+		requirement: subtitleRequirementSchema.optional()
 	}),
 	z.object({
 		type: z.literal('series'),
-		seriesId: z.string().uuid()
+		seriesId: z.string().uuid(),
+		requirement: subtitleRequirementSchema.optional()
 	}),
 	z.object({
 		type: z.literal('collection'),
-		collectionId: z.number().int().positive()
+		collectionId: z.number().int().positive(),
+		requirement: subtitleRequirementSchema.optional()
 	}),
 	z.object({
 		type: z.literal('episodes'),
-		episodeIds: z.array(z.string().uuid()).min(1).max(500)
+		episodeIds: z.array(z.string().uuid()).min(1).max(500),
+		requirement: subtitleRequirementSchema.optional()
 	})
 ]);
 export type SubtitleBatchAutoSearchRequest = z.infer<typeof subtitleBatchAutoSearchSchema>;
-
-export type SubtitleSettingsUpdate = z.infer<typeof subtitleSettingsUpdateSchema>;
 
 // ============================================================
 // Naming Settings Schemas
@@ -1515,6 +1669,19 @@ export type StalkerPortalDetect = z.infer<typeof stalkerPortalDetectSchema>;
 // LiveTV Account Schema (multi-provider)
 // ============================================================================
 
+/**
+ * Stalker portal UI language (`stb_lang` cookie / `Accept-Language` header).
+ *
+ * Accepts any recognizable language tag ('en', 'pt-BR', 'ger', …), reduces it
+ * to the 2-letter base code Stalker portals expect, and falls back to English.
+ */
+export const stalkerLanguageSchema = z
+	.string()
+	.refine((value) => normalizeTmdbLanguage(value) !== null, {
+		message: 'Must be a valid language code'
+	})
+	.transform((value) => normalizeTmdbLanguage(value) ?? 'en');
+
 export const liveTvAccountCreateSchema = z.object({
 	name: z.string().min(1).max(100),
 	providerType: z.enum(['stalker', 'xstream', 'm3u', 'cinephage-iptv']),
@@ -1528,6 +1695,7 @@ export const liveTvAccountCreateSchema = z.object({
 			deviceId2: z.string().optional(),
 			model: z.string().optional(),
 			timezone: z.string().optional(),
+			language: stalkerLanguageSchema.default('en'),
 			username: z.string().optional(),
 			password: z.string().optional()
 		})
@@ -1632,80 +1800,214 @@ export const libraryStatusSchema = z.object({
 export const episodeUpdateSchema = z
 	.object({
 		monitored: z.boolean().optional(),
-		wantsSubtitlesOverride: z.union([z.boolean(), z.null()]).optional()
+		wantsSubtitlesOverride: z.union([z.boolean(), z.null()]).optional(),
+		subtitleRequirementsOverride: subtitleRequirementsOverrideSchema.nullable().optional()
 	})
-	.refine((data) => data.monitored !== undefined || data.wantsSubtitlesOverride !== undefined, {
-		message: 'No valid fields to update'
-	});
+	.refine(
+		(data) =>
+			data.monitored !== undefined ||
+			data.wantsSubtitlesOverride !== undefined ||
+			data.subtitleRequirementsOverride !== undefined,
+		{
+			message: 'No valid fields to update'
+		}
+	);
+
+/**
+ * Per-item TMDB metadata language override mode:
+ * - inherit: use the global language_settings.metadataLocale
+ * - original: use the item's TMDB original_language
+ * - explicit: use metadataLanguageValue (a canonical TMDB locale)
+ */
+export const metadataLanguageModeSchema = z.enum(['inherit', 'original', 'explicit']);
+export type MetadataLanguageMode = z.infer<typeof metadataLanguageModeSchema>;
+
+/** Canonicalize a TMDB locale via Intl, returning null when invalid. */
+function canonicalMetadataLocale(value: string): string | null {
+	try {
+		return Intl.getCanonicalLocales(value.trim())[0] ?? null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Map a legacy single-string `metadataLanguage` override onto the v2 pair.
+ * Valid locales become 'explicit' (canonicalized); 'original' maps to the
+ * original mode; null/empty/invalid degrades to 'inherit' so old payloads
+ * never hard-fail.
+ */
+export function normalizeLegacyMetadataLanguage(value: string | null | undefined): {
+	mode: MetadataLanguageMode;
+	value: string | null;
+} {
+	if (value == null || value.trim() === '') return { mode: 'inherit', value: null };
+	if (value.trim().toLowerCase() === 'original') return { mode: 'original', value: null };
+	const canonical = canonicalMetadataLocale(value);
+	return canonical ? { mode: 'explicit', value: canonical } : { mode: 'inherit', value: null };
+}
+
+/**
+ * The three metadata-language fields shared by the movie/series update schemas.
+ * `metadataLanguage` is the deprecated single-string form kept for one release.
+ */
+const metadataLanguageFields = {
+	metadataLanguageMode: metadataLanguageModeSchema.optional(),
+	metadataLanguageValue: z.string().nullable().optional(),
+	/** @deprecated Use metadataLanguageMode + metadataLanguageValue. */
+	metadataLanguage: z.string().nullable().optional()
+};
+
+interface MetadataLanguageOverride {
+	metadataLanguageMode?: MetadataLanguageMode;
+	metadataLanguageValue?: string | null;
+	metadataLanguage?: string | null;
+}
+
+/**
+ * Validate the metadata-language pair: 'explicit' requires a valid canonical
+ * locale; legacy and explicit cannot be combined. Validation only — forcing
+ * value null for inherit/original and canonicalizing happen in the normalizer.
+ */
+function validateMetadataLanguageOverride(
+	data: MetadataLanguageOverride,
+	ctx: z.RefinementCtx
+): void {
+	const hasLegacy = data.metadataLanguage !== undefined;
+	const hasMode = data.metadataLanguageMode !== undefined;
+	const hasValue = data.metadataLanguageValue !== undefined;
+	if (!hasLegacy && !hasMode && !hasValue) return;
+
+	if (hasLegacy && (hasMode || hasValue)) {
+		ctx.addIssue({
+			code: 'custom',
+			path: ['metadataLanguage'],
+			message:
+				'Provide either metadataLanguage (deprecated) or metadataLanguageMode/metadataLanguageValue, not both'
+		});
+		return;
+	}
+
+	if (!hasLegacy && data.metadataLanguageMode === 'explicit') {
+		const candidate = data.metadataLanguageValue;
+		if (candidate == null || canonicalMetadataLocale(candidate) === null) {
+			ctx.addIssue({
+				code: 'custom',
+				path: ['metadataLanguageValue'],
+				message: "metadataLanguageValue must be a valid TMDB locale when mode is 'explicit'"
+			});
+		}
+	}
+}
+
+/**
+ * Normalize the metadata-language override in place: map legacy strings onto
+ * the pair, canonicalize explicit locales, and force the value null for
+ * inherit/original (and when only a value was supplied without a mode).
+ */
+function normalizeMetadataLanguageOverride<T extends MetadataLanguageOverride>(data: T): T {
+	const hasLegacy = data.metadataLanguage !== undefined;
+	const hasMode = data.metadataLanguageMode !== undefined;
+	const hasValue = data.metadataLanguageValue !== undefined;
+	if (!hasLegacy && !hasMode && !hasValue) return data;
+
+	if (hasLegacy) {
+		const mapped = normalizeLegacyMetadataLanguage(data.metadataLanguage);
+		data.metadataLanguageMode = mapped.mode;
+		data.metadataLanguageValue = mapped.value;
+		return data;
+	}
+
+	if (data.metadataLanguageMode === 'explicit') {
+		data.metadataLanguageValue = canonicalMetadataLocale(data.metadataLanguageValue ?? '');
+	} else {
+		// inherit / original (or no mode supplied) never carry a value.
+		data.metadataLanguageValue = null;
+		if (data.metadataLanguageMode === undefined) data.metadataLanguageMode = 'inherit';
+	}
+	return data;
+}
 
 /**
  * Schema for updating a movie
  */
-export const movieUpdateSchema = z.object({
-	monitored: z.boolean().optional(),
-	scoringProfileId: z.string().nullable().optional(),
-	/** Desired qualities for multi-quality mode (null/empty = single-quality). */
-	desiredQualities: z
-		.array(z.enum(['2160p', '1080p', '720p', '480p']))
-		.nullable()
-		.optional(),
-	minimumAvailability: z.string().min(1).optional(),
-	availabilityDelay: z.number().int().min(0).max(365).optional(),
-	providerRefs: z.partialRecord(z.enum(['tmdb', 'anilist', 'mal']), z.string().min(1)).optional(),
-	rootFolderId: z.string().optional(),
-	moveFilesOnRootChange: z.boolean().optional(),
-	wantsSubtitles: z.boolean().optional(),
-	languageProfileId: z.string().nullable().optional(),
-	delayProfileId: z.string().nullable().optional(),
-	/** Edit-only: opt-in removal of files for resolutions no longer in
-	 *  desiredQualities. Server recomputes the redundant set authoritatively. */
-	removeUnwantedFiles: z.boolean().optional(),
-	/** Relative folder name within the root folder (e.g. "Brokenwood Mysteries"). Used to
-	 *  correct a drifted DB path without touching files on disk. */
-	folderPath: z
-		.string()
-		.min(1)
-		.refine((v) => !v.includes('..') && !v.startsWith('/'), {
-			message: 'Folder path must be a relative name with no path traversal'
-		})
-		.optional(),
-	/** Override the TMDB collection assignment for this movie. */
-	tmdbCollectionId: z.number().int().positive().nullable().optional(),
-	collectionName: z.string().min(1).nullable().optional(),
-	/** Per-item TMDB language override (null = inherit global, 'original' = use original_language) */
-	metadataLanguage: z.string().nullable().optional(),
-	/** Display originalTitle instead of localized title in the UI */
-	preferOriginalTitle: z.boolean().optional()
-});
+export const movieUpdateSchema = z
+	.object({
+		monitored: z.boolean().optional(),
+		scoringProfileId: z.string().nullable().optional(),
+		/** Desired qualities for multi-quality mode (null/empty = single-quality). */
+		desiredQualities: z
+			.array(z.enum(['2160p', '1080p', '720p', '480p']))
+			.nullable()
+			.optional(),
+		minimumAvailability: z.string().min(1).optional(),
+		availabilityDelay: z.number().int().min(0).max(365).optional(),
+		providerRefs: z.partialRecord(z.enum(['tmdb', 'anilist', 'mal']), z.string().min(1)).optional(),
+		rootFolderId: z.string().optional(),
+		moveFilesOnRootChange: z.boolean().optional(),
+		wantsSubtitles: z.boolean().optional(),
+		languageProfileId: z.string().nullable().optional(),
+		/** Per-item subtitle requirement override; null clears (inherit). */
+		subtitleRequirementsOverride: subtitleRequirementsOverrideSchema.nullable().optional(),
+		delayProfileId: z.string().nullable().optional(),
+		/** Edit-only: opt-in removal of files for resolutions no longer in
+		 *  desiredQualities. Server recomputes the redundant set authoritatively. */
+		removeUnwantedFiles: z.boolean().optional(),
+		/** Relative folder name within the root folder (e.g. "Brokenwood Mysteries"). Used to
+		 *  correct a drifted DB path without touching files on disk. */
+		folderPath: z
+			.string()
+			.min(1)
+			.refine((v) => !v.includes('..') && !v.startsWith('/'), {
+				message: 'Folder path must be a relative name with no path traversal'
+			})
+			.optional(),
+		/** Override the TMDB collection assignment for this movie. */
+		tmdbCollectionId: z.number().int().positive().nullable().optional(),
+		collectionName: z.string().min(1).nullable().optional(),
+		...metadataLanguageFields,
+		/** Display originalTitle instead of localized title in the UI */
+		// Tri-state: true/false = explicit per-item preference, null = inherit
+		// the instance default (language_settings.prefer_original_title).
+		preferOriginalTitle: z.union([z.boolean(), z.null()]).optional()
+	})
+	.superRefine((data, ctx) => validateMetadataLanguageOverride(data, ctx))
+	.transform((data) => normalizeMetadataLanguageOverride(data));
 
 /**
  * Schema for updating a series
  */
-export const seriesUpdateSchema = z.object({
-	monitored: z.boolean().optional(),
-	scoringProfileId: z.string().nullable().optional(),
-	seasonFolder: z.boolean().optional(),
-	seriesType: z.enum(['standard', 'anime', 'daily']).optional(),
-	providerRefs: z.partialRecord(z.enum(['tmdb', 'anilist', 'mal']), z.string().min(1)).optional(),
-	rootFolderId: z.string().optional(),
-	wantsSubtitles: z.boolean().optional(),
-	languageProfileId: z.string().nullable().optional(),
-	delayProfileId: z.string().nullable().optional(),
-	/** Relative folder name within the root folder. Used to correct a drifted DB path. */
-	folderPath: z
-		.string()
-		.min(1)
-		.refine((v) => !v.includes('..') && !v.startsWith('/'), {
-			message: 'Folder path must be a relative name with no path traversal'
-		})
-		.optional(),
-	/** TMDB episode group ID for alternate season ordering (null = default TMDB ordering) */
-	episodeGroupId: z.string().nullable().optional(),
-	/** Per-item TMDB language override (null = inherit global, 'original' = use original_language) */
-	metadataLanguage: z.string().nullable().optional(),
-	/** Display originalTitle instead of localized title in the UI */
-	preferOriginalTitle: z.boolean().optional()
-});
+export const seriesUpdateSchema = z
+	.object({
+		monitored: z.boolean().optional(),
+		scoringProfileId: z.string().nullable().optional(),
+		seasonFolder: z.boolean().optional(),
+		seriesType: z.enum(['standard', 'anime', 'daily']).optional(),
+		providerRefs: z.partialRecord(z.enum(['tmdb', 'anilist', 'mal']), z.string().min(1)).optional(),
+		rootFolderId: z.string().optional(),
+		wantsSubtitles: z.boolean().optional(),
+		languageProfileId: z.string().nullable().optional(),
+		/** Per-item subtitle requirement override; null clears (inherit). */
+		subtitleRequirementsOverride: subtitleRequirementsOverrideSchema.nullable().optional(),
+		delayProfileId: z.string().nullable().optional(),
+		/** Relative folder name within the root folder. Used to correct a drifted DB path. */
+		folderPath: z
+			.string()
+			.min(1)
+			.refine((v) => !v.includes('..') && !v.startsWith('/'), {
+				message: 'Folder path must be a relative name with no path traversal'
+			})
+			.optional(),
+		/** TMDB episode group ID for alternate season ordering (null = default TMDB ordering) */
+		episodeGroupId: z.string().nullable().optional(),
+		...metadataLanguageFields,
+		/** Display originalTitle instead of localized title in the UI */
+		// Tri-state: true/false = explicit per-item preference, null = inherit
+		// the instance default (language_settings.prefer_original_title).
+		preferOriginalTitle: z.union([z.boolean(), z.null()]).optional()
+	})
+	.superRefine((data, ctx) => validateMetadataLanguageOverride(data, ctx))
+	.transform((data) => normalizeMetadataLanguageOverride(data));
 
 /**
  * Schema for auto-search request
@@ -1806,7 +2108,10 @@ export const addMovieSchema = z.object({
 	minimumAvailability: z.enum(['announced', 'inCinemas', 'released']).default('released'),
 	availabilityDelay: z.number().int().min(0).max(365).default(0),
 	searchOnAdd: z.boolean().default(true),
-	wantsSubtitles: z.boolean().default(true)
+	wantsSubtitles: z.boolean().default(true),
+	/** Optional per-item language profile + subtitle requirement override at add time. */
+	languageProfileId: z.string().uuid().nullable().optional(),
+	subtitleRequirementsOverride: subtitleRequirementsOverrideSchema.nullable().optional()
 });
 
 /**
@@ -1836,7 +2141,10 @@ export const addSeriesSchema = z.object({
 	monitorSpecials: z.boolean().default(false),
 	monitoredSeasons: z.array(z.number().int()).optional(),
 	searchOnAdd: z.boolean().default(true),
-	wantsSubtitles: z.boolean().default(true)
+	wantsSubtitles: z.boolean().default(true),
+	/** Optional per-item language profile + subtitle requirement override at add time. */
+	languageProfileId: z.string().uuid().nullable().optional(),
+	subtitleRequirementsOverride: subtitleRequirementsOverrideSchema.nullable().optional()
 });
 
 /**
@@ -1924,6 +2232,10 @@ export const grabRequestSchema = z
 		size: z.number().optional(),
 		publishDate: z.string().datetime().optional(),
 		commentsUrl: z.string().optional(),
+		/** External IDs asserted by the search result, when available. */
+		tmdbId: z.number().int().optional(),
+		imdbId: z.string().optional(),
+		tvdbId: z.number().int().optional(),
 		movieId: z.string().optional(),
 		seriesId: z.string().optional(),
 		episodeIds: z.array(z.string()).optional(),
@@ -1932,6 +2244,8 @@ export const grabRequestSchema = z
 		isAutomatic: z.boolean().optional(),
 		isUpgrade: z.boolean().optional(),
 		force: z.boolean().optional(),
+		/** Acquisition origin recorded on the acquisition intent. */
+		source: z.enum(['manual', 'automatic', 'arr_push', 'override']).optional(),
 		streamUsenet: z.boolean().optional(),
 		acquisitionProtocol: z.enum(['default', 'torrent', 'debrid']).optional()
 	})
@@ -2081,7 +2395,8 @@ export const conditionSchema = z.object({
 		'hdr',
 		'streaming_service',
 		'flag',
-		'indexer'
+		'indexer',
+		'language'
 	]),
 	required: z.boolean(),
 	negate: z.boolean(),
@@ -2094,7 +2409,8 @@ export const conditionSchema = z.object({
 	hdr: z.string().nullable().optional(),
 	streamingService: z.string().optional(),
 	flag: z.enum(['isRemux', 'isRepack', 'isProper', 'is3d']).optional(),
-	indexer: z.string().optional()
+	indexer: z.string().optional(),
+	language: z.string().optional()
 });
 
 export type Condition = z.infer<typeof conditionSchema>;

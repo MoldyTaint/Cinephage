@@ -8,6 +8,7 @@ export {
 	getSeriesSearchTitles,
 	fetchAndStoreMovieAlternateTitles,
 	fetchAndStoreSeriesAlternateTitles,
+	storeProviderTitleVariants,
 	addUserAlternateTitle,
 	removeAlternateTitle,
 	getAlternateTitles,

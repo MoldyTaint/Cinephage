@@ -8,7 +8,12 @@ class ThemeStore {
 
 	constructor() {
 		if (browser) {
-			const stored = localStorage.getItem(THEME_KEY) as Theme | null;
+			let stored: Theme | null = null;
+			try {
+				stored = localStorage.getItem(THEME_KEY) as Theme | null;
+			} catch {
+				// Storage blocked (e.g. Firefox ETP / blocked cookies) — use system theme.
+			}
 			if (stored) {
 				this.current = stored;
 				this.apply(stored);
@@ -26,7 +31,11 @@ class ThemeStore {
 		this.current = theme;
 		this.apply(theme);
 		if (browser) {
-			localStorage.setItem(THEME_KEY, theme);
+			try {
+				localStorage.setItem(THEME_KEY, theme);
+			} catch {
+				// Storage blocked — theme still applies for this session.
+			}
 		}
 	}
 

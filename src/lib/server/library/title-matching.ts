@@ -37,6 +37,26 @@ export function normalizeTitleForMatch(title: string): string {
 }
 
 /**
+ * Fold accented characters to their base form: "Pokémon" → "Pokemon".
+ * Applied before comparison so localized titles with diacritics still match
+ * their unaccented disk counterparts.
+ */
+export function foldAccents(title: string): string {
+	return title.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
+ * Normalize an episode title for substring containment comparison:
+ * accent-folded, lowercased, non-alphanumerics stripped ("Blood & Chrome"
+ * and "Blood and Chrome" both reduce via the shared token pipeline below).
+ */
+export function normalizeForEpisodeTitle(title: string): string {
+	return foldAccents(title)
+		.toLowerCase()
+		.replace(/[^a-z0-9]/g, '');
+}
+
+/**
  * Calculate string similarity using Levenshtein distance.
  */
 export function calculateTitleSimilarity(str1: string, str2: string): number {

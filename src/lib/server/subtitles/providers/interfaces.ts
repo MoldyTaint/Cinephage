@@ -9,6 +9,7 @@ import type {
 	ProviderSearchOptions,
 	LanguageCode
 } from '../types';
+import type { ProviderCapabilities } from './BaseProvider';
 
 /**
  * Core interface that all subtitle providers must implement
@@ -23,8 +24,22 @@ export interface ISubtitleProvider {
 	/** Provider implementation type */
 	readonly implementation: string;
 
+	/**
+	 * Request priority (lower runs first). Providers are grouped into ascending
+	 * priority tiers by orchestration; lower tiers are fallback only.
+	 */
+	readonly priority: number;
+
 	/** Languages supported by this provider */
 	readonly supportedLanguages: LanguageCode[];
+
+	/**
+	 * Provider capability flags. Orchestration uses these to skip providers that
+	 * cannot serve the requested media kind, cannot verify hearing-impaired
+	 * subtitles for a `require-hi` requirement, or to prefer hash-verifiable
+	 * providers when a hash is available.
+	 */
+	readonly capabilities: ProviderCapabilities;
 
 	/** Whether this provider supports hash-based matching */
 	readonly supportsHashSearch: boolean;
@@ -112,6 +127,12 @@ export interface ProviderDefinition {
 	supportsHashSearch: boolean;
 	features: string[];
 	settings: ProviderSettingDefinition[];
+	/**
+	 * Suggested default requests-per-minute for this provider. Used by the modal
+	 * when adding a provider and as the rate-limiter fallback when a stored
+	 * `requestsPerMinute` is unset/zero. Omitted = the instance default (60).
+	 */
+	defaultRequestsPerMinute?: number;
 }
 
 /**

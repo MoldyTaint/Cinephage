@@ -40,6 +40,13 @@ describe('debrid provider adapters', () => {
 					links: selected ? ['https://provider.test/intermediate'] : [],
 					files: [{ id: 1, path: '/Movie.mkv', bytes: 10, selected: selected ? 1 : 0 }]
 				});
+			if (url.includes('/torrents/instantavailability/')) {
+				const body: Record<string, unknown> = {};
+				body['A'.repeat(40)] = {
+					rd: [{ 1: { filename: '/Movie.2026.1080p.ESP.mkv', filesize: 100 } }]
+				};
+				return json(body, 200);
+			}
 			if (url.endsWith('/unrestrict/link'))
 				return json({ download: 'https://cdn.test/movie', filename: 'Movie.mkv', filesize: 10 });
 			if (url.includes('/torrents/delete/')) return new Response(null, { status: 204 });
@@ -62,6 +69,14 @@ describe('debrid provider adapters', () => {
 			filename: 'Movie.mkv',
 			sizeBytes: 10
 		});
+		await expect(adapter.checkInstantFiles?.('a'.repeat(40))).resolves.toEqual([
+			{
+				providerFileId: '1',
+				path: '/Movie.2026.1080p.ESP.mkv',
+				name: 'Movie.2026.1080p.ESP.mkv',
+				sizeBytes: 100
+			}
+		]);
 		await expect(adapter.delete('rd-1')).resolves.toEqual({ outcome: 'deleted' });
 		expect(calls.every((call) => call.init?.redirect === 'manual')).toBe(true);
 		expect(
@@ -93,6 +108,18 @@ describe('debrid provider adapters', () => {
 						files: [{ id: 3, name: 'Show.S01E01.mkv', size: 20 }]
 					}
 				]);
+			if (url.includes('/torrents/checkcached')) {
+				return envelope([
+					{
+						hash: 'b'.repeat(40),
+						cached: true,
+						files: [
+							{ id: 11, name: 'Pack/Show.S01.ENG.mkv', size: 5 },
+							{ id: 12, name: 'Pack/Show.S01.ESP.mkv', size: 5 }
+						]
+					}
+				]);
+			}
 			if (url.includes('/requestdl')) return envelope('https://cdn.test/episode');
 			if (url.includes('/controltorrent')) return envelope(null);
 			return json({}, 404);
@@ -106,6 +133,10 @@ describe('debrid provider adapters', () => {
 			adapter.submit({ kind: 'torrent', bytes: new Uint8Array([1]), filename: 'show.torrent' })
 		).resolves.toEqual({ providerItemId: '7' });
 		await expect(adapter.inspect('7')).resolves.toMatchObject({ readiness: 'ready' });
+		await expect(adapter.checkInstantFiles?.('b'.repeat(40))).resolves.toMatchObject([
+			{ providerFileId: '11', name: 'Show.S01.ENG.mkv' },
+			{ providerFileId: '12', name: 'Show.S01.ESP.mkv' }
+		]);
 		await expect(adapter.resolveFreshLink('7', '3')).resolves.toEqual({
 			url: 'https://cdn.test/episode'
 		});

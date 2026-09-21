@@ -32,24 +32,23 @@ export type ProxyUrlBuilder = (absoluteUrl: string, isSegment: boolean) => strin
  * on relative URLs (common in Stalker portal playlists).
  */
 export function resolveHlsUrl(url: string, base: URL, basePath: string): string {
-	const queryString = base.search || '';
-
+	void basePath;
 	if (url.startsWith('http://') || url.startsWith('https://')) {
 		return url;
 	}
 	if (url.startsWith('//')) {
 		return `${base.protocol}${url}`;
 	}
-	if (url.startsWith('/')) {
-		return url.includes('?') ? `${base.origin}${url}` : `${base.origin}${url}${queryString}`;
+
+	const resolved = new URL(url, base);
+	// Providers commonly put an auth token on the playlist URL and omit it from
+	// relative entries. URL resolution correctly normalizes ../ and ./ first.
+	if (!url.startsWith('/') && !resolved.search && base.search) {
+		resolved.search = base.search;
+	} else if (url.startsWith('/') && !resolved.search && base.search) {
+		resolved.search = base.search;
 	}
-	// Relative path — preserve query parameters from base URL (e.g., auth tokens)
-	// If the relative URL already has query parameters (e.g., Pluto TV variant playlists),
-	// use it as-is since it has its own auth tokens. Otherwise append base URL params.
-	if (url.includes('?')) {
-		return `${base.origin}${basePath}${url}`;
-	}
-	return `${base.origin}${basePath}${url}${queryString}`;
+	return resolved.toString();
 }
 
 /**
@@ -68,7 +67,10 @@ const URI_BEARING_TAGS = [
 	'#EXT-X-KEY:',
 	'#EXT-X-MAP:',
 	'#EXT-X-I-FRAME-STREAM-INF:',
-	'#EXT-X-STREAM-INF:'
+	'#EXT-X-STREAM-INF:',
+	'#EXT-X-PART:',
+	'#EXT-X-PRELOAD-HINT:',
+	'#EXT-X-RENDITION-REPORT:'
 ];
 
 /**
@@ -108,7 +110,11 @@ export function rewriteHlsPlaylistUrls(
 			if (uriMatch) {
 				const originalUri = uriMatch[1];
 				const absoluteUri = resolveHlsUrl(originalUri, base, basePath);
-				const proxyUri = makeProxyUrl(absoluteUri, false);
+				const isSegment =
+					trimmed.startsWith('#EXT-X-MAP:') ||
+					trimmed.startsWith('#EXT-X-PART:') ||
+					trimmed.startsWith('#EXT-X-PRELOAD-HINT:');
+				const proxyUri = makeProxyUrl(absoluteUri, isSegment);
 				result.push(line.replace(`URI="${originalUri}"`, `URI="${proxyUri}"`));
 				continue;
 			}

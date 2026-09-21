@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
 	seedDefaultScoringProfiles: vi.fn(),
 	getProfile: vi.fn(),
 	getDefaultScoringProfile: vi.fn(),
-	getEffectiveAnimeRootFolderEnforcement: vi.fn().mockResolvedValue(false)
+	getEffectiveAnimeRootFolderEnforcement: vi.fn().mockResolvedValue(false),
+	logWarn: vi.fn()
 }));
 
 vi.mock('$lib/server/db/index.js', () => ({
@@ -38,21 +39,21 @@ vi.mock('./anime-root-enforcement-settings.js', () => ({
 	getEffectiveAnimeRootFolderEnforcement: mocks.getEffectiveAnimeRootFolderEnforcement
 }));
 vi.mock('$lib/logging/index.js', () => ({
-	logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn() },
+	logger: { info: vi.fn(), debug: vi.fn(), warn: mocks.logWarn, error: vi.fn(), child: vi.fn() },
 	createChildLogger: vi.fn(() => ({
 		info: vi.fn(),
 		debug: vi.fn(),
-		warn: vi.fn(),
+		warn: mocks.logWarn,
 		error: vi.fn(),
 		child: vi.fn()
 	}))
 }));
 vi.mock('$lib/logging', () => ({
-	logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn() },
+	logger: { info: vi.fn(), debug: vi.fn(), warn: mocks.logWarn, error: vi.fn(), child: vi.fn() },
 	createChildLogger: vi.fn(() => ({
 		info: vi.fn(),
 		debug: vi.fn(),
-		warn: vi.fn(),
+		warn: mocks.logWarn,
 		error: vi.fn(),
 		child: vi.fn()
 	}))

@@ -5,9 +5,28 @@ const GROUP_BY_COLLECTION_KEY = 'library-group-by-collection';
 
 export type ViewMode = 'grid' | 'list';
 
+// Storage access throws in browsers that block site data (e.g. Firefox ETP /
+// blocked cookies) — the store is instantiated at module scope, so every read
+// and write must fail soft to defaults instead of crashing import time.
+function readSession(key: string): string | null {
+	try {
+		return sessionStorage.getItem(key);
+	} catch {
+		return null;
+	}
+}
+
+function writeSession(key: string, value: string): void {
+	try {
+		sessionStorage.setItem(key, value);
+	} catch {
+		// storage unavailable — preference applies for this session only
+	}
+}
+
 function getInitialViewMode(): ViewMode {
 	if (browser) {
-		const stored = sessionStorage.getItem(VIEW_MODE_KEY) as ViewMode | null;
+		const stored = readSession(VIEW_MODE_KEY) as ViewMode | null;
 		if (stored === 'grid' || stored === 'list') {
 			return stored;
 		}
@@ -17,7 +36,7 @@ function getInitialViewMode(): ViewMode {
 
 function getInitialGroupByCollection(): boolean {
 	if (browser) {
-		return sessionStorage.getItem(GROUP_BY_COLLECTION_KEY) === 'true';
+		return readSession(GROUP_BY_COLLECTION_KEY) === 'true';
 	}
 	return false;
 }
@@ -31,7 +50,7 @@ class ViewPreferencesStore {
 	setViewMode(mode: ViewMode) {
 		this.viewMode = mode;
 		if (browser) {
-			sessionStorage.setItem(VIEW_MODE_KEY, mode);
+			writeSession(VIEW_MODE_KEY, mode);
 		}
 	}
 
@@ -42,7 +61,7 @@ class ViewPreferencesStore {
 	setGroupByCollection(grouped: boolean) {
 		this.groupByCollection = grouped;
 		if (browser) {
-			sessionStorage.setItem(GROUP_BY_COLLECTION_KEY, String(grouped));
+			writeSession(GROUP_BY_COLLECTION_KEY, String(grouped));
 		}
 	}
 

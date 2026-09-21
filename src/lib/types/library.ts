@@ -3,6 +3,7 @@
  */
 
 import { pickBestMovieFile } from '$lib/shared/best-file.js';
+import { displayTitle as sharedDisplayTitle } from '$lib/shared/title-display.js';
 
 /** Desired quality tiers selectable for multi-quality mode. */
 export type DesiredQuality = '2160p' | '1080p' | '720p' | '480p';
@@ -97,6 +98,8 @@ export interface LibraryMovie {
 	monitored: boolean | null;
 	minimumAvailability: string | null;
 	wantsSubtitles: boolean | null;
+	/** Subtitle language profile override; null = inherit (library/instance default). */
+	languageProfileId?: string | null;
 	tmdbStatus?: string | null;
 	releaseDate?: string | null;
 	downloadReleaseDate?: string | null;
@@ -106,8 +109,16 @@ export interface LibraryMovie {
 	availabilityDelay?: number;
 	added: string;
 	hasFile: boolean | null;
+	/** Probed audio languages contradict the effective audio preference
+	 * (import verifier; marks the item upgrade-eligible for language). */
+	languageShortfall?: boolean | null;
 	tmdbCollectionId?: number | null;
 	collectionName?: string | null;
+	/** Per-item metadata language override mode ('inherit' | 'original' | 'explicit') */
+	metadataLanguageMode?: 'inherit' | 'original' | 'explicit' | null;
+	/** Explicit TMDB locale when metadataLanguageMode is 'explicit' */
+	metadataLanguageValue?: string | null;
+	/** @deprecated Legacy single-string view derived from the pair (kept one release) */
 	metadataLanguage?: string | null;
 	preferOriginalTitle?: boolean | null;
 	files: MovieFile[];
@@ -138,11 +149,21 @@ export interface LibrarySeries {
 	partiallyMonitored?: boolean;
 	seasonFolder: boolean | null;
 	wantsSubtitles: boolean | null;
+	/** Subtitle language profile override; null = inherit (library/instance default). */
+	languageProfileId?: string | null;
+	/** Probed audio languages contradict the effective audio preference
+	 * (import verifier; marks the item upgrade-eligible for language). */
+	languageShortfall?: boolean | null;
 	added: string;
 	episodeCount: number | null;
 	episodeFileCount: number | null;
 	percentComplete: number;
 	totalSize?: number;
+	/** Per-item metadata language override mode ('inherit' | 'original' | 'explicit') */
+	metadataLanguageMode?: 'inherit' | 'original' | 'explicit' | null;
+	/** Explicit TMDB locale when metadataLanguageMode is 'explicit' */
+	metadataLanguageValue?: string | null;
+	/** @deprecated Legacy single-string view derived from the pair (kept one release) */
 	metadataLanguage?: string | null;
 	preferOriginalTitle?: boolean | null;
 }
@@ -210,11 +231,16 @@ export interface QualityProfileSummary {
 	maxResolution?: string | null;
 }
 
-export function displayTitle(item: {
-	title: string;
-	originalTitle?: string | null;
-	preferOriginalTitle?: boolean | null;
-}): string {
-	if (item.preferOriginalTitle && item.originalTitle) return item.originalTitle;
-	return item.title;
+export function displayTitle(
+	item: {
+		title: string;
+		originalTitle?: string | null;
+		preferOriginalTitle?: boolean | null;
+	},
+	instanceDefault?: boolean | null
+): string {
+	// Delegates to the shared resolver: per-item flag wins, the instance
+	// default (language_settings.prefer_original_title) only fills the unset
+	// case, so existing per-item behavior is unchanged.
+	return sharedDisplayTitle(item, instanceDefault);
 }

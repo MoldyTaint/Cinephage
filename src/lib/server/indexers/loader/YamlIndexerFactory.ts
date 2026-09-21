@@ -192,7 +192,7 @@ export class YamlIndexerFactory implements IIndexerFactory {
 	 */
 	getDefinitionMetadata(
 		definitionId: string
-	): { name: string; type: string; language: string; description?: string } | null {
+	): { name: string; type: string; language?: string; description?: string } | null {
 		const definition = this.definitionLoader.getDefinition(definitionId);
 		if (!definition) return null;
 
@@ -211,7 +211,7 @@ export class YamlIndexerFactory implements IIndexerFactory {
 		id: string;
 		name: string;
 		type: string;
-		language: string;
+		language?: string;
 		description?: string;
 	}> {
 		return this.definitionLoader.getAllDefinitions().map((def) => ({

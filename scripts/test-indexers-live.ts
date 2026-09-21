@@ -118,6 +118,74 @@ const TEST_MEDIA = {
 			episode: 1,
 			description: 'Popular anime for testing anime indexers'
 		}
+	],
+	// 2026-09-15 audio-language recon: theatrical → CAM window → digital → catalog
+	reconMovies: [
+		{
+			title: 'Toy Story 5',
+			year: 2026,
+			imdbId: 'tt29355505',
+			description: 'Theatrical Jun 2026 — CAM/TS window'
+		},
+		{
+			title: 'The Odyssey',
+			year: 2026,
+			imdbId: 'tt33764258',
+			description: 'Theatrical Jul 2026 — CAM/TS window, hardest case'
+		},
+		{
+			title: 'Mercy',
+			year: 2026,
+			imdbId: 'tt31050594',
+			description: 'Digital window (Amazon/MGM)'
+		},
+		{
+			title: 'Avatar: Fire and Ash',
+			year: 2025,
+			imdbId: 'tt1757678',
+			description: 'Digital + BluRay window (Disney)'
+		},
+		{
+			title: 'Zootopia 2',
+			year: 2025,
+			imdbId: 'tt26443597',
+			description: 'Digital + BluRay window (Disney)'
+		},
+		{
+			title: 'Superman',
+			year: 2025,
+			imdbId: 'tt5950044',
+			description: 'Mature BluRay catalog'
+		}
+	],
+	reconTvShows: [
+		{
+			title: 'Stranger Things',
+			year: 2016,
+			imdbId: 'tt4574334',
+			tvdbId: 305288,
+			season: 5,
+			episode: 1,
+			description: 'Fresh WEB-DL season (Netflix)'
+		},
+		{
+			title: 'Wednesday',
+			year: 2022,
+			imdbId: 'tt13443470',
+			season: 2,
+			episode: 1,
+			description: 'Recent season (Netflix)'
+		},
+		{
+			title: 'Attack on Titan',
+			year: 2013,
+			tmdbId: 1429,
+			anidbId: 9541,
+			malId: 16498,
+			season: 1,
+			episode: 1,
+			description: 'Anime — dual-audio conventions differ'
+		}
 	]
 };
 
@@ -164,6 +232,8 @@ interface TestOptions {
 	protocol?: 'torrent' | 'usenet' | 'streaming';
 	type?: 'public' | 'semi-private' | 'private';
 	mass: boolean;
+	recon: boolean;
+	dump: boolean;
 	verbose: boolean;
 	skipPrivate: boolean;
 	timeout: number;
@@ -173,6 +243,8 @@ function parseArgs(): TestOptions {
 	const args = process.argv.slice(2);
 	const options: TestOptions = {
 		mass: false,
+		recon: false,
+		dump: false,
 		verbose: false,
 		skipPrivate: false,
 		timeout: 30000
@@ -196,6 +268,14 @@ function parseArgs(): TestOptions {
 			case '--mass':
 			case '-m':
 				options.mass = true;
+				break;
+			case '--recon':
+			case '-r':
+				options.recon = true;
+				break;
+			case '--dump':
+			case '-d':
+				options.dump = true;
 				break;
 			case '--verbose':
 			case '-v':
@@ -229,6 +309,9 @@ ${c.cyan}Options:${c.reset}
   -p, --protocol <type>  Filter by protocol (torrent, usenet, streaming)
   -t, --type <access>    Filter by access type (public, semi-private, private)
   -m, --mass             Run mass search tests only
+  -r, --recon            Audio-language recon: search recon titles across all enabled
+                           indexers, dump per-release language evidence
+  -d, --dump             Print full release lists (titles + parsed languages)
   -v, --verbose          Show detailed output
   --skip-private         Skip private indexers (no auth)
   --timeout <ms>         Request timeout in milliseconds (default: 30000)
@@ -261,52 +344,57 @@ async function main(): Promise<void> {
 	);
 
 	// Dynamically import after parsing args to avoid import issues
+	const { getCaptchaSolver } = await import('../src/lib/server/captcha/index.js');
 	const { getIndexerManager } = await import('../src/lib/server/indexers/IndexerManager.js');
-	const { getAllNativeIndexerDefinitions, getNativeIndexerDefinition, isNativeIndexer } =
-		await import('../src/lib/server/indexers/definitions/registry.js');
 	const { getSearchOrchestrator } =
 		await import('../src/lib/server/indexers/search/SearchOrchestrator.js');
-	const { YamlDefinitionLoader } = await import('../src/lib/server/indexers/loader/index.js');
+	const { getYamlDefinitionLoader } = await import('../src/lib/server/indexers/loader/index.js');
+	const { extractLanguages } =
+		await import('../src/lib/server/indexers/parser/patterns/language.js');
+
+	// Start the Camoufox-backed captcha solver the way the app's service
+	// initializer does — without it, Cloudflare-protected indexers (RuTracker)
+	// fail with "Unable to reach indexer server" and the recon under-reports.
+	const solver = getCaptchaSolver();
+	solver.start();
+	for (let i = 0; i < 30 && solver.status !== 'ready'; i++) {
+		await new Promise((r) => setTimeout(r, 1000));
+	}
+	console.log(
+		`${solver.isAvailable() ? `${c.green}✓${c.reset}` : `${c.yellow}⚠${c.reset}`} Captcha solver: ${solver.status}${c.reset}`
+	);
 
 	// Initialize the indexer manager
 	console.log(`${c.dim}Initializing IndexerManager...${c.reset}`);
 	const manager = await getIndexerManager();
 	await manager.initialize();
 
-	// Get available definitions
-	const nativeDefinitions = getAllNativeIndexerDefinitions();
-	const yamlLoader = new YamlDefinitionLoader();
+	// YAML definitions are the single definition source (native registry was removed)
+	const yamlLoader = await getYamlDefinitionLoader();
 	await yamlLoader.loadAll();
 	const yamlDefinitions = yamlLoader.getAll();
 
-	console.log(
-		`${c.green}✓${c.reset} Loaded ${c.bold}${nativeDefinitions.length}${c.reset} native indexers`
-	);
+	// Get configured indexers from database
+	const configuredIndexers = await manager.getIndexers();
 	console.log(
 		`${c.green}✓${c.reset} Loaded ${c.bold}${yamlDefinitions.length}${c.reset} YAML definitions`
 	);
-
-	// Get configured indexers from database
-	const configuredIndexers = await manager.getIndexers();
 	console.log(
 		`${c.green}✓${c.reset} Found ${c.bold}${configuredIndexers.length}${c.reset} configured indexers\n`
 	);
 
 	// Display summary
-	displayIndexerSummary(nativeDefinitions, yamlDefinitions, configuredIndexers);
+	displayIndexerSummary([], yamlDefinitions, configuredIndexers);
 
-	if (options.mass) {
+	if (options.recon) {
+		// Audio-language recon across all enabled indexers
+		await runReconTests(manager, getSearchOrchestrator, options, extractLanguages);
+	} else if (options.mass) {
 		// Mass search only mode
 		await runMassSearchTests(manager, getSearchOrchestrator, options);
 	} else {
-		// Individual indexer tests
-		const results = await runIndividualTests(
-			manager,
-			nativeDefinitions,
-			yamlDefinitions,
-			configuredIndexers,
-			options
-		);
+		// Individual indexer tests against live instances
+		const results = await runIndividualTests(manager, options);
 
 		// Display summary
 		displayTestSummary(results);
@@ -326,7 +414,7 @@ async function main(): Promise<void> {
 // =============================================================================
 
 function displayIndexerSummary(
-	nativeDefinitions: any[],
+	_nativeDefinitions: any[],
 	yamlDefinitions: any[],
 	configuredIndexers: any[]
 ): void {
@@ -338,27 +426,32 @@ function displayIndexerSummary(
 		`${c.bold}${c.white}═══════════════════════════════════════════════════════════════${c.reset}\n`
 	);
 
-	// Group by protocol
 	const protocols = { torrent: 0, usenet: 0, streaming: 0 };
 	const types = { public: 0, 'semi-private': 0, private: 0 };
 
-	for (const def of nativeDefinitions) {
-		protocols[def.protocol as keyof typeof protocols]++;
-		types[def.type as keyof typeof types]++;
+	for (const def of yamlDefinitions) {
+		if (def.protocol in protocols) protocols[def.protocol as keyof typeof protocols]++;
+		if (def.type in types) types[def.type as keyof typeof types]++;
 	}
 
-	console.log(`${c.cyan}Native Indexers by Protocol:${c.reset}`);
+	console.log(`${c.cyan}YAML Definitions by Protocol:${c.reset}`);
 	console.log(`  ${c.magenta}Torrent:${c.reset}   ${protocols.torrent}`);
 	console.log(`  ${c.magenta}Usenet:${c.reset}    ${protocols.usenet}`);
 	console.log(`  ${c.magenta}Streaming:${c.reset} ${protocols.streaming}`);
 
-	console.log(`\n${c.cyan}Native Indexers by Access Type:${c.reset}`);
+	console.log(`\n${c.cyan}YAML Definitions by Access Type:${c.reset}`);
 	console.log(`  ${c.green}Public:${c.reset}       ${types.public}`);
 	console.log(`  ${c.yellow}Semi-Private:${c.reset} ${types['semi-private']}`);
 	console.log(`  ${c.red}Private:${c.reset}      ${types.private}`);
 
 	console.log(`\n${c.cyan}YAML Definitions:${c.reset} ${yamlDefinitions.length}`);
-	console.log(`${c.cyan}Configured in DB:${c.reset} ${configuredIndexers.length}\n`);
+	console.log(`${c.cyan}Configured in DB:${c.reset} ${configuredIndexers.length}`);
+	for (const cfg of configuredIndexers) {
+		console.log(
+			`  ${c.dim}${cfg.enabled === false ? '○' : '●'} ${cfg.name} (${cfg.definitionId})${c.reset}`
+		);
+	}
+	console.log('');
 }
 
 function displayTestSummary(results: TestResult[]): void {
@@ -409,133 +502,51 @@ function displayTestSummary(results: TestResult[]): void {
 // Individual Indexer Tests
 // =============================================================================
 
-async function runIndividualTests(
-	manager: any,
-	nativeDefinitions: any[],
-	yamlDefinitions: any[],
-	configuredIndexers: any[],
-	options: TestOptions
-): Promise<TestResult[]> {
+async function runIndividualTests(manager: any, options: TestOptions): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 
-	// Filter definitions based on options
-	let defsToTest = [...nativeDefinitions];
+	// Live instances straight from the manager (enabled set = real search surface)
+	let instances = await manager.getEnabledIndexers();
 
 	if (options.indexer) {
-		defsToTest = defsToTest.filter(
-			(d) => d.id.toLowerCase() === options.indexer || d.name.toLowerCase() === options.indexer
+		instances = instances.filter(
+			(i: any) =>
+				i.id.toLowerCase().includes(options.indexer!) ||
+				i.name.toLowerCase().includes(options.indexer!) ||
+				i.definitionId.toLowerCase().includes(options.indexer!)
 		);
 	}
-
 	if (options.protocol) {
-		defsToTest = defsToTest.filter((d) => d.protocol === options.protocol);
+		instances = instances.filter((i: any) => i.protocol === options.protocol);
 	}
-
 	if (options.type) {
-		defsToTest = defsToTest.filter((d) => d.type === options.type);
+		instances = instances.filter((i: any) => i.accessType === options.type);
 	}
-
 	if (options.skipPrivate) {
-		defsToTest = defsToTest.filter((d) => d.type === 'public');
+		instances = instances.filter((i: any) => i.accessType === 'public');
 	}
 
-	// Filter out internal indexers (like cinephage-stream)
-	defsToTest = defsToTest.filter((d) => !d.internal);
+	console.log(
+		`${c.bold}${c.yellow}Testing ${instances.length} Live Indexer Instances...${c.reset}\n`
+	);
 
-	console.log(`${c.bold}${c.yellow}Testing ${defsToTest.length} Native Indexers...${c.reset}\n`);
-
-	for (const def of defsToTest) {
-		const result = await testIndexerDefinition(manager, def, configuredIndexers, options);
+	for (const indexer of instances) {
+		const result = await testIndexerInstance(indexer, options);
 		results.push(result);
-	}
-
-	// Also test YAML definitions if not filtering by specific indexer
-	if (!options.indexer && !options.protocol?.startsWith('usenet')) {
-		let yamlToTest = yamlDefinitions;
-
-		if (options.type) {
-			yamlToTest = yamlToTest.filter((d) => d.type === options.type);
-		}
-
-		console.log(
-			`\n${c.bold}${c.yellow}Testing ${yamlToTest.length} YAML Definitions...${c.reset}\n`
-		);
-
-		for (const def of yamlToTest) {
-			const result = await testYamlDefinition(manager, def, configuredIndexers, options);
-			results.push(result);
-		}
 	}
 
 	return results;
 }
 
-async function testIndexerDefinition(
-	manager: any,
-	definition: any,
-	configuredIndexers: any[],
-	options: TestOptions
-): Promise<TestResult> {
+async function testIndexerInstance(indexer: any, options: TestOptions): Promise<TestResult> {
 	const startTime = performance.now();
 	const tests: TestResult['tests'] = [];
 
 	console.log(
-		`\n${c.cyan}Testing ${c.bold}${definition.name}${c.reset}${c.cyan} (${definition.protocol}/${definition.type})${c.reset}`
+		`\n${c.cyan}Testing ${c.bold}${indexer.name}${c.reset}${c.cyan} (${indexer.protocol}/${indexer.accessType}) [${indexer.definitionId}]${c.reset}`
 	);
 
-	// Create a temporary indexer instance for testing
-	let indexer: any = null;
-
 	try {
-		// Check if there's a configured indexer for this definition
-		const configuredIndexer = configuredIndexers.find(
-			(cfg: any) => cfg.definitionId === definition.id || cfg.implementation === definition.id
-		);
-
-		if (configuredIndexer) {
-			// Get instance from manager
-			indexer = await manager.getIndexerInstance(configuredIndexer.id);
-			console.log(`  ${c.dim}Using configured instance${c.reset}`);
-		}
-
-		if (!indexer && definition.type === 'public') {
-			// For public indexers, create a temporary instance
-			indexer = definition.factory({
-				config: {
-					id: `test-${definition.id}`,
-					name: definition.name,
-					definitionId: definition.id,
-					baseUrl: definition.siteUrl,
-					protocol: definition.protocol,
-					enabled: true,
-					priority: 25,
-					enableAutomaticSearch: true,
-					enableInteractiveSearch: true
-				}
-			});
-			console.log(`  ${c.dim}Created temporary instance${c.reset}`);
-		}
-
-		if (!indexer) {
-			console.log(`  ${c.yellow}⚠ Skipped - private indexer not configured${c.reset}`);
-			return {
-				indexerId: definition.id,
-				indexerName: definition.name,
-				protocol: definition.protocol,
-				accessType: definition.type,
-				tests: [
-					{
-						name: 'Configuration',
-						passed: false,
-						duration: 0,
-						error: 'Private indexer not configured - add credentials in settings'
-					}
-				],
-				overallPassed: false,
-				totalDuration: performance.now() - startTime
-			};
-		}
-
 		// Test 1: Capabilities Check
 		const capTest = await testCapabilities(indexer, options);
 		tests.push(capTest);
@@ -566,7 +577,7 @@ async function testIndexerDefinition(
 		logTestResult(catTest, options.verbose);
 	} catch (error) {
 		tests.push({
-			name: 'Indexer Setup',
+			name: 'Indexer Test',
 			passed: false,
 			duration: performance.now() - startTime,
 			error: error instanceof Error ? error.message : String(error)
@@ -577,118 +588,13 @@ async function testIndexerDefinition(
 	const totalDuration = performance.now() - startTime;
 
 	return {
-		indexerId: definition.id,
-		indexerName: definition.name,
-		protocol: definition.protocol,
-		accessType: definition.type,
+		indexerId: indexer.id,
+		indexerName: indexer.name,
+		protocol: indexer.protocol,
+		accessType: indexer.accessType,
 		tests,
 		overallPassed,
 		totalDuration
-	};
-}
-
-async function testYamlDefinition(
-	manager: any,
-	definition: any,
-	configuredIndexers: any[],
-	options: TestOptions
-): Promise<TestResult> {
-	const startTime = performance.now();
-	const tests: TestResult['tests'] = [];
-
-	console.log(
-		`\n${c.cyan}Testing ${c.bold}${definition.name}${c.reset}${c.cyan} (YAML/${definition.type})${c.reset}`
-	);
-
-	try {
-		// Check if there's a configured indexer for this definition
-		const configuredIndexer = configuredIndexers.find(
-			(cfg: any) => cfg.definitionId === definition.id || cfg.implementation === definition.id
-		);
-
-		if (!configuredIndexer && definition.type !== 'public') {
-			console.log(`  ${c.yellow}⚠ Skipped - not configured${c.reset}`);
-			return {
-				indexerId: definition.id,
-				indexerName: definition.name,
-				protocol: 'torrent',
-				accessType: definition.type,
-				tests: [
-					{
-						name: 'Configuration',
-						passed: false,
-						duration: 0,
-						error: 'Indexer not configured - add in settings'
-					}
-				],
-				overallPassed: false,
-				totalDuration: performance.now() - startTime
-			};
-		}
-
-		// For configured YAML indexers, get the instance
-		let indexer: any = null;
-		if (configuredIndexer) {
-			indexer = await manager.getIndexerInstance(configuredIndexer.id);
-			console.log(`  ${c.dim}Using configured YAML instance${c.reset}`);
-		}
-
-		// For public YAML indexers without config, we can't easily test them
-		// because YAML indexers need to go through the factory
-		if (!indexer && definition.type === 'public') {
-			console.log(
-				`  ${c.yellow}⚠ Skipped - public YAML not configured (add via UI to test)${c.reset}`
-			);
-			return {
-				indexerId: definition.id,
-				indexerName: definition.name,
-				protocol: 'torrent',
-				accessType: definition.type,
-				tests: [
-					{
-						name: 'Configuration',
-						passed: true,
-						duration: 0,
-						details: 'Public YAML indexer - add via settings UI to enable live testing'
-					}
-				],
-				overallPassed: true,
-				totalDuration: performance.now() - startTime
-			};
-		}
-
-		if (!indexer) {
-			throw new Error('Could not create indexer instance');
-		}
-
-		// Run basic connectivity test
-		const connectTest = await testYamlConnectivity(indexer, definition, options);
-		tests.push(connectTest);
-		logTestResult(connectTest, options.verbose);
-
-		// Basic search test
-		const searchTest = await testBasicSearch(indexer, options);
-		tests.push(searchTest);
-		logTestResult(searchTest, options.verbose);
-	} catch (error) {
-		tests.push({
-			name: 'YAML Setup',
-			passed: false,
-			duration: performance.now() - startTime,
-			error: error instanceof Error ? error.message : String(error)
-		});
-	}
-
-	const overallPassed = tests.length > 0 && tests.every((t) => t.passed);
-
-	return {
-		indexerId: definition.id,
-		indexerName: definition.name,
-		protocol: 'torrent',
-		accessType: definition.type,
-		tests,
-		overallPassed,
-		totalDuration: performance.now() - startTime
 	};
 }
 
@@ -996,71 +902,130 @@ async function testCategoryFiltering(
 	}
 }
 
-async function testYamlConnectivity(
-	indexer: any,
-	definition: any,
-	options: TestOptions
-): Promise<TestResult['tests'][0]> {
-	const start = performance.now();
-	const testName = 'YAML Connectivity';
+// =============================================================================
+// Audio-Language Recon Tests
+// =============================================================================
 
-	try {
-		// Try to test the indexer connection
-		if (typeof indexer.test === 'function') {
-			await Promise.race([
-				indexer.test(),
-				new Promise<never>((_, reject) =>
-					setTimeout(() => reject(new Error('Timeout')), options.timeout)
-				)
-			]);
-			return {
-				name: testName,
-				passed: true,
-				duration: performance.now() - start,
-				details: 'Connection test passed'
-			};
-		}
+/**
+ * Audio-language recon: search the recon titles across all enabled indexers
+ * through the real SearchOrchestrator path (same code monitoring/manual search
+ * uses), then dump per-release language evidence from title parsing.
+ */
+async function runReconTests(
+	manager: any,
+	getSearchOrchestrator: any,
+	options: TestOptions,
+	extractLanguagesFn: (title: string) => { languages: string[] }
+): Promise<void> {
+	const orchestrator = getSearchOrchestrator();
+	const all: any[] = await manager.getEnabledIndexers();
+	const indexers = all.filter((i: any) => i.protocol !== 'streaming');
+	const excluded = all.length - indexers.length;
 
-		// Fallback: try a simple search
-		const criteria = {
-			searchType: 'basic' as const,
-			query: 'test',
-			categories: []
-		};
+	console.log(
+		`${c.dim}Recon across ${indexers.length} indexers` +
+			`${excluded ? ` (${excluded} streaming excluded)` : ''}: ` +
+			`${indexers.map((i: any) => i.name).join(', ')}${c.reset}\n`
+	);
 
-		await Promise.race([
-			indexer.search(criteria),
-			new Promise<never>((_, reject) =>
-				setTimeout(() => reject(new Error('Timeout')), options.timeout)
-			)
-		]);
-
-		return {
-			name: testName,
-			passed: true,
-			duration: performance.now() - start,
-			details: 'Basic connectivity verified'
-		};
-	} catch (error) {
-		const errMsg = error instanceof Error ? error.message : String(error);
-
-		// Check for Cloudflare
-		if (errMsg.includes('Cloudflare') || errMsg.includes('403')) {
-			return {
-				name: testName,
-				passed: false,
-				duration: performance.now() - start,
-				error: 'Cloudflare protected - requires FlareSolverr'
-			};
-		}
-
-		return {
-			name: testName,
-			passed: false,
-			duration: performance.now() - start,
-			error: errMsg
-		};
+	const targets: Array<{ label: string; criteria: any }> = [];
+	for (const m of TEST_MEDIA.reconMovies) {
+		targets.push({
+			label: `${m.title} (${m.year}) — ${m.description}`,
+			criteria: { searchType: 'movie', query: m.title, year: m.year, imdbId: m.imdbId }
+		});
 	}
+	for (const s of TEST_MEDIA.reconTvShows) {
+		targets.push({
+			label: `${s.title} S${s.season}E${s.episode} — ${s.description}`,
+			criteria: {
+				searchType: 'tv',
+				query: s.title,
+				season: s.season,
+				episode: s.episode,
+				imdbId: s.imdbId,
+				tvdbId: s.tvdbId
+			}
+		});
+	}
+
+	const out: string[] = [];
+	const summary: string[] = [];
+
+	for (const t of targets) {
+		console.log(`\n${c.bold}${c.cyan}═══ ${t.label} ═══${c.reset}`);
+		out.push(`\n===== ${t.label} =====`);
+
+		let result: any;
+		try {
+			result = await orchestrator.search(indexers, t.criteria, {
+				timeout: options.timeout,
+				useCache: false,
+				searchSource: 'interactive'
+			});
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			console.log(`  ${c.red}✗ search failed: ${msg}${c.reset}`);
+			out.push(`  SEARCH FAILED: ${msg}`);
+			continue;
+		}
+
+		const releases: any[] = result?.releases ?? [];
+		console.log(
+			`  Total raw: ${result.totalResults ?? '?'} | after filters: ${releases.length} | ` +
+				`rejected: ${result.rejectedCount ?? 0} | ${Math.round(result.searchTimeMs ?? 0)}ms`
+		);
+
+		out.push('  -- per indexer --');
+		for (const ir of result.indexerResults ?? []) {
+			const line =
+				`    ${ir.indexerName}: ${ir.results?.length ?? 0} results` +
+				`${ir.error ? ` — ERROR: ${ir.error}` : ''}`;
+			out.push(line);
+			if (options.verbose || ir.error)
+				console.log(`  ${ir.error ? c.red : c.dim}${line.trim()}${c.reset}`);
+		}
+
+		out.push('  -- releases with language evidence --');
+		let esCount = 0;
+		let anyLangCount = 0;
+		for (const r of releases) {
+			const langs: string[] = r.parsed?.languages?.length
+				? r.parsed.languages
+				: extractLanguagesFn(r.title).languages;
+			const seeders = r.torrent?.seeders ?? r.seeders ?? -1;
+			const sizeGb = (r.size / 1e9).toFixed(2);
+			const src = r.sourceIndexers?.join(',') ?? r.indexerName;
+			if (langs.length > 0) {
+				anyLangCount++;
+				if (langs.includes('es')) esCount++;
+				out.push(
+					`    [${langs.join('+')}] ${r.title} | ${sizeGb}GB | seeders=${seeders} | src=${src}`
+				);
+				if (options.dump || langs.includes('es') || langs.includes('multi')) {
+					console.log(
+						`  ${langs.includes('es') ? c.green : c.dim}[${langs.join('+')}]${c.reset} ` +
+							`${r.title} ${c.dim}(${sizeGb}GB, ${seeders} seeds)${c.reset}`
+					);
+				}
+			} else if (options.dump) {
+				out.push(`    [untagged] ${r.title} | ${sizeGb}GB | seeders=${seeders} | src=${src}`);
+			}
+		}
+
+		const line = `SUMMARY: ${releases.length} releases, ${anyLangCount} with language tags, ${esCount} with ES evidence`;
+		summary.push(`${t.label} → ${line}`);
+		console.log(`  ${c.bold}${line}${c.reset}`);
+	}
+
+	const fs = await import('fs');
+	fs.writeFileSync(
+		'/tmp/indexer-recon-dump.txt',
+		out.join('\n') + '\n\n===== GRAND SUMMARY =====\n' + summary.join('\n') + '\n'
+	);
+	console.log(`\n${c.bold}${c.green}Full dump written to /tmp/indexer-recon-dump.txt${c.reset}`);
+	console.log(`\n${c.bold}GRAND SUMMARY${c.reset}`);
+	for (const s of summary) console.log(`  ${s}`);
 }
 
 // =============================================================================

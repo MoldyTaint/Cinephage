@@ -27,10 +27,11 @@
 
 	let { result, onDownload, downloading = false, downloaded = false, error }: Props = $props();
 
-	// Score color based on value
+	// Score color based on the normalized 0-100 scale. 70 is the shared
+	// DEFAULT_MINIMUM_SCORE: below it a result would not be auto-downloaded.
 	const scoreColor = $derived.by(() => {
 		if (result.matchScore >= 80) return 'text-success';
-		if (result.matchScore >= 60) return 'text-warning';
+		if (result.matchScore >= 70) return 'text-warning';
 		return 'text-error';
 	});
 </script>

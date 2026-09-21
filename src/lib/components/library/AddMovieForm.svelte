@@ -1,5 +1,6 @@
 <script lang="ts">
 	import CommonOptions from './add/CommonOptions.svelte';
+	import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
 	import MovieAddOptions, { type MinimumAvailability } from './add/MovieAddOptions.svelte';
 	import type { RootFolderWithSpaceAndDefault as RootFolder } from '$lib/types/downloadClient.js';
 	import type { DesiredQuality } from '$lib/types/library.js';
@@ -28,6 +29,12 @@
 		parts: CollectionPart[];
 	}
 
+	/** The subtitle profile a new item will inherit, plus the level it came from. */
+	interface EffectiveSubtitleProfileInfo {
+		profile: { id: string; name: string };
+		source: 'movie' | 'series' | 'library' | 'default';
+	}
+
 	interface Props {
 		title: string;
 		year?: number;
@@ -39,6 +46,16 @@
 		selectedScoringProfile: string;
 		searchOnAdd: boolean;
 		wantsSubtitles: boolean;
+		/** Resolved subtitle profile for a NEW item; undefined while loading, null when unset. */
+		effectiveSubtitleProfile?: EffectiveSubtitleProfileInfo | null;
+		/** Language profiles for the add-time picker. */
+		languageProfiles?: Array<{ id: string; name: string }>;
+		/** Effective requirements seeding the customize editor. */
+		effectiveSubtitleRequirements?: SubtitleRequirement[] | null;
+		/** Add-time language profile override ('' = inherit). */
+		selectedLanguageProfile?: string;
+		/** Add-time per-item subtitle requirement override (null = inherit). */
+		subtitleRequirementsOverride?: SubtitleRequirement[] | null;
 		minimumAvailability: MinimumAvailability;
 		availabilityDelay: number;
 		monitored: boolean;
@@ -64,6 +81,11 @@
 		selectedScoringProfile = $bindable(),
 		searchOnAdd = $bindable(),
 		wantsSubtitles = $bindable(),
+		effectiveSubtitleProfile,
+		languageProfiles = [],
+		effectiveSubtitleRequirements = null,
+		selectedLanguageProfile = $bindable(''),
+		subtitleRequirementsOverride = $bindable<SubtitleRequirement[] | null>(null),
 		minimumAvailability = $bindable(),
 		availabilityDelay = $bindable(),
 		monitored = $bindable(),
@@ -124,12 +146,17 @@
 		{rootFolders}
 		{scoringProfiles}
 		{requiredMediaSubType}
+		{effectiveSubtitleProfile}
+		{languageProfiles}
+		{effectiveSubtitleRequirements}
 		{onSearchOnAddInput}
 		{onWantsSubtitlesInput}
 		bind:selectedRootFolder
 		bind:selectedScoringProfile
 		bind:searchOnAdd
 		bind:wantsSubtitles
+		bind:selectedLanguageProfile
+		bind:subtitleRequirementsOverride
 	/>
 
 	<MovieAddOptions

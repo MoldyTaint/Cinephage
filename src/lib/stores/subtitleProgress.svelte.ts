@@ -7,15 +7,31 @@
 
 import type { SubtitleBatchAutoSearchRequest } from '$lib/validation/schemas.js';
 
+export type SubtitleProgressStatus =
+	| 'searching'
+	| 'downloaded'
+	| 'not_found'
+	| 'no_results'
+	| 'below_threshold'
+	| 'no_file'
+	| 'not_monitored'
+	| 'opted_out'
+	| 'no_profile'
+	| 'satisfied'
+	| 'error';
+
 export interface SubtitleProgressUpdate {
 	current: number;
 	total: number;
 	episodeId?: string;
 	movieId?: string;
 	title: string;
-	status: 'searching' | 'downloaded' | 'not_found' | 'error';
+	status: SubtitleProgressStatus;
+	reason?: string;
 	seasonNumber?: number;
 	episodeNumber?: number;
+	bestRejectedScore?: number;
+	bestRejectedReason?: string;
 	subtitle?: {
 		language: string;
 		matchScore: number;
@@ -28,7 +44,9 @@ export interface SubtitleBatchResults {
 	total: number;
 	downloaded: number;
 	notFound: number;
+	skipped?: number;
 	errors: number;
+	reasons?: Record<string, number>;
 	error?: string;
 }
 
@@ -37,7 +55,7 @@ export interface SubtitleBatchState {
 	current: number;
 	total: number;
 	currentTitle: string;
-	currentStatus: SubtitleProgressUpdate['status'];
+	currentStatus: SubtitleProgressStatus;
 }
 
 export function createSubtitleProgress() {

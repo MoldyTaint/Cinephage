@@ -109,6 +109,7 @@
 		onSubtitleSearch?: (episode: Episode) => void;
 		onSubtitleAutoSearch?: (episode: Episode) => void;
 		onSubtitleSync?: (subtitleId: string) => void;
+		onSubtitleGateChange?: (episodeId: string, value: boolean | null) => void;
 		onSubtitleDelete?: (subtitleId: string) => void;
 		onSeasonDelete?: (season: Season) => void;
 		onEpisodeDelete?: (episode: Episode) => void;
@@ -145,6 +146,7 @@
 		onSubtitleSearch,
 		onSubtitleAutoSearch,
 		onSubtitleSync,
+		onSubtitleGateChange,
 		onSubtitleDelete,
 		onSeasonDelete,
 		onEpisodeDelete
@@ -467,6 +469,7 @@
 									{onSubtitleSearch}
 									{onSubtitleAutoSearch}
 									{onSubtitleSync}
+									{onSubtitleGateChange}
 									{onSubtitleDelete}
 									onDelete={onEpisodeDelete}
 								/>

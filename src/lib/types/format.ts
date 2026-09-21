@@ -117,7 +117,8 @@ export const CONDITION_TYPE_LABELS: Record<ConditionType, string> = {
 	hdr: 'HDR Format',
 	streaming_service: 'Streaming Service',
 	flag: 'Special Flag',
-	indexer: 'Indexer Name'
+	indexer: 'Indexer Name',
+	language: 'Audio Language'
 };
 
 /**
@@ -135,7 +136,9 @@ export const CONDITION_TYPE_DESCRIPTIONS: Record<ConditionType, string> = {
 	hdr: 'Match against the detected HDR format (Dolby Vision, HDR10+, etc.)',
 	streaming_service: 'Match against the detected streaming service (Netflix, Amazon, etc.)',
 	flag: 'Match against special release flags (Remux, Repack, Proper, 3D)',
-	indexer: 'Match against the indexer name that provided the release (YTS, etc.)'
+	indexer: 'Match against the indexer name that provided the release (YTS, etc.)',
+	language:
+		'Match against languages parsed from the release name, incl. the Multi and Original markers'
 };
 
 /**

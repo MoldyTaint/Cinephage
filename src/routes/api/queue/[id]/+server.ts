@@ -12,6 +12,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring';
 import { upsertQueueTombstoneFromQueueItem } from '$lib/server/downloadClients/monitoring/QueueTombstoneService';
+import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ module: 'QueueItemApi', logDomain: 'downloads' });
@@ -344,7 +345,9 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 		// Preserve the original failed attempt as a single history record when a user removes it.
 		await writeRemovedHistory(queueItem);
 
-		// Delete from queue
+		// Delete from queue. User-initiated removal: release the acquisition's
+		// slot reservations BEFORE the row vanishes (the lookup is by queue id).
+		acquisitionService.cancelByQueueId(id, 'removed from queue');
 		await db.delete(downloadQueue).where(eq(downloadQueue.id, id));
 
 		return json({ success: true, message: 'Queue item removed' });

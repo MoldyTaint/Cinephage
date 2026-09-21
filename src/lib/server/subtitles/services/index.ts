@@ -27,6 +27,12 @@ export {
 } from './LanguageProfileService';
 
 export {
+	LanguageSettingsService,
+	getLanguageSettingsService,
+	type LanguageSettingsData
+} from './LanguageSettingsService';
+
+export {
 	SubtitleSyncService,
 	getSubtitleSyncService,
 	type SyncOptions
@@ -40,9 +46,3 @@ export {
 } from './SubtitleImportService';
 
 export { SubtitleScannerService, getSubtitleScannerService } from './SubtitleScannerService';
-
-export {
-	SubtitleSettingsService,
-	getSubtitleSettingsService,
-	type SubtitleSettingsData
-} from './SubtitleSettingsService';

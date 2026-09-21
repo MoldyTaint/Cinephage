@@ -2,7 +2,7 @@
 	import { X, Loader2, Tv, Clock, Calendar } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import type { ChannelLineupItemWithDetails, EpgProgram } from '$lib/types/livetv';
-	import { getEpgChannel } from '$lib/api/livetv.js';
+	import { getEpgChannel, getStoredEpgDisplayLanguage } from '$lib/api/livetv.js';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 
@@ -43,13 +43,16 @@
 			// Use EPG source channel if set, otherwise use primary channel
 			const channelId = channel.epgSourceChannelId ?? channel.channelId;
 
-			// Request 24 hours of data
+			// Request 24 hours of data, with the persisted EPG display language
+			// (empty = server falls back to the instance metadata locale).
 			const now = new Date();
 			const end = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+			const displayLanguage = getStoredEpgDisplayLanguage();
 
 			const data = await getEpgChannel(channelId, {
 				start: now.toISOString(),
-				end: end.toISOString()
+				end: end.toISOString(),
+				...(displayLanguage ? { lang: displayLanguage } : {})
 			});
 			programs = data.programs || [];
 		} catch (e) {

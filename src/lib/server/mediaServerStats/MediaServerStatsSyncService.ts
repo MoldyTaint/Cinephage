@@ -195,6 +195,8 @@ class MediaServerStatsSyncService extends EventEmitter implements BackgroundServ
 					audioBitrate: item.audioBitrate,
 					audioLanguages: item.audioLanguages,
 					subtitleLanguages: item.subtitleLanguages,
+					audioLanguagesRaw: item.audioLanguagesRaw,
+					subtitleLanguagesRaw: item.subtitleLanguagesRaw,
 					containerFormat: item.containerFormat,
 					fileSize: item.fileSize,
 					bitrate: item.bitrate,

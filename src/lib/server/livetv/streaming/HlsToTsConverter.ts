@@ -51,6 +51,7 @@ import { createChildLogger } from '$lib/logging';
 import { getStreamUrlCache } from './StreamUrlCache.js';
 import { getLiveTvStreamService } from './LiveTvStreamService.js';
 import { resolveHlsUrl } from '$lib/server/streaming/utils/hls-rewrite.js';
+import { resolveAndValidateUrl } from '$lib/server/http/ssrf-protection';
 
 const logger = createChildLogger({ module: 'HlsToTsConverter' });
 
@@ -222,6 +223,12 @@ function selectBestVariant(variants: HlsVariant[]): string | null {
 export interface HlsToTsConverterOptions {
 	/** Lineup item ID for stream URL resolution */
 	lineupItemId: string;
+	/** Already-fetched playlist body from the request handler's HLS probe */
+	initialPlaylist?: {
+		body: ReadableStream<Uint8Array>;
+		finalUrl: string;
+		providerHeaders?: Record<string, string>;
+	};
 	/** Timeout for individual segment fetches (ms) */
 	segmentFetchTimeoutMs?: number;
 	/** Maximum consecutive errors before giving up */
@@ -236,6 +243,34 @@ const DEFAULT_MAX_CONSECUTIVE_ERRORS = 5;
 const PLAYLIST_REFRESH_RATIO = 0.5;
 // Minimum interval between playlist refreshes (ms)
 const MIN_PLAYLIST_REFRESH_MS = 2_000;
+const MAX_HLS_PLAYLIST_BYTES = 5 * 1024 * 1024;
+const MAX_HLS_REDIRECTS = 5;
+const MAX_HLS_SEGMENT_BYTES = 50 * 1024 * 1024;
+
+async function readBoundedText(response: Response, signal?: AbortSignal): Promise<string> {
+	if (!response.body) throw new Error('HLS response has no body');
+	const reader = response.body.getReader();
+	const decoder = new TextDecoder();
+	let bytesRead = 0;
+	let text = '';
+	const abort = () => void reader.cancel();
+	signal?.addEventListener('abort', abort, { once: true });
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) return text + decoder.decode();
+			bytesRead += value.byteLength;
+			if (bytesRead > MAX_HLS_PLAYLIST_BYTES) {
+				await reader.cancel();
+				throw new Error('HLS playlist exceeds the maximum allowed size');
+			}
+			text += decoder.decode(value, { stream: true });
+		}
+	} finally {
+		signal?.removeEventListener('abort', abort);
+		reader.releaseLock();
+	}
+}
 
 /**
  * Create a ReadableStream that converts an HLS live stream into continuous TS bytes.
@@ -253,13 +288,21 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 		lineupItemId,
 		segmentFetchTimeoutMs = DEFAULT_SEGMENT_FETCH_TIMEOUT_MS,
 		maxConsecutiveErrors = DEFAULT_MAX_CONSECUTIVE_ERRORS,
-		signal
+		signal,
+		initialPlaylist
 	} = options;
 
 	let lastDeliveredSequence = -1;
 	let consecutiveErrors = 0;
 	let cancelled = false;
 	let tsFallbackActive = false;
+	let pendingInitialPlaylist = initialPlaylist;
+	const conversionController = new AbortController();
+	const conversionSignal = conversionController.signal;
+	const abortConversion = () => {
+		cancelled = true;
+		conversionController.abort(signal?.reason);
+	};
 
 	async function pipeTsStream(
 		response: Response,
@@ -282,6 +325,11 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 			}
 		} finally {
 			try {
+				if (cancelled) await reader.cancel();
+			} catch {
+				// Upstream may already be closed.
+			}
+			try {
 				reader.releaseLock();
 			} catch {
 				// Reader may already be released
@@ -291,12 +339,17 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 
 	return new ReadableStream<Uint8Array>({
 		async start(controller) {
+			if (signal?.aborted) {
+				abortConversion();
+				controller.close();
+				return;
+			}
 			// Listen for abort signal
 			if (signal) {
 				signal.addEventListener(
 					'abort',
 					() => {
-						cancelled = true;
+						abortConversion();
 						try {
 							controller.close();
 						} catch {
@@ -332,7 +385,7 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 		},
 
 		cancel() {
-			cancelled = true;
+			abortConversion();
 			logger.debug({ lineupItemId }, '[HlsToTsConverter] Stream cancelled by consumer');
 		}
 	});
@@ -345,20 +398,37 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 
 		while (!cancelled) {
 			try {
-				// 1. Resolve a fresh stream URL (new play_token via createLink)
-				const resolved = await urlCache.getStream(lineupItemId, tsFallbackActive ? 'ts' : 'hls');
+				let response: Response;
+				let finalUrl: string;
+				let providerHeaders: Record<string, string> | undefined;
 
-				// 2. Invalidate cache immediately — the token will be consumed by the fetch
-				urlCache.invalidate(lineupItemId);
+				if (pendingInitialPlaylist) {
+					const initial = pendingInitialPlaylist;
+					pendingInitialPlaylist = undefined;
+					response = new Response(initial.body, { status: 200 });
+					finalUrl = initial.finalUrl;
+					providerHeaders = initial.providerHeaders;
+				} else {
+					// 1. Resolve a fresh stream URL (new play_token via createLink)
+					const resolved = await urlCache.getStream(lineupItemId, tsFallbackActive ? 'ts' : 'hls');
 
-				// 3. Fetch the HLS playlist (or TS stream in fallback mode)
-				const { response, finalUrl } = await streamService.fetchFromUrl(
-					resolved.url,
-					resolved.providerType,
-					resolved.providerHeaders
-				);
+					// 2. Invalidate cache immediately — the token will be consumed by the fetch
+					urlCache.invalidate(lineupItemId);
+
+					// 3. Fetch the HLS playlist (or TS stream in fallback mode)
+					const fetched = await streamService.fetchFromUrl(
+						resolved.url,
+						resolved.providerType,
+						resolved.providerHeaders,
+						conversionSignal
+					);
+					response = fetched.response;
+					finalUrl = fetched.finalUrl;
+					providerHeaders = resolved.providerHeaders;
+				}
 
 				if (!response.ok) {
+					await response.body?.cancel();
 					// If HLS mode is permanently rejected by the portal (4XX, not 404),
 					// switch to direct TS fallback on the first attempt
 					if (
@@ -393,7 +463,7 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 					continue;
 				}
 
-				let playlistText = await response.text();
+				let playlistText = await readBoundedText(response, conversionSignal);
 
 				if (!playlistText.includes('#EXTM3U')) {
 					throw new Error('Invalid HLS playlist (no #EXTM3U header)');
@@ -417,20 +487,22 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 					}
 
 					// Fetch the media playlist from the variant URL
-					const variantResponse = await fetch(bestVariantUrl, {
+					const variantResponse = await fetchHlsUrl(bestVariantUrl, {
 						headers: {
 							'User-Agent':
 								'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3',
 							Accept: '*/*',
-							...resolved.providerHeaders
-						}
+							...providerHeaders
+						},
+						signal: conversionSignal
 					});
 
 					if (!variantResponse.ok) {
+						await variantResponse.body?.cancel();
 						throw new Error(`Variant playlist fetch failed: ${variantResponse.status}`);
 					}
 
-					playlistText = await variantResponse.text();
+					playlistText = await readBoundedText(variantResponse, conversionSignal);
 					playlistUrl = bestVariantUrl;
 					logger.debug(
 						{
@@ -446,7 +518,7 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 
 				if (playlist.segments.length === 0) {
 					logger.warn({ lineupItemId }, '[HlsToTsConverter] Empty playlist');
-					await sleep(1000);
+					await sleep(1000, conversionSignal);
 					continue;
 				}
 
@@ -475,8 +547,9 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 					try {
 						const segmentData = await fetchSegment(
 							segment.url,
-							resolved.providerHeaders,
-							segmentFetchTimeoutMs
+							providerHeaders,
+							segmentFetchTimeoutMs,
+							conversionSignal
 						);
 
 						if (cancelled) break;
@@ -533,7 +606,7 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 					);
 				}
 
-				await sleep(refreshInterval);
+				await sleep(refreshInterval, conversionSignal);
 				consecutiveErrors = 0;
 			} catch (error) {
 				if (cancelled) break;
@@ -558,7 +631,7 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
 
 				// Exponential backoff: 1s, 2s, 4s, 8s, 16s
 				const backoff = Math.min(1000 * Math.pow(2, consecutiveErrors - 1), 16000);
-				await sleep(backoff);
+				await sleep(backoff, conversionSignal);
 			}
 		}
 
@@ -589,37 +662,127 @@ export function createHlsToTsStream(options: HlsToTsConverterOptions): ReadableS
  * that are independently accessible without auth headers after the initial
  * playlist redirect. The STB User-Agent is still sent for compatibility.
  */
-async function fetchSegment(
+export async function fetchSegment(
 	url: string,
 	providerHeaders?: Record<string, string>,
-	timeoutMs: number = DEFAULT_SEGMENT_FETCH_TIMEOUT_MS
+	timeoutMs: number = DEFAULT_SEGMENT_FETCH_TIMEOUT_MS,
+	externalSignal?: AbortSignal
 ): Promise<Uint8Array> {
+	throwIfAborted(externalSignal);
+	await validateHlsUrl(url);
+	throwIfAborted(externalSignal);
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), timeoutMs);
+	const abort = () => controller.abort();
+	externalSignal?.addEventListener('abort', abort, { once: true });
 
 	try {
-		const response = await fetch(url, {
-			headers: {
-				'User-Agent':
-					'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3',
-				Accept: '*/*',
-				...providerHeaders
+		const response = await fetchHlsUrl(
+			url,
+			{
+				headers: {
+					'User-Agent':
+						'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 4 rev: 2116 Mobile Safari/533.3',
+					Accept: '*/*',
+					...providerHeaders
+				}
 			},
-			signal: controller.signal
-		});
+			controller.signal
+		);
 
 		if (!response.ok) {
+			await response.body?.cancel();
 			throw new Error(`Segment HTTP ${response.status}`);
 		}
 
-		const buffer = await response.arrayBuffer();
-		return new Uint8Array(buffer);
+		const declaredLength = Number(response.headers.get('content-length'));
+		if (Number.isFinite(declaredLength) && declaredLength > MAX_HLS_SEGMENT_BYTES) {
+			await response.body?.cancel();
+			throw new Error('HLS segment exceeds the maximum allowed size');
+		}
+		if (!response.body) throw new Error('HLS segment has no body');
+
+		const reader = response.body.getReader();
+		const chunks: Uint8Array[] = [];
+		let bytesRead = 0;
+		try {
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				bytesRead += value.byteLength;
+				if (bytesRead > MAX_HLS_SEGMENT_BYTES) {
+					await reader.cancel();
+					throw new Error('HLS segment exceeds the maximum allowed size');
+				}
+				chunks.push(value);
+			}
+		} finally {
+			reader.releaseLock();
+		}
+		const result = new Uint8Array(bytesRead);
+		let offset = 0;
+		for (const chunk of chunks) {
+			result.set(chunk, offset);
+			offset += chunk.byteLength;
+		}
+		return result;
 	} finally {
 		clearTimeout(timeout);
+		externalSignal?.removeEventListener('abort', abort);
 	}
 }
 
+async function validateHlsUrl(url: string): Promise<void> {
+	const result = await resolveAndValidateUrl(url);
+	if (!result.safe) {
+		throw new Error(`HLS URL blocked: ${result.reason || 'unsafe URL'}`);
+	}
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+	if (signal?.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+}
+
+async function fetchHlsUrl(
+	url: string,
+	init: RequestInit,
+	signal?: AbortSignal
+): Promise<Response> {
+	let currentUrl = url;
+	const visitedUrls = new Set<string>();
+	for (let redirectCount = 0; redirectCount <= MAX_HLS_REDIRECTS; redirectCount++) {
+		if (visitedUrls.has(currentUrl)) throw new Error('HLS redirect loop detected');
+		visitedUrls.add(currentUrl);
+		await validateHlsUrl(currentUrl);
+		const response = await fetch(currentUrl, { ...init, redirect: 'manual', signal });
+		if (response.status < 300 || response.status >= 400) return response;
+		const location = response.headers.get('location');
+		if (!location) return response;
+		await response.body?.cancel();
+		const redirectUrl = new URL(location, currentUrl).toString();
+		if (redirectCount === MAX_HLS_REDIRECTS) throw new Error('Too many HLS redirects');
+		await validateHlsUrl(redirectUrl);
+		currentUrl = redirectUrl;
+	}
+	throw new Error('Too many HLS redirects');
+}
+
 /** Promise-based sleep that respects cancellation */
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+	return new Promise((resolve) => {
+		if (signal?.aborted) {
+			resolve();
+			return;
+		}
+		const timeout = setTimeout(() => {
+			signal?.removeEventListener('abort', abort);
+			resolve();
+		}, ms);
+		const abort = () => {
+			clearTimeout(timeout);
+			signal?.removeEventListener('abort', abort);
+			resolve();
+		};
+		signal?.addEventListener('abort', abort, { once: true });
+	});
 }

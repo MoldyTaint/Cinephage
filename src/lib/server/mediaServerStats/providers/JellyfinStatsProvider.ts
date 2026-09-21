@@ -1,6 +1,7 @@
 import type { MediaServerStatsProviderConfig } from '../types.js';
 import { normalizeJellyfinHdr } from '../hdr-normalize.js';
 import { EmbyCompatibleProvider } from './EmbyCompatibleProvider.js';
+import { MediaBrowserClient } from '$lib/server/notifications/mediabrowser/MediaBrowserClient.js';
 
 export class JellyfinStatsProvider extends EmbyCompatibleProvider {
 	constructor(config: MediaServerStatsProviderConfig) {
@@ -16,7 +17,9 @@ export class JellyfinStatsProvider extends EmbyCompatibleProvider {
 	}
 
 	getAuthHeaders(): Record<string, string> {
-		return { Authorization: `MediaBrowser Token="${this.config.apiKey}"` };
+		// Shared with the notification client: Jellyfin 12.x requires the full
+		// composite Authorization header (bare token headers are rejected 401).
+		return MediaBrowserClient.authHeadersFor('jellyfin', this.config.apiKey);
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any

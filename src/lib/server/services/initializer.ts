@@ -12,7 +12,6 @@ import { qualityFilter } from '$lib/server/quality';
 import { initializeDatabase } from '$lib/server/db';
 import { getCaptchaSolver } from '$lib/server/captcha';
 import { getServiceManager } from '$lib/server/services/service-manager.js';
-import { initPersistentStreamCache } from '$lib/server/streaming/cache/PersistentStreamCache';
 import { getNntpManager } from '$lib/server/streaming/usenet/NntpManager';
 import { getExtractionCacheManager } from '$lib/server/streaming/nzb/extraction/ExtractionCacheManager';
 import { getMediaBrowserNotifier } from '$lib/server/notifications/mediabrowser';
@@ -112,8 +111,6 @@ async function initializeServices(): Promise<void> {
 				serviceManager.register(captchaSolver);
 				logger.info('CaptchaSolver initialized for anti-bot bypass');
 			}
-
-			await initPersistentStreamCache();
 
 			const nntpManager = getNntpManager();
 			serviceManager.register(nntpManager);

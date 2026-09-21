@@ -6,6 +6,7 @@
  * optional conditions use OR logic (at least one must match).
  */
 
+import { languageMatches } from '$lib/server/languages/audio-preference';
 import type {
 	CustomFormat,
 	FormatCondition,
@@ -130,6 +131,21 @@ export function evaluateCondition(
 			// Match by indexer name (case-insensitive)
 			if (condition.indexer && release.indexerName) {
 				rawMatch = condition.indexer.toLowerCase() === release.indexerName.toLowerCase();
+			}
+			break;
+
+		case 'language':
+			// Match a language tag (base-tag fallback, eng→en) or one of the
+			// parser's pseudo-codes against the parsed language tokens.
+			if (condition.language) {
+				const tokens = release.languages ?? [];
+				if (condition.language === 'multi' || condition.language === 'orig') {
+					rawMatch = tokens.includes(condition.language);
+				} else {
+					rawMatch = tokens.some(
+						(tag) => tag !== 'multi' && tag !== 'orig' && languageMatches(tag, condition.language!)
+					);
+				}
 			}
 			break;
 	}

@@ -51,6 +51,7 @@ export const PROVIDER_INFO: ProviderInfo = {
 				required: false,
 				description: 'Optional: Required if username is provided'
 			}
-		]
+		],
+		defaultRequestsPerMinute: 40
 	}
 };

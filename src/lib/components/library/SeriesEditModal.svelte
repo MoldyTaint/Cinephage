@@ -26,6 +26,11 @@
 		path?: string | null;
 		episodeGroupId?: string | null;
 		id?: string | null;
+		/** Subtitle language profile override; null = inherit (library/instance default). */
+		languageProfileId?: string | null;
+		metadataLanguageMode?: 'inherit' | 'original' | 'explicit' | null;
+		metadataLanguageValue?: string | null;
+		/** @deprecated Legacy single-string view derived from the pair. */
 		metadataLanguage?: string | null;
 		preferOriginalTitle?: boolean | null;
 	}
@@ -52,11 +57,29 @@
 		name: string;
 	}
 
+	/** Entry for the subtitle-profile override select. */
+	interface LanguageProfileOption {
+		id: string;
+		name: string;
+	}
+
+	/**
+	 * The profile governing the item and the level it was resolved from
+	 * (per-item override > owning library > instance default), as returned by
+	 * the series loader's `effectiveLanguageProfile`.
+	 */
+	interface EffectiveLanguageProfileInfo {
+		profile: { id: string; name: string };
+		source: 'movie' | 'series' | 'library' | 'default';
+	}
+
 	interface Props {
 		open: boolean;
 		series: SeriesData;
 		qualityProfiles: QualityProfileOption[];
 		delayProfiles: DelayProfileOption[];
+		languageProfiles?: LanguageProfileOption[];
+		effectiveLanguageProfile?: EffectiveLanguageProfileInfo | null;
 		rootFolders: RootFolder[];
 		saving: boolean;
 		onClose: () => void;
@@ -71,11 +94,14 @@
 		moveFilesOnRootChange: boolean;
 		seasonFolder: boolean;
 		wantsSubtitles: boolean;
+		/** Subtitle language profile override; null clears the override (inherit). */
+		languageProfileId: string | null;
 		seriesType: 'standard' | 'anime' | 'daily';
 		folderPath?: string;
 		episodeGroupId?: string | null;
-		metadataLanguage?: string | null;
-		preferOriginalTitle?: boolean;
+		metadataLanguageMode: 'inherit' | 'original' | 'explicit';
+		metadataLanguageValue: string | null;
+		preferOriginalTitle?: boolean | null;
 	}
 
 	let {
@@ -83,6 +109,8 @@
 		series,
 		qualityProfiles,
 		delayProfiles,
+		languageProfiles = [],
+		effectiveLanguageProfile = null,
 		rootFolders,
 		saving,
 		onClose,
@@ -113,8 +141,59 @@
 		}>
 	>([]);
 	let episodeGroupsLoading = $state(false);
-	let metadataLanguage = $state<string | null>(null);
-	let preferOriginalTitle = $state(false);
+	let metadataLanguageMode = $state<'inherit' | 'original' | 'explicit'>('inherit');
+	let metadataLanguageValue = $state<string | null>('en-US');
+	let preferOriginalTitle = $state<boolean | null>(null);
+	/** Subtitle profile override; '' = inherit (no per-item override). */
+	let languageProfileOverride = $state('');
+
+	const LOCALE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+		{ value: 'ar-SA', label: 'Arabic' },
+		{ value: 'zh-CN', label: 'Chinese (zh-CN)' },
+		{ value: 'zh-TW', label: 'Chinese (zh-TW)' },
+		{ value: 'da-DK', label: 'Danish' },
+		{ value: 'nl-NL', label: 'Dutch' },
+		{ value: 'en-US', label: 'English' },
+		{ value: 'fi-FI', label: 'Finnish' },
+		{ value: 'fr-FR', label: 'French' },
+		{ value: 'de-DE', label: 'German' },
+		{ value: 'he-IL', label: 'Hebrew' },
+		{ value: 'hi-IN', label: 'Hindi' },
+		{ value: 'it-IT', label: 'Italian' },
+		{ value: 'ja-JP', label: 'Japanese' },
+		{ value: 'ko-KR', label: 'Korean' },
+		{ value: 'no-NO', label: 'Norwegian' },
+		{ value: 'pl-PL', label: 'Polish' },
+		{ value: 'pt-BR', label: 'Portuguese' },
+		{ value: 'ru-RU', label: 'Russian' },
+		{ value: 'es-ES', label: 'Spanish' },
+		{ value: 'sv-SE', label: 'Swedish' },
+		{ value: 'th-TH', label: 'Thai' },
+		{ value: 'tr-TR', label: 'Turkish' }
+	];
+
+	/**
+	 * Read the metadata language pair, falling back to the deprecated legacy
+	 * single-string field when the pair is absent.
+	 */
+	function resolveMetadataLanguage(source: {
+		metadataLanguageMode?: 'inherit' | 'original' | 'explicit' | null;
+		metadataLanguageValue?: string | null;
+		metadataLanguage?: string | null;
+	}): { mode: 'inherit' | 'original' | 'explicit'; value: string | null } {
+		if (source.metadataLanguageMode) {
+			const mode = source.metadataLanguageMode;
+			return {
+				mode,
+				value: mode === 'explicit' ? (source.metadataLanguageValue ?? 'en-US') : null
+			};
+		}
+
+		const legacy = source.metadataLanguage;
+		if (!legacy) return { mode: 'inherit', value: null };
+		if (legacy.toLowerCase() === 'original') return { mode: 'original', value: null };
+		return { mode: 'explicit', value: legacy };
+	}
 
 	const requiredMediaSubType = $derived(
 		enforceAnimeSubtype ? (detectedAnime ? ('anime' as const) : ('standard' as const)) : undefined
@@ -250,8 +329,12 @@
 			detectedAnime = false;
 			folderPath = series.path ?? '';
 			episodeGroupOption = series.episodeGroupId ?? '';
-			metadataLanguage = series.metadataLanguage ?? null;
-			preferOriginalTitle = series.preferOriginalTitle === true;
+			const resolvedMetadataLanguage = resolveMetadataLanguage(series);
+			metadataLanguageMode = resolvedMetadataLanguage.mode;
+			metadataLanguageValue = resolvedMetadataLanguage.value;
+			// Preserve the tri-state: null = inherit the instance default.
+			preferOriginalTitle = series.preferOriginalTitle ?? null;
+			languageProfileOverride = series.languageProfileId ?? '';
 			void loadAnimeRoutingContext(series.tmdbId);
 			if (series.id) {
 				void loadEpisodeGroups(series.id);
@@ -303,6 +386,22 @@
 	let defaultProfile = $derived(qualityProfiles.find((p) => p.isDefault));
 	let nonDefaultProfiles = $derived(qualityProfiles.filter((p) => p.id !== defaultProfile?.id));
 
+	// Subtitle profile inheritance: when no per-item override is selected the
+	// loader-resolved effective profile applies; surface where it came from.
+	const subtitleProfileHelper = $derived.by(() => {
+		if (languageProfileOverride || !effectiveLanguageProfile) return null;
+		const source =
+			effectiveLanguageProfile.source === 'library'
+				? m.library_subtitleProfile_sourceLibrary()
+				: effectiveLanguageProfile.source === 'default'
+					? m.library_subtitleProfile_sourceDefault()
+					: m.library_subtitleProfile_sourceItem();
+		return m.library_subtitleProfile_inherited({
+			name: effectiveLanguageProfile.profile.name,
+			source
+		});
+	});
+
 	const folderPathChanged = $derived(folderPath.trim() !== (series.path ?? '').trim());
 	const resolvedFolderPath = $derived(
 		selectedRootFolderObj?.path && folderPath.trim()
@@ -319,10 +418,12 @@
 			moveFilesOnRootChange,
 			seasonFolder,
 			wantsSubtitles,
+			languageProfileId: languageProfileOverride || null,
 			seriesType,
 			...(folderPathChanged && folderPath.trim() ? { folderPath: folderPath.trim() } : {}),
 			episodeGroupId: episodeGroupOption || null,
-			metadataLanguage,
+			metadataLanguageMode,
+			metadataLanguageValue: metadataLanguageMode === 'explicit' ? metadataLanguageValue : null,
 			preferOriginalTitle
 		});
 	}
@@ -398,6 +499,27 @@
 							<option value={profile.id}>{profile.name}</option>
 						{/each}
 					</select>
+				</div>
+				<div class="form-control w-full">
+					<label class="label py-0.5" for="series-language-profile">
+						<span class="label-text text-xs text-base-content/80"
+							>{m.library_subtitleProfile_label()}</span
+						>
+					</label>
+					<select
+						id="series-language-profile"
+						bind:value={languageProfileOverride}
+						class="select-bordered select w-full select-sm"
+					>
+						<option value="">{m.library_subtitleProfile_inherit()}</option>
+						{#each languageProfiles as profile (profile.id)}
+							<option value={profile.id}>{profile.name}</option>
+						{/each}
+					</select>
+					{#if subtitleProfileHelper}
+						<p class="mt-1 text-xs text-base-content/60">{subtitleProfileHelper}</p>
+						<p class="mt-1 text-xs text-base-content/60">{m.library_subtitleProfile_help()}</p>
+					{/if}
 				</div>
 				<div class="grid grid-cols-2 gap-3">
 					<div class="form-control w-full">
@@ -602,52 +724,64 @@
 			<h4
 				class="mb-3 border-b border-base-300 pb-1.5 text-xs font-semibold tracking-wider text-base-content/50 uppercase"
 			>
-				Metadata
+				{m.library_metadata_section()}
 			</h4>
 			<div class="grid grid-cols-2 gap-3">
 				<div class="form-control w-full">
-					<label class="label py-0.5" for="series-metadata-language">
-						<span class="label-text text-xs text-base-content/80">Language</span>
+					<label class="label py-0.5" for="series-metadata-language-mode">
+						<span class="label-text text-xs text-base-content/80"
+							>{m.library_metadata_languageLabel()}</span
+						>
 					</label>
 					<select
-						id="series-metadata-language"
-						bind:value={metadataLanguage}
+						id="series-metadata-language-mode"
+						bind:value={metadataLanguageMode}
 						class="select-bordered select w-full select-sm"
 					>
-						<option value={null}>Inherit Global</option>
-						<option value="original">Original Language</option>
-						<option value="ar-SA">Arabic</option>
-						<option value="zh-CN">Chinese (zh-CN)</option>
-						<option value="zh-TW">Chinese (zh-TW)</option>
-						<option value="da-DK">Danish</option>
-						<option value="nl-NL">Dutch</option>
-						<option value="en-US">English</option>
-						<option value="fi-FI">Finnish</option>
-						<option value="fr-FR">French</option>
-						<option value="de-DE">German</option>
-						<option value="he-IL">Hebrew</option>
-						<option value="hi-IN">Hindi</option>
-						<option value="it-IT">Italian</option>
-						<option value="ja-JP">Japanese</option>
-						<option value="ko-KR">Korean</option>
-						<option value="no-NO">Norwegian</option>
-						<option value="pl-PL">Polish</option>
-						<option value="pt-BR">Portuguese</option>
-						<option value="ru-RU">Russian</option>
-						<option value="es-ES">Spanish</option>
-						<option value="sv-SE">Swedish</option>
-						<option value="th-TH">Thai</option>
-						<option value="tr-TR">Turkish</option>
+						<option value="inherit">{m.library_metadata_inheritGlobal()}</option>
+						<option value="original">{m.library_metadata_originalLanguage()}</option>
+						<option value="explicit">{m.library_metadata_explicitLocale()}</option>
 					</select>
 				</div>
-				<label class="label cursor-pointer">
-					<span class="label-text text-xs text-base-content/80">Prefer Original Title</span>
-					<input
-						type="checkbox"
-						class="toggle toggle-primary toggle-sm"
-						bind:checked={preferOriginalTitle}
-					/>
-				</label>
+				<div class="form-control w-full">
+					<label class="label py-0.5" for="series-metadata-language-value">
+						<span class="label-text text-xs text-base-content/80"
+							>{m.library_metadata_locale()}</span
+						>
+					</label>
+					<select
+						id="series-metadata-language-value"
+						bind:value={metadataLanguageValue}
+						disabled={metadataLanguageMode !== 'explicit'}
+						class="select-bordered select w-full select-sm"
+					>
+						{#each LOCALE_OPTIONS as option (option.value)}
+							<option value={option.value}>{option.label}</option>
+						{/each}
+					</select>
+				</div>
+				<div class="flex items-center justify-between gap-2">
+					<label class="label cursor-pointer">
+						<span class="label-text text-xs text-base-content/80"
+							>{m.library_metadata_preferOriginalTitle()}</span
+						>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary toggle-sm"
+							checked={preferOriginalTitle === true}
+							onchange={(event) => (preferOriginalTitle = event.currentTarget.checked)}
+						/>
+					</label>
+					{#if preferOriginalTitle !== null}
+						<button
+							type="button"
+							class="btn btn-ghost btn-xs"
+							onclick={() => (preferOriginalTitle = null)}
+						>
+							{m.library_subtitleRequirements_reset()}
+						</button>
+					{/if}
+				</div>
 			</div>
 		</section>
 	</div>

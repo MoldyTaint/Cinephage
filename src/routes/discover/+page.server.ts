@@ -1,5 +1,5 @@
 import { tmdb } from '$lib/server/tmdb';
-import { getDiscoverResults } from '$lib/server/discover';
+import { getDiscoverResults, resolveWithOriginalLanguage } from '$lib/server/discover';
 import { contentFilterPipeline } from '$lib/server/filters/ContentFilterPipeline.js';
 import type { WatchProvider } from '$lib/types/tmdb';
 import type { TmdbCertificationsResponse } from '$lib/server/tmdb';
@@ -13,12 +13,15 @@ import {
 import { TMDB } from '$lib/config/constants.js';
 import { enrichWithReleaseDates } from '$lib/server/release-enrichment.js';
 import { db } from '$lib/server/db';
-import { settings } from '$lib/server/db/schema';
+import { languageSettings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 
 import type { PageServerLoad } from './$types';
 
 const logger = createChildLogger({ module: 'DiscoverPage', logDomain: 'system' });
+
+// Row id of the language_settings singleton (see LanguageSettingsService).
+const LANGUAGE_SETTINGS_SINGLETON_ID = 'singleton';
 
 export const load: PageServerLoad = async ({ url }) => {
 	const params = parseDiscoverParams(url.searchParams);
@@ -40,22 +43,28 @@ export const load: PageServerLoad = async ({ url }) => {
 	} = params;
 	const { nowPlaying } = params;
 
-	// Resolve effective original language — URL param takes precedence,
-	// falling back to the user's global TMDB language filter.
-	let withOriginalLanguage = urlOriginalLanguage;
-	if (!withOriginalLanguage) {
-		const filtersRow = await db.query.settings.findFirst({
-			where: eq(settings.key, 'global_filters')
+	// Resolve the content-origin filter. Order: explicit URL param →
+	// language_settings.discover_original_filter (canonical base tag) → none.
+	// The response locale is deliberately NOT used here — localization and
+	// content-origin filtering are separate concerns (language-system spec §5).
+	let storedOriginalFilter: string | null = null;
+	try {
+		const languageRow = await db.query.languageSettings.findFirst({
+			where: eq(languageSettings.id, LANGUAGE_SETTINGS_SINGLETON_ID)
 		});
-		if (filtersRow?.value) {
-			const globalFilters = JSON.parse(filtersRow.value);
-			const globalLanguage =
-				typeof globalFilters?.language === 'string' ? globalFilters.language.trim() : '';
-			if (globalLanguage && globalLanguage.toLowerCase() !== 'any') {
-				withOriginalLanguage = globalLanguage.toLowerCase().split('-')[0] || null;
-			}
-		}
+		storedOriginalFilter = languageRow?.discoverOriginalFilter ?? null;
+	} catch (e) {
+		logger.warn({ err: e }, 'Failed to read language_settings discover filter');
 	}
+	const withOriginalLanguage = resolveWithOriginalLanguage(
+		urlOriginalLanguage,
+		storedOriginalFilter
+	);
+	// A content-origin filter (URL or the stored instance filter) can only be
+	// applied by the /discover endpoints. The curated rows (trending,
+	// top-rated, now-playing, default dashboard) must yield to the grid when
+	// one is active, or the stored setting would silently do nothing.
+	const originFilterActive = Boolean(withOriginalLanguage);
 
 	const { withKeywords } = params;
 	const { withoutKeywords } = params;
@@ -176,7 +185,11 @@ export const load: PageServerLoad = async ({ url }) => {
 			certification
 		});
 
-		if ((trending === 'day' || trending === 'week') && !trendingHasActiveFilters) {
+		if (
+			(trending === 'day' || trending === 'week') &&
+			!trendingHasActiveFilters &&
+			!originFilterActive
+		) {
 			const trendingResults = (await tmdb.fetch(
 				`/trending/all/${trending}?page=${page}`
 			)) as TmdbPaginatedResult;
@@ -213,7 +226,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			};
 		}
 
-		if (topRated === 'true' && !certification) {
+		if (topRated === 'true' && !certification && !originFilterActive) {
 			let endpoint: string;
 			if (type === 'movie') {
 				endpoint = `/movie/top_rated?page=${page}`;
@@ -305,7 +318,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			};
 		}
 
-		if (nowPlaying === 'true' && !hasActiveDiscoverFilters(params)) {
+		if (nowPlaying === 'true' && !hasActiveDiscoverFilters(params) && !originFilterActive) {
 			const nowPlayingResults = (await tmdb.getNowPlaying(
 				Number(page) || 1
 			)) as unknown as TmdbPaginatedResult;
@@ -341,7 +354,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			};
 		}
 
-		if (isDefaultViewCheck && page === '1') {
+		if (isDefaultViewCheck && page === '1' && !originFilterActive) {
 			// Fetch sections for the dashboard-style view.
 			// Popular/top-rated use /discover/ endpoints so the keyword blocklist
 			// injection in tmdb.fetch() fires. Trending and now-playing don't

@@ -9,6 +9,8 @@ import { searchOnAdd } from '$lib/server/library/searchOnAdd.js';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import { createChildLogger } from '$lib/logging';
+import { episodeUpdateSchema } from '$lib/validation/schemas';
+import { parseBody } from '$lib/server/api/validate.js';
 
 const logger = createChildLogger({ module: 'LibraryEpisodeByIdApi', logDomain: 'scans' });
 
@@ -17,10 +19,12 @@ const logger = createChildLogger({ module: 'LibraryEpisodeByIdApi', logDomain: '
  * Update episode settings (primarily monitoring)
  */
 export const PATCH: RequestHandler = async ({ params, request }) => {
-	try {
-		const body = await request.json();
-		const { monitored, wantsSubtitlesOverride } = body;
+	const { monitored, wantsSubtitlesOverride, subtitleRequirementsOverride } = await parseBody(
+		request,
+		episodeUpdateSchema
+	);
 
+	try {
 		// Validate episode exists
 		const [episode] = await db.select().from(episodes).where(eq(episodes.id, params.id)).limit(1);
 
@@ -38,12 +42,13 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			updateData.monitored = monitored;
 		}
 		if (wantsSubtitlesOverride !== undefined) {
-			// Can be true, false, or null (to inherit from series)
+			// Tri-state: true forces subtitles on, false opts out, null inherits
+			// from the series.
 			updateData.wantsSubtitlesOverride = wantsSubtitlesOverride;
 		}
-
-		if (Object.keys(updateData).length === 0) {
-			return json({ success: false, error: 'No valid fields to update' }, { status: 400 });
+		if (subtitleRequirementsOverride !== undefined) {
+			// Validated requirement list or null to clear (inherit via series).
+			updateData.subtitleRequirementsOverride = subtitleRequirementsOverride;
 		}
 
 		// Update episode

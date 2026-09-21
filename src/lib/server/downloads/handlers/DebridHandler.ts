@@ -1,3 +1,4 @@
+import { getInstantFileEvidence } from '$lib/server/languages/debrid-evidence';
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.js';
 import { downloadQueue, episodes } from '$lib/server/db/schema.js';
@@ -8,6 +9,9 @@ import {
 	type SubmissionInput
 } from '$lib/server/downloadClients/debrid/debrid-adapter.js';
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring/index.js';
+import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
+import { recheckResolvedIdentity } from '../identity-recheck.js';
+import { isImportedQueueStatus } from '$lib/types/queue.js';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
 import { createChildLogger } from '$lib/logging/index.js';
 import { getDownloadResolutionService } from '../DownloadResolutionService.js';
@@ -66,10 +70,37 @@ export class DebridHandler {
 		if (!initiallySelected) return this.noUsableClient();
 
 		return withSubmissionLock(prepared.value.infoHash.toLowerCase(), async () => {
+			// Post-resolution identity recheck: the canonical info hash is only
+			// known now. Re-verify it against active intents, the live queue, and
+			// import history before submitting to the debrid provider — mirrors
+			// TorrentHandler. Without this, re-grabbing an already-imported or
+			// in-flight torrent via debrid slipped through.
+			if (request.options.intentId) {
+				const recheck = await recheckResolvedIdentity(
+					request.options.intentId,
+					prepared.value.infoHash
+				);
+				if (recheck.blocked) {
+					acquisitionService.cancelIntent(request.options.intentId, recheck.reason);
+					logger.info(
+						{
+							title: request.release.title,
+							infoHash: prepared.value.infoHash,
+							reason: recheck.reason
+						},
+						'[DebridHandler] Blocked duplicate after metadata resolution'
+					);
+					return { success: false, error: recheck.reason };
+				}
+			}
+
 			const existing = await this.findExistingIntent(prepared.value.infoHash);
 			if (existing) return this.returnOrReconcileExisting(existing, prepared.value.infoHash);
 
 			const parsed = parser.parse(request.release.title);
+			// Best-effort tier-3 evidence: cached file listing from the debrid
+			// provider (no download); null when uncached/unsupported.
+			const instantEvidence = await getInstantFileEvidence(prepared.value.infoHash);
 			const queueItem = await downloadMonitor.addToQueue({
 				downloadClientId: initiallySelected.client.id,
 				downloadId: `${INTENT_PREFIX}${prepared.value.infoHash.toLowerCase()}`,
@@ -88,7 +119,12 @@ export class DebridHandler {
 					resolution: parsed.resolution ?? undefined,
 					source: parsed.source ?? undefined,
 					codec: parsed.codec ?? undefined,
-					hdr: parsed.hdr ?? undefined
+					hdr: parsed.hdr ?? undefined,
+					languages: parsed.languages.length > 0 ? parsed.languages : undefined,
+					fileLanguages:
+						instantEvidence && instantEvidence.languages.length > 0
+							? instantEvidence.languages
+							: undefined
 				},
 				size: request.release.size,
 				releaseGroup: parsed.releaseGroup ?? undefined,
@@ -129,6 +165,14 @@ export class DebridHandler {
 				.where(eq(downloadQueue.id, queueItem.id))
 				.get();
 			if (!current) return { success: false, error: 'Queue item not found' };
+
+			// Re-arm the acquisition authority: the retry must reserve its slot
+			// before resubmitting, exactly like a fresh grab.
+			const rearm = await acquisitionService.rearmForQueueId(current.id);
+			if (!rearm.ok) {
+				return { success: false, error: rearm.reason };
+			}
+
 			current = await this.restoreMissingSeriesTarget(current);
 
 			const selected = await getDownloadClientManager().getDebridClientForAcquisition(
@@ -256,6 +300,13 @@ export class DebridHandler {
 			return {
 				success: false,
 				error: queueItem.errorMessage ?? `Debrid acquisition for ${infoHash} previously failed`
+			};
+		}
+
+		if (isImportedQueueStatus(queueItem.status)) {
+			return {
+				success: false,
+				error: `Release ${infoHash} was already imported — remove it first or grab a different release`
 			};
 		}
 

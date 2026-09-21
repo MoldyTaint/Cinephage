@@ -508,13 +508,18 @@ export const PunctuationMixin = {
 // ============================================================================
 
 /**
- * Simple rate limiter for provider requests
+ * Simple rate limiter for provider requests.
+ *
+ * `acquire()` is serialized: concurrent callers (tier searches run providers
+ * with `Promise.all`) queue behind one another instead of all reading the same
+ * token count, waking together, and driving it negative.
  */
 export class RateLimiter {
 	private tokens: number;
 	private lastRefill: number;
 	private readonly maxTokens: number;
 	private readonly refillRate: number; // tokens per second
+	private acquireChain: Promise<void> = Promise.resolve();
 
 	constructor(requestsPerMinute: number) {
 		this.maxTokens = requestsPerMinute;
@@ -527,17 +532,19 @@ export class RateLimiter {
 	 * Try to acquire a token for making a request
 	 */
 	async acquire(): Promise<void> {
-		this.refill();
+		const run = this.acquireChain.then(() => this.waitForToken());
+		// Keep the chain alive even if a waiter throws.
+		this.acquireChain = run.catch(() => {});
+		return run;
+	}
 
-		if (this.tokens >= 1) {
-			this.tokens -= 1;
-			return;
+	private async waitForToken(): Promise<void> {
+		this.refill();
+		while (this.tokens < 1) {
+			const waitMs = Math.max(1, Math.ceil(((1 - this.tokens) / this.refillRate) * 1000));
+			await sleep(waitMs);
+			this.refill();
 		}
-
-		// Wait for token to become available
-		const waitTime = (1 / this.refillRate) * 1000;
-		await sleep(waitTime);
-		this.refill();
 		this.tokens -= 1;
 	}
 

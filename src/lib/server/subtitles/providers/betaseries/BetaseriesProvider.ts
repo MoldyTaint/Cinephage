@@ -25,6 +25,7 @@ import {
 } from './types';
 import { extractFromZip } from '../mixins';
 import { AuthenticationError, ConfigurationError } from '../../errors/ProviderErrors';
+import { languageSatisfies } from '../../requirement-matcher';
 
 /**
  * Betaseries Provider
@@ -222,7 +223,7 @@ export class BetaseriesProvider extends BaseSubtitleProvider implements ISubtitl
 				continue;
 			}
 
-			if (!languages.includes(langCode)) {
+			if (!languages.some((requested) => languageSatisfies(langCode, requested))) {
 				continue;
 			}
 
@@ -231,14 +232,12 @@ export class BetaseriesProvider extends BaseSubtitleProvider implements ISubtitl
 			const subtitle = new GenericSubtitle('betaseries', sub.id.toString(), language, {
 				releaseInfo: sub.file,
 				pageLink: sub.url,
+				downloadUrl: sub.url,
 				format: 'srt'
 			});
 
 			subtitle.season = criteria.season;
 			subtitle.episode = criteria.episode;
-
-			// Store download URL
-			(subtitle as unknown as { _downloadUrl: string })._downloadUrl = sub.url;
 
 			results.push(subtitle.toSearchResult());
 		}
@@ -250,8 +249,9 @@ export class BetaseriesProvider extends BaseSubtitleProvider implements ISubtitl
 	 * Download a subtitle
 	 */
 	async download(result: SubtitleSearchResult): Promise<Buffer> {
-		const downloadUrl =
-			(result as unknown as { _downloadUrl?: string })._downloadUrl ?? result.pageLink;
+		// Prefer the explicit download URL carried on the search result, then
+		// the page link.
+		const downloadUrl = result.downloadUrl ?? result.pageLink;
 
 		if (!downloadUrl) {
 			throw new Error('No download URL available');

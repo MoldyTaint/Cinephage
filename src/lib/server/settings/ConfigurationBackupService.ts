@@ -21,6 +21,7 @@ import {
 	downloadClients,
 	indexers,
 	languageProfiles,
+	languageSettings,
 	libraries,
 	libraryRootFolders,
 	librarySettings,
@@ -36,7 +37,6 @@ import {
 	smartLists,
 	stalkerPortals,
 	subtitleProviders,
-	subtitleSettings,
 	taskSettings,
 	indexerStatus
 } from '$lib/server/db/schema';
@@ -69,8 +69,8 @@ type TableName =
 	| 'namingPresets'
 	| 'delayProfiles'
 	| 'languageProfiles'
+	| 'languageSettings'
 	| 'subtitleProviders'
-	| 'subtitleSettings'
 	| 'indexers'
 	| 'nntpServers'
 	| 'mediaBrowserServers'
@@ -252,16 +252,16 @@ const TABLES: TableBackupConfig[] = [
 		conflictTarget: languageProfiles.id
 	},
 	{
+		name: 'languageSettings',
+		table: languageSettings,
+		getRecordKey: (row) => String(row.id),
+		conflictTarget: languageSettings.id
+	},
+	{
 		name: 'subtitleProviders',
 		table: subtitleProviders,
 		getRecordKey: (row) => String(row.id),
 		conflictTarget: subtitleProviders.id
-	},
-	{
-		name: 'subtitleSettings',
-		table: subtitleSettings,
-		getRecordKey: (row) => String(row.key),
-		conflictTarget: subtitleSettings.key
 	},
 	{
 		name: 'indexers',
@@ -354,7 +354,13 @@ const SECTIONS: Array<{
 	{
 		id: 'profiles',
 		label: 'Profiles & Formats',
-		tableNames: ['scoringProfiles', 'customFormats', 'delayProfiles', 'languageProfiles']
+		tableNames: [
+			'scoringProfiles',
+			'customFormats',
+			'delayProfiles',
+			'languageProfiles',
+			'languageSettings'
+		]
 	},
 	{
 		id: 'downloads',
@@ -369,7 +375,7 @@ const SECTIONS: Array<{
 	{
 		id: 'subtitles',
 		label: 'Subtitles',
-		tableNames: ['subtitleProviders', 'subtitleSettings']
+		tableNames: ['subtitleProviders']
 	},
 	{
 		id: 'integrations',

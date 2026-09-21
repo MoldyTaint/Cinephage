@@ -45,6 +45,19 @@ export interface BaseSearchCriteria {
 	/** Preferred audio language (ISO 639-1 code, e.g. 'fr', 'de').
 	 * Used for post-search language boosting of releases. */
 	language?: string;
+	/**
+	 * Ordered audio preference resolved from the effective language profile
+	 * (audio-language acquisition design, 2026-09-15). Drives graded release
+	 * ranking on both search paths; supersedes the single-code `language`
+	 * field when present. Set by the automatic search paths; the manual route
+	 * keeps `language` for its single-language semantics.
+	 */
+	audioPreference?: {
+		preferOriginal: boolean;
+		languages: string[];
+		originalLanguage: string | null;
+		mode: 'prefer' | 'require';
+	};
 	/** True when the title is classified as anime (TMDB seriesType='anime'). Expands categories to include 5070. */
 	isAnime?: boolean;
 	/** True when the title is flagged adult AND the global include_adult toggle is on. Expands categories to include 6xxx. */
