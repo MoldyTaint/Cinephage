@@ -204,20 +204,23 @@ describe('SubtitleScannerService scanMovieSubtitles movie-file linking', () => {
 		expect(savedSubtitles[0].movieFileId).toBe('movie-file-2160p');
 	});
 
-	it('registers a sidecar with null movieFileId when the movie has no movie files', async () => {
+	it('skips discovery entirely when the movie has no movie files (arr parity)', async () => {
 		await seedRootFolderAndMovie();
 
 		const service = SubtitleScannerService.getInstance();
-		vi.spyOn(service, 'discoverSubtitles').mockResolvedValue([buildSidecar('Movie.2024.2160p')]);
+		const discoverSpy = vi
+			.spyOn(service, 'discoverSubtitles')
+			.mockResolvedValue([buildSidecar('Movie.2024.2160p')]);
 
 		const result = await service.scanMovieSubtitles(MOVIE_ID);
 
-		expect(result.registered).toBe(1);
+		// No files means no folder read — nothing to discover or register.
+		expect(discoverSpy).not.toHaveBeenCalled();
+		expect(result.registered).toBe(0);
 		expect(result.errors).toHaveLength(0);
 
 		const savedSubtitles = await testDb.db.select().from(subtitles);
-		expect(savedSubtitles).toHaveLength(1);
-		expect(savedSubtitles[0].movieFileId).toBeNull();
+		expect(savedSubtitles).toHaveLength(0);
 	});
 
 	it('registers a sidecar with null movieFileId when videoFileName is undefined', async () => {

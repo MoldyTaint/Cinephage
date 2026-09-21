@@ -665,13 +665,16 @@ export class LanguageProfileService {
 	async getSeriesEpisodesMissingSubtitles(seriesId: string): Promise<string[]> {
 		const base = await this.getEffectiveSubtitleRequirements({ seriesId });
 
+		// File-row-driven (arr parity): an episode without a media file is
+		// "missing content", not "missing subtitles" — subtitles attach to
+		// files, so file-less episodes never count as missing subtitles.
 		const seriesEpisodes = await db
 			.select({
 				id: episodes.id,
 				subtitleRequirementsOverride: episodes.subtitleRequirementsOverride
 			})
 			.from(episodes)
-			.where(eq(episodes.seriesId, seriesId));
+			.where(and(eq(episodes.seriesId, seriesId), eq(episodes.hasFile, true)));
 		if (seriesEpisodes.length === 0) return [];
 
 		// No series-level resolution at all: only episodes with an explicit
@@ -833,16 +836,24 @@ export class LanguageProfileService {
 		const base = await this.getEffectiveSubtitleRequirements({ seriesId });
 
 		// Per-episode overrides, fetched in one query for all seeded episodes.
+		// File-less episodes are excluded alongside (arr parity: subtitle
+		// status describes media you have).
 		const episodeIds = [...subtitlesByEpisode.keys()];
 		const overrideRows =
 			episodeIds.length > 0
 				? await db
-						.select({ id: episodes.id, override: episodes.subtitleRequirementsOverride })
+						.select({
+							id: episodes.id,
+							override: episodes.subtitleRequirementsOverride,
+							hasFile: episodes.hasFile
+						})
 						.from(episodes)
 						.where(inArray(episodes.id, episodeIds))
 				: [];
 		const overrideById = new Map(
-			overrideRows.map((row) => [row.id, row.override ?? null] as const)
+			overrideRows.map(
+				(row) => [row.id, { override: row.override ?? null, hasFile: row.hasFile }] as const
+			)
 		);
 
 		const allExternal = [...subtitlesByEpisode.values()]
@@ -852,7 +863,9 @@ export class LanguageProfileService {
 		const existsByPath = this.buildExistsByPath(allExternal, resolvedPaths, exists);
 
 		for (const [episodeId, rows] of subtitlesByEpisode) {
-			const override = overrideById.get(episodeId) ?? null;
+			const episodeInfo = overrideById.get(episodeId);
+			if (episodeInfo?.hasFile === false) continue;
+			const override = episodeInfo?.override ?? null;
 			const hasOverride = override !== null && override.length > 0;
 			// Contract: no entry when neither the series profile nor the
 			// episode's own override provides requirements.
