@@ -1,6 +1,7 @@
 import type { Handle } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
 import type { SessionRecord, UserRecord } from '$lib/server/db/schema.js';
+import { cookieName, locales } from '$lib/paraglide/runtime.js';
 
 type AuthSessionUser = {
 	id: string;
@@ -99,6 +100,18 @@ function setAuthenticatedLocals(
 	event.locals.session = normalizeAuthSession(session.session);
 	event.locals.apiKey = apiKey;
 	event.locals.apiKeyPermissions = apiKeyPermissions;
+
+	// Seed the interface-locale cookie from the saved account preference on
+	// browsers that don't have one yet, so the user's language follows them
+	// across devices. Paraglide still owns locale negotiation once set.
+	const savedLocale = event.locals.user.language;
+	if (savedLocale && locales.includes(savedLocale as never) && !event.cookies.get(cookieName)) {
+		event.cookies.set(cookieName, savedLocale, {
+			path: '/',
+			sameSite: 'lax',
+			maxAge: 60 * 60 * 24 * 365
+		});
+	}
 }
 
 function clearAuthenticatedLocals(event: Parameters<Handle>[0]['event']): void {

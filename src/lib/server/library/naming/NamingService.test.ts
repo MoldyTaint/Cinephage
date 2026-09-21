@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { NamingService, DEFAULT_NAMING_CONFIG, type MediaNamingInfo } from './NamingService';
+import {
+	NamingService,
+	DEFAULT_NAMING_CONFIG,
+	releaseToNamingInfo,
+	type MediaNamingInfo
+} from './NamingService';
 
 describe('NamingService', () => {
 	describe('Movie Naming', () => {
@@ -679,6 +684,43 @@ describe('NamingService', () => {
 			service.updateConfig({ mediaServerIdFormat: 'jellyfin' });
 			const config = service.getConfig();
 			expect(config.mediaServerIdFormat).toBe('jellyfin');
+		});
+	});
+
+	describe('releaseToNamingInfo with honest parser languages', () => {
+		it('maps empty parsed languages to undefined audioLanguages (renders und)', () => {
+			// The parser no longer asserts 'en' for untagged releases; naming must
+			// treat an empty list as "no audio-language evidence".
+			const info = releaseToNamingInfo({
+				title: 'Movie',
+				year: 2023,
+				resolution: '1080p',
+				languages: []
+			});
+
+			expect(info.audioLanguages).toBeUndefined();
+		});
+
+		it('keeps explicitly tagged languages as audioLanguages', () => {
+			const info = releaseToNamingInfo({
+				title: 'Movie',
+				year: 2023,
+				languages: ['de', 'fr']
+			});
+
+			expect(info.audioLanguages).toEqual(['de', 'fr']);
+		});
+
+		it('passes the multi marker through for the token layer to neutralize', () => {
+			// 'multi' is not English and not a language; {AudioLanguages} renders
+			// it as `und` (normalizeLanguageTag maps markers to und).
+			const info = releaseToNamingInfo({
+				title: 'Movie',
+				year: 2023,
+				languages: ['multi']
+			});
+
+			expect(info.audioLanguages).toEqual(['multi']);
 		});
 	});
 });

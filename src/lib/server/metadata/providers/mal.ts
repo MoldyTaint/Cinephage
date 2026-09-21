@@ -2,7 +2,8 @@ import type {
 	MetadataDetails,
 	MetadataMediaType,
 	MetadataProvider,
-	MetadataSearchResult
+	MetadataSearchResult,
+	MetadataTitleVariant
 } from './types.js';
 
 // Jikan v4 shapes (unofficial MAL mirror, no auth required)
@@ -101,6 +102,33 @@ function collectGenres(anime: JikanAnime): string[] {
 	return [...names];
 }
 
+/**
+ * Expose every title variant Jikan/MAL reports (english, japanese, the
+ * titles[] list) instead of discarding them. Jikan supplies no language or
+ * country codes — its type labels ('Japanese', 'English', 'Synonym', …) are
+ * kind annotations, not ISO codes — so `language`/`country` stay null and are
+ * never guessed.
+ */
+function buildTitleVariants(anime: JikanAnime): MetadataTitleVariant[] {
+	const variants: MetadataTitleVariant[] = [];
+	const seen = new Set<string>();
+
+	const push = (title?: string | null) => {
+		const trimmed = title?.trim();
+		if (!trimmed) return;
+		const key = trimmed.toLowerCase();
+		if (seen.has(key)) return;
+		seen.add(key);
+		variants.push({ title: trimmed, language: null, country: null });
+	};
+
+	push(anime.title_english);
+	push(anime.title_japanese);
+	for (const entry of anime.titles ?? []) push(entry.title);
+
+	return variants;
+}
+
 export class MalProvider implements MetadataProvider {
 	readonly id = 'mal' as const;
 	readonly name = 'MyAnimeList (Jikan)';
@@ -153,6 +181,7 @@ export class MalProvider implements MetadataProvider {
 			id: String(item.mal_id),
 			title: item.title_english ?? item.title,
 			originalTitle: item.title_japanese ?? undefined,
+			alternateTitles: buildTitleVariants(item),
 			overview: item.synopsis ?? undefined,
 			year: extractYear(item),
 			posterUrl: item.images?.jpg?.large_image_url ?? null,

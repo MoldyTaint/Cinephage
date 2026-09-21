@@ -7,21 +7,34 @@
  */
 
 import { db } from '$lib/server/db';
-import { movies, series, episodes, subtitleHistory } from '$lib/server/db/schema';
+import { movies, series, episodes } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { getSubtitleSearchService } from './SubtitleSearchService.js';
 import { getSubtitleDownloadService } from './SubtitleDownloadService.js';
 import { LanguageProfileService } from './LanguageProfileService.js';
+import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
+import { selectBestCandidate } from '../acquisition.js';
+import {
+	filterSearchEligible,
+	recordSearchFailure,
+	resetSearchFailure
+} from '../subtitle-search-state.js';
+import { DEFAULT_MINIMUM_SCORE, requirementKey } from '$lib/shared/language-profile.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { normalizeLanguageCode } from '$lib/shared/languages';
 import { isMovieMonitored } from '$lib/server/monitoring/specifications/MonitoredSpecification.js';
+import { LanguageSettingsService } from './LanguageSettingsService.js';
 
 /**
- * Default minimum score for auto-download (used if profile doesn't specify)
+ * Unique language tags for an effective requirement list (search criteria
+ * input). Derived from the EFFECTIVE requirements so per-item overrides are
+ * actually queried — never from the profile chain alone.
  */
-const DEFAULT_MIN_SCORE = 80;
+function requirementLanguages(requirements: SubtitleRequirement[]): string[] {
+	return [...new Set(requirements.map((requirement) => requirement.tag))];
+}
 
 /**
  * Result of an import-triggered subtitle search
@@ -37,7 +50,6 @@ export interface ImportSearchResult {
  * Called by:
  * - ImportService after movie/episode imports complete
  * - MediaMatcher after TMDB metadata matching
- * - SubtitleSearchWorker for background manual searches
  *
  * @param mediaType - 'movie' or 'episode'
  * @param mediaId - The ID of the movie or episode
@@ -48,6 +60,18 @@ export async function searchSubtitlesForNewMedia(
 	mediaId: string
 ): Promise<ImportSearchResult> {
 	const result: ImportSearchResult = { downloaded: 0, errors: [] };
+
+	// Auto-sync gate (language_settings singleton): governs import-triggered
+	// searches only. Manual "Search now" and scheduled tasks call auto-search
+	// directly and intentionally ignore this switch.
+	const languageSettings = await LanguageSettingsService.getInstance().get();
+	if (!languageSettings.autoSyncSubtitles) {
+		logger.debug(
+			{ mediaType, mediaId },
+			'[SubtitleImportService] autoSyncSubtitles disabled; skipping import search'
+		);
+		return result;
+	}
 
 	const searchService = getSubtitleSearchService();
 	const downloadService = getSubtitleDownloadService();
@@ -134,37 +158,22 @@ async function searchForMovie(
 		return result;
 	}
 
-	let profileId = movie.languageProfileId ?? null;
-	if (!profileId) {
-		const defaultProfile = await profileService.getDefaultProfile();
-		if (defaultProfile) {
-			profileId = defaultProfile.id;
-			await db.update(movies).set({ languageProfileId: profileId }).where(eq(movies.id, movieId));
-		} else {
-			logger.debug(
-				{
-					movieId,
-					title: movie.title
-				},
-				'[SubtitleImportService] Movie has subtitles enabled but no profile'
-			);
-			return result;
-		}
-	}
-
-	const profile = await profileService.getProfile(profileId);
-	if (!profile) {
-		logger.warn(
+	// Effective requirements (per-item override → profile chain), resolved
+	// read-only — never persisted back onto the item. Override-only items
+	// (no profile in the chain) are still searched: requirements are explicit.
+	const effective = await profileService.getEffectiveSubtitleRequirements({ movieId });
+	if (!effective || effective.requirements.length === 0) {
+		logger.debug(
 			{
 				movieId,
-				profileId
+				title: movie.title
 			},
-			'[SubtitleImportService] Language profile not found'
+			'[SubtitleImportService] Movie has subtitles enabled but no effective requirements'
 		);
 		return result;
 	}
 
-	const languages = profile.languages.map((l) => l.code);
+	const languages = requirementLanguages(effective.requirements);
 	if (languages.length === 0) {
 		return result;
 	}
@@ -182,45 +191,55 @@ async function searchForMovie(
 		return result;
 	}
 
-	// Search for subtitles
-	const searchResults = await searchService.searchForMovie(movieId, languages);
-	const minScore = profile.minimumScore ?? DEFAULT_MIN_SCORE;
+	// Per-requirement backoff (shared gate): skip requirements whose window is closed.
+	const activeMissing = await filterSearchEligible('movie', movieId, status.missing);
+	if (activeMissing.length === 0) {
+		logger.debug(
+			{ movieId, title: movie.title },
+			'[SubtitleImportService] All missing movie requirements are in backoff'
+		);
+		return result;
+	}
+
+	// Search for subtitles. Gate providers that cannot verify HI when any missing
+	// requirement is `require-hi`, otherwise such a requirement could hit a
+	// provider that cannot prove HI status.
+	const requireHearingImpaired = activeMissing.some((r) => r.accessibility === 'require-hi');
+	const minScore = effective.profile?.minimumScore ?? DEFAULT_MINIMUM_SCORE;
+	const searchResults = await searchService.searchForMovie(movieId, languages, {
+		requireHearingImpaired,
+		requirements: activeMissing,
+		minimumScore: minScore
+	});
 
 	logger.info(
 		{
 			movieId,
 			title: movie.title,
-			missingLanguages: status.missing.map((m) => m.code),
+			missingLanguages: activeMissing.map((m) => m.tag),
 			resultsFound: searchResults.results.length,
 			minScore
 		},
 		'[SubtitleImportService] Searching subtitles for movie'
 	);
 
-	// Download best match for each missing language
-	for (const missing of status.missing) {
-		// Get all results for this language that meet minimum score
-		const languageResults = searchResults.results.filter(
-			(r) => normalizeLanguageCode(r.language) === missing.code
-		);
-		const matches = languageResults
-			.filter((r) => r.matchScore >= minScore)
-			.sort((a, b) => b.matchScore - a.matchScore);
-		const bestMatch = matches[0];
+	// Download best match for each missing requirement
+	for (const requirement of activeMissing) {
+		const selection = selectBestCandidate(searchResults.results, requirement, minScore);
+		const bestMatch = selection.best;
 
-		// Log when we have results but none meet minimum score
-		if (!bestMatch && languageResults.length > 0) {
-			const bestScore = Math.max(...languageResults.map((r) => r.matchScore));
+		// Log when we have results but none meet the tuple/threshold
+		if (!bestMatch && selection.bestRejected) {
 			logger.debug(
 				{
 					movieId,
 					title: movie.title,
-					language: missing.code,
-					resultsFound: languageResults.length,
-					bestScore,
+					language: requirement.tag,
+					bestRejectedScore: selection.bestRejected.result.matchScore,
+					bestRejectedReason: selection.bestRejected.reason,
 					minScore
 				},
-				'[SubtitleImportService] No match meets minimum score for movie'
+				'[SubtitleImportService] No acceptable subtitle for movie requirement'
 			);
 		}
 
@@ -228,19 +247,10 @@ async function searchForMovie(
 			try {
 				await downloadService.downloadForMovie(movieId, bestMatch);
 				result.downloaded++;
+				await resetSearchFailure('movie', movieId, requirementKey(requirement));
 
-				// Record in subtitle history
+				// History is owned by SubtitleDownloadService (single write).
 				const normalizedLanguage = normalizeLanguageCode(bestMatch.language);
-				await db.insert(subtitleHistory).values({
-					movieId,
-					action: 'downloaded',
-					language: normalizedLanguage,
-					providerId: bestMatch.providerId,
-					providerName: bestMatch.providerName,
-					providerSubtitleId: bestMatch.providerSubtitleId,
-					matchScore: bestMatch.matchScore,
-					wasHashMatch: bestMatch.isHashMatch ?? false
-				});
 
 				logger.info(
 					{
@@ -259,12 +269,15 @@ async function searchForMovie(
 					{
 						movieId,
 						title: movie.title,
-						language: missing.code,
+						language: requirement.tag,
 						error: errorMsg
 					},
 					'[SubtitleImportService] Failed to download subtitle for movie'
 				);
+				await recordSearchFailure('movie', movieId, requirementKey(requirement));
 			}
+		} else {
+			await recordSearchFailure('movie', movieId, requirementKey(requirement));
 		}
 	}
 
@@ -307,7 +320,9 @@ async function searchForEpisode(
 		where: eq(series.id, episode.seriesId)
 	});
 
-	// Skip if series doesn't exist, doesn't want subtitles, or has no language profile
+	// Skip if series doesn't exist or doesn't want subtitles (tri-state: the
+	// episode override above forces subtitles on when set to true, so a series
+	// opt-out only applies when the episode inherits).
 	if (!seriesData) {
 		logger.debug(
 			{
@@ -319,7 +334,7 @@ async function searchForEpisode(
 		return result;
 	}
 
-	if (seriesData.wantsSubtitles === false) {
+	if ((episode.wantsSubtitlesOverride ?? seriesData.wantsSubtitles) === false) {
 		logger.debug(
 			{
 				episodeId,
@@ -327,7 +342,7 @@ async function searchForEpisode(
 				seriesTitle: seriesData.title,
 				wantsSubtitles: seriesData.wantsSubtitles
 			},
-			'[SubtitleImportService] Series does not want subtitles'
+			'[SubtitleImportService] Subtitles are gated off for this episode'
 		);
 		return result;
 	}
@@ -345,42 +360,23 @@ async function searchForEpisode(
 		return result;
 	}
 
-	let profileId = seriesData.languageProfileId ?? null;
-	if (!profileId) {
-		const defaultProfile = await profileService.getDefaultProfile();
-		if (defaultProfile) {
-			profileId = defaultProfile.id;
-			await db
-				.update(series)
-				.set({ languageProfileId: profileId })
-				.where(eq(series.id, seriesData.id));
-		} else {
-			logger.debug(
-				{
-					episodeId,
-					seriesId: seriesData.id,
-					seriesTitle: seriesData.title
-				},
-				'[SubtitleImportService] Series has subtitles enabled but no profile'
-			);
-			return result;
-		}
-	}
-
-	const profile = await profileService.getProfile(profileId);
-	if (!profile) {
-		logger.warn(
+	// Effective requirements (episode override → series override → library →
+	// instance default), resolved read-only — never persisted back onto the
+	// series. Override-only episodes are still searched.
+	const effective = await profileService.getEffectiveSubtitleRequirements({ episodeId });
+	if (!effective || effective.requirements.length === 0) {
+		logger.debug(
 			{
 				episodeId,
 				seriesId: seriesData.id,
-				profileId
+				seriesTitle: seriesData.title
 			},
-			'[SubtitleImportService] Language profile not found for series'
+			'[SubtitleImportService] Episode has subtitles enabled but no effective requirements'
 		);
 		return result;
 	}
 
-	const languages = profile.languages.map((l) => l.code);
+	const languages = requirementLanguages(effective.requirements);
 	if (languages.length === 0) {
 		return result;
 	}
@@ -400,9 +396,26 @@ async function searchForEpisode(
 		return result;
 	}
 
-	// Search for subtitles
-	const searchResults = await searchService.searchForEpisode(episodeId, languages);
-	const minScore = profile.minimumScore ?? DEFAULT_MIN_SCORE;
+	// Per-requirement backoff (shared gate): skip requirements whose window is closed.
+	const activeMissing = await filterSearchEligible('episode', episodeId, status.missing);
+	if (activeMissing.length === 0) {
+		logger.debug(
+			{ episodeId, seriesTitle: seriesData.title },
+			'[SubtitleImportService] All missing episode requirements are in backoff'
+		);
+		return result;
+	}
+
+	// Search for subtitles. Gate providers that cannot verify HI when any missing
+	// requirement is `require-hi`, otherwise such a requirement could hit a
+	// provider that cannot prove HI status.
+	const requireHearingImpaired = activeMissing.some((r) => r.accessibility === 'require-hi');
+	const minScore = effective.profile?.minimumScore ?? DEFAULT_MINIMUM_SCORE;
+	const searchResults = await searchService.searchForEpisode(episodeId, languages, {
+		requireHearingImpaired,
+		requirements: activeMissing,
+		minimumScore: minScore
+	});
 
 	logger.info(
 		{
@@ -410,39 +423,32 @@ async function searchForEpisode(
 			seriesTitle: seriesData.title,
 			season: episode.seasonNumber,
 			episode: episode.episodeNumber,
-			missingLanguages: status.missing.map((m) => m.code),
+			missingLanguages: activeMissing.map((m) => m.tag),
 			resultsFound: searchResults.results.length,
 			minScore
 		},
 		'[SubtitleImportService] Searching subtitles for episode'
 	);
 
-	// Download best match for each missing language
-	for (const missing of status.missing) {
-		// Get all results for this language that meet minimum score
-		const languageResults = searchResults.results.filter(
-			(r) => normalizeLanguageCode(r.language) === missing.code
-		);
-		const matches = languageResults
-			.filter((r) => r.matchScore >= minScore)
-			.sort((a, b) => b.matchScore - a.matchScore);
-		const bestMatch = matches[0];
+	// Download best match for each missing requirement
+	for (const requirement of activeMissing) {
+		const selection = selectBestCandidate(searchResults.results, requirement, minScore);
+		const bestMatch = selection.best;
 
-		// Log when we have results but none meet minimum score
-		if (!bestMatch && languageResults.length > 0) {
-			const bestScore = Math.max(...languageResults.map((r) => r.matchScore));
+		// Log when we have results but none meet the tuple/threshold
+		if (!bestMatch && selection.bestRejected) {
 			logger.debug(
 				{
 					episodeId,
 					seriesTitle: seriesData.title,
 					season: episode.seasonNumber,
 					episode: episode.episodeNumber,
-					language: missing.code,
-					resultsFound: languageResults.length,
-					bestScore,
+					language: requirement.tag,
+					bestRejectedScore: selection.bestRejected.result.matchScore,
+					bestRejectedReason: selection.bestRejected.reason,
 					minScore
 				},
-				'[SubtitleImportService] No match meets minimum score for episode'
+				'[SubtitleImportService] No acceptable subtitle for episode requirement'
 			);
 		}
 
@@ -450,19 +456,10 @@ async function searchForEpisode(
 			try {
 				await downloadService.downloadForEpisode(episodeId, bestMatch);
 				result.downloaded++;
+				await resetSearchFailure('episode', episodeId, requirementKey(requirement));
 
-				// Record in subtitle history
+				// History is owned by SubtitleDownloadService (single write).
 				const normalizedLanguage = normalizeLanguageCode(bestMatch.language);
-				await db.insert(subtitleHistory).values({
-					episodeId,
-					action: 'downloaded',
-					language: normalizedLanguage,
-					providerId: bestMatch.providerId,
-					providerName: bestMatch.providerName,
-					providerSubtitleId: bestMatch.providerSubtitleId,
-					matchScore: bestMatch.matchScore,
-					wasHashMatch: bestMatch.isHashMatch ?? false
-				});
 
 				logger.info(
 					{
@@ -485,12 +482,15 @@ async function searchForEpisode(
 						seriesTitle: seriesData.title,
 						season: episode.seasonNumber,
 						episode: episode.episodeNumber,
-						language: missing.code,
+						language: requirement.tag,
 						error: errorMsg
 					},
 					'[SubtitleImportService] Failed to download subtitle for episode'
 				);
+				await recordSearchFailure('episode', episodeId, requirementKey(requirement));
 			}
+		} else {
+			await recordSearchFailure('episode', episodeId, requirementKey(requirement));
 		}
 	}
 

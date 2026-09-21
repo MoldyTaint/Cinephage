@@ -451,10 +451,47 @@ export const CRITICAL_COLUMNS: Record<string, string[]> = {
 		'consecutive_failures'
 	],
 	root_folders: ['id', 'path', 'media_sub_type', 'read_only', 'preserve_symlinks'],
-	libraries: ['id', 'name', 'slug', 'media_type', 'media_sub_type', 'is_system'],
-	movies: ['id', 'tmdb_id', 'title', 'path', 'monitored', 'library_id'],
-	series: ['id', 'tmdb_id', 'title', 'path', 'monitored', 'library_id'],
-	episodes: ['id', 'series_id', 'season_number', 'episode_number'],
+	libraries: [
+		'id',
+		'name',
+		'slug',
+		'media_type',
+		'media_sub_type',
+		'is_system',
+		'language_profile_id'
+	],
+	movies: [
+		'id',
+		'tmdb_id',
+		'title',
+		'path',
+		'monitored',
+		'library_id',
+		'original_language',
+		'metadata_language_mode',
+		'metadata_language_value',
+		'subtitle_requirements_override'
+	],
+	series: [
+		'id',
+		'tmdb_id',
+		'title',
+		'path',
+		'monitored',
+		'library_id',
+		'original_language',
+		'metadata_language_mode',
+		'metadata_language_value',
+		'subtitle_requirements_override'
+	],
+	episodes: [
+		'id',
+		'series_id',
+		'season_number',
+		'episode_number',
+		'subtitle_requirements_override'
+	],
+	subtitles: ['id', 'relative_path', 'language', 'format', 'last_checked_at'],
 	indexers: ['id', 'name', 'definition_id', 'enabled'],
 	scoring_profiles: ['id', 'name', 'is_default']
 };
@@ -575,6 +612,39 @@ export const MIGRATION_COLUMN_MAP: Record<number, Array<{ table: string; column:
 	137: [
 		{ table: 'download_clients', column: 'allow_movies' },
 		{ table: 'download_clients', column: 'allow_tv' }
+	],
+	140: [
+		{ table: 'movies', column: 'original_language' },
+		{ table: 'movies', column: 'metadata_language_mode' },
+		{ table: 'movies', column: 'metadata_language_value' },
+		{ table: 'series', column: 'original_language' },
+		{ table: 'series', column: 'metadata_language_mode' },
+		{ table: 'series', column: 'metadata_language_value' },
+		{ table: 'libraries', column: 'language_profile_id' }
+	],
+	141: [{ table: 'subtitles', column: 'last_checked_at' }],
+	143: [
+		{ table: 'media_server_synced_items', column: 'audio_languages_raw' },
+		{ table: 'media_server_synced_items', column: 'subtitle_languages_raw' },
+		{ table: 'epg_programs', column: 'title_i18n' },
+		{ table: 'epg_programs', column: 'description_i18n' },
+		{ table: 'epg_programs', column: 'category_i18n' }
+	],
+	144: [{ table: 'language_settings', column: 'prefer_original_title' }],
+	146: [
+		{ table: 'movies', column: 'subtitle_requirements_override' },
+		{ table: 'series', column: 'subtitle_requirements_override' },
+		{ table: 'episodes', column: 'subtitle_requirements_override' }
+	],
+	147: [
+		{ table: 'movies', column: 'language_shortfall' },
+		{ table: 'series', column: 'language_shortfall' }
+	],
+	151: [
+		{ table: 'episodes', column: 'wants_subtitles_override' },
+		{ table: 'movies', column: 'language_profile_id' },
+		{ table: 'series', column: 'language_profile_id' },
+		{ table: 'smart_lists', column: 'language_profile_id' }
 	]
 };
 
@@ -590,11 +660,14 @@ export function detectAndFixSchemaDrift(sqlite: Database.Database): void {
 
 		for (const { table, column } of columns) {
 			if (tableExists(sqlite, table) && !columnExists(sqlite, table, column)) {
-				// Column should exist but doesn't - mark migration as failed so it re-runs
+				// Column should exist but doesn't - mark this migration AND every
+				// migration after it as failed so they re-run in order. Re-running
+				// only the failed version can leave a later migration's columns
+				// dropped (e.g. a table-rebuild migration) with no repair path.
 				logger.warn(
 					`[SchemaSync] Schema drift detected: ${table}.${column} missing (migration v${version})`
 				);
-				sqlite.prepare(`UPDATE schema_migrations SET success = 0 WHERE version = ?`).run(version);
+				sqlite.prepare(`UPDATE schema_migrations SET success = 0 WHERE version >= ?`).run(version);
 				driftFound = true;
 			}
 		}
@@ -645,17 +718,25 @@ export function applyMigration(sqlite: Database.Database, migration: MigrationDe
 
 	logger.info(`[SchemaSync] Applying migration v${migration.version}: ${migration.name}`);
 
-	// Mark as in-progress (success=0)
-	sqlite
-		.prepare(
-			`
+	// Migrations perform schema surgery (table rebuilds, drops) that must not fire
+	// FK actions — e.g. dropping a parent table while children reference it would
+	// otherwise cascade-delete child rows. PRAGMA foreign_keys is a no-op inside a
+	// transaction, so it is toggled here, before the migration transaction opens,
+	// and restored afterwards.
+	const foreignKeysWereOn = sqlite.pragma('foreign_keys', { simple: true }) === 1;
+	if (foreignKeysWereOn) sqlite.pragma('foreign_keys = OFF');
+
+	try {
+		// Mark as in-progress (success=0)
+		sqlite
+			.prepare(
+				`
 		INSERT OR REPLACE INTO schema_migrations (version, name, checksum, applied_at, success)
 		VALUES (?, ?, ?, ?, 0)
 	`
-		)
-		.run(migration.version, migration.name, checksum, new Date().toISOString());
+			)
+			.run(migration.version, migration.name, checksum, new Date().toISOString());
 
-	try {
 		// Run migration in a transaction
 		sqlite.transaction(() => {
 			migration.apply(sqlite);
@@ -677,6 +758,8 @@ export function applyMigration(sqlite: Database.Database, migration: MigrationDe
 			`[SchemaSync] Migration v${migration.version} failed`
 		);
 		throw error;
+	} finally {
+		if (foreignKeysWereOn) sqlite.pragma('foreign_keys = ON');
 	}
 }
 

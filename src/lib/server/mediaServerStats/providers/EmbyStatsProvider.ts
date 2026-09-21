@@ -1,6 +1,7 @@
 import type { MediaServerStatsProviderConfig } from '../types.js';
 import { normalizeEmbyHdr } from '../hdr-normalize.js';
 import { EmbyCompatibleProvider } from './EmbyCompatibleProvider.js';
+import { MediaBrowserClient } from '$lib/server/notifications/mediabrowser/MediaBrowserClient.js';
 
 export class EmbyStatsProvider extends EmbyCompatibleProvider {
 	constructor(config: MediaServerStatsProviderConfig) {
@@ -16,7 +17,7 @@ export class EmbyStatsProvider extends EmbyCompatibleProvider {
 	}
 
 	getAuthHeaders(): Record<string, string> {
-		return { 'X-Emby-Token': this.config.apiKey };
+		return MediaBrowserClient.authHeadersFor('emby', this.config.apiKey);
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any

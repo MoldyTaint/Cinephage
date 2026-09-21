@@ -173,7 +173,13 @@ export class StreamingDiskScanner {
 			const fullPath = join(currentPath, entry.name);
 
 			if (entry.isDirectory()) {
-				if (this.shouldExcludeFolder(entry.name, depth)) continue;
+				if (this.shouldExcludeFolder(entry.name, depth)) {
+					logger.debug(
+						{ folder: entry.name, path: fullPath, depth },
+						'[StreamingScanner] Skipping excluded folder'
+					);
+					continue;
+				}
 
 				yield* this.walkDirectory(rootPath, fullPath, depth + 1);
 			} else if (entry.isFile() || entry.isSymbolicLink()) {
@@ -188,7 +194,10 @@ export class StreamingDiskScanner {
 
 					if (entry.isSymbolicLink() && !stats.isFile()) continue;
 
-					if (stats.size < DOWNLOAD.MIN_SCAN_SIZE_BYTES && !entry.name.endsWith('.strm')) {
+					if (
+						stats.size < DOWNLOAD.MIN_SCAN_SIZE_BYTES &&
+						!entry.name.toLowerCase().endsWith('.strm')
+					) {
 						continue;
 					}
 

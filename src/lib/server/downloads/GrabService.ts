@@ -9,10 +9,11 @@ import {
 	movieFiles,
 	episodeFiles,
 	rootFolders,
+	alternateTitles,
 	rejectedReleases,
 	downloadHistory
 } from '$lib/server/db/schema.js';
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, inArray, ne } from 'drizzle-orm';
 import type { GrabRequest, GrabResult, ResolvedContext, HandlerResult } from './grab-types.js';
 import type { GrabDecisionContext, ExistingFile } from '$lib/server/filters/stages/grab/types.js';
 import { mediaOccupancyService } from '$lib/server/acquisition/MediaOccupancyService.js';
@@ -25,6 +26,12 @@ import { getDefaultAcquisitionProtocol } from '$lib/server/settings/acquisition.
 import { createChildLogger, getRequestId } from '$lib/logging/index.js';
 import { grabRejectionLogLevel } from './grab-rejection-log-level.js';
 import { resolveInfoHash } from '$lib/server/downloadClients/utils/hashUtils.js';
+import { normalizeIdentityTitle } from '$lib/server/releases/release-identity.js';
+import type { TargetIdentityInfo } from '$lib/server/filters/stages/grab/types.js';
+import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
+import type { CreateIntentResult } from '$lib/server/acquisition/AcquisitionService.js';
+import { computeMovieQualitySlot } from '$lib/server/acquisition/slot-keys.js';
+import { parseRelease } from '$lib/server/indexers/parser/index.js';
 
 const logger = createChildLogger({ module: 'GrabService', logDomain: 'downloads' });
 
@@ -80,10 +87,71 @@ class GrabServiceImpl {
 
 		const resolved = await this.resolveTarget(request);
 
-		// When force-overriding, skip the decision pipeline entirely
+		// When force-overriding, skip policy scoring — but identity is never
+		// skippable and the acquisition still reserves its slot.
 		if (forceOverride) {
-			const handlerResult = await this.routeByProtocol(request, resolved);
+			// Explicit admin override: the hard stages are intentionally skipped
+			// (documented override path), unlike plain manual `force` grabs.
+			options.overrideHardStages = true;
+
+			const overrideExistingFiles = await this.getExistingFiles(request);
+			const identity = await grabDecisionPipeline.evaluateIdentity({
+				release,
+				target,
+				existingFiles: overrideExistingFiles,
+				profile: resolved.profile,
+				options,
+				desiredQualities: resolved.desiredQualities,
+				targetInfo: resolved.targetInfo,
+				computed: {}
+			});
+			if (!identity.accepted) {
+				logger.warn(
+					{ title: release.title, reason: identity.reason },
+					'[Grab] Override rejected by identity stage'
+				);
+				return {
+					success: false,
+					decision: {
+						accepted: false,
+						reason: identity.reason ?? 'Release does not match the target media',
+						rejectionType: 'identity_mismatch',
+						upgradeStatus: 'rejected',
+						scores: { candidate: 0 },
+						audit: { stages: [], finalResult: { accepted: false }, totalDurationMs: 0 }
+					},
+					error: identity.reason ?? 'Release does not match the target media'
+				};
+			}
+
+			const reservation = await this.reserveSlot(request, resolved, undefined, 'override');
+			if (!reservation.ok) {
+				return this.conflictResult(reservation);
+			}
+			const intentId = reservation.intentId;
+			options.intentId = intentId;
+
+			let handlerResult: HandlerResult;
+			try {
+				handlerResult = await this.routeByProtocol(request, resolved);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				acquisitionService.failIntent(intentId, message);
+				logger.error({ title: release.title, error: message }, '[Grab] Override handler threw');
+				return {
+					success: false,
+					decision: {
+						accepted: false,
+						reason: message,
+						upgradeStatus: 'rejected',
+						scores: { candidate: 0 },
+						audit: { stages: [], finalResult: { accepted: false }, totalDurationMs: 0 }
+					},
+					error: message
+				};
+			}
 			if (!handlerResult.success) {
+				acquisitionService.failIntent(intentId, handlerResult.error ?? 'Handler failed');
 				logger.error(
 					{ title: release.title, error: handlerResult.error },
 					'[Grab] Override handler failed'
@@ -100,6 +168,7 @@ class GrabServiceImpl {
 					error: handlerResult.error
 				};
 			}
+			this.linkIntentToResult(request, intentId, handlerResult.queueId);
 			return {
 				success: true,
 				decision: {
@@ -131,6 +200,7 @@ class GrabServiceImpl {
 			profile: resolved.profile,
 			options,
 			desiredQualities: resolved.desiredQualities,
+			targetInfo: resolved.targetInfo,
 			computed: {}
 		};
 
@@ -167,9 +237,54 @@ class GrabServiceImpl {
 			return { success: false, decision };
 		}
 
-		const handlerResult = await this.routeByProtocol(request, resolved);
+		// Reserve the target slot with the pipeline-COMPUTED decision. The
+		// intent is the durable acquisition authority; queue rows become a
+		// transport projection linked via queueId. Slot exclusivity is
+		// DB-enforced and applies to manual grabs too.
+		const source = options.source ?? (options.isAutomatic ? 'automatic' : 'manual');
+		const reservation = await this.reserveSlot(request, resolved, decision, source);
+		if (!reservation.ok) {
+			this.persistRejectedRelease(
+				release,
+				resolved,
+				this.conflictResult(reservation).decision
+			).catch((err) => logger.warn({ err }, '[Grab] Failed to persist rejected release record'));
+			return this.conflictResult(reservation);
+		}
+		const intentId = reservation.intentId;
+		options.intentId = intentId;
+
+		// Handlers persist what they are given — hand them the COMPUTED
+		// upgrade decision, never the caller's possibly-missing flag.
+		options.isUpgrade = decision.upgradeStatus === 'upgrade';
+
+		let handlerResult: HandlerResult;
+		try {
+			handlerResult = await this.routeByProtocol(request, resolved);
+		} catch (error) {
+			// A throwing handler must not leak the reservation/intent: fail it
+			// before surfacing the error.
+			const message = error instanceof Error ? error.message : String(error);
+			acquisitionService.failIntent(intentId, message);
+			logger.error(
+				{
+					title: release.title,
+					error: message,
+					protocol: release.protocol,
+					indexerId: release.indexerId,
+					isAutomatic: options.isAutomatic
+				},
+				'[Grab] Handler threw while adding release to download client'
+			);
+			this.persistFailedGrab(release, resolved, message).catch((err) =>
+				logger.warn({ err }, '[Grab] Failed to persist failed grab history record')
+			);
+
+			return { success: false, decision, error: message };
+		}
 
 		if (!handlerResult.success) {
+			acquisitionService.failIntent(intentId, handlerResult.error ?? 'Handler failed');
 			logger.error(
 				{
 					title: release.title,
@@ -187,6 +302,8 @@ class GrabServiceImpl {
 			return { success: false, decision, error: handlerResult.error };
 		}
 
+		this.linkIntentToResult(request, intentId, handlerResult.queueId);
+
 		return {
 			success: true,
 			decision,
@@ -203,6 +320,103 @@ class GrabServiceImpl {
 		};
 	}
 
+	/**
+	 * Reserve the acquisition's target slots. Movie slots are quality-bucket
+	 * aware; TV scope uses the expanded episode list from resolveTarget.
+	 */
+	private async reserveSlot(
+		request: GrabRequest,
+		resolved: ResolvedContext,
+		decision: GrabResult['decision'] | undefined,
+		source: 'manual' | 'automatic' | 'arr_push' | 'override'
+	): Promise<CreateIntentResult> {
+		const { release } = request;
+
+		let qualitySlot = 'episodes';
+		if (resolved.mediaType === 'movie') {
+			const parsed = parseRelease(release.title);
+			qualitySlot = await computeMovieQualitySlot(
+				resolved.desiredQualities,
+				resolved.profile?.id,
+				parsed.resolution === 'unknown' ? undefined : parsed.resolution
+			);
+		}
+
+		const infoHash = resolveInfoHash(release.infoHash, release.magnetUrl, release.downloadUrl);
+		const identity = infoHash
+			? ({ kind: 'info_hash', value: infoHash } as const)
+			: release.guid && release.indexerId
+				? ({ kind: 'indexer_guid', value: `${release.indexerId}:${release.guid}` } as const)
+				: undefined;
+
+		return acquisitionService.createIntent({
+			mediaType: resolved.mediaType,
+			movieId: resolved.movieId,
+			seriesId: resolved.seriesId,
+			seasonNumber: resolved.seasonNumber,
+			episodeIds: resolved.episodeIds,
+			qualitySlot,
+			protocol: release.protocol ?? 'torrent',
+			identity,
+			releaseTitle: release.title,
+			indexerId: release.indexerId,
+			indexerName: release.indexerName,
+			upgradeStatus: decision?.upgradeStatus,
+			decision: decision
+				? {
+						reason: decision.reason,
+						scores: decision.scores,
+						upgradeStatus: decision.upgradeStatus
+					}
+				: undefined,
+			source
+		});
+	}
+
+	/**
+	 * Attach the transport queue row to the intent, or — for protocols that
+	 * finalize synchronously inside the handler (streaming, NZB streaming,
+	 * which never enter the download queue) — complete the intent now.
+	 */
+	private linkIntentToResult(
+		request: GrabRequest,
+		intentId: string,
+		queueId: string | undefined
+	): void {
+		const finalizesSynchronously =
+			request.release.protocol === 'streaming' ||
+			(request.release.protocol === 'usenet' && request.options.streamUsenet);
+		if (finalizesSynchronously) {
+			acquisitionService.completeIntent(intentId);
+			return;
+		}
+		if (queueId) {
+			acquisitionService.attachQueueId(intentId, queueId);
+		}
+	}
+
+	/** Translate a reservation conflict into a rejection-shaped GrabResult. */
+	private conflictResult(reservation: Extract<CreateIntentResult, { ok: false }>): GrabResult {
+		const { kind, conflict } = reservation;
+		const inQueue = conflict.queueId ? ' (active in download queue)' : '';
+		const reason =
+			kind === 'identity_conflict'
+				? `Duplicate release: "${conflict.releaseTitle}" is already being acquired${inQueue}`
+				: `Already acquiring "${conflict.releaseTitle}" for this slot${inQueue} — remove it first or wait for it to finish`;
+		const rejectionType = kind === 'identity_conflict' ? 'duplicate_hash' : 'media_occupied';
+		return {
+			success: false,
+			decision: {
+				accepted: false,
+				reason,
+				rejectionType,
+				upgradeStatus: 'rejected',
+				scores: { candidate: 0 },
+				audit: { stages: [], finalResult: { accepted: false, reason }, totalDurationMs: 0 }
+			}
+		};
+	}
+
 	private async resolveTarget(request: GrabRequest): Promise<ResolvedContext> {
 		const { target } = request;
 		let profileId: string | null;
@@ -214,6 +428,7 @@ class GrabServiceImpl {
 		let seasonNumber: number | undefined;
 		let mediaType: 'movie' | 'tv' = 'movie';
 		let movieDesiredQualities: ResolvedContext['desiredQualities'];
+		let targetInfo: TargetIdentityInfo | undefined;
 
 		if (target.type === 'movie') {
 			const movie = await db.query.movies.findFirst({ where: eq(movies.id, target.movieId) });
@@ -223,6 +438,13 @@ class GrabServiceImpl {
 			mediaPath = movie.path ?? undefined;
 			movieId = movie.id;
 			movieDesiredQualities = movie.desiredQualities ?? undefined;
+			targetInfo = {
+				mediaType: 'movie',
+				titles: await this.resolveTargetTitles('movie', movie.id, movie.title, movie.originalTitle),
+				year: movie.year ?? undefined,
+				tmdbId: movie.tmdbId,
+				imdbId: movie.imdbId ?? null
+			};
 		} else {
 			seriesId = 'seriesId' in target ? target.seriesId : undefined;
 			const show = seriesId
@@ -239,6 +461,19 @@ class GrabServiceImpl {
 			} else if (target.type === 'season') {
 				seasonNumber = target.seasonNumber;
 				episodeIds = target.episodeIds;
+				// Season packs must carry a concrete episode scope. An empty
+				// episodeIds list bypassed occupancy entirely and left queue
+				// rows invisible to per-episode blocking checks — expand to
+				// every episode of the season (the pack delivers them all).
+				if (episodeIds.length === 0) {
+					const seasonEpisodes = await db.query.episodes.findMany({
+						where: and(
+							eq(episodes.seriesId, seriesId!),
+							eq(episodes.seasonNumber, target.seasonNumber)
+						)
+					});
+					episodeIds = seasonEpisodes.map((episode) => episode.id);
+				}
 			} else {
 				episodeIds = target.episodeIds;
 				if (episodeIds.length === 0 && seriesId) {
@@ -254,6 +489,41 @@ class GrabServiceImpl {
 					episodeIds = missingEpisodes.map((episode) => episode.id);
 				}
 			}
+
+			let episodeScope: TargetIdentityInfo['episodeScope'];
+			if (episodeIds && episodeIds.length > 0) {
+				const scoped = await db.query.episodes.findMany({
+					where: and(eq(episodes.seriesId, seriesId!), inArray(episodes.id, episodeIds))
+				});
+				episodeScope = scoped.map((episode) => ({
+					seasonNumber: episode.seasonNumber,
+					episodeNumber: episode.episodeNumber
+				}));
+
+				// Single-episode targets must carry their season: IdentityStage
+				// skips the season check when targetInfo.seasonNumber is null, so
+				// without this a release for the same episode number in another
+				// season (Show.S02E05 for target S01E05) would pass identity.
+				if (target.type === 'episode' && seasonNumber === undefined && scoped.length === 1) {
+					seasonNumber = scoped[0].seasonNumber;
+				}
+			}
+
+			targetInfo = {
+				mediaType: 'tv',
+				titles: await this.resolveTargetTitles(
+					'series',
+					seriesId!,
+					show!.title,
+					show!.originalTitle
+				),
+				year: show!.year ?? undefined,
+				tmdbId: show!.tmdbId,
+				tvdbId: show!.tvdbId ?? null,
+				imdbId: show!.imdbId ?? null,
+				seasonNumber,
+				episodeScope
+			};
 		}
 
 		let rootFolderPath: string | undefined;
@@ -279,8 +549,36 @@ class GrabServiceImpl {
 			rootFolderPath,
 			mediaPath,
 			seriesPath: mediaType === 'tv' ? mediaPath : undefined,
-			desiredQualities: movieDesiredQualities
+			desiredQualities: movieDesiredQualities,
+			targetInfo
 		};
+	}
+
+	/** Canonical title + original title + curated alternates, deduplicated. */
+	private async resolveTargetTitles(
+		mediaType: 'movie' | 'series',
+		mediaId: string,
+		canonicalTitle: string,
+		originalTitle?: string | null
+	): Promise<string[]> {
+		const titles = [canonicalTitle];
+		const seen = new Set([normalizeIdentityTitle(canonicalTitle)]);
+
+		const push = (title: string | null | undefined) => {
+			if (!title) return;
+			const normalized = normalizeIdentityTitle(title);
+			if (normalized.length === 0 || seen.has(normalized)) return;
+			seen.add(normalized);
+			titles.push(title);
+		};
+
+		push(originalTitle);
+		const alternates = await db.query.alternateTitles.findMany({
+			where: and(eq(alternateTitles.mediaType, mediaType), eq(alternateTitles.mediaId, mediaId))
+		});
+		for (const alternate of alternates) push(alternate.title);
+
+		return titles;
 	}
 
 	private async getExistingFiles(request: GrabRequest): Promise<ExistingFile[]> {

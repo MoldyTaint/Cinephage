@@ -1,5 +1,60 @@
-import type { PlaybackSession, SessionResourceKind } from '../types';
+import type { PlaybackSession, PlaybackSessionSubtitle, SessionResourceKind } from '../types';
+import type { SubtitleRequirement } from '$lib/shared/language-profile';
 import { resolveHlsUrl } from '../utils/hls-rewrite.js';
+import {
+	languageSatisfies,
+	matchesRequirement
+} from '$lib/server/subtitles/requirement-matcher.js';
+import { normalizeLanguageCode } from '$lib/shared/languages';
+
+/**
+ * Index of the track that should carry DEFAULT=YES, chosen from the item's
+ * effective subtitle requirements.
+ *
+ * Requirement-aware mode (full tuple: language + variant + accessibility via
+ * the shared matcher): the first track satisfying the highest-priority
+ * requirement wins. Legacy mode (language list only, sessions created before
+ * requirement snapshots existed): the first track whose language satisfies the
+ * preferred language. Returns null when nothing matches so the caller falls
+ * back to the provider default / first-track rule.
+ */
+export function pickDefaultSubtitleIndex(
+	subtitles: PlaybackSessionSubtitle[],
+	preferredLanguages?: string[],
+	preferredRequirements?: SubtitleRequirement[]
+): number | null {
+	if (preferredRequirements?.length) {
+		for (const requirement of preferredRequirements) {
+			const index = subtitles.findIndex((subtitle) =>
+				matchesRequirement(
+					{
+						language: subtitle.language,
+						isForced: subtitle.isForced,
+						isHearingImpaired: subtitle.isHearingImpaired
+					},
+					requirement
+				)
+			);
+			if (index >= 0) return index;
+		}
+		return null;
+	}
+
+	if (!preferredLanguages?.length) return null;
+
+	const normalized = subtitles.map((subtitle) => ({
+		subtitle,
+		language: normalizeLanguageCode(subtitle.language || '')
+	}));
+
+	for (const preferred of preferredLanguages) {
+		const match = normalized.find(({ language }) => languageSatisfies(language, preferred));
+		if (match) {
+			return subtitles.indexOf(match.subtitle);
+		}
+	}
+	return null;
+}
 
 interface RewritePlaylistOptions {
 	playlist: string;
@@ -7,15 +62,24 @@ interface RewritePlaylistOptions {
 	baseUrl: string;
 	session: PlaybackSession;
 	apiKey?: string;
-	registerResource: (url: string, kind: SessionResourceKind, extension: string) => string;
+	registerResource: (
+		url: string,
+		kind: SessionResourceKind,
+		extension: string,
+		segmentFallbackExtension?: string
+	) => string;
 	injectSubtitles?: boolean;
+	segmentFallbackExtension?: string;
 }
 
 const URI_ATTRIBUTE_TAGS = {
 	'#EXT-X-MEDIA:': 'playlist',
 	'#EXT-X-KEY:': 'asset',
 	'#EXT-X-MAP:': 'segment',
-	'#EXT-X-I-FRAME-STREAM-INF:': 'playlist'
+	'#EXT-X-I-FRAME-STREAM-INF:': 'playlist',
+	'#EXT-X-PART:': 'segment',
+	'#EXT-X-PRELOAD-HINT:': 'segment',
+	'#EXT-X-RENDITION-REPORT:': 'playlist'
 } as const;
 
 function inferExtension(url: string, fallback: string): string {
@@ -29,7 +93,7 @@ function inferExtension(url: string, fallback: string): string {
 	}
 }
 
-const SAFE_SEGMENT_EXTENSIONS = new Set(['ts', 'm4s', 'mp4', 'aac', 'mp3']);
+const SAFE_SEGMENT_EXTENSIONS = new Set(['ts', 'm4s', 'mp4', 'aac', 'mp3', 'vtt', 'webvtt']);
 
 function normalizeSessionExtension(kind: SessionResourceKind, extension: string): string {
 	const normalized = extension.replace(/^\./, '').toLowerCase();
@@ -71,6 +135,16 @@ function inferResourceKind(url: string, previousWasExtinf: boolean): SessionReso
 	return 'asset';
 }
 
+/**
+ * Resolve a session path against the configured base URL while PRESERVING any
+ * reverse-proxy subpath (`https://host/cinephage` -> `.../cinephage/api/...`).
+ * A leading-slash `new URL('/api', base)` would silently drop the subpath.
+ */
+function resolveAgainstBase(baseUrl: string, path: string): URL {
+	const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+	return new URL(path.replace(/^\/+/, ''), normalizedBase);
+}
+
 function buildSessionUrl(
 	baseUrl: string,
 	token: string,
@@ -88,7 +162,7 @@ function buildSessionUrl(
 		path = `/api/streaming/session/${token}/asset/${resourceId}`;
 	}
 
-	const url = new URL(path, baseUrl);
+	const url = resolveAgainstBase(baseUrl, path);
 	if (apiKey) {
 		url.searchParams.set('api_key', apiKey);
 	}
@@ -101,7 +175,10 @@ function buildSubtitlePlaylistUrl(
 	subtitleId: string,
 	apiKey?: string
 ): string {
-	const url = new URL(`/api/streaming/session/${token}/subtitle/${subtitleId}.m3u8`, baseUrl);
+	const url = resolveAgainstBase(
+		baseUrl,
+		`/api/streaming/session/${token}/subtitle/${subtitleId}.m3u8`
+	);
 	if (apiKey) {
 		url.searchParams.set('api_key', apiKey);
 	}
@@ -119,9 +196,26 @@ function injectSubtitleTracks(
 	}
 
 	const lines = playlist.split('\n');
+	const defaultIndex = pickDefaultSubtitleIndex(
+		session.subtitles,
+		session.preferredSubtitleLanguages,
+		session.preferredSubtitleRequirements
+	);
 	const mediaTags = session.subtitles.map((subtitle, index) => {
 		const playlistUrl = buildSubtitlePlaylistUrl(baseUrl, session.token, subtitle.id, apiKey);
-		return `#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="cinephage-subs",NAME="${subtitle.label.replace(/"/g, '\\"')}",DEFAULT=${subtitle.isDefault || index === 0 ? 'YES' : 'NO'},AUTOSELECT=YES,FORCED=NO,LANGUAGE="${subtitle.language || 'und'}",URI="${playlistUrl}"`;
+		const isDefault =
+			defaultIndex !== null ? index === defaultIndex : subtitle.isDefault || index === 0;
+		// Strip CR/LF and escape backslashes/quotes so provider metadata cannot
+		// inject HLS attributes or break the playlist.
+		const label = subtitle.label
+			.replace(/[\r\n]+/g, ' ')
+			.replace(/\\/g, '\\\\')
+			.replace(/"/g, '\\"');
+		const language = (subtitle.language || 'und')
+			.replace(/[\r\n]+/g, '')
+			.replace(/\\/g, '\\\\')
+			.replace(/"/g, '\\"');
+		return `#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="cinephage-subs",NAME="${label}",DEFAULT=${isDefault ? 'YES' : 'NO'},AUTOSELECT=YES,FORCED=${subtitle.isForced ? 'YES' : 'NO'},LANGUAGE="${language}",URI="${playlistUrl}"`;
 	});
 
 	const withMediaTags: string[] = [];
@@ -170,7 +264,19 @@ export function rewriteSessionPlaylist(options: RewritePlaylistOptions): string 
 						kind === 'playlist' ? 'm3u8' : kind === 'segment' ? 'ts' : 'bin'
 					)
 				);
-				const resourceId = options.registerResource(absoluteUri, kind, extension);
+				const segmentFallbackExtension =
+					kind === 'playlist'
+						? trimmed.startsWith('#EXT-X-MEDIA:') &&
+							/(?:^|[,:])TYPE=SUBTITLES(?:,|$)/i.test(trimmed)
+							? 'vtt'
+							: options.segmentFallbackExtension
+						: undefined;
+				const resourceId = options.registerResource(
+					absoluteUri,
+					kind,
+					extension,
+					segmentFallbackExtension
+				);
 				const sessionUrl = buildSessionUrl(
 					options.baseUrl,
 					options.session.token,
@@ -210,9 +316,21 @@ export function rewriteSessionPlaylist(options: RewritePlaylistOptions): string 
 			: inferResourceKind(absoluteUrl, previousWasExtinf);
 		const extension = normalizeSessionExtension(
 			kind,
-			inferExtension(absoluteUrl, kind === 'playlist' ? 'm3u8' : kind === 'segment' ? 'ts' : 'bin')
+			inferExtension(
+				absoluteUrl,
+				kind === 'playlist'
+					? 'm3u8'
+					: kind === 'segment'
+						? (options.segmentFallbackExtension ?? 'ts')
+						: 'bin'
+			)
 		);
-		const resourceId = options.registerResource(absoluteUrl, kind, extension);
+		const resourceId = options.registerResource(
+			absoluteUrl,
+			kind,
+			extension,
+			kind === 'playlist' ? options.segmentFallbackExtension : undefined
+		);
 		result.push(
 			buildSessionUrl(
 				options.baseUrl,

@@ -23,7 +23,7 @@ describe('NoNaMe Club definition', () => {
 
 		expect(definition.id).toBe('noname-club');
 		expect(definition.replaces).toEqual(['nnm-club']);
-		expect(definition.name).toBe('NoNaMe Club');
+		expect(definition.name).toBe('NoNaMe Club (NNM)');
 		expect(definition.encoding).toBe('windows-1251');
 
 		const mapping = new Map(

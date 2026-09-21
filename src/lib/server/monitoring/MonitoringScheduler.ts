@@ -851,6 +851,11 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				const { executeMetadataRefreshTask } = await import('./tasks/MetadataRefreshTask.js');
 				return await executeMetadataRefreshTask(ctx);
 			}
+			case 'original-language-backfill': {
+				const { executeOriginalLanguageBackfillTask } =
+					await import('./tasks/OriginalLanguageBackfillTask.js');
+				return await executeOriginalLanguageBackfillTask(ctx);
+			}
 			default:
 				throw new Error(`Unknown task type: ${taskType}`);
 		}
@@ -905,6 +910,10 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 
 	async runMetadataRefresh(): Promise<TaskResult> {
 		return await this.executeTaskManually('metadata-refresh');
+	}
+
+	async runOriginalLanguageBackfill(): Promise<TaskResult> {
+		return await this.executeTaskManually('original-language-backfill');
 	}
 
 	private async executeTaskManually(taskType: string): Promise<TaskResult> {

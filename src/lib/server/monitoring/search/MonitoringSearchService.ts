@@ -1764,8 +1764,11 @@ export class MonitoringSearchService {
 					}
 				}
 
-				// Check if cutoff is unmet (only when cutoffUnmetOnly is true)
-				if (cutoffUnmetOnly) {
+				// Check if cutoff is unmet (only when cutoffUnmetOnly is true).
+				// A language shortfall keeps the movie upgrade-searchable even
+				// with quality cutoff met: the audio preference (phase B
+				// ranking) can still find a better-language release.
+				if (cutoffUnmetOnly && !movie.languageShortfall) {
 					const cutoffResult = await cutoffSpec.isSatisfied(context);
 					if (!cutoffResult.accepted) {
 						results.push({

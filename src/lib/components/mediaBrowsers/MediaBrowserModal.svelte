@@ -150,6 +150,13 @@
 		testResult = null;
 		try {
 			testResult = await onTest(getFormData());
+			// The running server decides its type: connect/test probes the
+			// product and adopts what actually answered (Jellyfin vs Emby vs
+			// Plex) instead of trusting the picker.
+			const detected = testResult?.serverInfo?.detectedType;
+			if (testResult?.success && detected && detected !== serverType) {
+				serverType = detected;
+			}
 		} finally {
 			testing = false;
 		}
@@ -429,7 +436,11 @@
 		<TestResult
 			result={testResult}
 			successDetails={testResult?.serverInfo
-				? `${testResult.serverInfo.serverName} v${testResult.serverInfo.version}`
+				? `${testResult.serverInfo.serverName} v${testResult.serverInfo.version}${
+						testResult.serverInfo.detectedType
+							? ` · ${getServerTypeName(testResult.serverInfo.detectedType)}`
+							: ''
+					}`
 				: undefined}
 		/>
 

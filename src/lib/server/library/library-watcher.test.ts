@@ -38,11 +38,17 @@ vi.mock('./media-info.js', () => ({
 	isVideoFile: vi.fn(() => true)
 }));
 
+vi.mock('$lib/server/subtitles/services/subtitle-reconcile-hooks.js', () => ({
+	scheduleReconcileRootFolder: vi.fn().mockResolvedValue(undefined)
+}));
+
 let mockScanning = false;
 
 const { LibraryWatcherService, IGNORED_PATTERNS } = await import('./library-watcher.js');
 const { diskScanService } = await import('./disk-scan.js');
 const { libraryOperationLock } = await import('./library-operation-lock.js');
+const { scheduleReconcileRootFolder } =
+	await import('$lib/server/subtitles/services/subtitle-reconcile-hooks.js');
 
 describe('LibraryWatcherService IGNORED_PATTERNS', () => {
 	// @parcel/watcher's subscribe() throws synchronously if any ignore RegExp
@@ -126,6 +132,15 @@ describe('LibraryWatcherService.processPendingChanges', () => {
 		await watcherInternals().processPendingChanges();
 
 		expect(diskScanService.scanRootFolder).toHaveBeenCalledTimes(1);
+		expect(watcherInternals().pendingChanges.size).toBe(0);
+	});
+
+	it('scans the folder and schedules subtitle reconciliation on success', async () => {
+		seedChange('/media/movie.mkv');
+		await watcherInternals().processPendingChanges();
+
+		expect(diskScanService.scanRootFolder).toHaveBeenCalledWith('folder-1');
+		expect(scheduleReconcileRootFolder).toHaveBeenCalledWith('folder-1');
 		expect(watcherInternals().pendingChanges.size).toBe(0);
 	});
 });

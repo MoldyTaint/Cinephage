@@ -1,5 +1,13 @@
 <script lang="ts">
-	import { Library, FolderOpen, FileSignature, Shield, Filter, FolderSync } from 'lucide-svelte';
+	import {
+		Library,
+		FolderOpen,
+		FileSignature,
+		Shield,
+		Filter,
+		FolderSync,
+		Languages
+	} from 'lucide-svelte';
 	import { SettingsTabNav } from '$lib/components/settings';
 	import * as m from '$lib/paraglide/messages.js';
 
@@ -30,6 +38,11 @@
 			href: '/settings/library/quality',
 			label: m.nav_qualitySettings(),
 			icon: Shield
+		},
+		{
+			href: '/settings/library/languages',
+			label: m.nav_languages(),
+			icon: Languages
 		},
 		{
 			href: '/settings/library/filters',

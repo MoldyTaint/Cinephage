@@ -209,6 +209,14 @@ const MAINTENANCE_TASKS: UnifiedTaskDefinition[] = [
 			'Regenerate .nfo and poster/fanart sidecar files for the whole library, overwriting existing ones. Useful for backfilling older imports.',
 		category: 'maintenance',
 		runEndpoint: '/api/library/regenerate-sidecars'
+	},
+	{
+		id: 'original-language-backfill',
+		name: 'Original Language Backfill',
+		description:
+			'Fill in the original language for movies and series that are missing it (typically imported before this data was tracked) by fetching their TMDB details. Safe to re-run; already-populated items are skipped.',
+		category: 'maintenance',
+		runEndpoint: '/api/monitoring/search/original-language-backfill'
 	}
 ];
 

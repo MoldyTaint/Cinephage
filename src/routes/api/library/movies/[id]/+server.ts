@@ -24,6 +24,7 @@ import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import { tmdb } from '$lib/server/tmdb.js';
 import { movieUpdateSchema } from '$lib/validation/schemas';
 import { parseBody } from '$lib/server/api/validate.js';
+import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
 import {
 	validateRootFolder,
 	getAnimeSubtypeEnforcement
@@ -34,11 +35,16 @@ import { getLibraryEntityService } from '$lib/server/library/LibraryEntityServic
 import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
 import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
 import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
+import { persistLinkedProviderTitleVariants } from '$lib/server/metadata/provider-resolution.js';
 import { importService } from '$lib/server/downloadClients/import/index.js';
 import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
 import { redundantFileIds } from '$lib/server/quality/buckets.js';
 import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
-import { refreshMovieMetadata } from '$lib/server/metadata/metadata-refresh.js';
+import {
+	refreshMovieMetadata,
+	metadataLanguageToLegacy,
+	warnLegacyMetadataLanguage
+} from '$lib/server/metadata/metadata-refresh.js';
 
 function isAnimeMovieSignal(input: {
 	rootFolderPath: string | null;
@@ -87,7 +93,8 @@ export const GET: RequestHandler = async ({ params }) => {
 				digitalReleaseDate: movies.digitalReleaseDate,
 				physicalReleaseDate: movies.physicalReleaseDate,
 				availabilityDelay: movies.availabilityDelay,
-				metadataLanguage: movies.metadataLanguage,
+				metadataLanguageMode: movies.metadataLanguageMode,
+				metadataLanguageValue: movies.metadataLanguageValue,
 				preferOriginalTitle: movies.preferOriginalTitle
 			})
 			.from(movies)
@@ -98,10 +105,20 @@ export const GET: RequestHandler = async ({ params }) => {
 			return json({ success: false, error: 'Movie not found' }, { status: 404 });
 		}
 
-		const [files, existingSubtitles, subtitleStatus, releaseInfo] = await Promise.all([
+		const profileService = getLanguageProfileService();
+		const [
+			files,
+			existingSubtitles,
+			subtitleStatus,
+			effectiveLanguageProfile,
+			effectiveSubtitleRequirements,
+			releaseInfo
+		] = await Promise.all([
 			db.select().from(movieFiles).where(eq(movieFiles.movieId, movie.id)),
 			db.select().from(subtitles).where(eq(subtitles.movieId, movie.id)),
-			getLanguageProfileService().getMovieSubtitleStatus(movie.id),
+			profileService.getMovieSubtitleStatus(movie.id),
+			profileService.getEffectiveProfileForMovie(movie.id),
+			profileService.getEffectiveSubtitleRequirements({ movieId: movie.id }),
 			tmdb.getMovieReleaseInfo(movie.tmdbId).catch((err) => {
 				logger.warn(
 					{
@@ -136,6 +153,11 @@ export const GET: RequestHandler = async ({ params }) => {
 			success: true,
 			movie: {
 				...movie,
+				// Legacy view derived from the v2 pair (kept one release).
+				metadataLanguage: metadataLanguageToLegacy(
+					movie.metadataLanguageMode,
+					movie.metadataLanguageValue
+				),
 				providerRefs: enrichedProviderRefs,
 				tmdbStatus: releaseInfo?.status ?? null,
 				releaseDate: releaseInfo?.release_date ?? null,
@@ -169,7 +191,13 @@ export const GET: RequestHandler = async ({ params }) => {
 					satisfied: subtitleStatus.satisfied,
 					missing: subtitleStatus.missing,
 					existing: subtitleStatus.existing
-				}
+				},
+				// The profile governing this movie plus where it was resolved
+				// from (movie override > library default > instance default).
+				effectiveLanguageProfile: effectiveLanguageProfile ?? null,
+				// The subtitle requirements in force (item override or profile
+				// chain) with their resolution source.
+				effectiveSubtitleRequirements: effectiveSubtitleRequirements ?? null
 			}
 		});
 	} catch (error) {
@@ -202,10 +230,13 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		removeUnwantedFiles,
 		wantsSubtitles,
 		languageProfileId,
+		subtitleRequirementsOverride,
 		delayProfileId,
 		folderPath,
 		tmdbCollectionId,
 		collectionName,
+		metadataLanguageMode,
+		metadataLanguageValue,
 		metadataLanguage,
 		preferOriginalTitle
 	} = body;
@@ -221,13 +252,18 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			desiredQualities: movies.desiredQualities,
 			wantsSubtitles: movies.wantsSubtitles,
 			languageProfileId: movies.languageProfileId,
+			subtitleRequirementsOverride: movies.subtitleRequirementsOverride,
 			hasFile: movies.hasFile,
-			metadataLanguage: movies.metadataLanguage
+			metadataLanguageMode: movies.metadataLanguageMode,
+			metadataLanguageValue: movies.metadataLanguageValue
 		})
 		.from(movies)
 		.where(eq(movies.id, params.id));
 
 	const updateData: Record<string, unknown> = {};
+	// Track fields applied outside updateData (via service calls) so the
+	// "no valid fields" guard below stays accurate.
+	let appliedSideEffectFields = 0;
 	let moveRequest:
 		| {
 				mediaId: string;
@@ -336,8 +372,28 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	if (typeof wantsSubtitles === 'boolean') {
 		updateData.wantsSubtitles = wantsSubtitles;
 	}
+	// Per-item subtitle requirement override: validated list or null to clear
+	// (inherit from the profile chain). Replaces only the requirement list.
+	if (subtitleRequirementsOverride !== undefined) {
+		updateData.subtitleRequirementsOverride = subtitleRequirementsOverride;
+		appliedSideEffectFields++;
+	}
+	// Language profile override: a string must reference an existing profile
+	// and is applied through the service; null clears the override so the
+	// movie inherits (library default → instance default).
 	if (languageProfileId !== undefined) {
-		updateData.languageProfileId = languageProfileId;
+		const profileService = getLanguageProfileService();
+		if (languageProfileId !== null) {
+			const profile = await profileService.getProfile(languageProfileId);
+			if (!profile) {
+				return json(
+					{ success: false, error: `Language profile not found: ${languageProfileId}` },
+					{ status: 400 }
+				);
+			}
+		}
+		await profileService.assignToMovie(params.id, languageProfileId);
+		appliedSideEffectFields++;
 	}
 	if (folderPath !== undefined) {
 		const trimmed = folderPath.trim();
@@ -375,14 +431,29 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	if (collectionName !== undefined) {
 		updateData.collectionName = collectionName;
 	}
-	if (metadataLanguage !== undefined) {
-		updateData.metadataLanguage = metadataLanguage;
+	// Metadata language override (v2 pair). The update schema maps the
+	// deprecated single-string form onto metadataLanguageMode/Value.
+	const metadataLanguageProvided =
+		metadataLanguageMode !== undefined ||
+		metadataLanguageValue !== undefined ||
+		metadataLanguage !== undefined;
+	const nextMetadataLanguageMode = metadataLanguageProvided
+		? (metadataLanguageMode ?? 'inherit')
+		: null;
+	const nextMetadataLanguageValue =
+		nextMetadataLanguageMode === 'explicit' ? (metadataLanguageValue ?? null) : null;
+	if (metadataLanguageProvided) {
+		if (metadataLanguage !== undefined) {
+			warnLegacyMetadataLanguage('PATCH /api/library/movies/[id]');
+		}
+		updateData.metadataLanguageMode = nextMetadataLanguageMode;
+		updateData.metadataLanguageValue = nextMetadataLanguageValue;
 	}
-	if (typeof preferOriginalTitle === 'boolean') {
+	if (preferOriginalTitle === null || typeof preferOriginalTitle === 'boolean') {
 		updateData.preferOriginalTitle = preferOriginalTitle;
 	}
 
-	if (Object.keys(updateData).length === 0 && !moveRequest) {
+	if (Object.keys(updateData).length === 0 && !moveRequest && appliedSideEffectFields === 0) {
 		return json({ success: false, error: 'No valid fields to update' }, { status: 400 });
 	}
 
@@ -390,9 +461,23 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		await db.update(movies).set(updateData).where(eq(movies.id, params.id));
 	}
 
+	// Manual anime provider link: fetch the linked AniList/MAL entries and
+	// persist their title variants as alternate titles (idempotent). Runs in
+	// the background — external provider latency must not stall the PATCH.
+	if (providerRefs?.anilist || providerRefs?.mal) {
+		persistLinkedProviderTitleVariants('movie', params.id, providerRefs).catch((err) => {
+			logger.warn(
+				{ movieId: params.id, err },
+				'[API] Failed to persist linked provider title variants'
+			);
+		});
+	}
+
 	// Refresh metadata from TMDB when language override changes
 	const languageChanged =
-		metadataLanguage !== undefined && metadataLanguage !== (currentMovie?.metadataLanguage ?? null);
+		metadataLanguageProvided &&
+		(nextMetadataLanguageMode !== (currentMovie?.metadataLanguageMode ?? null) ||
+			nextMetadataLanguageValue !== (currentMovie?.metadataLanguageValue ?? null));
 	if (languageChanged) {
 		refreshMovieMetadata(params.id).catch((err) => {
 			logger.error(
@@ -534,15 +619,21 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		);
 	}
 
-	// Check if subtitle monitoring was just enabled
+	// Check if subtitle monitoring was just enabled, or the requirement
+	// override changed while the gate is on. Requirements may come from the
+	// profile chain (library/instance default), so the gate alone enables.
 	if (currentMovie?.hasFile) {
-		const wasEnabled = currentMovie.wantsSubtitles === true && currentMovie.languageProfileId;
+		const wasEnabled = currentMovie.wantsSubtitles === true;
 		const newWantsSubtitles = wantsSubtitles ?? currentMovie.wantsSubtitles;
-		const newProfileId = languageProfileId ?? currentMovie.languageProfileId;
-		const isNowEnabled = newWantsSubtitles === true && newProfileId;
+		const isNowEnabled = newWantsSubtitles === true;
+		const overrideChanged =
+			subtitleRequirementsOverride !== undefined &&
+			JSON.stringify(subtitleRequirementsOverride) !==
+				JSON.stringify(currentMovie.subtitleRequirementsOverride ?? null);
 
-		// Trigger subtitle search if just enabled (wasn't before, is now)
-		if (!wasEnabled && isNowEnabled) {
+		// Trigger subtitle search if just enabled (wasn't before, is now) or
+		// the requirements changed while enabled.
+		if (isNowEnabled && (!wasEnabled || overrideChanged)) {
 			const settings = await monitoringScheduler.getSettings();
 			if (settings.subtitleSearchOnImportEnabled) {
 				logger.info(
@@ -678,7 +769,9 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 						);
 					}
 				}
-				// Delete queue record
+				// Delete queue record — cancel the acquisition intent first so the
+				// slot is released rather than leaking until restart.
+				acquisitionService.cancelByQueueId(queueItem.id, 'media removed from library');
 				await db.delete(downloadQueue).where(eq(downloadQueue.id, queueItem.id));
 			}
 

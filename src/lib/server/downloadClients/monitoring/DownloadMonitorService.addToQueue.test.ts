@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../test/db-helper';
-import { downloadClients, downloadQueue } from '$lib/server/db/schema';
+import { downloadClients, downloadQueue, movies } from '$lib/server/db/schema';
 
 const testDb: TestDatabase = createTestDb();
 
@@ -30,7 +30,13 @@ describe('DownloadMonitorService.addToQueue', () => {
 	afterAll(() => destroyTestDb(testDb));
 
 	beforeEach(() => {
-		testDb.sqlite.exec('DELETE FROM download_queue; DELETE FROM download_clients;');
+		testDb.sqlite.exec(
+			'DELETE FROM download_queue; DELETE FROM download_clients; DELETE FROM movies;'
+		);
+		testDb.db
+			.insert(movies)
+			.values({ id: 'movie-2', tmdbId: 42, title: 'Fresh Movie', path: 'Fresh Movie (2026)' })
+			.run();
 		testDb.db
 			.insert(downloadClients)
 			.values({
@@ -122,7 +128,10 @@ describe('DownloadMonitorService.addToQueue', () => {
 		expect(testDb.db.select().from(downloadQueue).all()).toHaveLength(2);
 	});
 
-	it('reuses a failed row when the same torrent hash is submitted', async () => {
+	it('creates a fresh row instead of resurrecting a failed row with the same hash', async () => {
+		// Resurrecting a failed row returned the PREVIOUS target and upgrade
+		// flags to the new grab (stale-row reuse bug) — a new grab must get a
+		// clean row.
 		const infoHash = '0123456789abcdef0123456789abcdef01234567';
 		testDb.db
 			.insert(downloadQueue)
@@ -142,10 +151,18 @@ describe('DownloadMonitorService.addToQueue', () => {
 			downloadId: infoHash,
 			infoHash,
 			title: 'Test.Movie.2026.1080p.WEB-DL-GROUP',
-			protocol: 'torrent'
+			protocol: 'torrent',
+			movieId: 'movie-2',
+			isUpgrade: true
 		});
 
-		expect(item.id).toBe('failed-row');
-		expect(testDb.db.select().from(downloadQueue).all()).toHaveLength(1);
+		expect(item.id).not.toBe('failed-row');
+		expect(item.movieId).toBe('movie-2');
+		expect(item.isUpgrade).toBe(true);
+		const rows = testDb.db.select().from(downloadQueue).all();
+		expect(rows).toHaveLength(2);
+		const failed = rows.find((row) => row.id === 'failed-row');
+		expect(failed?.status).toBe('failed');
+		expect(failed?.movieId).toBeNull();
 	});
 });

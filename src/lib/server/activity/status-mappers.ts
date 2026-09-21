@@ -14,7 +14,7 @@ export function mapFilterStatusToQueueStatuses(status: string): string[] | null 
 				'importing'
 			];
 		case 'seeding':
-			return ['seeding'];
+			return ['seeding', 'seeding-imported'];
 		case 'paused':
 			return ['paused'];
 		case 'failed':

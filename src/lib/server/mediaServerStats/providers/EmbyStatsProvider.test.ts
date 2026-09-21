@@ -141,8 +141,11 @@ describe('EmbyStatsProvider', () => {
 		expect(item.audioCodec).toBe('ac3');
 		expect(item.containerFormat).toBe('mp4');
 		expect(item.duration).toBe(5400);
-		expect(item.audioLanguages).toEqual(['eng']);
-		expect(item.subtitleLanguages).toEqual(['spa']);
+		expect(item.audioLanguages).toEqual(['en']);
+		expect(item.subtitleLanguages).toEqual(['es']);
+		// Untouched source display strings are preserved alongside the tags.
+		expect(item.audioLanguagesRaw).toEqual(['eng']);
+		expect(item.subtitleLanguagesRaw).toEqual(['spa']);
 	});
 
 	it('should detect HDR from ExtendedVideoType', async () => {

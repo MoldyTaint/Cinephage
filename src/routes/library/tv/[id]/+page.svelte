@@ -11,6 +11,9 @@
 	import { MediaSearchModal } from '$lib/components/search';
 	import { SubtitleSearchModal } from '$lib/components/subtitles';
 	import SubtitleSyncModal from '$lib/components/subtitles/SubtitleSyncModal.svelte';
+	import SubtitleRequirementsSection from '$lib/components/subtitles/SubtitleRequirementsSection.svelte';
+	import { deriveSeriesSubtitleProgress } from '$lib/utils/subtitle-status-display.js';
+	import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
@@ -31,7 +34,7 @@
 	import { CheckSquare, FileEdit, RefreshCw, X } from 'lucide-svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
 	import { getLibraryDetailBackHref } from '$lib/utils/libraryReturnNavigation';
 	import { createDynamicSSE } from '$lib/sse';
@@ -701,6 +704,7 @@
 			series.seasonFolder = editData.seasonFolder;
 			series.seriesType = editData.seriesType;
 			series.wantsSubtitles = editData.wantsSubtitles;
+			series.languageProfileId = editData.languageProfileId;
 
 			if (episodeGroupChanged) {
 				series.episodeGroupId = editData.episodeGroupId ?? null;
@@ -826,6 +830,7 @@
 	// Episode deletion handlers
 	interface Episode {
 		id: string;
+		wantsSubtitlesOverride?: boolean | null;
 		seasonNumber: number;
 		episodeNumber: number;
 		title: string | null;
@@ -1509,6 +1514,65 @@
 	}
 
 	// Per-series subtitle auto-search (all missing)
+	const seriesSubtitleProgress = $derived(
+		deriveSeriesSubtitleProgress(data.seasons.flatMap((season) => season.episodes))
+	);
+
+	let savingRequirements = $state(false);
+	let searchingRequirements = $state(false);
+
+	async function handleEpisodeGateChange(episodeId: string, value: boolean | null) {
+		try {
+			const response = await fetch(`/api/library/episodes/${episodeId}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ wantsSubtitlesOverride: value })
+			});
+			if (!response.ok) throw new Error('Failed to update episode subtitle gate');
+			await invalidateAll();
+		} catch (error) {
+			showActionError(m.toast_library_tvDetail_failedToUpdateMonitor(), error);
+		}
+	}
+
+	async function handleRequirementSearch(requirement: SubtitleRequirement) {
+		searchingRequirements = true;
+		try {
+			const response = await fetch('/api/subtitles/auto-search/batch', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ type: 'series', seriesId: seriesForDisplay.id, requirement })
+			});
+			if (!response.ok) {
+				const body = (await response.json().catch(() => ({}))) as { error?: string };
+				throw new Error(body.error ?? 'Search failed');
+			}
+			await invalidateAll();
+		} catch (error) {
+			showActionError(m.toast_library_tvDetail_failedToUpdateMonitor(), error);
+		} finally {
+			searchingRequirements = false;
+		}
+	}
+
+	async function handleRequirementsSave(requirements: SubtitleRequirement[] | null) {
+		savingRequirements = true;
+		try {
+			const response = await fetch(`/api/library/series/${seriesForDisplay.id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ subtitleRequirementsOverride: requirements })
+			});
+			if (!response.ok) {
+				const body = (await response.json().catch(() => ({}))) as { error?: string };
+				throw new Error(body.error ?? 'Failed to save subtitle languages');
+			}
+			await invalidateAll();
+		} finally {
+			savingRequirements = false;
+		}
+	}
+
 	async function handleSubtitleAutoSearchSeries(): Promise<void> {
 		subtitleAutoSearchingSeries = true;
 
@@ -1711,6 +1775,8 @@
 		{missingSearchProgress}
 		{missingSearchResult}
 		{partiallyMonitored}
+		subtitleProgress={seriesSubtitleProgress}
+		preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 		onMonitorToggle={handleMonitorToggle}
 		onSearch={handleSearch}
 		onSearchMissing={handleSearchMissing}
@@ -1720,6 +1786,18 @@
 		onEdit={handleEdit}
 		onDelete={handleDelete}
 		onRefresh={handleRefresh}
+	/>
+
+	<!-- Subtitle requirements (series-level fallback for all episodes) -->
+	<SubtitleRequirementsSection
+		requirements={data.effectiveSubtitleRequirements?.requirements ?? []}
+		source={data.effectiveSubtitleRequirements?.source ?? null}
+		profileName={data.effectiveLanguageProfile?.profile.name ?? null}
+		audioShortfall={data.series.languageShortfall ?? false}
+		editable
+		saving={savingRequirements || searchingRequirements}
+		onSave={handleRequirementsSave}
+		onSearch={handleRequirementSearch}
 	/>
 
 	<!-- Main Content -->
@@ -1795,6 +1873,7 @@
 						onSubtitleSearch={handleSubtitleSearch}
 						onSubtitleAutoSearch={handleSubtitleAutoSearch}
 						onSubtitleSync={isStreamerProfile ? undefined : handleSubtitleSyncFromPopover}
+						onSubtitleGateChange={handleEpisodeGateChange}
 						onSubtitleDelete={handleSubtitleDeleteFromPopover}
 						onSeasonDelete={handleSeasonDelete}
 						onEpisodeDelete={handleEpisodeDelete}
@@ -1831,6 +1910,8 @@
 	{series}
 	qualityProfiles={data.qualityProfiles}
 	delayProfiles={data.delayProfiles}
+	languageProfiles={data.languageProfiles}
+	effectiveLanguageProfile={data.effectiveLanguageProfile}
 	rootFolders={data.rootFolders}
 	saving={isSaving}
 	onClose={handleEditClose}

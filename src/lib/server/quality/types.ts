@@ -17,6 +17,12 @@ export interface ScoreComponents {
 	packBonus: number;
 	/** Penalty for hardcoded subs (-50 to 0) */
 	hardcodedSubsPenalty: number;
+	/**
+	 * Preferred-language boost applied post-enrichment by SearchOrchestrator
+	 * (enhanced path). Not set when no language was preferred or the release
+	 * title did not assert it.
+	 */
+	languageBonus?: number;
 	/** Final combined score */
 	totalScore: number;
 }

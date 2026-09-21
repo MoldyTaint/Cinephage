@@ -195,11 +195,19 @@ function normalizeSubtitles(value: unknown): StreamSubtitle[] | undefined {
 		if (!url) continue;
 		const language = getFirstString(entry.language, entry.lang, entry.code, entry.srclang) ?? 'und';
 		const isDefault = entry.isDefault === true || entry.default === true;
+		const isForced = entry.isForced === true || entry.forced === true;
+		const isHearingImpaired =
+			entry.isHearingImpaired === true ||
+			entry.hearingImpaired === true ||
+			entry.hi === true ||
+			entry.sdh === true;
 		subtitles.push({
 			url,
 			label: getFirstString(entry.label, entry.name, entry.language, entry.lang) ?? language,
 			language,
-			isDefault
+			isDefault,
+			isForced,
+			isHearingImpaired
 		});
 	}
 	return subtitles.length > 0 ? subtitles : undefined;

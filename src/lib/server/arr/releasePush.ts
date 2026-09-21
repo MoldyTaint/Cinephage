@@ -142,6 +142,7 @@ async function grabPushedRelease(
 		publishDate: release.publishDate,
 		mediaType: target.movieId ? 'movie' : 'tv',
 		isAutomatic: true,
+		source: 'arr_push',
 		...target
 	};
 
@@ -164,6 +165,27 @@ function grabFailureReason(body: unknown): string {
 		return (body as { error: string }).error;
 	}
 	return 'Failed to grab release';
+}
+
+/**
+ * Audio-language gate for pushed (autobrr/RSS) releases: rejects only on
+ * affirmative contradiction under the item's require-mode audio preference
+ * (same truth table as the grab pipeline's LanguageStage, applied pre-grab
+ * so pushes get a clean rejection instead of a failed grab).
+ */
+async function rejectOnLanguageShortfall(
+	title: string,
+	mediaType: 'movie' | 'series',
+	itemId: string
+): Promise<string[] | null> {
+	try {
+		const { resolveAudioPreferenceForItem } =
+			await import('$lib/server/languages/audio-preference-resolver');
+		const { evaluatePushLanguageGate } = await import('$lib/server/arr/language-gate');
+		return evaluatePushLanguageGate(title, await resolveAudioPreferenceForItem(mediaType, itemId));
+	} catch {
+		return null;
+	}
 }
 
 async function pushMovieRelease(
@@ -196,6 +218,9 @@ async function pushMovieRelease(
 	if (!scoringResult.meetsMinimum) {
 		return reject(qualityRejectionReasons(scoringResult));
 	}
+
+	const languageRejection = await rejectOnLanguageShortfall(release.title, 'movie', movie.id);
+	if (languageRejection) return reject(languageRejection);
 
 	const grabResult = await grabPushedRelease(fetchFn, release, { movieId: movie.id });
 	if (!grabResult.ok) {
@@ -279,6 +304,9 @@ async function pushSeriesRelease(
 	if (!scoringResult.meetsMinimum) {
 		return reject(qualityRejectionReasons(scoringResult));
 	}
+
+	const seriesLanguageRejection = await rejectOnLanguageShortfall(release.title, 'series', show.id);
+	if (seriesLanguageRejection) return reject(seriesLanguageRejection);
 
 	const grabResult = await grabPushedRelease(fetchFn, release, {
 		seriesId: show.id,

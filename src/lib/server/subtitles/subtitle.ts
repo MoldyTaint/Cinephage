@@ -48,6 +48,14 @@ export abstract class Subtitle {
 	/** URL to the subtitle page on the provider */
 	readonly pageLink?: string;
 
+	/**
+	 * Provider-specific direct download URL. Usually equal to `pageLink`, but a
+	 * provider may return a distinct download endpoint (e.g. BetaSeries). Kept
+	 * separate so `toSearchResult()` can carry it to the manual download path;
+	 * falls back to `pageLink` when a provider only exposes one URL.
+	 */
+	downloadUrl?: string;
+
 	// Provider capability flags
 	/** Whether hash match can be verified by this provider */
 	hashVerifiable = false;
@@ -153,6 +161,7 @@ export abstract class Subtitle {
 		this.id = id;
 		this.language = language;
 		this.pageLink = options.pageLink;
+		this.downloadUrl = options.downloadUrl;
 		this.releaseInfo = options.releaseInfo;
 		this.filename = options.filename;
 		this.uploader = options.uploader;
@@ -331,7 +340,8 @@ export abstract class Subtitle {
 			format: this.format,
 			isHashMatch: this.isHashMatch || this.matches.has('hash'),
 			matchScore: 0, // Will be computed by scoring service
-			downloadUrl: this.pageLink,
+			downloadUrl: this.downloadUrl ?? this.pageLink,
+			pageLink: this.pageLink,
 			downloadCount: this.downloadCount,
 			rating: this.rating,
 			uploadDate: this.uploadDate?.toISOString(),
@@ -534,6 +544,8 @@ export abstract class Subtitle {
  */
 export interface SubtitleOptions {
 	pageLink?: string;
+	/** Provider-specific direct download URL; falls back to `pageLink` when set. */
+	downloadUrl?: string;
 	releaseInfo?: string;
 	filename?: string;
 	uploader?: string;
@@ -572,6 +584,7 @@ export interface LegacySubtitleSearchResult {
 	isHashMatch: boolean;
 	matchScore: number;
 	downloadUrl?: string;
+	pageLink?: string;
 	downloadCount?: number;
 	rating?: number;
 	uploadDate?: string;

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { goto, beforeNavigate, afterNavigate } from '$app/navigation';
+	import { goto, beforeNavigate, afterNavigate, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { resolvePath } from '$lib/utils/routing';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -9,6 +9,7 @@
 	import LibraryDrawer from '$lib/components/library/LibraryDrawer.svelte';
 	import LibraryBulkActionBar from '$lib/components/library/LibraryBulkActionBar.svelte';
 	import BulkQualityProfileModal from '$lib/components/library/BulkQualityProfileModal.svelte';
+	import BulkLanguageProfileModal from '$lib/components/library/BulkLanguageProfileModal.svelte';
 	import BulkDeleteModal from '$lib/components/library/BulkDeleteModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import { MediaSearchModal } from '$lib/components/search';
@@ -50,20 +51,30 @@
 	const SCROLL_KEY = 'cinephage:library:movies:scrollY';
 
 	beforeNavigate(({ to }) => {
-		if (to?.url.pathname.startsWith('/library/movie/')) {
-			localStorage.setItem(SCROLL_KEY, String(window.scrollY));
-		} else {
-			localStorage.removeItem(SCROLL_KEY);
+		try {
+			if (to?.url.pathname.startsWith('/library/movie/')) {
+				localStorage.setItem(SCROLL_KEY, String(window.scrollY));
+			} else {
+				localStorage.removeItem(SCROLL_KEY);
+			}
+		} catch {
+			// storage unavailable (blocked cookies / ETP)
 		}
 	});
 
 	afterNavigate(({ from }) => {
-		if (from?.url.pathname.startsWith('/library/movie/')) {
-			const saved = localStorage.getItem(SCROLL_KEY);
-			if (saved) {
-				requestAnimationFrame(() => window.scrollTo({ top: parseInt(saved), behavior: 'instant' }));
-				localStorage.removeItem(SCROLL_KEY);
+		try {
+			if (from?.url.pathname.startsWith('/library/movie/')) {
+				const saved = localStorage.getItem(SCROLL_KEY);
+				if (saved) {
+					requestAnimationFrame(() =>
+						window.scrollTo({ top: parseInt(saved), behavior: 'instant' })
+					);
+					localStorage.removeItem(SCROLL_KEY);
+				}
 			}
+		} catch {
+			// storage unavailable (blocked cookies / ETP)
 		}
 	});
 
@@ -242,6 +253,14 @@
 			bulkLoading = false;
 			currentBulkAction = null;
 		}
+	}
+
+	let isLanguageModalOpen = $state(false);
+
+	async function handleBulkLanguageApplied(updated: number) {
+		selectedMovies.clear();
+		toasts.success(m.toast_library_movies_qualityUpdatedCount({ count: updated }));
+		await invalidateAll();
 	}
 
 	async function handleBulkDelete(deleteFiles: boolean, removeFromLibrary: boolean) {
@@ -923,6 +942,7 @@
 													selected={selectedMovies.has(movie.id)}
 													onSelectChange={handleItemSelectChange}
 													collectionName={movie.collectionName ?? undefined}
+													preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 												/>
 											{/each}
 										</div>
@@ -940,6 +960,7 @@
 												onDelete={handleDeleteMovie}
 												onAutoGrab={handleAutoGrab}
 												onManualGrab={handleManualGrab}
+												preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 											/>
 										</div>
 									{/if}
@@ -958,6 +979,7 @@
 										selected={selectedMovies.has(movie.id)}
 										onSelectChange={handleItemSelectChange}
 										collectionName={movie.collectionName ?? undefined}
+										preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 									/>
 								{/each}
 							</div>
@@ -974,6 +996,7 @@
 								onDelete={handleDeleteMovie}
 								onAutoGrab={handleAutoGrab}
 								onManualGrab={handleManualGrab}
+								preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 							/>
 						{/if}
 
@@ -1036,6 +1059,7 @@
 	onMonitor={() => handleBulkMonitor(true)}
 	onUnmonitor={() => handleBulkMonitor(false)}
 	onChangeQuality={() => (isQualityModalOpen = true)}
+	onLanguage={() => (isLanguageModalOpen = true)}
 	onDelete={() => (isDeleteModalOpen = true)}
 	onClear={clearSelection}
 />
@@ -1049,6 +1073,15 @@
 	mediaType="movie"
 	onSave={handleBulkQualityChange}
 	onCancel={() => (isQualityModalOpen = false)}
+/>
+
+<!-- Bulk Language Profile Modal -->
+<BulkLanguageProfileModal
+	open={isLanguageModalOpen}
+	mediaType="movie"
+	selectedIds={[...selectedMovies]}
+	onClose={() => (isLanguageModalOpen = false)}
+	onApplied={handleBulkLanguageApplied}
 />
 
 <!-- Single Item Delete Modal -->

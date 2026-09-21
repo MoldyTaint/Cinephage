@@ -13,7 +13,12 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { ChannelLineupItemWithDetails, EpgProgram } from '$lib/types/livetv';
 	import { onMount } from 'svelte';
-	import { getEpgGuide } from '$lib/api/livetv.js';
+	import {
+		getEpgGuide,
+		getStoredEpgDisplayLanguage,
+		storeEpgDisplayLanguage
+	} from '$lib/api/livetv.js';
+	import { ALL_LANGUAGE_OPTIONS } from '$lib/shared/languages';
 	import { getEpgConfig } from './epgConfig';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import { formatDisplayDate, toDateString } from '$lib/utils/format.js';
@@ -24,6 +29,15 @@
 	}
 
 	let { lineup, loading }: Props = $props();
+
+	// EPG display language (localStorage-persisted). Empty = auto: the server
+	// uses the instance metadata locale (language_settings.metadata_locale).
+	let displayLanguage = $state(getStoredEpgDisplayLanguage());
+
+	function handleDisplayLanguageChange(event: Event) {
+		displayLanguage = (event.currentTarget as HTMLSelectElement).value;
+		storeEpgDisplayLanguage(displayLanguage);
+	}
 
 	// Viewport width tracking for responsive config
 	let viewportWidth = $state(typeof window !== 'undefined' ? window.innerWidth : 1024);
@@ -155,11 +169,12 @@
 		};
 	});
 
-	// Reload programs when time window changes
+	// Reload programs when time window, lineup, or display language changes
 	$effect(() => {
-		// Dependencies: window and lineup
+		// Dependencies: window, lineup, display language
 		void windowStartTime;
 		void lineup;
+		void displayLanguage;
 		loadPrograms();
 	});
 
@@ -206,7 +221,8 @@
 			const data = await getEpgGuide({
 				start: windowStart.toISOString(),
 				end: windowEnd.toISOString(),
-				channelIds: channelIds.join(',')
+				channelIds: channelIds.join(','),
+				...(displayLanguage ? { lang: displayLanguage } : {})
 			});
 
 			if (requestId !== loadProgramsRequestId) {
@@ -329,16 +345,32 @@
 	</div>
 
 	<div class="space-y-2">
-		<div class="relative w-full">
-			<Search
-				class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/40"
-			/>
-			<input
-				type="text"
-				placeholder={m.livetv_epgGuide_searchPlaceholder()}
-				class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
-				bind:value={channelSearch}
-			/>
+		<div class="flex items-center gap-2">
+			<div class="relative w-full">
+				<Search
+					class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-base-content/40"
+				/>
+				<input
+					type="text"
+					placeholder={m.livetv_epgGuide_searchPlaceholder()}
+					class="input w-full rounded-full border-base-content/20 bg-base-200/60 pr-4 pl-9 transition-all duration-200 input-sm placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none"
+					bind:value={channelSearch}
+				/>
+			</div>
+			<label class="flex shrink-0 items-center gap-1.5" title={m.livetv_epg_displayLanguage()}>
+				<span class="sr-only">{m.livetv_epg_displayLanguage()}</span>
+				<select
+					class="select-bordered select w-auto select-sm"
+					value={displayLanguage}
+					onchange={handleDisplayLanguageChange}
+					aria-label={m.livetv_epg_displayLanguage()}
+				>
+					<option value="">{m.livetv_epg_displayLanguageAuto()}</option>
+					{#each ALL_LANGUAGE_OPTIONS as option (option.code)}
+						<option value={option.code}>{option.name}</option>
+					{/each}
+				</select>
+			</label>
 		</div>
 		{#if channelSearch}
 			<div class="text-xs text-base-content/60">

@@ -12,6 +12,7 @@
 	import { MediaSearchModal } from '$lib/components/search';
 	import { SubtitleSearchModal } from '$lib/components/subtitles';
 	import SubtitleSyncModal from '$lib/components/subtitles/SubtitleSyncModal.svelte';
+	import SubtitleRequirementsSection from '$lib/components/subtitles/SubtitleRequirementsSection.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import {
 		ConfirmationModal,
@@ -46,6 +47,8 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
 	import { getLibraryDetailBackHref } from '$lib/utils/libraryReturnNavigation';
+	import { deriveSubtitleProgress } from '$lib/utils/subtitle-status-display.js';
+	import { requirementKey, type SubtitleRequirement } from '$lib/shared/language-profile.js';
 	import { createDynamicSSE } from '$lib/sse';
 	import { getFileName } from '$lib/utils/format.js';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
@@ -63,6 +66,12 @@
 	let lastMovieId = $state<string | null>(null);
 	const movie = $derived(movieState ?? data.movie);
 	const queueItem = $derived(queueItemState === undefined ? data.queueItem : queueItemState);
+
+	// Requirement-aware subtitle badge view-model. Null when the movie has no
+	// effective profile (the loader then returns a trivially-satisfied status).
+	const subtitleRequirementProgress = $derived(
+		deriveSubtitleProgress(data.subtitleStatus, data.effectiveLanguageProfile?.profile ?? null)
+	);
 
 	// Back link target: the validated returnTo URL carries the exact filtered
 	// list state from the page the user navigated from (issue #515). It stays
@@ -467,6 +476,47 @@
 	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
 	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
 
+	// Per-item subtitle requirement override (details-page editing).
+	let savingRequirements = $state(false);
+	const missingRequirementKeys = $derived(
+		(data.subtitleStatus?.missing ?? []).map((requirement) => requirementKey(requirement))
+	);
+
+	async function handleRequirementsSave(requirements: SubtitleRequirement[] | null) {
+		savingRequirements = true;
+		try {
+			const response = await fetch(`/api/library/movies/${movie.id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ subtitleRequirementsOverride: requirements })
+			});
+			if (!response.ok) {
+				const body = (await response.json().catch(() => ({}))) as { error?: string };
+				throw new Error(body.error ?? 'Failed to save subtitle languages');
+			}
+			await invalidateAll();
+		} finally {
+			savingRequirements = false;
+		}
+	}
+
+	async function handleRequirementSearch(requirement: SubtitleRequirement) {
+		try {
+			const response = await fetch('/api/subtitles/auto-search', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ movieId: movie.id, requirement })
+			});
+			if (!response.ok) {
+				const body = (await response.json().catch(() => ({}))) as { error?: string };
+				throw new Error(body.error ?? 'Search failed');
+			}
+			await invalidateAll();
+		} catch (error) {
+			toasts.error(error instanceof Error ? error.message : 'Subtitle search failed');
+		}
+	}
+
 	const searchProgress = createSearchProgress();
 
 	function handleImport() {
@@ -552,6 +602,7 @@
 			movie.minimumAvailability = editData.minimumAvailability;
 			movie.availabilityDelay = editData.availabilityDelay;
 			movie.wantsSubtitles = editData.wantsSubtitles;
+			movie.languageProfileId = editData.languageProfileId;
 			movie.tmdbCollectionId = editData.tmdbCollectionId ?? null;
 			movie.collectionName = editData.collectionName ?? null;
 
@@ -871,6 +922,21 @@
 		{autoSearchResult}
 		{scoreInfo}
 		{scoreLoading}
+		subtitleProgress={subtitleRequirementProgress}
+		preferOriginalTitleDefault={data.preferOriginalTitleDefault}
+	/>
+
+	<!-- Subtitle requirements (per-item override editing) -->
+	<SubtitleRequirementsSection
+		requirements={data.effectiveSubtitleRequirements?.requirements ?? []}
+		missingKeys={missingRequirementKeys}
+		source={data.effectiveSubtitleRequirements?.source ?? null}
+		profileName={data.effectiveLanguageProfile?.profile.name ?? null}
+		audioShortfall={data.movie.languageShortfall ?? false}
+		editable
+		saving={savingRequirements}
+		onSave={handleRequirementsSave}
+		onSearch={handleRequirementSearch}
 	/>
 
 	<!-- Main Content -->
@@ -898,6 +964,7 @@
 				<MovieFilesTab
 					files={movie.files}
 					subtitles={movie.subtitles}
+					subtitleProgress={subtitleRequirementProgress}
 					{isStreamerProfile}
 					onDeleteFile={handleDeleteFile}
 					onSearch={handleSearch}
@@ -1530,6 +1597,8 @@
 	{movie}
 	qualityProfiles={data.qualityProfiles}
 	delayProfiles={data.delayProfiles}
+	languageProfiles={data.languageProfiles}
+	effectiveLanguageProfile={data.effectiveLanguageProfile}
 	rootFolders={data.rootFolders}
 	saving={isSaving}
 	onClose={handleEditClose}

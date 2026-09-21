@@ -24,13 +24,17 @@ import { tmdb, type SearchResult } from '$lib/server/tmdb.js';
 import { mediaInfoService } from './media-info.js';
 import { basename, dirname, extname, join, relative } from 'path';
 import { RootFolderConflictError } from '$lib/errors';
-import { getSubtitleSettingsService } from '$lib/server/subtitles/services/SubtitleSettingsService.js';
 import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
 import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { logger, createChildLogger } from '$lib/logging/index.js';
 import { parseRelease, extractExternalIds } from '$lib/server/indexers/parser/ReleaseParser.js';
 import { getMediaParseStem } from './media-utils.js';
-import { resolveTvEpisodeIdentifier, extractSeasonFromPath } from './tv-episode-resolver.js';
+import {
+	resolveTvEpisodeIdentifier,
+	extractSeasonFromPath,
+	matchEpisodesByIdentifier
+} from './tv-episode-resolver.js';
+import { matchSpecialEpisodeByTitle } from './episode-title-matcher.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { canonicalizeArticleTitle, calculateMatchConfidence } from './title-matching.js';
@@ -1007,9 +1011,9 @@ export class MediaMatcherService {
 			// Update hasFile flag
 			await db.update(movies).set({ hasFile: true }).where(eq(movies.id, movieId));
 		} else {
-			// Get default language profile for new media
-			const subtitleSettings = getSubtitleSettingsService();
-			const defaultProfileId = await subtitleSettings.get('defaultLanguageProfileId');
+			// Writers never persist the resolved default profile: the item-level
+			// language_profile_id stays NULL and the effective profile is resolved
+			// read-only at query time (item → library → instance default).
 			const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
 				rootFolder.id,
 				'movie'
@@ -1032,6 +1036,7 @@ export class MediaMatcherService {
 					imdbId: externalIds.imdb_id,
 					title: tmdbMovie.title,
 					originalTitle: tmdbMovie.original_title,
+					originalLanguage: tmdbMovie.original_language,
 					year: tmdbMovie.release_date ? parseInt(tmdbMovie.release_date.split('-')[0]) : undefined,
 					overview: tmdbMovie.overview,
 					posterPath: tmdbMovie.poster_path,
@@ -1044,7 +1049,6 @@ export class MediaMatcherService {
 					hasFile: true,
 					monitored: rootFolder.defaultMonitored ?? true,
 					scoringProfileId: owningLibrary.qualityProfileId,
-					languageProfileId: wantsSubtitles ? defaultProfileId : null,
 					wantsSubtitles
 				})
 				.onConflictDoNothing()
@@ -1052,10 +1056,7 @@ export class MediaMatcherService {
 
 			if (newMovie) {
 				movieId = newMovie.id;
-				logger.debug(
-					{ movieId, title: tmdbMovie.title, languageProfileId: defaultProfileId },
-					'[MediaMatcher] Assigned default language profile to new movie'
-				);
+				logger.debug({ movieId, title: tmdbMovie.title }, '[MediaMatcher] Created new movie');
 			} else {
 				const [concurrentMovie] = await db
 					.select({ id: movies.id })
@@ -1164,9 +1165,7 @@ export class MediaMatcherService {
 		if (existingSeries) {
 			seriesId = existingSeries.id;
 		} else {
-			// Get default language profile for new media
-			const subtitleSettings = getSubtitleSettingsService();
-			const defaultProfileId = await subtitleSettings.get('defaultLanguageProfileId');
+			// Writers never persist the resolved default profile (see movie path).
 			const owningLibrary = await getLibraryEntityService().resolveOwningLibraryForRootFolder(
 				rootFolder.id,
 				'tv'
@@ -1190,6 +1189,7 @@ export class MediaMatcherService {
 					tvdbId: externalIds.tvdb_id,
 					title: tmdbSeries.name,
 					originalTitle: tmdbSeries.original_name,
+					originalLanguage: tmdbSeries.original_language,
 					year: tmdbSeries.first_air_date
 						? parseInt(tmdbSeries.first_air_date.split('-')[0])
 						: undefined,
@@ -1205,7 +1205,6 @@ export class MediaMatcherService {
 					seriesType: rootFolder.mediaSubType === 'anime' || animeSignal ? 'anime' : 'standard',
 					monitored: rootFolder.defaultMonitored ?? true,
 					scoringProfileId: owningLibrary.qualityProfileId,
-					languageProfileId: wantsSubtitles ? defaultProfileId : null,
 					wantsSubtitles
 				})
 				.onConflictDoNothing()
@@ -1214,10 +1213,7 @@ export class MediaMatcherService {
 			if (newSeries) {
 				seriesId = newSeries.id;
 				createdSeries = true;
-				logger.debug(
-					{ seriesId, title: tmdbSeries.name, languageProfileId: defaultProfileId },
-					'[MediaMatcher] Assigned default language profile to new series'
-				);
+				logger.debug({ seriesId, title: tmdbSeries.name }, '[MediaMatcher] Created new series');
 			} else {
 				const [concurrentSeries] = await db
 					.select({ id: series.id })
@@ -1258,23 +1254,57 @@ export class MediaMatcherService {
 				resolvedEpisode = resolvedEpisode ?? tvId.episodeNumbers[0];
 			} else if (tvId?.numbering === 'absolute') {
 				// Absolute episode - resolve to season/episode via DB (populated above)
-				const [epRecord] = await db
+				const seriesEpisodes = await db
 					.select({
 						seasonNumber: episodes.seasonNumber,
-						episodeNumber: episodes.episodeNumber
+						episodeNumber: episodes.episodeNumber,
+						absoluteEpisodeNumber: episodes.absoluteEpisodeNumber
 					})
 					.from(episodes)
-					.where(
-						and(
-							eq(episodes.seriesId, seriesId),
-							eq(episodes.absoluteEpisodeNumber, tvId.absoluteEpisode)
-						)
-					)
-					.limit(1);
-				if (epRecord) {
-					resolvedSeason = epRecord.seasonNumber;
-					resolvedEpisode = epRecord.episodeNumber;
+					.where(eq(episodes.seriesId, seriesId));
+				const [match] = matchEpisodesByIdentifier(seriesEpisodes, tvId);
+				if (match) {
+					resolvedSeason = match.seasonNumber;
+					resolvedEpisode = match.episodeNumber;
 				}
+			}
+		}
+
+		if (resolvedSeason === null || resolvedEpisode === null) {
+			// Sonarr-style fallback: title-only files match season 0 specials by
+			// contained episode title ("Razor (2007)" → the BSG special "Razor").
+			const stem = getMediaParseStem(file.path);
+			const reparsed = parseRelease(stem);
+			const seriesEpisodes = await db
+				.select()
+				.from(episodes)
+				.where(eq(episodes.seriesId, seriesId));
+			const parentFolder = basename(dirname(file.path));
+			const candidates = parentFolder !== seriesFolder ? [stem, parentFolder] : [stem];
+			const titleMatch = matchSpecialEpisodeByTitle(
+				seriesEpisodes,
+				candidates,
+				file.parsedYear ?? reparsed.year,
+				existingSeries?.title ?? tmdbSeries.name
+			);
+
+			if (titleMatch) {
+				resolvedSeason = titleMatch.episode.seasonNumber;
+				resolvedEpisode = titleMatch.episode.episodeNumber;
+				logger.info(
+					{
+						fileId: file.id,
+						filePath: file.path,
+						tmdbId,
+						season: resolvedSeason,
+						episode: resolvedEpisode,
+						method: titleMatch.method,
+						position: titleMatch.position,
+						coverage: titleMatch.coverage,
+						candidate: titleMatch.candidate
+					},
+					'[MediaMatcher] Resolved special episode by title'
+				);
 			}
 		}
 

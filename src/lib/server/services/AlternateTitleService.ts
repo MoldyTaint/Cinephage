@@ -15,6 +15,8 @@ import { db } from '$lib/server/db/index.js';
 import { alternateTitles, movies, series } from '$lib/server/db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
+import type { MetadataTitleVariant } from '$lib/server/metadata/providers/types.js';
+import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
 import { createChildLogger } from '$lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'AlternateTitleService', logDomain: 'system' });
@@ -320,51 +322,54 @@ export async function getSeriesSearchTitles(
 }
 
 /**
- * Fetch and store alternate titles from TMDB for a movie
+ * Fetch and store alternate titles from TMDB for a movie.
+ *
+ * Two complementary TMDB sources are stored:
+ * 1. `/alternative_titles` — country-tagged rows (`language` stays NULL because
+ *    TMDB supplies only an ISO 3166-1 country on that endpoint, never a language).
+ * 2. `/translations` — language-tagged rows (`country` NULL, `language` set from
+ *    the translation's ISO 639-1 code).
+ *
+ * Each source fails independently soft: a translations outage never discards
+ * the country rows and vice versa.
  */
 export async function fetchAndStoreMovieAlternateTitles(
 	movieId: string,
 	tmdbId: number
 ): Promise<number> {
+	let inserted = 0;
+
 	try {
 		const response = await tmdb.getMovieAlternateTitles(tmdbId);
 
-		if (!response.titles || response.titles.length === 0) {
-			return 0;
-		}
-
-		// Get existing TMDB titles for this movie to avoid duplicates
-		const existing = await db.query.alternateTitles.findMany({
-			where: and(
-				eq(alternateTitles.mediaType, 'movie'),
-				eq(alternateTitles.mediaId, movieId),
-				eq(alternateTitles.source, 'tmdb')
-			),
-			columns: { title: true }
-		});
-		const existingTitles = new Set(existing.map((e) => e.title));
-
-		// Insert new titles
-		let inserted = 0;
-		for (const alt of response.titles) {
-			if (!alt.title || existingTitles.has(alt.title)) continue;
-
-			await db.insert(alternateTitles).values({
-				mediaType: 'movie',
-				mediaId: movieId,
-				title: alt.title,
-				cleanTitle: cleanTitle(alt.title),
-				source: 'tmdb',
-				country: alt.iso_3166_1 || null
+		if (response.titles && response.titles.length > 0) {
+			// Get existing TMDB titles for this movie to avoid duplicates
+			const existing = await db.query.alternateTitles.findMany({
+				where: and(
+					eq(alternateTitles.mediaType, 'movie'),
+					eq(alternateTitles.mediaId, movieId),
+					eq(alternateTitles.source, 'tmdb')
+				),
+				columns: { title: true }
 			});
-			inserted++;
-		}
+			const existingTitles = new Set(existing.map((e) => e.title));
 
-		if (inserted > 0) {
-			logger.debug({ movieId, tmdbId }, `Stored ${inserted} alternate titles for movie`);
-		}
+			for (const alt of response.titles) {
+				if (!alt.title || existingTitles.has(alt.title)) continue;
 
-		return inserted;
+				await db.insert(alternateTitles).values({
+					mediaType: 'movie',
+					mediaId: movieId,
+					title: alt.title,
+					cleanTitle: cleanTitle(alt.title),
+					source: 'tmdb',
+					country: alt.iso_3166_1 || null
+					// language stays NULL: alternative_titles identifies countries only.
+				});
+				existingTitles.add(alt.title);
+				inserted++;
+			}
+		}
 	} catch (error) {
 		logger.warn(
 			{
@@ -374,56 +379,69 @@ export async function fetchAndStoreMovieAlternateTitles(
 			},
 			'Failed to fetch movie alternate titles'
 		);
-		return 0;
 	}
+
+	try {
+		inserted += await storeTranslationTitleRows('movie', movieId, tmdbId);
+	} catch (error) {
+		logger.warn(
+			{
+				movieId,
+				tmdbId,
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'Failed to store movie translation titles'
+		);
+	}
+
+	if (inserted > 0) {
+		logger.debug({ movieId, tmdbId }, `Stored ${inserted} alternate titles for movie`);
+	}
+
+	return inserted;
 }
 
 /**
- * Fetch and store alternate titles from TMDB for a TV series
+ * Fetch and store alternate titles from TMDB for a TV series.
+ * Same dual-source strategy as fetchAndStoreMovieAlternateTitles.
  */
 export async function fetchAndStoreSeriesAlternateTitles(
 	seriesId: string,
 	tmdbId: number
 ): Promise<number> {
+	let inserted = 0;
+
 	try {
 		const response = await tmdb.getTvAlternateTitles(tmdbId);
 
-		if (!response.results || response.results.length === 0) {
-			return 0;
-		}
-
-		// Get existing TMDB titles for this series to avoid duplicates
-		const existing = await db.query.alternateTitles.findMany({
-			where: and(
-				eq(alternateTitles.mediaType, 'series'),
-				eq(alternateTitles.mediaId, seriesId),
-				eq(alternateTitles.source, 'tmdb')
-			),
-			columns: { title: true }
-		});
-		const existingTitles = new Set(existing.map((e) => e.title));
-
-		// Insert new titles
-		let inserted = 0;
-		for (const alt of response.results) {
-			if (!alt.title || existingTitles.has(alt.title)) continue;
-
-			await db.insert(alternateTitles).values({
-				mediaType: 'series',
-				mediaId: seriesId,
-				title: alt.title,
-				cleanTitle: cleanTitle(alt.title),
-				source: 'tmdb',
-				country: alt.iso_3166_1 || null
+		if (response.results && response.results.length > 0) {
+			// Get existing TMDB titles for this series to avoid duplicates
+			const existing = await db.query.alternateTitles.findMany({
+				where: and(
+					eq(alternateTitles.mediaType, 'series'),
+					eq(alternateTitles.mediaId, seriesId),
+					eq(alternateTitles.source, 'tmdb')
+				),
+				columns: { title: true }
 			});
-			inserted++;
-		}
+			const existingTitles = new Set(existing.map((e) => e.title));
 
-		if (inserted > 0) {
-			logger.debug({ seriesId, tmdbId }, `Stored ${inserted} alternate titles for series`);
-		}
+			for (const alt of response.results) {
+				if (!alt.title || existingTitles.has(alt.title)) continue;
 
-		return inserted;
+				await db.insert(alternateTitles).values({
+					mediaType: 'series',
+					mediaId: seriesId,
+					title: alt.title,
+					cleanTitle: cleanTitle(alt.title),
+					source: 'tmdb',
+					country: alt.iso_3166_1 || null
+					// language stays NULL: alternative_titles identifies countries only.
+				});
+				existingTitles.add(alt.title);
+				inserted++;
+			}
+		}
 	} catch (error) {
 		logger.warn(
 			{
@@ -432,6 +450,185 @@ export async function fetchAndStoreSeriesAlternateTitles(
 				error: error instanceof Error ? error.message : String(error)
 			},
 			'Failed to fetch series alternate titles'
+		);
+	}
+
+	try {
+		inserted += await storeTranslationTitleRows('series', seriesId, tmdbId);
+	} catch (error) {
+		logger.warn(
+			{
+				seriesId,
+				tmdbId,
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'Failed to store series translation titles'
+		);
+	}
+
+	if (inserted > 0) {
+		logger.debug({ seriesId, tmdbId }, `Stored ${inserted} alternate titles for series`);
+	}
+
+	return inserted;
+}
+
+/**
+ * Store one language-tagged alternate-title row per TMDB translation that
+ * carries a title (movies: `data.title`, TV: `data.name`).
+ *
+ * Dedupe rules:
+ * - skip when a row with the same mediaType+mediaId+cleanTitle+language already
+ *   exists (any source) — makes refetches idempotent;
+ * - skip translations whose cleanTitle equals the media's own display or
+ *   original title (the localized variants of those are already covered).
+ *
+ * Rows are stored with source 'tmdb' and country NULL — the country rows from
+ * /alternative_titles remain the only country-tagged rows.
+ */
+async function storeTranslationTitleRows(
+	mediaType: 'movie' | 'series',
+	mediaId: string,
+	tmdbId: number
+): Promise<number> {
+	const response =
+		mediaType === 'movie'
+			? await tmdb.getMovieTranslations(tmdbId)
+			: await tmdb.getTvTranslations(tmdbId);
+	const translations = response.translations ?? [];
+	if (translations.length === 0) return 0;
+
+	// Own-title noise guard: translations equal to the display/original title
+	// carry no new search or match value.
+	const media =
+		mediaType === 'movie'
+			? await db.query.movies.findFirst({
+					where: eq(movies.id, mediaId),
+					columns: { title: true, originalTitle: true }
+				})
+			: await db.query.series.findFirst({
+					where: eq(series.id, mediaId),
+					columns: { title: true, originalTitle: true }
+				});
+	const ownTitles = new Set<string>();
+	for (const title of [media?.title, media?.originalTitle]) {
+		const normalized = title ? cleanTitle(title) : '';
+		if (normalized) ownTitles.add(normalized);
+	}
+
+	// (cleanTitle, language) pairs across ALL sources, so a translation never
+	// duplicates an existing user/anilist/mal row for the same language.
+	const existing = await db.query.alternateTitles.findMany({
+		where: and(eq(alternateTitles.mediaType, mediaType), eq(alternateTitles.mediaId, mediaId)),
+		columns: { cleanTitle: true, language: true }
+	});
+	const seen = new Set(existing.map((e) => `${e.cleanTitle}\u0000${e.language ?? ''}`));
+
+	let inserted = 0;
+	for (const translation of translations) {
+		const title = (translation.data?.title ?? translation.data?.name ?? '').trim();
+		// Canonicalize through the server boundary so alias variants (iw/he,
+		// cn/zh-Hans, ...) dedupe against each other; unknown inputs become und
+		// and are skipped rather than stored raw.
+		const language = normalizeLanguageTag(translation.iso_639_1);
+		if (!title || language === 'und') continue;
+
+		const normalized = cleanTitle(title);
+		if (!normalized || ownTitles.has(normalized)) continue;
+
+		const key = `${normalized}\u0000${language}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+
+		await db.insert(alternateTitles).values({
+			mediaType,
+			mediaId,
+			title,
+			cleanTitle: normalized,
+			source: 'tmdb',
+			language,
+			country: null
+		});
+		inserted++;
+	}
+
+	return inserted;
+}
+
+/**
+ * Store title variants from an anime provider match (AniList or MAL) as
+ * alternate titles.
+ *
+ * Idempotent: a variant is skipped when a row with the same
+ * mediaType+mediaId+source+cleanTitle already exists, so repeated refreshes
+ * and re-links never duplicate rows. Variants from different sources
+ * ('anilist' vs 'mal' vs 'tmdb') may legitimately coexist even when their
+ * titles normalize identically.
+ *
+ * Language policy: variants keep `language` NULL unless the provider itself
+ * supplies a language code — neither AniList nor Jikan/MAL does. Their kind
+ * labels ('romaji', 'native', 'Japanese', …) are script/kind annotations, not
+ * language codes, and are never mapped onto one.
+ */
+export async function storeProviderTitleVariants(
+	mediaType: 'movie' | 'series',
+	mediaId: string,
+	source: 'anilist' | 'mal',
+	variants: MetadataTitleVariant[]
+): Promise<number> {
+	const usable = variants.filter((variant) => typeof variant?.title === 'string');
+	if (usable.length === 0) return 0;
+
+	try {
+		const existing = await db.query.alternateTitles.findMany({
+			where: and(
+				eq(alternateTitles.mediaType, mediaType),
+				eq(alternateTitles.mediaId, mediaId),
+				eq(alternateTitles.source, source)
+			),
+			columns: { cleanTitle: true }
+		});
+		const seen = new Set(existing.map((e) => e.cleanTitle));
+
+		let inserted = 0;
+		for (const variant of usable) {
+			const title = variant.title.trim();
+			const normalized = cleanTitle(title);
+			if (!title || !normalized || seen.has(normalized)) continue;
+			seen.add(normalized);
+
+			await db.insert(alternateTitles).values({
+				mediaType,
+				mediaId,
+				title,
+				cleanTitle: normalized,
+				source,
+				// Only set when the provider supplies a real language code;
+				// canonicalized so alias codes dedupe consistently.
+				language: variant.language ? normalizeLanguageTag(variant.language) : null,
+				// e.g. AniList countryOfOrigin on the native title.
+				country: variant.country ?? null
+			});
+			inserted++;
+		}
+
+		if (inserted > 0) {
+			logger.debug(
+				{ mediaType, mediaId, source, count: inserted },
+				`Stored ${inserted} ${source} title variants`
+			);
+		}
+
+		return inserted;
+	} catch (error) {
+		logger.warn(
+			{
+				mediaType,
+				mediaId,
+				source,
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'Failed to store provider title variants'
 		);
 		return 0;
 	}

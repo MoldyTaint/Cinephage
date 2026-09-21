@@ -90,8 +90,8 @@ export interface IndexerDefinition {
 	/** Description of the indexer */
 	description: string;
 
-	/** Language code (e.g., 'en-US') */
-	language: string;
+	/** Language code (e.g., 'en-US'); undefined when the definition omits it. */
+	language?: string;
 
 	// === Classification ===
 
@@ -167,7 +167,8 @@ export interface IndexerDefinitionSummary {
 	description: string;
 	type: IndexerAccessType;
 	protocol: IndexerProtocol;
-	language: string;
+	/** Definition-declared language; undefined when the definition omits it. */
+	language?: string;
 	settings: SettingField[];
 	urls: string[];
 }
@@ -455,7 +456,7 @@ export function yamlToUnifiedDefinition(
 		id: def.id,
 		name: def.name,
 		description: def.description ?? `${def.name} indexer`,
-		language: def.language ?? 'en-US',
+		language: def.language,
 		type: mapAccessType(def.type),
 		protocol: def.protocol ?? 'torrent',
 		internal: def.internal ?? false,

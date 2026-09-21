@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { goto, beforeNavigate, afterNavigate } from '$app/navigation';
+	import { goto, beforeNavigate, afterNavigate, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { resolvePath } from '$lib/utils/routing';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -8,6 +8,7 @@
 	import LibraryMediaTable from '$lib/components/library/LibraryMediaTable.svelte';
 	import LibraryDrawer from '$lib/components/library/LibraryDrawer.svelte';
 	import LibraryBulkActionBar from '$lib/components/library/LibraryBulkActionBar.svelte';
+	import BulkLanguageProfileModal from '$lib/components/library/BulkLanguageProfileModal.svelte';
 	import BulkQualityProfileModal from '$lib/components/library/BulkQualityProfileModal.svelte';
 	import BulkDeleteModal from '$lib/components/library/BulkDeleteModal.svelte';
 	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
@@ -46,20 +47,30 @@
 	const SCROLL_KEY = 'cinephage:library:tv:scrollY';
 
 	beforeNavigate(({ to }) => {
-		if (to?.url.pathname.startsWith('/library/tv/')) {
-			localStorage.setItem(SCROLL_KEY, String(window.scrollY));
-		} else {
-			localStorage.removeItem(SCROLL_KEY);
+		try {
+			if (to?.url.pathname.startsWith('/library/tv/')) {
+				localStorage.setItem(SCROLL_KEY, String(window.scrollY));
+			} else {
+				localStorage.removeItem(SCROLL_KEY);
+			}
+		} catch {
+			// storage unavailable (blocked cookies / ETP)
 		}
 	});
 
 	afterNavigate(({ from }) => {
-		if (from?.url.pathname.startsWith('/library/tv/')) {
-			const saved = localStorage.getItem(SCROLL_KEY);
-			if (saved) {
-				requestAnimationFrame(() => window.scrollTo({ top: parseInt(saved), behavior: 'instant' }));
-				localStorage.removeItem(SCROLL_KEY);
+		try {
+			if (from?.url.pathname.startsWith('/library/tv/')) {
+				const saved = localStorage.getItem(SCROLL_KEY);
+				if (saved) {
+					requestAnimationFrame(() =>
+						window.scrollTo({ top: parseInt(saved), behavior: 'instant' })
+					);
+					localStorage.removeItem(SCROLL_KEY);
+				}
 			}
+		} catch {
+			// storage unavailable (blocked cookies / ETP)
 		}
 	});
 
@@ -89,7 +100,16 @@
 	// Progressive rendering: only render a screenful + buffer at a time
 	const renderer = createProgressiveRenderer(() => filteredSeries);
 	let bulkLoading = $state(false);
-	let currentBulkAction = $state<'monitor' | 'unmonitor' | 'quality' | 'delete' | null>(null);
+	let currentBulkAction = $state<
+		'monitor' | 'unmonitor' | 'quality' | 'delete' | 'language' | null
+	>(null);
+	let isLanguageModalOpen = $state(false);
+
+	async function handleBulkLanguageApplied(updated: number) {
+		selectedSeries.clear();
+		toasts.success(m.toast_library_tv_qualityUpdatedCount({ count: updated }));
+		await invalidateAll();
+	}
 	let isQualityModalOpen = $state(false);
 	let isDeleteModalOpen = $state(false);
 	let pendingDeleteSeriesId = $state<string | null>(null);
@@ -766,6 +786,7 @@
 									selectable={showCheckboxes}
 									selected={selectedSeries.has(show.id)}
 									onSelectChange={handleItemSelectChange}
+									preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 								/>
 							{/each}
 						</div>
@@ -783,6 +804,7 @@
 							onDelete={handleDeleteSeries}
 							onAutoGrab={handleAutoGrab}
 							onManualGrab={handleManualGrab}
+							preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 						/>
 					{/if}
 
@@ -844,8 +866,18 @@
 	onMonitor={() => handleBulkMonitor(true)}
 	onUnmonitor={() => handleBulkMonitor(false)}
 	onChangeQuality={() => (isQualityModalOpen = true)}
+	onLanguage={() => (isLanguageModalOpen = true)}
 	onDelete={() => (isDeleteModalOpen = true)}
 	onClear={clearSelection}
+/>
+
+<!-- Bulk Language Profile Modal -->
+<BulkLanguageProfileModal
+	open={isLanguageModalOpen}
+	mediaType="series"
+	selectedIds={[...selectedSeries]}
+	onClose={() => (isLanguageModalOpen = false)}
+	onApplied={handleBulkLanguageApplied}
 />
 
 <!-- Bulk Quality Profile Modal -->

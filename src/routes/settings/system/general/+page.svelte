@@ -159,6 +159,10 @@
 		}
 	}
 
+	// Arr-compat toggle: unsupported, non-priority. The arr projects are good
+	// at what they are, but Cinephage is its own thing, and its own behavior
+	// takes precedence over arr expectations when the two conflict.
+
 	// =====================
 	// Radarr/Sonarr Compatibility
 	// =====================

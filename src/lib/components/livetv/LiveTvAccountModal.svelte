@@ -42,6 +42,8 @@
 		epgUrl: string;
 		autoRefresh: boolean;
 		enabled: boolean;
+		/** Stalker portal UI language (2-letter code); defaults to 'en'. */
+		language?: string;
 		cinephageIptvConfig?: { countries: string[] };
 	}
 
@@ -55,6 +57,8 @@
 		url?: string;
 		fileContent?: string;
 		epgUrl?: string;
+		/** Stalker portal UI language (2-letter code); defaults to 'en'. */
+		language?: string;
 		cinephageIptvConfig?: { countries: string[] };
 	}
 
@@ -81,6 +85,7 @@
 	// Stalker form state
 	let portalUrl = $state('');
 	let macAddress = $state('');
+	let language = $state('en');
 
 	// XStream form state
 	let baseUrl = $state('');
@@ -126,6 +131,7 @@
 			// Stalker fields
 			portalUrl = account?.stalkerConfig?.portalUrl ?? '';
 			macAddress = account?.stalkerConfig?.macAddress ?? '';
+			language = account?.stalkerConfig?.language ?? 'en';
 
 			// XStream fields
 			baseUrl = account?.xstreamConfig?.baseUrl ?? '';
@@ -197,6 +203,7 @@
 			case 'stalker':
 				data.portalUrl = portalUrl.trim();
 				data.macAddress = macAddress.toUpperCase();
+				data.language = language;
 				break;
 			case 'xstream':
 				data.baseUrl = baseUrl.trim();
@@ -229,6 +236,7 @@
 			case 'stalker':
 				config.portalUrl = portalUrl.trim();
 				config.macAddress = macAddress.toUpperCase();
+				config.language = language;
 				break;
 			case 'xstream':
 				config.baseUrl = baseUrl.trim();
@@ -390,12 +398,14 @@
 				{macAddress}
 				{epgUrl}
 				{enabled}
+				{language}
 				{mode}
 				onNameChange={(v) => (name = v)}
 				onPortalUrlChange={(v) => (portalUrl = v)}
 				onMacAddressChange={(v) => (macAddress = v)}
 				onEpgUrlChange={(v) => (epgUrl = v)}
 				onEnabledChange={(v) => (enabled = v)}
+				onLanguageChange={(v) => (language = v)}
 			/>
 		{:else if selectedProvider === 'xstream'}
 			<XstreamAccountForm

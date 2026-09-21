@@ -184,7 +184,8 @@ export function getCacheKey(
 	endpoint: string,
 	skipFilters: boolean,
 	language?: string,
-	skipKeywordBlocklist = false
+	skipKeywordBlocklist = false,
+	region?: string
 ): string {
-	return `tmdb:${endpoint}:${language ?? 'default'}:${skipFilters}:${skipKeywordBlocklist}`;
+	return `tmdb:${endpoint}:${language ?? 'default'}:${region ?? 'default'}:${skipFilters}:${skipKeywordBlocklist}`;
 }

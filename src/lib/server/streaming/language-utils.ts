@@ -1,37 +1,24 @@
 /**
  * Language utilities for stream selection.
+ *
+ * The audio-preference policy core (four-bucket ranking, effective-preference
+ * equality) lives in `$lib/server/languages/audio-preference.ts` so the
+ * acquisition paths can consume the same ranking; this module re-exports it
+ * for the existing streaming consumers and keeps the stream-shaped helpers.
  */
 
-import { normalizeLanguageCode } from '$lib/shared/languages';
+import { getLanguagePriority, languageMatches } from '$lib/server/languages/audio-preference';
 
-export function languageMatches(streamLang: string | undefined, prefCode: string): boolean {
-	if (!streamLang) return false;
-
-	const normalizedStream = normalizeLanguageCode(streamLang);
-	const normalizedPref = normalizeLanguageCode(prefCode);
-
-	if (normalizedStream === normalizedPref) return true;
-
-	const streamBase = normalizedStream.split('-')[0];
-	const prefBase = normalizedPref.split('-')[0];
-
-	return streamBase === prefBase;
-}
-
-export function getLanguagePriority(
-	streamLang: string | undefined,
-	preferredLanguages: string[]
-): number {
-	if (!preferredLanguages.length) return 0;
-
-	for (let i = 0; i < preferredLanguages.length; i++) {
-		if (languageMatches(streamLang, preferredLanguages[i])) {
-			return i;
-		}
-	}
-
-	return Infinity;
-}
+export {
+	languageMatches,
+	getLanguagePriority,
+	DEFAULT_EFFECTIVE_AUDIO_PREFERENCE,
+	audioPreferencesEqual,
+	AUDIO_PREFERENCE_BUCKETS,
+	resolveAudioPreferenceBucket,
+	sortSourcesByAudioPreference
+} from '$lib/server/languages/audio-preference';
+export type { EffectiveAudioPreference } from '$lib/server/languages/audio-preference';
 
 export function sortStreamsByLanguage<T extends { language?: string }>(
 	streams: T[],

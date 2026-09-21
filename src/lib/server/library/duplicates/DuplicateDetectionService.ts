@@ -46,12 +46,7 @@ export async function findFilenameDuplicates(libraryId: string): Promise<Duplica
 			filenameSignature: movieFiles.filenameSignature
 		})
 		.from(movieFiles)
-		.where(
-			and(
-				isNotNull(movieFiles.filenameSignature),
-				eq(movieFiles.filenameSignature, 'notnull' as never)
-			)
-		)
+		.where(isNotNull(movieFiles.filenameSignature))
 		.union(
 			db
 				.select({

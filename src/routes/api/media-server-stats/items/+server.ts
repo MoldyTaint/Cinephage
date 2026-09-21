@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
-import { mediaServerSyncedItems } from '$lib/server/db/schema';
+import { mediaBrowserServers, mediaServerSyncedItems } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import type { AggregatedMediaItem } from '$lib/server/mediaServerStats/types.js';
 
@@ -32,13 +32,19 @@ export const GET: RequestHandler = async ({ url }) => {
 	}
 
 	const MAX_RAW_ITEMS = 5000;
-	const allItems = await db
-		.select()
-		.from(mediaServerSyncedItems)
-		.where(conditions.length > 0 ? conditions[0] : undefined)
-		.limit(MAX_RAW_ITEMS);
+	const [allItems, servers] = await Promise.all([
+		db
+			.select()
+			.from(mediaServerSyncedItems)
+			.where(conditions.length > 0 ? conditions[0] : undefined)
+			.limit(MAX_RAW_ITEMS),
+		db.select().from(mediaBrowserServers)
+	]);
 
-	const aggregated = aggregateItems(allItems);
+	const serverById = new Map(
+		servers.map((server) => [server.id, { name: server.name, serverType: server.serverType }])
+	);
+	const aggregated = aggregateItems(allItems, serverById);
 
 	aggregated.sort((a, b) => {
 		let cmp = 0;
@@ -75,13 +81,15 @@ export const GET: RequestHandler = async ({ url }) => {
 };
 
 function aggregateItems(
-	rows: (typeof mediaServerSyncedItems.$inferSelect)[]
+	rows: (typeof mediaServerSyncedItems.$inferSelect)[],
+	serverById: Map<string, { name: string; serverType: string }>
 ): AggregatedMediaItem[] {
 	const map = new Map<string, AggregatedMediaItem>();
 
 	for (const row of rows) {
 		const key = `${row.tmdbId ?? 'null'}-${row.tvdbId ?? 'null'}-${row.title}`;
 		const existing = map.get(key);
+		const server = row.serverId ? serverById.get(row.serverId) : undefined;
 		if (existing) {
 			existing.totalPlayCount += row.playCount ?? 0;
 			if (
@@ -90,11 +98,12 @@ function aggregateItems(
 			) {
 				existing.lastPlayedDate = row.lastPlayedDate;
 			}
-			if (row.serverId) {
+			if (row.serverId && server) {
 				existing.serverBreakdown.push({
 					serverId: row.serverId,
-					serverName: '',
-					serverType: 'jellyfin',
+					serverName: server.name,
+					serverType:
+						server.serverType as AggregatedMediaItem['serverBreakdown'][number]['serverType'],
 					playCount: row.playCount ?? 0,
 					lastPlayedDate: row.lastPlayedDate ?? null,
 					videoCodec: row.videoCodec ?? null,
@@ -114,22 +123,24 @@ function aggregateItems(
 				itemType: row.itemType,
 				totalPlayCount: row.playCount ?? 0,
 				lastPlayedDate: row.lastPlayedDate ?? null,
-				serverBreakdown: row.serverId
-					? [
-							{
-								serverId: row.serverId,
-								serverName: '',
-								serverType: 'jellyfin',
-								playCount: row.playCount ?? 0,
-								lastPlayedDate: row.lastPlayedDate ?? null,
-								videoCodec: row.videoCodec ?? null,
-								width: row.width ?? null,
-								height: row.height ?? null,
-								isHDR: (row.isHDR ?? 0) === 1,
-								containerFormat: row.containerFormat ?? null
-							}
-						]
-					: []
+				serverBreakdown:
+					row.serverId && server
+						? [
+								{
+									serverId: row.serverId,
+									serverName: server.name,
+									serverType:
+										server.serverType as AggregatedMediaItem['serverBreakdown'][number]['serverType'],
+									playCount: row.playCount ?? 0,
+									lastPlayedDate: row.lastPlayedDate ?? null,
+									videoCodec: row.videoCodec ?? null,
+									width: row.width ?? null,
+									height: row.height ?? null,
+									isHDR: (row.isHDR ?? 0) === 1,
+									containerFormat: row.containerFormat ?? null
+								}
+							]
+						: []
 			});
 		}
 	}

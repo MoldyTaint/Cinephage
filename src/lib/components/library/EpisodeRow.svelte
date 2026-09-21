@@ -17,9 +17,12 @@
 	} from 'lucide-svelte';
 	import QualityBadge from './QualityBadge.svelte';
 	import AutoSearchStatus from './AutoSearchStatus.svelte';
+	import SubtitleRequirementBadge from './SubtitleRequirementBadge.svelte';
 	import { SubtitleDisplay } from '$lib/components/subtitles';
 	import SubtitlePopover from '$lib/components/subtitles/SubtitlePopover.svelte';
 	import { normalizeLanguageCode } from '$lib/shared/languages';
+	import type { EpisodeSubtitleCounts } from '$lib/shared/language-profile.js';
+	import type { SubtitleRequirementProgress } from '$lib/utils/subtitle-status-display.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import { formatBytes, getFileName, formatDisplayDate } from '$lib/utils/format.js';
 
@@ -64,8 +67,12 @@
 		runtime: number | null;
 		monitored: boolean | null;
 		hasFile: boolean | null;
+		/** Tri-state subtitle gate (null = inherit from series). */
+		wantsSubtitlesOverride?: boolean | null;
 		file: EpisodeFile | null;
 		subtitles?: Subtitle[];
+		/** Cutoff-aware requirement progress from the loader (null when no effective profile). */
+		subtitleCounts?: EpisodeSubtitleCounts | null;
 	}
 
 	interface AutoSearchResult {
@@ -96,6 +103,7 @@
 		onSubtitleAutoSearch?: (episode: Episode) => void;
 		onSubtitleSync?: (subtitleId: string) => void;
 		onSubtitleDelete?: (subtitleId: string) => void;
+		onSubtitleGateChange?: (episodeId: string, value: boolean | null) => void;
 		onDelete?: (episode: Episode) => void;
 	}
 
@@ -120,6 +128,7 @@
 		onSubtitleAutoSearch,
 		onSubtitleSync,
 		onSubtitleDelete,
+		onSubtitleGateChange,
 		onDelete
 	}: Props = $props();
 
@@ -168,7 +177,45 @@
 			: m.library_episodeRow_seriesUnmonitoredTooltip()
 	);
 	const hasEpisodeFile = $derived(episode.file !== null);
-	const missingSubtitles = $derived(hasEpisodeFile && allSubtitles.length === 0 && wantsSubtitles);
+	// Requirement-aware progress from the loader. Present only when the series
+	// has an effective profile; absent -> fall back to language-agnostic count.
+	const requirementCounts = $derived(episode.subtitleCounts ?? null);
+	const hasRequirementCounts = $derived(
+		requirementCounts !== null && requirementCounts.totalRequirements > 0
+	);
+	const subtitleProgress = $derived.by<SubtitleRequirementProgress | null>(() => {
+		if (!hasRequirementCounts || !requirementCounts) return null;
+		const { satisfiedCount, totalRequirements, satisfiedViaCutoff } = requirementCounts;
+		return {
+			satisfiedCount,
+			totalCount: totalRequirements,
+			satisfiedViaCutoff,
+			state:
+				satisfiedCount === 0
+					? 'missing'
+					: satisfiedCount < totalRequirements
+						? 'partial'
+						: 'satisfied'
+		};
+	});
+	const subtitleProgressTooltip = $derived.by(() => {
+		if (subtitleProgress) {
+			return m.library_badges_subtitleRequirementsTooltip({
+				satisfied: subtitleProgress.satisfiedCount,
+				total: subtitleProgress.totalCount
+			});
+		}
+		return missingSubtitles
+			? m.library_episodeRow_noSubtitlesTooltip()
+			: m.library_episodeRow_subtitleCountTooltip({ count: allSubtitles.length });
+	});
+	const missingSubtitles = $derived.by(() => {
+		if (!hasEpisodeFile) return false;
+		if (requirementCounts) {
+			return requirementCounts.totalRequirements > 0 && requirementCounts.satisfiedCount === 0;
+		}
+		return wantsSubtitles && allSubtitles.length === 0;
+	});
 
 	function formatAirDate(dateString: string | null): string {
 		if (!dateString) return m.library_episodeRow_tba();
@@ -426,13 +473,12 @@
 							tabindex="0"
 							role="button"
 							class="btn gap-1 btn-ghost btn-xs {missingSubtitles ? 'text-warning' : ''}"
-							title={missingSubtitles
-								? m.library_episodeRow_noSubtitlesTooltip()
-								: m.library_episodeRow_subtitleCountTooltip({ count: allSubtitles.length })}
+							title={subtitleProgressTooltip}
 						>
 							{#if allSubtitles.length > 0}
 								<Captions
 									size={12}
+									aria-hidden="true"
 									class={missingSubtitles ? 'text-warning' : 'text-base-content/50'}
 								/>
 								<span class="inline-flex min-w-0">
@@ -445,14 +491,14 @@
 										countVariant="badge"
 									/>
 								</span>
-							{:else if missingSubtitles}
-								<CaptionsOff
-									size={12}
-									class={missingSubtitles ? 'text-warning' : 'text-base-content/50'}
-								/>
+							{:else if !hasRequirementCounts}
+								<CaptionsOff size={12} aria-hidden="true" class="text-warning" />
 								<span class="text-xs text-warning"
 									>{m.library_episodeRow_subtitlesMissingLabel()}</span
 								>
+							{/if}
+							{#if subtitleProgress}
+								<SubtitleRequirementBadge progress={subtitleProgress} size="xs" />
 							{/if}
 						</div>
 						<SubtitlePopover
@@ -464,6 +510,8 @@
 							onDelete={onSubtitleDelete}
 							onSearch={() => onSubtitleSearch?.(episode)}
 							onAutoSearch={handleSubtitleAutoSearchClick}
+							wantsSubtitles={episode.wantsSubtitlesOverride ?? null}
+							onWantsSubtitlesChange={(value) => onSubtitleGateChange?.(episode.id, value)}
 						/>
 					</div>
 				</div>
@@ -496,13 +544,12 @@
 						class="btn max-w-full justify-start gap-1 btn-ghost px-1 btn-xs {missingSubtitles
 							? 'text-warning'
 							: ''}"
-						title={missingSubtitles
-							? m.library_episodeRow_noSubtitlesTooltip()
-							: m.library_episodeRow_subtitleCountTooltip({ count: allSubtitles.length })}
+						title={subtitleProgressTooltip}
 					>
 						{#if allSubtitles.length > 0}
 							<Captions
 								size={12}
+								aria-hidden="true"
 								class={missingSubtitles ? 'text-warning' : 'text-base-content/50'}
 							/>
 							<span class="inline-flex max-w-38 min-w-0">
@@ -515,19 +562,21 @@
 									countVariant="badge"
 								/>
 							</span>
-						{:else if missingSubtitles}
-							<Captions size={12} />
-							<span class="text-xs text-warning"
-								>{m.library_episodeRow_subtitlesMissingLabel()}</span
-							>
-						{:else}
-							<CaptionsOff
-								size={12}
-								class={missingSubtitles ? 'text-warning' : 'text-base-content/50'}
-							/>
-							<span class="text-xs text-base-content/40"
-								>{m.library_episodeRow_subtitlesNoneLabel()}</span
-							>
+						{:else if !hasRequirementCounts}
+							{#if missingSubtitles}
+								<Captions size={12} aria-hidden="true" />
+								<span class="text-xs text-warning"
+									>{m.library_episodeRow_subtitlesMissingLabel()}</span
+								>
+							{:else}
+								<CaptionsOff size={12} aria-hidden="true" class="text-base-content/50" />
+								<span class="text-xs text-base-content/40"
+									>{m.library_episodeRow_subtitlesNoneLabel()}</span
+								>
+							{/if}
+						{/if}
+						{#if subtitleProgress}
+							<SubtitleRequirementBadge progress={subtitleProgress} size="xs" />
 						{/if}
 					</div>
 					<SubtitlePopover
@@ -539,6 +588,8 @@
 						onDelete={onSubtitleDelete}
 						onSearch={() => onSubtitleSearch?.(episode)}
 						onAutoSearch={handleSubtitleAutoSearchClick}
+						wantsSubtitles={episode.wantsSubtitlesOverride ?? null}
+						onWantsSubtitlesChange={(value) => onSubtitleGateChange?.(episode.id, value)}
 					/>
 				</div>
 			</div>
@@ -602,7 +653,7 @@
 					role="button"
 					class="btn btn-ghost btn-xs"
 					class:btn-disabled={autoSearching}
-					title="Search options"
+					title={m.library_episodeRow_searchOptions()}
 				>
 					{#if autoSearching}
 						<Loader2 size={14} class="animate-spin" />

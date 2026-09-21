@@ -207,6 +207,19 @@ export async function grabRelease(
 		grabBody.movieId = entityId;
 	} else {
 		grabBody.seriesId = entityId;
+		// Preserve Sonarr scope. Dropping episode/season widened the grab to
+		// the whole series (empty episodeIds backfills every missing episode
+		// in GrabService.resolveTarget).
+		if (typeof body.seasonNumber === 'number') {
+			grabBody.seasonNumber = body.seasonNumber;
+		}
+		if (typeof body.episodeId === 'number') {
+			const episodeEntityId = await getEntityIdForArrId('episode', body.episodeId);
+			if (!episodeEntityId) {
+				return { ok: false, status: 404, body: { error: 'Episode not found' } };
+			}
+			grabBody.episodeIds = [episodeEntityId];
+		}
 	}
 
 	const response = await fetchFn('/api/download/grab', {

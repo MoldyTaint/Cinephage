@@ -16,7 +16,8 @@ import {
 	mapGuideDataToRequestedChannels
 } from '$lib/server/livetv/epg/epg-utils';
 import { createChildLogger } from '$lib/logging';
-import type { ChannelLineupItemWithDetails, EpgProgram } from '$lib/types/livetv';
+import type { ChannelLineupItemWithDetails, EpgLocalizedText, EpgProgram } from '$lib/types/livetv';
+import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
 
 const logger = createChildLogger({ module: 'LiveTvEpgXml', logDomain: 'livetv' });
 
@@ -71,9 +72,48 @@ function buildChannelXml(item: ChannelLineupItemWithDetails): string {
 }
 
 /**
+ * Pick the stored XMLTV variant matching the requested display language
+ * (exact canonical tag, then base-tag match). Falls back to the first stored
+ * variant, then the plain column. `lang` is omitted when unknown rather than
+ * lying with "en".
+ */
+function pickLocalized(
+	entries: EpgLocalizedText[] | null | undefined,
+	requestedLang: string | null,
+	fallback: string
+): { text: string; lang: string | null } {
+	if (entries && entries.length > 0) {
+		const requested = requestedLang ? normalizeLanguageTag(requestedLang) : null;
+		if (requested && requested !== 'und') {
+			const requestedBase = requested.split('-')[0];
+			const match = entries.find((entry) => {
+				if (!entry.lang) return false;
+				const canonical = normalizeLanguageTag(entry.lang);
+				return canonical === requested || canonical.split('-')[0] === requestedBase;
+			});
+			if (match) return { text: match.text, lang: match.lang };
+		}
+		return { text: entries[0].text, lang: entries[0].lang };
+	}
+	return { text: fallback, lang: null };
+}
+
+function localizedElement(
+	tag: 'title' | 'desc' | 'category',
+	localized: { text: string; lang: string | null }
+): string {
+	const langAttr = localized.lang ? ` lang="${escapeXml(localized.lang)}"` : '';
+	return `    <${tag}${langAttr}>${escapeXml(localized.text)}</${tag}>`;
+}
+
+/**
  * Build programme element for XMLTV
  */
-function buildProgrammeXml(program: EpgProgram, channelXmlId: string): string {
+function buildProgrammeXml(
+	program: EpgProgram,
+	channelXmlId: string,
+	requestedLang: string | null
+): string {
 	const start = formatXmltvTimestamp(new Date(program.startTime));
 	const stop = formatXmltvTimestamp(new Date(program.endTime));
 
@@ -82,16 +122,28 @@ function buildProgrammeXml(program: EpgProgram, channelXmlId: string): string {
 	];
 
 	// Title (required)
-	lines.push(`    <title lang="en">${escapeXml(program.title)}</title>`);
+	lines.push(
+		localizedElement('title', pickLocalized(program.titleI18n, requestedLang, program.title))
+	);
 
 	// Description
 	if (program.description) {
-		lines.push(`    <desc lang="en">${escapeXml(program.description)}</desc>`);
+		lines.push(
+			localizedElement(
+				'desc',
+				pickLocalized(program.descriptionI18n, requestedLang, program.description)
+			)
+		);
 	}
 
 	// Category
 	if (program.category) {
-		lines.push(`    <category lang="en">${escapeXml(program.category)}</category>`);
+		lines.push(
+			localizedElement(
+				'category',
+				pickLocalized(program.categoryI18n, requestedLang, program.category)
+			)
+		);
 	}
 
 	// Credits (director and actors)
@@ -129,6 +181,11 @@ export const GET: RequestHandler = async ({ url }) => {
 		// Get lookahead hours from query (default 24, max 168 = 1 week)
 		const hoursParam = url.searchParams.get('hours');
 		const hours = Math.min(168, Math.max(1, parseInt(hoursParam || '24', 10) || 24));
+
+		// Optional display language: selects the stored XMLTV @lang variant per
+		// programme; when absent the first stored variant is emitted with its
+		// real language tag (never a fabricated "en").
+		const requestedLang = url.searchParams.get('lang');
 
 		// Get user's lineup
 		const lineup = await channelLineupService.getLineup();
@@ -182,7 +239,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			if (!xmlId) continue;
 
 			for (const program of programs) {
-				xmlLines.push(buildProgrammeXml(program, xmlId));
+				xmlLines.push(buildProgrammeXml(program, xmlId, requestedLang));
 				programCount++;
 			}
 		}

@@ -59,6 +59,12 @@ export interface QueueQualityInfo {
 	source?: string;
 	codec?: string;
 	hdr?: string;
+	/** Language evidence parsed from the release name (incl. 'multi'/'orig'
+	 * pseudo-codes). Grab-history persistence for the audio-language policy. */
+	languages?: string[];
+	/** Language evidence parsed from the torrent's FILE names (debrid instant
+	 * availability or .torrent metadata) — tier 3, stronger than the title. */
+	fileLanguages?: string[];
 }
 
 /**

@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { User, Lock, AlertCircle, Eye, EyeOff } from 'lucide-svelte';
 	import { authClient } from '$lib/auth/client.js';
+	import { ensureVersionPrefix } from '$lib/version.js';
 	import * as m from '$lib/paraglide/messages.js';
 
 	const GITHUB_URL = 'https://github.com/MoldyTaint/Cinephage';
@@ -143,7 +144,7 @@
 			</form>
 
 			<div class="mt-6 flex items-center justify-center gap-4 text-xs text-base-content/40">
-				<span>v{data.version}</span>
+				<span>{ensureVersionPrefix(data.version)}</span>
 				<a
 					href={DISCORD_URL}
 					target="_blank"

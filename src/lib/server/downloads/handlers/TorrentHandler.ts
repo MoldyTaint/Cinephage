@@ -1,6 +1,8 @@
 import parseTorrent from 'parse-torrent';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager.js';
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring/index.js';
+import { extractLanguagesFromFileName } from '$lib/server/indexers/parser/patterns/language';
+import type { QueueQualityInfo } from '$lib/types/queue';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
 import { getDownloadResolutionService } from '../DownloadResolutionService.js';
 import {
@@ -10,6 +12,7 @@ import {
 } from '../episode-pointer.js';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
 import { blocklistService } from '$lib/server/monitoring/specifications/BlocklistSpecification.js';
+import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
 import { createChildLogger } from '$lib/logging/index.js';
 import type { GrabRequest, ResolvedContext, HandlerResult } from '../grab-types.js';
 import type { DownloadInfo } from '$lib/server/downloadClients/core/interfaces.js';
@@ -36,11 +39,12 @@ export class TorrentHandler {
 		const paused = clientConfig.initialState === 'pause';
 
 		const parsed = parser.parse(release.title);
-		const quality = {
+		const quality: QueueQualityInfo = {
 			resolution: parsed.resolution ?? undefined,
 			source: parsed.source ?? undefined,
 			codec: parsed.codec ?? undefined,
-			hdr: parsed.hdr ?? undefined
+			hdr: parsed.hdr ?? undefined,
+			languages: parsed.languages.length > 0 ? parsed.languages : undefined
 		};
 
 		let indexerSeedRatio: number | undefined;
@@ -149,6 +153,22 @@ export class TorrentHandler {
 					];
 
 					const parsedFiles = parsedTorrent.files as Array<{ path?: string; name?: string }>;
+
+					// Tier-3 language evidence: tokens from the torrent's actual file
+					// names (stronger than the release title; still not ffprobe proof).
+					const fileLanguageSet = new Set<string>();
+					for (const f of parsedFiles) {
+						const name =
+							String(f.path || f.name || '')
+								.split(/[\\/]/)
+								.pop() ?? '';
+						for (const tag of extractLanguagesFromFileName(name).languages) {
+							if (tag === 'multi' || tag === 'orig') continue;
+							fileLanguageSet.add(tag);
+						}
+					}
+					if (fileLanguageSet.size > 0) quality.fileLanguages = [...fileLanguageSet];
+
 					const matchedFiles = parsedFiles.filter((f) => {
 						const fileName = String(f.path || f.name || '');
 						const dotIndex = fileName.lastIndexOf('.');
@@ -209,6 +229,25 @@ export class TorrentHandler {
 					},
 					'Could not parse torrent for pre-grab extension check, continuing'
 				);
+			}
+		}
+
+		// Post-resolution identity recheck (acquisition redesign): the grab
+		// pipeline ran before this hash was resolvable (.torrent URLs reveal
+		// it only after metadata fetch). Now that it is known, re-verify
+		// against active intents, the queue, and import history BEFORE
+		// submitting to the download client. Magnet-carried hashes were
+		// already checked by the pipeline and the intent's identity.
+		if (options.intentId && resolvedDownload.infoHash) {
+			const { recheckResolvedIdentity } = await import('../identity-recheck.js');
+			const recheck = await recheckResolvedIdentity(options.intentId, resolvedDownload.infoHash);
+			if (recheck.blocked) {
+				acquisitionService.cancelIntent(options.intentId, recheck.reason);
+				logger.info(
+					{ title: release.title, infoHash: resolvedDownload.infoHash, reason: recheck.reason },
+					'[TorrentHandler] Blocked duplicate after metadata resolution'
+				);
+				return { success: false, error: recheck.reason };
 			}
 		}
 

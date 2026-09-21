@@ -10,11 +10,35 @@ import { movies, movieFiles, rootFolders } from '$lib/server/db/schema';
 const mockGetMovieExternalIds = vi.fn();
 const mockGetTvExternalIds = vi.fn();
 
+const mockGetEnabledProviders = vi.hoisted(() => vi.fn());
+const mockRecordSuccess = vi.hoisted(() => vi.fn());
+const mockRecordError = vi.hoisted(() => vi.fn());
+const mockAcquireRateLimit = vi.hoisted(() => vi.fn());
+
 vi.mock('$lib/server/tmdb', () => ({
 	tmdb: {
 		getMovieExternalIds: (...args: unknown[]) => mockGetMovieExternalIds(...args),
 		getTvExternalIds: (...args: unknown[]) => mockGetTvExternalIds(...args)
 	}
+}));
+
+vi.mock('./SubtitleProviderManager', () => ({
+	getSubtitleProviderManager: () => ({
+		getEnabledProviders: mockGetEnabledProviders,
+		recordSuccess: mockRecordSuccess,
+		recordError: mockRecordError,
+		acquireRateLimit: mockAcquireRateLimit
+	})
+}));
+
+vi.mock('./SubtitleScoringService', () => ({
+	getSubtitleScoringService: () => ({
+		score: (result: SubtitleSearchResult) => {
+			result.matchScore = 80;
+			return 80;
+		},
+		rank: (results: SubtitleSearchResult[]) => results
+	})
 }));
 
 const testDb: TestDatabase = createTestDb();
@@ -455,5 +479,303 @@ describe('SubtitleSearchService - searchForMovie', () => {
 		} finally {
 			searchSpy.mockRestore();
 		}
+	});
+});
+
+describe('SubtitleSearchService - capability gating and priority tiers', () => {
+	type MockProvider = {
+		id: string;
+		name: string;
+		implementation: string;
+		priority: number;
+		capabilities: {
+			hashVerifiable: boolean;
+			hearingImpairedVerifiable: boolean;
+			skipWrongFps: boolean;
+			supportsTvShows: boolean;
+			supportsMovies: boolean;
+			supportsAnime: boolean;
+		};
+		supportedLanguages: string[];
+		supportsHashSearch: boolean;
+		canSearch: ReturnType<typeof vi.fn>;
+		search: ReturnType<typeof vi.fn>;
+		download: ReturnType<typeof vi.fn>;
+		test: ReturnType<typeof vi.fn>;
+	};
+
+	function makeProvider(overrides: Partial<MockProvider> = {}): MockProvider {
+		return {
+			id: 'provider-1',
+			name: 'Provider One',
+			implementation: 'mock',
+			priority: 10,
+			capabilities: {
+				hashVerifiable: false,
+				hearingImpairedVerifiable: false,
+				skipWrongFps: true,
+				supportsTvShows: true,
+				supportsMovies: true,
+				supportsAnime: false
+			},
+			supportedLanguages: ['en'],
+			supportsHashSearch: false,
+			canSearch: vi.fn().mockReturnValue(true),
+			search: vi.fn().mockResolvedValue([]),
+			download: vi.fn(),
+			test: vi.fn(),
+			...overrides
+		};
+	}
+
+	function result(overrides: Partial<SubtitleSearchResult> = {}): SubtitleSearchResult {
+		return {
+			providerId: 'provider-1',
+			providerName: 'Provider One',
+			providerSubtitleId: 'sub-1',
+			language: 'en',
+			title: 'Test Movie',
+			isForced: false,
+			isHearingImpaired: false,
+			format: 'srt',
+			isHashMatch: false,
+			matchScore: 80,
+			...overrides
+		};
+	}
+
+	const enRequirement = {
+		tag: 'en',
+		variant: 'regular',
+		accessibility: 'any'
+	} as const;
+
+	const criteria = {
+		title: 'Test Movie',
+		languages: ['en'] as never
+	};
+
+	const service = SubtitleSearchService.getInstance();
+
+	beforeEach(() => {
+		mockGetEnabledProviders.mockReset();
+		mockRecordSuccess.mockReset().mockResolvedValue(undefined);
+		mockRecordError.mockReset().mockResolvedValue(undefined);
+		mockAcquireRateLimit.mockReset().mockResolvedValue(undefined);
+	});
+
+	it('skips an anime-only provider for a movie search and logs the reason', async () => {
+		const animeOnly = makeProvider({
+			id: 'anime-only',
+			capabilities: {
+				hashVerifiable: false,
+				hearingImpairedVerifiable: false,
+				skipWrongFps: true,
+				supportsTvShows: false,
+				supportsMovies: false,
+				supportsAnime: true
+			}
+		});
+		const normal = makeProvider({ id: 'normal', search: vi.fn().mockResolvedValue([result()]) });
+		mockGetEnabledProviders.mockResolvedValue([animeOnly, normal]);
+
+		const aggregated = await service.search(criteria, {}, { mediaKind: 'movie' });
+
+		expect(animeOnly.search).not.toHaveBeenCalled();
+		expect(normal.search).toHaveBeenCalledTimes(1);
+		expect(aggregated.providerResults.find((p) => p.providerId === 'anime-only')?.skipped).toBe(
+			'provider does not support movies'
+		);
+		expect(aggregated.results).toHaveLength(1);
+	});
+
+	it('skips an anime-only provider for a TV search too', async () => {
+		const animeOnly = makeProvider({
+			id: 'anime-only',
+			capabilities: {
+				hashVerifiable: false,
+				hearingImpairedVerifiable: false,
+				skipWrongFps: true,
+				supportsTvShows: false,
+				supportsMovies: false,
+				supportsAnime: true
+			}
+		});
+		mockGetEnabledProviders.mockResolvedValue([animeOnly]);
+
+		const aggregated = await service.search(criteria, {}, { mediaKind: 'tv' });
+
+		expect(animeOnly.search).not.toHaveBeenCalled();
+		expect(aggregated.providerResults[0].skipped).toBe('provider does not support TV shows');
+	});
+
+	it('treats TV-capable providers as anime-eligible (default capabilities)', async () => {
+		// Default capabilities: supportsMovies/supportsTvShows true, supportsAnime false.
+		const general = makeProvider({
+			id: 'general',
+			search: vi.fn().mockResolvedValue([result({ providerId: 'general' })])
+		});
+		mockGetEnabledProviders.mockResolvedValue([general]);
+
+		const aggregated = await service.search(criteria, {}, { mediaKind: 'anime' });
+
+		expect(general.search).toHaveBeenCalledTimes(1);
+		expect(aggregated.providerResults[0].skipped).toBeUndefined();
+		expect(aggregated.results).toHaveLength(1);
+	});
+
+	it('skips a movies-only provider for an anime search', async () => {
+		const moviesOnly = makeProvider({
+			id: 'movies-only',
+			capabilities: {
+				hashVerifiable: false,
+				hearingImpairedVerifiable: false,
+				skipWrongFps: true,
+				supportsTvShows: false,
+				supportsMovies: true,
+				supportsAnime: false
+			}
+		});
+		mockGetEnabledProviders.mockResolvedValue([moviesOnly]);
+
+		const aggregated = await service.search(criteria, {}, { mediaKind: 'anime' });
+
+		expect(moviesOnly.search).not.toHaveBeenCalled();
+		expect(aggregated.providerResults[0].skipped).toBe('provider does not support anime');
+	});
+
+	it('still applies movie/TV gating unchanged', async () => {
+		const moviesOnly = makeProvider({
+			id: 'movies-only',
+			capabilities: {
+				hashVerifiable: false,
+				hearingImpairedVerifiable: false,
+				skipWrongFps: true,
+				supportsTvShows: false,
+				supportsMovies: true,
+				supportsAnime: false
+			}
+		});
+		const tvOnly = makeProvider({
+			id: 'tv-only',
+			capabilities: {
+				hashVerifiable: false,
+				hearingImpairedVerifiable: false,
+				skipWrongFps: true,
+				supportsTvShows: true,
+				supportsMovies: false,
+				supportsAnime: false
+			}
+		});
+		mockGetEnabledProviders.mockResolvedValue([moviesOnly, tvOnly]);
+
+		const movieSearch = await service.search(criteria, {}, { mediaKind: 'movie' });
+		expect(moviesOnly.search).toHaveBeenCalledTimes(1);
+		expect(movieSearch.providerResults.find((p) => p.providerId === 'tv-only')?.skipped).toBe(
+			'provider does not support movies'
+		);
+
+		moviesOnly.search.mockClear();
+		tvOnly.search.mockClear();
+		const tvSearch = await service.search(criteria, {}, { mediaKind: 'tv' });
+		expect(tvOnly.search).toHaveBeenCalledTimes(1);
+		expect(tvSearch.providerResults.find((p) => p.providerId === 'movies-only')?.skipped).toBe(
+			'provider does not support TV shows'
+		);
+	});
+
+	it('skips providers that cannot verify HI when a require-hi requirement is acquired', async () => {
+		const unverifiable = makeProvider({ id: 'no-hi' });
+		const verifiable = makeProvider({
+			id: 'hi-ok',
+			capabilities: {
+				hashVerifiable: false,
+				hearingImpairedVerifiable: true,
+				skipWrongFps: true,
+				supportsTvShows: true,
+				supportsMovies: true,
+				supportsAnime: false
+			},
+			search: vi.fn().mockResolvedValue([result({ isHearingImpaired: true })])
+		});
+		mockGetEnabledProviders.mockResolvedValue([unverifiable, verifiable]);
+
+		const aggregated = await service.search(criteria, {}, { requireHearingImpaired: true });
+
+		expect(unverifiable.search).not.toHaveBeenCalled();
+		expect(verifiable.search).toHaveBeenCalledTimes(1);
+		expect(aggregated.providerResults.find((p) => p.providerId === 'no-hi')?.skipped).toBe(
+			'provider cannot verify hearing-impaired subtitles'
+		);
+	});
+
+	it('stops at the first tier that accepts a candidate for the requirement', async () => {
+		const tierOne = makeProvider({
+			id: 'tier-1',
+			priority: 10,
+			search: vi.fn().mockResolvedValue([result({ providerId: 'tier-1', matchScore: 85 })])
+		});
+		const tierTwo = makeProvider({
+			id: 'tier-2',
+			priority: 20,
+			search: vi.fn().mockResolvedValue([result({ providerId: 'tier-2', matchScore: 90 })])
+		});
+		mockGetEnabledProviders.mockResolvedValue([tierTwo, tierOne]);
+
+		const aggregated = await service.search(
+			criteria,
+			{},
+			{
+				requirement: enRequirement,
+				minimumScore: 70
+			}
+		);
+
+		expect(tierOne.search).toHaveBeenCalledTimes(1);
+		expect(tierTwo.search).not.toHaveBeenCalled();
+		expect(aggregated.tierTimings).toHaveLength(1);
+		expect(aggregated.tierTimings?.[0]).toMatchObject({
+			priority: 10,
+			accepted: true,
+			stopped: true
+		});
+	});
+
+	it('falls through to the next tier when the first yields no acceptable candidate', async () => {
+		const tierOne = makeProvider({
+			id: 'tier-1',
+			priority: 10,
+			search: vi.fn().mockResolvedValue([])
+		});
+		const tierTwo = makeProvider({
+			id: 'tier-2',
+			priority: 20,
+			search: vi.fn().mockResolvedValue([result({ providerId: 'tier-2', matchScore: 88 })])
+		});
+		mockGetEnabledProviders.mockResolvedValue([tierOne, tierTwo]);
+
+		const aggregated = await service.search(
+			criteria,
+			{},
+			{
+				requirement: enRequirement,
+				minimumScore: 70
+			}
+		);
+
+		expect(tierOne.search).toHaveBeenCalledTimes(1);
+		expect(tierTwo.search).toHaveBeenCalledTimes(1);
+		expect(aggregated.tierTimings).toHaveLength(2);
+		expect(aggregated.tierTimings?.[0]?.accepted).toBe(false);
+		expect(aggregated.tierTimings?.[1]?.accepted).toBe(true);
+	});
+
+	it('awaits the shared rate limiter before each provider search', async () => {
+		const provider = makeProvider({ id: 'limited', search: vi.fn().mockResolvedValue([result()]) });
+		mockGetEnabledProviders.mockResolvedValue([provider]);
+
+		await service.search(criteria, {}, {});
+
+		expect(mockAcquireRateLimit).toHaveBeenCalledWith('limited');
 	});
 });

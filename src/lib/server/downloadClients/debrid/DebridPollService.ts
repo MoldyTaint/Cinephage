@@ -9,6 +9,20 @@ import { NamingService } from '$lib/server/library/naming/NamingService';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService';
 import { getDownloadClientManager } from '../DownloadClientManager';
 import { DebridImportFinalizer } from './DebridImportFinalizer';
+import { mediaInfoService } from '$lib/server/library/media-info';
+import {
+	recalculateMovieShortfall,
+	recalculateSeriesShortfall
+} from '$lib/server/languages/language-shortfall';
+
+/** Best-effort local probe; empty mediaInfo when ffprobe cannot answer. */
+async function probeLocalMediaInfo(path: string): Promise<Record<string, unknown>> {
+	try {
+		return (await mediaInfoService.extractMediaInfo(path)) ?? {};
+	} catch {
+		return {};
+	}
+}
 import type { DebridImportFinalizerInput } from './DebridImportFinalizer';
 import { getDownloadMonitor } from '../monitoring/DownloadMonitorService';
 import { DebridFileMaterializer } from './DebridFileMaterializer';
@@ -197,6 +211,31 @@ export class DebridPollService implements BackgroundService {
 		return !Number.isFinite(timestamp) || Date.now() - timestamp >= CLAIM_LEASE_MS;
 	}
 
+	/**
+	 * Ordered audio languages for the item's effective language profile
+	 * (original first when preferOriginal) — drives the debrid movie
+	 * file-choice tiebreaker. Best-effort: empty when unresolvable.
+	 */
+	private async resolvePreferredAudioLanguages(
+		media: { type: 'movie'; movie: { id: string } } | { type: 'series' } | undefined
+	): Promise<string[]> {
+		if (!media || media.type !== 'movie' || !media.movie.id) return [];
+		try {
+			const { resolveAudioPreferenceForItem } =
+				await import('$lib/server/languages/audio-preference-resolver');
+			const preference = await resolveAudioPreferenceForItem('movie', media.movie.id);
+			const ordered = [
+				...(preference.preferOriginal && preference.originalLanguage
+					? [preference.originalLanguage]
+					: []),
+				...preference.languages
+			];
+			return ordered;
+		} catch {
+			return [];
+		}
+	}
+
 	private async importReady(
 		row: QueueRow,
 		providerItem: ProviderItem,
@@ -223,7 +262,8 @@ export class DebridPollService implements BackgroundService {
 					},
 					media: context.media,
 					library: { rootPath: context.rootPath }
-				}
+				},
+				preferredAudioLanguages: await this.resolvePreferredAudioLanguages(context.media)
 			});
 		} catch (error) {
 			await this.fail(
@@ -271,7 +311,9 @@ export class DebridPollService implements BackgroundService {
 							codec?: string;
 							hdr?: string;
 						},
-						mediaInfo: {}
+						// The materialized file is on local disk — probe it here
+						// instead of persisting empty mediaInfo (phase D fix).
+						mediaInfo: await probeLocalMediaInfo(receipt.finalPath)
 					}
 				});
 			} catch (error) {
@@ -298,6 +340,14 @@ export class DebridPollService implements BackgroundService {
 				files
 			});
 			if (!result.success) throw new Error('Finalization reported failure');
+
+			// Audio-language verification (phase D): now that probed mediaInfo
+			// landed with the files, maintain the shortfall flag.
+			if (context.mediaType === 'movie' && row.movieId) {
+				await recalculateMovieShortfall(row.movieId);
+			} else if (context.mediaType === 'series' && row.seriesId) {
+				await recalculateSeriesShortfall(row.seriesId);
+			}
 		} catch (error) {
 			await this.retry(
 				row.id,

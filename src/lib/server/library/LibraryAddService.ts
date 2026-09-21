@@ -10,7 +10,7 @@
  */
 
 import { db } from '$lib/server/db/index.js';
-import { rootFolders, languageProfiles, series } from '$lib/server/db/schema.js';
+import { rootFolders, series } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { tmdb } from '$lib/server/tmdb.js';
 import { qualityFilter } from '$lib/server/quality/index.js';
@@ -146,36 +146,6 @@ export async function getEffectiveScoringProfileId(
 
 	const defaultProfile = await qualityFilter.getDefaultScoringProfile();
 	return defaultProfile.id;
-}
-
-/**
- * Get the default language profile ID if subtitles are wanted
- */
-export async function getLanguageProfileId(
-	wantsSubtitles: boolean,
-	tmdbId: number
-): Promise<string | null> {
-	if (!wantsSubtitles) {
-		return null;
-	}
-
-	const [defaultLanguageProfile] = await db
-		.select()
-		.from(languageProfiles)
-		.where(eq(languageProfiles.isDefault, true))
-		.limit(1);
-
-	if (!defaultLanguageProfile) {
-		logger.warn(
-			{
-				tmdbId
-			},
-			'[LibraryAddService] No default language profile found for subtitle preferences'
-		);
-		return null;
-	}
-
-	return defaultLanguageProfile.id;
 }
 
 /**

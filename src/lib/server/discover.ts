@@ -2,6 +2,7 @@ import { tmdb } from '$lib/server/tmdb';
 import type { Movie, TVShow, PaginatedResponse } from '$lib/types/tmdb';
 import { GENRE_MAPPINGS, SEARCH } from '$lib/config/constants';
 import { hasActiveDiscoverFilters } from '$lib/utils/discoverParams';
+import { normalizeTmdbLanguage } from '$lib/server/languages/normalize.js';
 
 /**
  * Maps movie genre IDs to TV genre IDs or vice versa.
@@ -48,6 +49,38 @@ export interface DiscoverParams {
 	minRating: string | null;
 	certification: string | null;
 	skipKeywordBlocklist?: boolean;
+}
+
+/** Stored values that mean "no origin filter" rather than a language. */
+const NO_FILTER_MARKERS = new Set(['any', 'all']);
+
+/**
+ * Resolve the effective discover `with_original_language` content-origin filter.
+ *
+ * Order: explicit URL param (passed through unchanged) →
+ * `language_settings.discover_original_filter` validated down to a canonical
+ * base tag via `normalizeTmdbLanguage` → null.
+ *
+ * The response locale (`language_settings.metadata_locale` /
+ * `global_filters.language`) is deliberately never consulted: response
+ * localization and content-origin filtering are separate concerns
+ * (language-system spec §5).
+ */
+export function resolveWithOriginalLanguage(
+	urlParam: string | null | undefined,
+	storedFilter: string | null | undefined
+): string | null {
+	const fromUrl = typeof urlParam === 'string' ? urlParam.trim() : '';
+	if (fromUrl && !NO_FILTER_MARKERS.has(fromUrl.toLowerCase())) {
+		// Normalize at the boundary too: `en-US` → `en`; junk → null (fall
+		// through to the stored filter).
+		const normalizedUrl = normalizeTmdbLanguage(fromUrl);
+		if (normalizedUrl) return normalizedUrl;
+	}
+
+	const stored = typeof storedFilter === 'string' ? storedFilter.trim() : '';
+	if (!stored || NO_FILTER_MARKERS.has(stored.toLowerCase())) return null;
+	return normalizeTmdbLanguage(stored);
 }
 
 export async function getDiscoverResults(params: DiscoverParams) {

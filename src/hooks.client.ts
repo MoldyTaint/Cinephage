@@ -25,15 +25,28 @@ function createClientSupportId(): string {
 }
 
 function serializeClientError(error: unknown): ClientErrorReportPayload['error'] | undefined {
-	if (!(error instanceof Error)) {
-		return undefined;
+	if (error instanceof Error) {
+		return {
+			name: error.name,
+			message: error.message,
+			stack: error.stack
+		};
 	}
 
-	return {
-		name: error.name,
-		message: error.message,
-		stack: error.stack
-	};
+	// Non-Error throws (DOMException, plain strings, NS_ERROR_FAILURE...) must
+	// still serialize — dropping them turned every such crash into `err: {}`.
+	if (typeof error === 'string') {
+		return { name: 'string', message: error };
+	}
+	if (error && typeof error === 'object') {
+		const anyError = error as { name?: unknown; message?: unknown };
+		return {
+			name: typeof anyError.name === 'string' ? anyError.name : 'unknown',
+			message:
+				typeof anyError.message === 'string' && anyError.message ? anyError.message : String(error)
+		};
+	}
+	return { name: 'unknown', message: String(error) };
 }
 
 function reportClientError(payload: ClientErrorReportPayload): void {

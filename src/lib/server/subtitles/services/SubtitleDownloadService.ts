@@ -1,8 +1,16 @@
 /**
  * Subtitle Download Service
  *
- * Handles downloading subtitles from providers, saving to disk,
- * and registering them in the database.
+ * Handles downloading subtitles from providers, saving to disk, and
+ * registering them in the database.
+ *
+ * Integrity guarantees:
+ * - Content is sniffed for its real format (never dictated by the provider's
+ *   claimed filename/format), including ZIP archives.
+ * - The file is written to a temp path in the target directory and renamed
+ *   into place, so a partial write never replaces a good subtitle.
+ * - The old row/file, the new row and the history entry move together in one
+ *   DB transaction; on failure the previous file state is restored.
  */
 
 import { db } from '$lib/server/db';
@@ -17,16 +25,25 @@ import {
 	episodeFiles,
 	rootFolders
 } from '$lib/server/db/schema';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { writeFile, mkdir, unlink } from 'node:fs/promises';
+import { writeFile, mkdir, unlink, rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join, basename, extname } from 'node:path';
 import { createChildLogger } from '$lib/logging';
 import { getSubtitleSyncService } from './SubtitleSyncService';
+import { getMediaBrowserNotifier } from '$lib/server/notifications/mediabrowser';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
-import { normalizeLanguageCode } from '$lib/shared/languages';
+
+/**
+ * Hostile/misbehaving providers must not be able to exhaust memory: subtitles
+ * are tiny, so anything beyond these caps is rejected before extraction.
+ */
+const MAX_SUBTITLE_DOWNLOAD_BYTES = 25 * 1024 * 1024; // 25 MB (multi-sub archives)
+const MAX_SUBTITLE_ARCHIVE_ENTRIES = 200;
+const MAX_SUBTITLE_UNCOMPRESSED_BYTES = 50 * 1024 * 1024; // 50 MB
+import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
 import type {
 	SubtitleSearchResult,
 	SubtitleDownloadResult,
@@ -35,6 +52,12 @@ import type {
 } from '../types';
 import { getSubtitleProviderManager } from './SubtitleProviderManager';
 import { isThrottleableError } from '../errors/ProviderErrors';
+import { resolveDestructivePathWithinBase, resolveStoredSubtitlePath } from '../subtitle-paths';
+import {
+	detectSubtitleFormatFromContent,
+	isZipContent,
+	selectSubtitleZipEntry
+} from '../subtitle-content';
 import AdmZip from 'adm-zip';
 
 /**
@@ -193,38 +216,58 @@ export class SubtitleDownloadService {
 			throw new Error(`Subtitle not found: ${subtitleId}`);
 		}
 
-		// Get full path and delete file
-		const fullPath = await this.getSubtitleFullPath(subtitle[0]);
-		if (fullPath && existsSync(fullPath)) {
-			await unlink(fullPath);
-			logger.debug({ path: fullPath }, 'Deleted subtitle file');
-		}
+		// Get full path before deleting the row.
+		const fullPath = await resolveStoredSubtitlePath(subtitle[0]);
 
-		// Add to blacklist if requested
-		if (addToBlacklist && subtitle[0].providerId && subtitle[0].providerSubtitleId) {
-			await db.insert(subtitleBlacklist).values({
-				movieId: subtitle[0].movieId,
-				episodeId: subtitle[0].episodeId,
-				providerId: subtitle[0].providerId,
-				providerSubtitleId: subtitle[0].providerSubtitleId,
-				language: subtitle[0].language,
-				reason
-			});
-		}
+		// Row delete + history + blacklist move together so a failed history
+		// insert cannot leave the subtitle row gone without an audit entry.
+		db.transaction((tx) => {
+			if (addToBlacklist && subtitle[0].providerId && subtitle[0].providerSubtitleId) {
+				tx.insert(subtitleBlacklist)
+					.values({
+						movieId: subtitle[0].movieId,
+						episodeId: subtitle[0].episodeId,
+						providerId: subtitle[0].providerId,
+						providerSubtitleId: subtitle[0].providerSubtitleId,
+						language: subtitle[0].language,
+						reason
+					})
+					.run();
+			}
 
-		// Log to history
-		await db.insert(subtitleHistory).values({
-			movieId: subtitle[0].movieId,
-			episodeId: subtitle[0].episodeId,
-			action: 'deleted',
-			language: subtitle[0].language,
-			providerId: subtitle[0].providerId,
-			providerName: undefined,
-			providerSubtitleId: subtitle[0].providerSubtitleId
+			tx.insert(subtitleHistory)
+				.values({
+					movieId: subtitle[0].movieId,
+					episodeId: subtitle[0].episodeId,
+					action: 'deleted',
+					language: subtitle[0].language,
+					providerId: subtitle[0].providerId,
+					providerName: undefined,
+					providerSubtitleId: subtitle[0].providerSubtitleId
+				})
+				.run();
+
+			tx.delete(subtitles).where(eq(subtitles.id, subtitleId)).run();
 		});
 
-		// Delete from database
-		await db.delete(subtitles).where(eq(subtitles.id, subtitleId));
+		const safeFullPath = fullPath
+			? await resolveDestructivePathWithinBase(dirname(fullPath), basename(fullPath))
+			: null;
+		if (safeFullPath && existsSync(safeFullPath)) {
+			try {
+				await unlink(safeFullPath);
+				logger.debug({ path: safeFullPath }, 'Deleted subtitle file');
+			} catch (error) {
+				logger.warn(
+					{ path: fullPath, error: error instanceof Error ? error.message : String(error) },
+					'Failed to delete subtitle file after row removal'
+				);
+			}
+		}
+
+		if (fullPath) {
+			getMediaBrowserNotifier().queueUpdate(fullPath, 'Deleted', 'delete');
+		}
 
 		logger.info(
 			{
@@ -265,9 +308,10 @@ export class SubtitleDownloadService {
 			throw new Error(`Provider not available: ${result.providerId}`);
 		}
 
-		// Download subtitle content
+		// Download subtitle content (rate-limited via the provider's shared limiter)
 		let content: Buffer;
 		try {
+			await providerManager.acquireRateLimit(result.providerId);
 			content = await provider.download(result);
 		} catch (error) {
 			logger.error(
@@ -293,38 +337,51 @@ export class SubtitleDownloadService {
 			throw error;
 		}
 
-		// Handle zip files
-		if (this.isZipFile(content)) {
-			content = await this.extractFromZip(content);
+		// Size cap before any parsing/extraction.
+		if (content.length > MAX_SUBTITLE_DOWNLOAD_BYTES) {
+			throw new Error(
+				`Downloaded subtitle payload from ${result.providerName} is too large (${Math.round(
+					content.length / (1024 * 1024)
+				)} MB)`
+			);
 		}
 
-		const normalizedLanguage = normalizeLanguageCode(result.language);
+		// Handle zip files: choose the entry that matches the requirement.
+		if (isZipContent(content)) {
+			content = this.extractSubtitleFromZip(content, result, options);
+		}
 
-		// Generate filename
+		// The provider's claimed format is advisory only; sniff the real one.
+		const detectedFormat = detectSubtitleFormatFromContent(content);
+		if (detectedFormat === 'unknown') {
+			throw new Error(
+				`Downloaded content from ${result.providerName} is not a recognized subtitle format`
+			);
+		}
+
+		// Canonicalize through the server boundary: unknown provider language
+		// values become `und`, never an invented or raw non-canonical tag.
+		const normalizedLanguage = normalizeLanguageTag(result.language);
+
+		// Generate filename using the detected extension (never a hardcoded srt).
 		const subtitleFileName = this.generateFileName(
 			options.videoFileName,
 			normalizedLanguage,
 			result.isForced,
 			result.isHearingImpaired,
-			result.format
+			detectedFormat
 		);
 
 		// Ensure directory exists
 		await mkdir(options.mediaPath, { recursive: true });
 
-		// Save file
-		const subtitlePath = join(options.mediaPath, subtitleFileName);
-		await writeFile(subtitlePath, content);
+		const finalPath = await resolveDestructivePathWithinBase(options.mediaPath, subtitleFileName);
+		if (!finalPath) {
+			throw new Error('Refusing destructive subtitle operation on a symlink or outside path');
+		}
+		const tempPath = join(dirname(finalPath), `.${subtitleFileName}.${randomUUID()}.tmp`);
 
-		logger.debug(
-			{
-				path: subtitlePath,
-				size: content.length
-			},
-			'Saved subtitle file'
-		);
-
-		// Check for existing subtitle to upgrade
+		// Check for existing subtitle to upgrade/replace.
 		const existingSubtitle = await this.findExistingSubtitle(
 			options.movieId,
 			options.episodeId,
@@ -334,65 +391,205 @@ export class SubtitleDownloadService {
 			options.movieFileId
 		);
 
-		let wasUpgrade = false;
-		let replacedSubtitleId: string | undefined;
+		const oldPathCandidate = existingSubtitle
+			? await resolveStoredSubtitlePath(existingSubtitle)
+			: null;
+		const oldPath = oldPathCandidate
+			? await resolveDestructivePathWithinBase(options.mediaPath, oldPathCandidate)
+			: null;
+		const oldFileExists = oldPath ? existsSync(oldPath) : false;
 
-		if (existingSubtitle) {
-			wasUpgrade = true;
-			replacedSubtitleId = existingSubtitle.id;
+		// An untracked sidecar already occupying the deterministic final path is
+		// the only copy we know of — preserve it via backup instead of blindly
+		// overwriting (and never unlink it on a DB failure).
+		const untrackedFileAtFinalPath = !existingSubtitle && existsSync(finalPath);
 
-			// Delete old file if it exists
-			const oldPath = await this.getSubtitleFullPath(existingSubtitle);
-			if (oldPath && existsSync(oldPath) && oldPath !== subtitlePath) {
-				await unlink(oldPath);
+		// Preserve the old file when the new sidecar would overwrite the same path,
+		// so a DB failure can restore it.
+		let backupPath: string | null = null;
+		try {
+			if (oldFileExists && oldPath === finalPath) {
+				const candidateBackup = `${finalPath}.${randomUUID()}.bak`;
+				const safeOldPath = await resolveDestructivePathWithinBase(
+					dirname(oldPath),
+					basename(oldPath)
+				);
+				const safeBackupPath = await resolveDestructivePathWithinBase(
+					dirname(candidateBackup),
+					basename(candidateBackup)
+				);
+				if (!safeOldPath || !safeBackupPath) {
+					throw new Error('Refusing to move a symlinked subtitle file');
+				}
+				// Only record the backup once the rename actually succeeded, so a
+				// failed backup never causes the original file to be removed.
+				await rename(safeOldPath, safeBackupPath);
+				backupPath = safeBackupPath;
+			} else if (untrackedFileAtFinalPath) {
+				const candidateBackup = `${finalPath}.${randomUUID()}.bak`;
+				await rename(finalPath, candidateBackup);
+				backupPath = candidateBackup;
 			}
 
-			// Delete old record
-			await db.delete(subtitles).where(eq(subtitles.id, existingSubtitle.id));
+			// Atomic placement: write the payload to a temp file in the target
+			// directory first, then rename it into its final name.
+			try {
+				await writeFile(tempPath, content);
+				await rename(tempPath, finalPath);
+			} catch (writeError) {
+				await this.safeUnlink(tempPath);
+				throw writeError;
+			}
+		} catch (fileError) {
+			// Restore the previous file state where possible.
+			if (backupPath) {
+				await this.safeUnlink(finalPath);
+				await this.safeRename(backupPath, finalPath);
+			}
+			throw new Error(
+				`Failed to write subtitle file "${subtitleFileName}": ${
+					fileError instanceof Error ? fileError.message : String(fileError)
+				}`,
+				{ cause: fileError }
+			);
 		}
 
-		// Create database record
 		const subtitleId = randomUUID();
-		await db.insert(subtitles).values({
-			id: subtitleId,
-			movieId: options.movieId,
-			episodeId: options.episodeId,
-			movieFileId: options.movieFileId ?? null,
-			relativePath: subtitleFileName,
-			language: normalizedLanguage,
-			isForced: result.isForced,
-			isHearingImpaired: result.isHearingImpaired,
-			format: result.format,
-			providerId: result.providerId,
-			providerSubtitleId: result.providerSubtitleId,
-			matchScore: result.matchScore,
-			isHashMatch: result.isHashMatch,
-			size: content.length
-		});
+		const wasUpgrade = Boolean(existingSubtitle);
+		const replacedSubtitleId = existingSubtitle?.id;
 
-		// Log to history
-		await db.insert(subtitleHistory).values({
-			movieId: options.movieId,
-			episodeId: options.episodeId,
-			action: wasUpgrade ? 'upgraded' : 'downloaded',
-			language: normalizedLanguage,
-			providerId: result.providerId,
-			providerName: result.providerName,
-			providerSubtitleId: result.providerSubtitleId,
-			matchScore: result.matchScore,
-			wasHashMatch: result.isHashMatch,
-			replacedSubtitleId
-		});
+		// Row swap + history are one transaction. The file is already in place;
+		// if the transaction fails we roll the file back to its previous state.
+		try {
+			db.transaction((tx) => {
+				// Re-check the unique identity inside the transaction. A concurrent
+				// trigger (import hook + scheduled task, double-click "Search now")
+				// may have committed the same identity between the pre-check above
+				// and this write; replace its row instead of failing the insert.
+				const identityRows = tx
+					.select({ id: subtitles.id })
+					.from(subtitles)
+					.where(
+						and(
+							options.movieId ? eq(subtitles.movieId, options.movieId) : isNull(subtitles.movieId),
+							options.episodeId
+								? eq(subtitles.episodeId, options.episodeId)
+								: isNull(subtitles.episodeId),
+							eq(subtitles.language, normalizedLanguage),
+							eq(subtitles.isForced, result.isForced),
+							eq(subtitles.isHearingImpaired, result.isHearingImpaired),
+							eq(subtitles.relativePath, subtitleFileName)
+						)
+					)
+					.all();
+
+				if (existingSubtitle) {
+					tx.delete(subtitles).where(eq(subtitles.id, existingSubtitle.id)).run();
+				}
+				for (const duplicate of identityRows) {
+					if (duplicate.id !== existingSubtitle?.id) {
+						tx.delete(subtitles).where(eq(subtitles.id, duplicate.id)).run();
+					}
+				}
+
+				tx.insert(subtitles)
+					.values({
+						id: subtitleId,
+						movieId: options.movieId,
+						episodeId: options.episodeId,
+						movieFileId: options.movieFileId ?? null,
+						relativePath: subtitleFileName,
+						language: normalizedLanguage,
+						isForced: result.isForced,
+						isHearingImpaired: result.isHearingImpaired,
+						format: detectedFormat,
+						providerId: result.providerId,
+						providerSubtitleId: result.providerSubtitleId,
+						matchScore: result.matchScore,
+						isHashMatch: result.isHashMatch,
+						size: content.length
+					})
+					.run();
+
+				tx.insert(subtitleHistory)
+					.values({
+						movieId: options.movieId,
+						episodeId: options.episodeId,
+						action: wasUpgrade ? 'upgraded' : 'downloaded',
+						language: normalizedLanguage,
+						providerId: result.providerId,
+						providerName: result.providerName,
+						providerSubtitleId: result.providerSubtitleId,
+						matchScore: result.matchScore,
+						wasHashMatch: result.isHashMatch,
+						replacedSubtitleId
+					})
+					.run();
+			});
+		} catch (dbError) {
+			// Never blind-unlink a path another writer may own. Restore our backup
+			// when we took one; otherwise only remove the file if no committed row
+			// references this exact owner+path.
+			if (backupPath) {
+				await this.safeUnlink(finalPath);
+				await this.safeRename(backupPath, finalPath);
+			} else if (
+				!(await this.hasCommittedRowForPath(options.movieId, options.episodeId, subtitleFileName))
+			) {
+				await this.safeUnlink(finalPath);
+			}
+			throw dbError;
+		}
+
+		// Commit succeeded: drop the backup and unlink a superseded old file.
+		if (backupPath) {
+			await this.safeUnlink(backupPath);
+		}
+		if (oldFileExists && oldPath && oldPath !== finalPath) {
+			try {
+				const safeOldPath = await resolveDestructivePathWithinBase(
+					dirname(oldPath),
+					basename(oldPath)
+				);
+				if (safeOldPath) await unlink(safeOldPath);
+			} catch (error) {
+				logger.warn(
+					{ path: oldPath, error: error instanceof Error ? error.message : String(error) },
+					'Failed to remove replaced subtitle file'
+				);
+			}
+		}
+
+		logger.debug(
+			{
+				path: finalPath,
+				size: content.length,
+				format: detectedFormat
+			},
+			'Saved subtitle file'
+		);
 
 		logger.info(
 			{
 				subtitleId,
 				provider: result.providerName,
 				language: normalizedLanguage,
+				format: detectedFormat,
 				wasUpgrade
 			},
 			'Subtitle downloaded'
 		);
+
+		// Media servers need to drop the stale sidecar and pick up the new one.
+		const notifier = getMediaBrowserNotifier();
+		if (wasUpgrade) {
+			if (oldPath && oldPath !== finalPath) {
+				notifier.queueUpdate(oldPath, 'Deleted', 'upgrade');
+			}
+			notifier.queueUpdate(finalPath, 'Modified', 'upgrade');
+		} else {
+			notifier.queueUpdate(finalPath, 'Created', 'import');
+		}
 
 		const syncResult = await this.autoSyncSubtitle(
 			subtitleId,
@@ -402,9 +599,9 @@ export class SubtitleDownloadService {
 
 		return {
 			subtitleId,
-			path: subtitlePath,
+			path: finalPath,
 			language: normalizedLanguage,
-			format: result.format,
+			format: detectedFormat,
 			wasSynced: syncResult.success,
 			syncOffset: syncResult.success ? syncResult.offsetMs : null,
 			wasUpgrade,
@@ -448,16 +645,19 @@ export class SubtitleDownloadService {
 	/**
 	 * Generate subtitle filename following naming convention
 	 * Format: {VideoName}.{lang}.{flags}.{ext}
+	 *
+	 * `format` must be a content-detected concrete format.
 	 */
 	private generateFileName(
 		videoFileName: string,
 		language: string,
 		isForced: boolean,
 		isHi: boolean,
-		format: SubtitleFormat
+		format: Exclude<SubtitleFormat, 'unknown'>
 	): string {
 		const videoBaseName = basename(videoFileName, extname(videoFileName));
-		const ext = format === 'unknown' ? 'srt' : format;
+		// Detected format is authoritative; callers reject 'unknown' before this.
+		const ext = format;
 
 		let flags = '';
 		if (isForced) flags += '.forced';
@@ -467,40 +667,127 @@ export class SubtitleDownloadService {
 	}
 
 	/**
-	 * Check if content is a zip file
+	 * Extract the matching subtitle entry from a ZIP archive.
+	 *
+	 * Selection order (see `selectSubtitleZipEntry`): exact language tag, then
+	 * episode/release name, then forced/HI tags, ties broken deterministically by
+	 * entry name. Ambiguous archives are logged with the candidates considered.
 	 */
-	private isZipFile(content: Buffer): boolean {
-		// ZIP magic bytes: PK (0x50 0x4B)
-		return content.length >= 2 && content[0] === 0x50 && content[1] === 0x4b;
-	}
-
-	/**
-	 * Extract subtitle from zip file
-	 */
-	private async extractFromZip(zipContent: Buffer): Promise<Buffer> {
-		const zip = new AdmZip(zipContent);
-		const entries = zip.getEntries();
-
-		// Find subtitle file in zip
-		const subtitleExtensions = ['.srt', '.ass', '.ssa', '.sub', '.vtt'];
-		const subtitleEntry = entries.find((entry) => {
-			const ext = extname(entry.entryName).toLowerCase();
-			return subtitleExtensions.includes(ext) && !entry.isDirectory;
-		});
-
-		if (!subtitleEntry) {
-			throw new Error('No subtitle file found in zip archive');
+	private extractSubtitleFromZip(
+		zipContent: Buffer,
+		result: SubtitleSearchResult,
+		options: { videoFileName: string }
+	): Buffer {
+		let zip: AdmZip;
+		try {
+			zip = new AdmZip(zipContent);
+		} catch (error) {
+			throw new Error(
+				`Failed to read subtitle zip archive: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+				{ cause: error }
+			);
 		}
 
-		return subtitleEntry.getData();
+		const entries = zip.getEntries();
+		if (entries.length > MAX_SUBTITLE_ARCHIVE_ENTRIES) {
+			throw new Error(
+				`Subtitle zip archive has too many entries (${entries.length} > ${MAX_SUBTITLE_ARCHIVE_ENTRIES})`
+			);
+		}
+		const totalUncompressed = entries.reduce((sum, entry) => sum + (entry.header?.size ?? 0), 0);
+		if (totalUncompressed > MAX_SUBTITLE_UNCOMPRESSED_BYTES) {
+			throw new Error(
+				`Subtitle zip archive expands to ${Math.round(
+					totalUncompressed / (1024 * 1024)
+				)} MB, above the ${Math.round(MAX_SUBTITLE_UNCOMPRESSED_BYTES / (1024 * 1024))} MB cap`
+			);
+		}
+
+		const selection = selectSubtitleZipEntry(entries, {
+			language: result.language,
+			isForced: result.isForced,
+			isHearingImpaired: result.isHearingImpaired,
+			videoFileName: options.videoFileName,
+			releaseName: result.releaseName,
+			fileName: result.fileName
+		});
+
+		if (selection.ambiguous) {
+			logger.warn(
+				{
+					provider: result.providerName,
+					language: result.language,
+					videoFileName: options.videoFileName,
+					chosen: selection.entry.entryName,
+					candidates: selection.candidates
+				},
+				'Ambiguous subtitle zip archive; selected an entry deterministically'
+			);
+		} else {
+			logger.debug(
+				{ chosen: selection.entry.entryName, candidateCount: selection.candidates.length },
+				'Selected subtitle entry from zip archive'
+			);
+		}
+
+		return selection.entry.getData();
+	}
+
+	/** Best-effort unlink that never throws. */
+	private async safeUnlink(path: string): Promise<void> {
+		try {
+			const safePath = await resolveDestructivePathWithinBase(dirname(path), basename(path));
+			if (safePath) await unlink(safePath);
+		} catch {
+			// Already gone or never created.
+		}
+	}
+
+	/** Whether a committed subtitle row references this owner + stored path. */
+	private async hasCommittedRowForPath(
+		movieId: string | undefined,
+		episodeId: string | undefined,
+		relativePath: string
+	): Promise<boolean> {
+		const conditions = [eq(subtitles.relativePath, relativePath)];
+		if (movieId) conditions.push(eq(subtitles.movieId, movieId));
+		if (episodeId) conditions.push(eq(subtitles.episodeId, episodeId));
+
+		const rows = await db
+			.select({ id: subtitles.id })
+			.from(subtitles)
+			.where(and(...conditions))
+			.limit(1);
+		return rows.length > 0;
+	}
+
+	/** Best-effort rename used for rollback; never throws. */
+	private async safeRename(from: string, to: string): Promise<void> {
+		try {
+			const safeFrom = await resolveDestructivePathWithinBase(dirname(from), basename(from));
+			const safeTo = await resolveDestructivePathWithinBase(dirname(to), basename(to));
+			if (!safeFrom || !safeTo) throw new Error('Refusing to rename a symlinked subtitle file');
+			await rename(safeFrom, safeTo);
+		} catch (error) {
+			logger.error(
+				{ from, to, error: error instanceof Error ? error.message : String(error) },
+				'Failed to restore subtitle file during rollback'
+			);
+		}
 	}
 
 	/**
-	 * Find existing subtitle with same language/flags
+	 * Find existing subtitle with same language/flags.
 	 *
 	 * When movieFileId is provided, the search is scoped to subtitles linked to
 	 * that specific movie file so that subtitles for different quality tiers
 	 * (e.g. 2160p vs 1080p) do not clobber each other.
+	 *
+	 * When the movie has more than one file and the request carried no
+	 * movieFileId, matching is deliberately skipped: an unscoped replace could
+	 * clobber the wrong quality tier, so a new row is inserted instead.
 	 */
 	private async findExistingSubtitle(
 		movieId: string | undefined,
@@ -510,7 +797,21 @@ export class SubtitleDownloadService {
 		isHi: boolean,
 		movieFileId?: string | null
 	): Promise<typeof subtitles.$inferSelect | null> {
-		const normalizedLanguage = normalizeLanguageCode(language);
+		if (movieId && !movieFileId) {
+			const movieFilesForMovie = await db
+				.select({ id: movieFiles.id })
+				.from(movieFiles)
+				.where(eq(movieFiles.movieId, movieId));
+			if (movieFilesForMovie.length > 1) {
+				logger.debug(
+					{ movieId },
+					'Movie has multiple files and no movieFileId was supplied; not replacing an existing subtitle'
+				);
+				return null;
+			}
+		}
+
+		const normalizedLanguage = normalizeLanguageTag(language);
 		const languageValues =
 			normalizedLanguage === language ? [language] : [language, normalizedLanguage];
 
@@ -537,75 +838,6 @@ export class SubtitleDownloadService {
 			.limit(1);
 
 		return existing[0] || null;
-	}
-
-	/**
-	 * Get full path for a subtitle record
-	 */
-	private async getSubtitleFullPath(
-		subtitle: typeof subtitles.$inferSelect
-	): Promise<string | null> {
-		if (subtitle.movieId) {
-			const movie = await db.select().from(movies).where(eq(movies.id, subtitle.movieId)).limit(1);
-			if (!movie[0]) return null;
-
-			const rootFolder = movie[0].rootFolderId
-				? await db
-						.select()
-						.from(rootFolders)
-						.where(eq(rootFolders.id, movie[0].rootFolderId))
-						.limit(1)
-				: null;
-
-			const rootPath = rootFolder?.[0]?.path || '';
-			return join(rootPath, movie[0].path, subtitle.relativePath);
-		}
-
-		if (subtitle.episodeId) {
-			const episode = await db
-				.select()
-				.from(episodes)
-				.where(eq(episodes.id, subtitle.episodeId))
-				.limit(1);
-			if (!episode[0]) return null;
-
-			const seriesData = await db
-				.select()
-				.from(series)
-				.where(eq(series.id, episode[0].seriesId))
-				.limit(1);
-			if (!seriesData[0]) return null;
-
-			const rootFolder = seriesData[0].rootFolderId
-				? await db
-						.select()
-						.from(rootFolders)
-						.where(eq(rootFolders.id, seriesData[0].rootFolderId))
-						.limit(1)
-				: null;
-
-			const rootPath = rootFolder?.[0]?.path || '';
-
-			// Find the episode file to get the correct directory (includes season folder)
-			const files = await db
-				.select()
-				.from(episodeFiles)
-				.where(eq(episodeFiles.seriesId, episode[0].seriesId));
-			const file = files.find((f) => {
-				const ids = f.episodeIds as string[] | null;
-				return ids?.includes(subtitle.episodeId!);
-			});
-
-			if (file) {
-				const mediaDir = join(rootPath, seriesData[0].path, dirname(file.relativePath));
-				return join(mediaDir, subtitle.relativePath);
-			}
-
-			// Fallback: use series path if no file found
-			return join(rootPath, seriesData[0].path, subtitle.relativePath);
-		}
-
-		return null;
 	}
 }
 

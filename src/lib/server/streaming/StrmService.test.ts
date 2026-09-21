@@ -140,7 +140,7 @@ describe('StrmService', () => {
 	});
 
 	describe('naming-based path generation', () => {
-		it('uses the current naming service for movie strm paths', () => {
+		it('uses the current naming service for movie strm paths', async () => {
 			(
 				service as unknown as {
 					getNamingService: () => {
@@ -154,7 +154,7 @@ describe('StrmService', () => {
 			});
 
 			expect(
-				(
+				await (
 					service as unknown as {
 						buildMovieStrmPath: (
 							rootFolderPath: string,
@@ -165,7 +165,7 @@ describe('StrmService', () => {
 								imdbId?: string | null;
 								path: string | null;
 							}
-						) => string;
+						) => Promise<string>;
 					}
 				).buildMovieStrmPath('/library/movies', {
 					title: 'Movie',
@@ -176,7 +176,7 @@ describe('StrmService', () => {
 			).toBe(join('/library/movies', 'Movie Folder', 'Movie File.strm'));
 		});
 
-		it('uses the current naming service for episode strm paths', () => {
+		it('uses the current naming service for episode strm paths', async () => {
 			(
 				service as unknown as {
 					getNamingService: () => {
@@ -192,7 +192,7 @@ describe('StrmService', () => {
 			});
 
 			expect(
-				(
+				await (
 					service as unknown as {
 						buildEpisodeStrmPath: (
 							rootFolderPath: string,
@@ -207,7 +207,7 @@ describe('StrmService', () => {
 							seasonNumber: number,
 							episodeNumber: number,
 							episodeTitle?: string | null
-						) => string;
+						) => Promise<string>;
 					}
 				).buildEpisodeStrmPath(
 					'/library/tv',

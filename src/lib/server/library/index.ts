@@ -23,7 +23,6 @@ export {
 export {
 	validateRootFolder,
 	getEffectiveScoringProfileId,
-	getLanguageProfileId,
 	fetchMovieDetails,
 	fetchMovieExternalIds,
 	fetchSeriesDetails,

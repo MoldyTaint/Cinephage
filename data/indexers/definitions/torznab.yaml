@@ -190,3 +190,11 @@ search:
       selector: "torznab|attr[name='tvdbid']"
       attribute: value
       optional: true
+    language:
+      selector: "torznab|attr[name='language']"
+      attribute: value
+      optional: true
+    subs:
+      selector: "torznab|attr[name='subs']"
+      attribute: value
+      optional: true

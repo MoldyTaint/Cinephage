@@ -1,8 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
-import { languageProfileCreateSchema } from '$lib/validation/schemas';
-import type { LanguagePreference } from '$lib/server/db/schema';
+import { languageProfileV2CreateSchema } from '$lib/validation/schemas';
 import { parseBody } from '$lib/server/api/validate.js';
 
 /**
@@ -18,20 +17,14 @@ export const GET: RequestHandler = async () => {
 
 /**
  * POST /api/subtitles/language-profiles
- * Create a new language profile.
+ * Create a new language profile (v2 shape: audio + ordered subtitle requirements).
+ * The parsed schema output is forwarded directly; the service re-validates.
  */
 export const POST: RequestHandler = async ({ request }) => {
-	const validated = await parseBody(request, languageProfileCreateSchema);
+	const validated = await parseBody(request, languageProfileV2CreateSchema);
 	const service = LanguageProfileService.getInstance();
 
-	const created = await service.createProfile({
-		name: validated.name,
-		languages: validated.languages as LanguagePreference[],
-		upgradesAllowed: validated.upgradesAllowed,
-		isDefault: validated.isDefault,
-		cutoffIndex: validated.cutoffIndex,
-		minimumScore: validated.minimumScore
-	});
+	const created = await service.createProfile(validated);
 
 	return json({ success: true, profile: created });
 };

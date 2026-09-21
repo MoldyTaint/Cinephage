@@ -29,6 +29,97 @@ const LIVETV_SEGMENT_MAX_SIZE = 50 * 1024 * 1024; // 50MB
 const LIVETV_SEGMENT_CACHE_MAX_AGE = 60; // Segments are immutable once created
 const LIVETV_MAX_RETRIES = 3;
 const LIVETV_RETRY_BASE_DELAY_MS = 1000;
+const LIVETV_MAX_REDIRECTS = 5;
+const HLS_SNIFF_MAX_BYTES = 8192;
+const MAX_HLS_PLAYLIST_BYTES = 5 * 1024 * 1024;
+
+async function readBoundedText(
+	body: ReadableStream<Uint8Array>,
+	maxBytes: number
+): Promise<string> {
+	const reader = body.getReader();
+	const decoder = new TextDecoder();
+	let bytesRead = 0;
+	let text = '';
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) return text + decoder.decode();
+			bytesRead += value.byteLength;
+			if (bytesRead > maxBytes) {
+				await reader.cancel();
+				throw new Error('HLS playlist exceeds the maximum allowed size');
+			}
+			text += decoder.decode(value, { stream: true });
+		}
+	} finally {
+		reader.releaseLock();
+	}
+}
+
+function limitStream(
+	body: ReadableStream<Uint8Array>,
+	maxBytes: number
+): ReadableStream<Uint8Array> {
+	const reader = body.getReader();
+	let bytesRead = 0;
+	return new ReadableStream<Uint8Array>({
+		async pull(controller) {
+			const { done, value } = await reader.read();
+			if (done) {
+				controller.close();
+				return;
+			}
+			bytesRead += value.byteLength;
+			if (bytesRead > maxBytes) {
+				await reader.cancel();
+				controller.error(new Error('Segment exceeds the maximum allowed size'));
+				return;
+			}
+			controller.enqueue(value);
+		},
+		async cancel(reason) {
+			await reader.cancel(reason);
+		}
+	});
+}
+
+async function inspectPlaylistResponse(
+	response: Response
+): Promise<{ isPlaylist: boolean; body: ReadableStream<Uint8Array> | null }> {
+	const contentType = response.headers.get('content-type')?.toLowerCase() || '';
+	if (contentType.includes('mpegurl') || contentType.includes('m3u8')) {
+		return { isPlaylist: true, body: response.body };
+	}
+
+	const inconclusive =
+		!contentType ||
+		contentType === 'application/octet-stream' ||
+		contentType.startsWith('text/plain');
+	if (!inconclusive || !response.body) {
+		return { isPlaylist: false, body: response.body };
+	}
+
+	const [probeBody, passthroughBody] = response.body.tee();
+	const reader = probeBody.getReader();
+	const decoder = new TextDecoder();
+	let bytesRead = 0;
+	let prefix = '';
+	try {
+		while (bytesRead < HLS_SNIFF_MAX_BYTES) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			const chunk = value.subarray(0, HLS_SNIFF_MAX_BYTES - bytesRead);
+			bytesRead += chunk.byteLength;
+			prefix += decoder.decode(chunk, { stream: bytesRead < HLS_SNIFF_MAX_BYTES });
+			if (prefix.includes('#EXTM3U')) break;
+		}
+	} finally {
+		void reader.cancel();
+	}
+
+	return { isPlaylist: prefix.includes('#EXTM3U'), body: passthroughBody };
+}
 
 /**
  * Fetch with retry logic for transient errors
@@ -50,6 +141,7 @@ async function fetchWithRetry(
 
 			// Handle 403 Forbidden - likely expired token
 			if (response.status === 403 && allowUrlRefresh && attempt < maxRetries) {
+				await response.body?.cancel();
 				logger.warn(
 					{
 						lineupId,
@@ -60,6 +152,12 @@ async function fetchWithRetry(
 
 				// Refresh the URL and retry
 				const refreshed = await urlCache.refreshStream(lineupId);
+				const refreshedSafetyCheck = await resolveAndValidateUrl(refreshed.url);
+				if (!refreshedSafetyCheck.safe) {
+					const error = new Error(`Refreshed stream URL blocked: ${refreshedSafetyCheck.reason}`);
+					Object.assign(error, { status: 403 });
+					throw error;
+				}
 				url = refreshed.url;
 
 				// Update headers with new provider headers if available
@@ -73,12 +171,20 @@ async function fetchWithRetry(
 
 			// Only retry on 5xx server errors
 			if (response.status >= 500 && attempt < maxRetries) {
-				await new Promise((r) => setTimeout(r, LIVETV_RETRY_BASE_DELAY_MS * Math.pow(2, attempt)));
+				await response.body?.cancel();
+				await sleepAbortable(
+					LIVETV_RETRY_BASE_DELAY_MS * Math.pow(2, attempt),
+					options.signal ?? undefined
+				);
 				continue;
 			}
 
 			return response;
 		} catch (error) {
+			if (error instanceof Error && error.message.startsWith('Refreshed stream URL blocked:')) {
+				throw error;
+			}
+			if (options.signal?.aborted) throw error;
 			lastError = error instanceof Error ? error : new Error(String(error));
 
 			// Don't retry on abort (timeout)
@@ -87,12 +193,34 @@ async function fetchWithRetry(
 			}
 
 			if (attempt < maxRetries) {
-				await new Promise((r) => setTimeout(r, LIVETV_RETRY_BASE_DELAY_MS * Math.pow(2, attempt)));
+				await sleepAbortable(
+					LIVETV_RETRY_BASE_DELAY_MS * Math.pow(2, attempt),
+					options.signal ?? undefined
+				);
 			}
 		}
 	}
 
 	throw lastError ?? new Error('Segment fetch failed');
+}
+
+function sleepAbortable(ms: number, signal?: AbortSignal): Promise<void> {
+	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
+			return;
+		}
+		const timeout = setTimeout(() => {
+			signal?.removeEventListener('abort', abort);
+			resolve();
+		}, ms);
+		const abort = () => {
+			clearTimeout(timeout);
+			signal?.removeEventListener('abort', abort);
+			reject(signal?.reason ?? new DOMException('Aborted', 'AbortError'));
+		};
+		signal?.addEventListener('abort', abort, { once: true });
+	});
 }
 
 /**
@@ -230,7 +358,7 @@ async function validateAndRefreshUrl(
 }
 
 export const GET: RequestHandler = async ({ params, url, request }) => {
-	const { lineupId, path } = params;
+	const { lineupId } = params;
 
 	// Get segment URL from query parameter
 	const segmentUrl = url.searchParams.get('url');
@@ -285,7 +413,6 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 		// Follow redirects manually to validate each redirect target for SSRF
 		let currentUrl = decodedUrl;
 		let redirectCount = 0;
-		const MAX_SEGMENT_REDIRECTS = 5;
 		const visitedUrls = new Set<string>();
 		let response: Response;
 
@@ -299,7 +426,7 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 			}
 			visitedUrls.add(currentUrl);
 
-			if (redirectCount >= MAX_SEGMENT_REDIRECTS) {
+			if (redirectCount >= LIVETV_MAX_REDIRECTS) {
 				logger.warn({ lineupId }, '[LiveTV Segment] Max redirects exceeded');
 				return new Response(JSON.stringify({ error: 'Too many redirects' }), {
 					status: 508,
@@ -311,7 +438,8 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 				currentUrl,
 				{
 					headers: getStreamHeaders(providerHeaders),
-					redirect: 'manual'
+					redirect: 'manual',
+					signal: request.signal
 				},
 				lineupId
 			);
@@ -320,6 +448,7 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 			if (response.status >= 300 && response.status < 400) {
 				const location = response.headers.get('location');
 				if (location) {
+					await response.body?.cancel();
 					const redirectUrl = new URL(location, currentUrl).toString();
 					const redirectSafetyCheck = await resolveAndValidateUrl(redirectUrl);
 					if (!redirectSafetyCheck.safe) {
@@ -350,6 +479,7 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 		}
 
 		if (!response.ok) {
+			await response.body?.cancel();
 			return new Response(JSON.stringify({ error: `Segment fetch failed: ${response.status}` }), {
 				status: response.status,
 				headers: { 'Content-Type': 'application/json' }
@@ -361,6 +491,7 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 		if (contentLength) {
 			const size = parseInt(contentLength, 10);
 			if (size > LIVETV_SEGMENT_MAX_SIZE) {
+				await response.body?.cancel();
 				logger.warn(
 					{
 						lineupId,
@@ -377,16 +508,11 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 		}
 
 		const contentType = response.headers.get('content-type') || '';
+		const inspected = await inspectPlaylistResponse(response);
 
 		// Check if this is a nested playlist that needs rewriting
-		const isPlaylist =
-			contentType.includes('mpegurl') ||
-			contentType.includes('m3u8') ||
-			path?.endsWith('.m3u8') ||
-			decodedUrl.toLowerCase().includes('.m3u8');
-
-		if (isPlaylist) {
-			const playlist = await response.text();
+		if (inspected.isPlaylist && inspected.body) {
+			const playlist = await readBoundedText(inspected.body, MAX_HLS_PLAYLIST_BYTES);
 
 			if (playlist.includes('#EXTM3U')) {
 				const baseUrl = await getBaseUrlAsync(request);
@@ -412,33 +538,15 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 			}
 		}
 
-		// Read segment data
-		const arrayBuffer = await response.arrayBuffer();
-
-		// Detect actual content type from bytes if needed
-		const firstBytes = new Uint8Array(arrayBuffer.slice(0, 4));
-		let actualContentType = contentType;
-
-		if (!actualContentType || actualContentType === 'application/octet-stream') {
-			// MPEG-TS sync byte
-			if (firstBytes[0] === 0x47) {
-				actualContentType = 'video/mp2t';
-			}
-			// fMP4 box header
-			else if (firstBytes[0] === 0x00 && firstBytes[1] === 0x00 && firstBytes[2] === 0x00) {
-				actualContentType = 'video/mp4';
-			}
-			// AAC ADTS header
-			else if (firstBytes[0] === 0xff && (firstBytes[1] & 0xf0) === 0xf0) {
-				actualContentType = 'audio/aac';
-			}
+		if (!inspected.body) {
+			return new Response(null, { status: 204 });
 		}
 
-		return new Response(arrayBuffer, {
+		return new Response(limitStream(inspected.body, LIVETV_SEGMENT_MAX_SIZE), {
 			status: 200,
 			headers: {
-				'Content-Type': actualContentType || 'video/mp2t',
-				'Content-Length': arrayBuffer.byteLength.toString(),
+				'Content-Type':
+					contentType && contentType !== 'application/octet-stream' ? contentType : 'video/mp2t',
 				'Accept-Ranges': 'none',
 				'Access-Control-Allow-Origin': '*',
 				'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
@@ -461,27 +569,87 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 		return new Response(
 			JSON.stringify({ error: error instanceof Error ? error.message : 'Segment proxy error' }),
 			{
-				status: 502,
+				status:
+					error instanceof Error && 'status' in error && typeof error.status === 'number'
+						? error.status
+						: 502,
 				headers: { 'Content-Type': 'application/json' }
 			}
 		);
 	}
 };
 
-export const HEAD: RequestHandler = async ({ params, url }) => {
+export const HEAD: RequestHandler = async ({ params, url, request }) => {
 	const segmentUrl = url.searchParams.get('url');
 
 	if (!segmentUrl) {
 		return new Response(null, { status: 400 });
 	}
 
-	// Determine content type from URL pattern
-	const isPlaylist = segmentUrl.toLowerCase().includes('.m3u8') || params.path?.endsWith('.m3u8');
-	const contentType = isPlaylist ? 'application/vnd.apple.mpegurl' : 'video/mp2t';
+	const lineupId = params.lineupId;
+	const safetyCheck = await resolveAndValidateUrl(segmentUrl);
+	if (!safetyCheck.safe) {
+		return new Response(JSON.stringify({ error: 'URL blocked', reason: safetyCheck.reason }), {
+			status: 403,
+			headers: { 'Content-Type': 'application/json' }
+		});
+	}
 
-	return new Response(null, {
-		status: 200,
-		headers: {
+	try {
+		let currentUrl = segmentUrl;
+		let redirectCount = 0;
+		const visitedUrls = new Set<string>();
+		let response: Response;
+		while (true) {
+			if (visitedUrls.has(currentUrl) || redirectCount >= LIVETV_MAX_REDIRECTS) {
+				return new Response(JSON.stringify({ error: 'Too many redirects' }), {
+					status: 508,
+					headers: { 'Content-Type': 'application/json' }
+				});
+			}
+			visitedUrls.add(currentUrl);
+			response = await fetchWithRetry(
+				currentUrl,
+				{
+					method: 'HEAD',
+					headers: getStreamHeaders(),
+					redirect: 'manual',
+					signal: request?.signal
+				},
+				lineupId,
+				0,
+				false
+			);
+			if (response.status < 300 || response.status >= 400) break;
+			const location = response.headers.get('location');
+			if (!location) break;
+			await response.body?.cancel();
+			const redirectUrl = new URL(location, currentUrl).toString();
+			const redirectSafetyCheck = await resolveAndValidateUrl(redirectUrl);
+			if (!redirectSafetyCheck.safe) {
+				return new Response(
+					JSON.stringify({
+						error: 'Redirect target not allowed',
+						reason: redirectSafetyCheck.reason
+					}),
+					{ status: 403, headers: { 'Content-Type': 'application/json' } }
+				);
+			}
+			currentUrl = redirectUrl;
+			redirectCount++;
+		}
+		await response.body?.cancel();
+
+		if (!response.ok) {
+			return new Response(JSON.stringify({ error: `Segment fetch failed: ${response.status}` }), {
+				status: response.status,
+				headers: { 'Content-Type': 'application/json' }
+			});
+		}
+
+		const contentType = response.headers.get('content-type') || 'video/mp2t';
+		const isPlaylist = contentType.includes('mpegurl') || contentType.includes('m3u8');
+		const headers = new Headers({
 			'Content-Type': contentType,
 			'Accept-Ranges': 'none',
 			'Access-Control-Allow-Origin': '*',
@@ -489,8 +657,17 @@ export const HEAD: RequestHandler = async ({ params, url }) => {
 			'Access-Control-Allow-Headers': 'Range, Content-Type',
 			'Cache-Control': isPlaylist ? 'no-cache' : `public, max-age=${LIVETV_SEGMENT_CACHE_MAX_AGE}`,
 			'X-Content-Type-Options': 'nosniff'
-		}
-	});
+		});
+		const contentLength = response.headers.get('content-length');
+		if (contentLength) headers.set('Content-Length', contentLength);
+
+		return new Response(null, { status: 200, headers });
+	} catch (error) {
+		return new Response(
+			JSON.stringify({ error: error instanceof Error ? error.message : 'Segment HEAD failed' }),
+			{ status: 502, headers: { 'Content-Type': 'application/json' } }
+		);
+	}
 };
 
 export const OPTIONS: RequestHandler = async () => {

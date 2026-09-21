@@ -16,7 +16,22 @@
 	import type { ProviderDefinition } from '$lib/server/subtitles/providers/interfaces';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import { SectionHeader, TestResult } from '$lib/components/ui/modal';
-	import { isBlankOrRedacted } from '$lib/shared/sensitiveSettings';
+	import { isBlankOrRedacted, isSensitiveKeyName } from '$lib/shared/sensitiveSettings';
+
+	/**
+	 * Setting keys that map to dedicated top-level provider config columns
+	 * (apiKey/username/password). Providers read these from `config.<key>`, so
+	 * the modal must submit them top-level rather than inside `settings`.
+	 */
+	const AUTH_SETTING_KEYS = new Set(['apiKey', 'username', 'password']);
+
+	function isAuthSettingKey(key: string): boolean {
+		return AUTH_SETTING_KEYS.has(key);
+	}
+
+	function isSecretSettingKey(key: string): boolean {
+		return isSensitiveKeyName(key);
+	}
 
 	/**
 	 * Get access type info for display
@@ -124,10 +139,9 @@
 	let enabled = $state(true);
 	let priority = $state(25);
 
-	// Form state - Authentication
-	let apiKey = $state('');
-	let username = $state('');
-	let password = $state('');
+	// Form state - Provider settings (generic `definition.settings`). Values are
+	// keyed by setting key; auth keys are mapped to top-level columns on submit.
+	let settingValues = $state<Record<string, string | number | boolean>>({});
 
 	// Form state - Rate limiting
 	let requestsPerMinute = $state(60);
@@ -140,15 +154,45 @@
 	const modalTitle = $derived(
 		mode === 'add' ? m.subtitleProviders_modal_addTitle() : m.subtitleProviders_modal_editTitle()
 	);
-	const hasApiKey = $derived(!!provider?.apiKey);
-	const hasPassword = $derived(!!provider?.password);
 	const selectedDefinition = $derived(
 		implementation ? definitions.find((d) => d.implementation === implementation) : null
 	);
 	const requiresApiKey = $derived(selectedDefinition?.requiresApiKey ?? false);
 	const requiresCredentials = $derived(selectedDefinition?.requiresCredentials ?? false);
+	const declaredSettings = $derived(selectedDefinition?.settings ?? []);
 	const MAX_NAME_LENGTH = 15;
 	const nameTooLong = $derived(name.length > MAX_NAME_LENGTH);
+
+	/** Whether the stored provider already holds a value for this setting. */
+	function settingHasStoredValue(setting: ProviderDefinition['settings'][number]): boolean {
+		const existing = isAuthSettingKey(setting.key)
+			? (provider as Record<string, unknown> | null)?.[setting.key]
+			: provider?.settings?.[setting.key];
+		return existing !== undefined && existing !== null && String(existing) !== '';
+	}
+
+	/** A required setting is missing when blank (secret blanks keep an existing value). */
+	function settingMissing(setting: ProviderDefinition['settings'][number]): boolean {
+		const raw = settingValues[setting.key];
+		if (setting.type === 'boolean') {
+			return setting.required ? raw !== true : false;
+		}
+		const blank =
+			raw === undefined ||
+			raw === null ||
+			(typeof raw === 'string' && isBlankOrRedacted(raw.trim()));
+		if (!blank) return false;
+		// Blank secret in edit mode means "keep the stored value".
+		if (mode === 'edit' && isSecretSettingKey(setting.key) && settingHasStoredValue(setting)) {
+			return false;
+		}
+		return true;
+	}
+
+	const missingRequiredSettings = $derived(
+		declaredSettings.filter((s) => s.required && settingMissing(s))
+	);
+	const canSubmit = $derived(!!name && !nameTooLong && missingRequiredSettings.length === 0);
 
 	// Filter definitions based on search
 	const filteredDefinitions = $derived(() => {
@@ -169,14 +213,71 @@
 			name = provider?.name ?? '';
 			enabled = provider?.enabled ?? true;
 			priority = provider?.priority ?? 25;
-			apiKey = '';
-			username = provider?.username ?? '';
-			password = '';
 			requestsPerMinute = provider?.requestsPerMinute ?? 60;
 			searchQuery = '';
 			testResult = null;
+			seedSettingValues(
+				provider?.implementation
+					? (definitions.find((d) => d.implementation === provider?.implementation) ?? null)
+					: null,
+				mode,
+				provider
+			);
 		}
 	});
+
+	function defaultValueForType(
+		type: ProviderDefinition['settings'][number]['type']
+	): string | number | boolean {
+		switch (type) {
+			case 'number':
+				return 0;
+			case 'boolean':
+				return false;
+			default:
+				return '';
+		}
+	}
+
+	/**
+	 * Build form values for `definition.settings`. Secret settings are left blank
+	 * in edit mode so the stored value is only sent when the user types a new one.
+	 */
+	function seedSettingValues(
+		def: ProviderDefinition | null,
+		currentMode: 'add' | 'edit',
+		currentProvider: SubtitleProviderConfig | null
+	) {
+		const values: Record<string, string | number | boolean> = {};
+		if (def) {
+			for (const setting of def.settings) {
+				const stored = isAuthSettingKey(setting.key)
+					? ((currentProvider as Record<string, unknown> | null)?.[setting.key] as
+							string | number | boolean | undefined)
+					: (currentProvider?.settings?.[setting.key] as string | number | boolean | undefined);
+
+				const hasStored =
+					currentProvider !== null &&
+					stored !== undefined &&
+					stored !== null &&
+					String(stored) !== '';
+
+				if (isSecretSettingKey(setting.key) && currentMode === 'edit' && hasStored) {
+					values[setting.key] = '';
+					continue;
+				}
+
+				if (stored !== undefined && !isBlankOrRedacted(stored)) {
+					values[setting.key] = stored;
+				} else if (setting.default !== undefined) {
+					values[setting.key] = setting.default;
+				} else {
+					values[setting.key] = defaultValueForType(setting.type);
+				}
+			}
+		}
+		settingValues = values;
+	}
 
 	function handleImplementationChange(newImpl: ProviderImplementation) {
 		implementation = newImpl;
@@ -184,21 +285,62 @@
 			const def = definitions.find((d) => d.implementation === newImpl);
 			if (def) {
 				name = def.name;
-				requestsPerMinute = newImpl === 'opensubtitles' ? 40 : 60;
+				requestsPerMinute = def.defaultRequestsPerMinute ?? (newImpl === 'opensubtitles' ? 40 : 60);
+				seedSettingValues(def, 'add', null);
 			}
 		}
 	}
 
 	function getFormData(): SubtitleProviderFormData {
+		// Preserve undeclared stored settings on edit; declared keys are overwritten.
+		const settings: Record<string, unknown> =
+			mode === 'edit' && provider?.settings ? { ...provider.settings } : {};
+
+		let apiKey: string | undefined;
+		let username: string | undefined;
+		let password: string | undefined;
+
+		for (const setting of declaredSettings) {
+			const raw = settingValues[setting.key];
+
+			if (isAuthSettingKey(setting.key)) {
+				const blank =
+					raw === undefined ||
+					raw === null ||
+					(typeof raw === 'string' && isBlankOrRedacted(raw.trim()));
+				if (blank) continue; // edit: undefined keeps the stored value
+				if (setting.key === 'apiKey') apiKey = String(raw);
+				else if (setting.key === 'username') username = String(raw);
+				else if (setting.key === 'password') password = String(raw);
+				continue;
+			}
+
+			if (
+				isSecretSettingKey(setting.key) &&
+				typeof raw === 'string' &&
+				isBlankOrRedacted(raw.trim())
+			) {
+				// Blank secret: keep the stored value when editing, otherwise omit.
+				const stored = provider?.settings?.[setting.key];
+				if (mode === 'edit' && stored !== undefined && !isBlankOrRedacted(stored)) {
+					settings[setting.key] = stored;
+				}
+				continue;
+			}
+
+			settings[setting.key] = raw;
+		}
+
 		return {
 			name,
 			implementation,
 			enabled,
 			priority,
-			apiKey: isBlankOrRedacted(apiKey?.trim()) ? undefined : apiKey.trim(),
-			username: username || undefined,
-			password: isBlankOrRedacted(password?.trim()) ? undefined : password.trim(),
-			requestsPerMinute
+			apiKey,
+			username,
+			password,
+			requestsPerMinute,
+			settings: Object.keys(settings).length > 0 ? settings : undefined
 		};
 	}
 
@@ -405,48 +547,106 @@
 				</div>
 			</div>
 
-			<!-- Right Column: Authentication -->
+			<!-- Right Column: Authentication / Provider Settings -->
 			<div class="space-y-4">
 				<SectionHeader title={m.subtitleProviders_modal_authentication()} />
 
-				{#if requiresApiKey}
-					<div class="form-control">
-						<label class="label py-1" for="apiKey">
-							<span class="label-text">
-								{m.subtitleProviders_modal_apiKey()}
-								{#if mode === 'add' || !hasApiKey}
-									<span class="text-error">* </span>
+				{#if declaredSettings.length > 0}
+					<div class="space-y-3">
+						{#each declaredSettings as setting (setting.key)}
+							<div class="form-control">
+								<label class="label py-1" for={`setting-${setting.key}`}>
+									<span class="label-text">
+										{setting.label}
+										{#if setting.required}
+											<span class="text-error">* </span>
+										{/if}
+									</span>
+									{#if setting.required}
+										<span class="badge badge-xs badge-warning"
+											>{m.subtitleProviders_modal_apiKeyRequired()}</span
+										>
+									{/if}
+								</label>
+
+								{#if setting.type === 'boolean'}
+									<input
+										id={`setting-${setting.key}`}
+										type="checkbox"
+										class="checkbox checkbox-sm"
+										checked={settingValues[setting.key] === true}
+										onchange={(e) => (settingValues[setting.key] = e.currentTarget.checked)}
+									/>
+								{:else if setting.type === 'select'}
+									<select
+										id={`setting-${setting.key}`}
+										class="select-bordered select select-sm"
+										value={String(settingValues[setting.key] ?? '')}
+										onchange={(e) => (settingValues[setting.key] = e.currentTarget.value)}
+									>
+										{#each setting.options ?? [] as option (option.value)}
+											<option value={option.value}>{option.label}</option>
+										{/each}
+									</select>
+								{:else}
+									<input
+										id={`setting-${setting.key}`}
+										type={isSecretSettingKey(setting.key)
+											? 'password'
+											: setting.type === 'number'
+												? 'number'
+												: 'text'}
+										class="input-bordered input input-sm"
+										value={settingValues[setting.key] as string | number}
+										placeholder={isSecretSettingKey(setting.key)
+											? mode === 'edit' && settingHasStoredValue(setting)
+												? m.subtitleProviders_modal_apiKeyPlaceholderExisting()
+												: m.subtitleProviders_modal_apiKeyPlaceholderNew()
+											: setting.default !== undefined
+												? String(setting.default)
+												: ''}
+										oninput={(e) =>
+											(settingValues[setting.key] =
+												setting.type === 'number'
+													? e.currentTarget.value === ''
+														? ''
+														: Number(e.currentTarget.value)
+													: e.currentTarget.value)}
+									/>
 								{/if}
-							</span>
-							<span class="badge badge-xs badge-warning"
-								>{m.subtitleProviders_modal_apiKeyRequired()}</span
-							>
-						</label>
-						<input
-							id="apiKey"
-							type="password"
-							class="input-bordered input input-sm"
-							bind:value={apiKey}
-							placeholder={mode === 'edit' && hasApiKey
-								? m.subtitleProviders_modal_apiKeyPlaceholderExisting()
-								: m.subtitleProviders_modal_apiKeyPlaceholderNew()}
-						/>
-						{#if selectedDefinition?.website}
-							<p class="label py-1">
-								<!-- eslint-disable svelte/no-navigation-without-resolve -- External URL -->
-								<a
-									href={selectedDefinition.website}
-									target="_blank"
-									rel="noopener noreferrer"
-									class="label-text-alt link text-xs link-primary"
-								>
-									{m.subtitleProviders_modal_getApiKey({ name: selectedDefinition.name })}
-								</a>
-								<!-- eslint-enable svelte/no-navigation-without-resolve -->
-							</p>
-						{/if}
+
+								{#if setting.description}
+									<p class="label py-0">
+										<span class="label-text-alt text-xs text-base-content/60"
+											>{setting.description}</span
+										>
+									</p>
+								{/if}
+
+								{#if isSecretSettingKey(setting.key) && mode === 'edit' && settingHasStoredValue(setting)}
+									<p class="label py-0">
+										<span class="label-text-alt text-xs opacity-60">({m.auth_blankToKeep()})</span>
+									</p>
+								{/if}
+
+								{#if setting.key === 'apiKey' && selectedDefinition?.website}
+									<p class="label py-1">
+										<!-- eslint-disable svelte/no-navigation-without-resolve -- External URL -->
+										<a
+											href={selectedDefinition.website}
+											target="_blank"
+											rel="noopener noreferrer"
+											class="label-text-alt link text-xs link-primary"
+										>
+											{m.subtitleProviders_modal_getApiKey({ name: selectedDefinition.name })}
+										</a>
+										<!-- eslint-enable svelte/no-navigation-without-resolve -->
+									</p>
+								{/if}
+							</div>
+						{/each}
 					</div>
-				{:else}
+				{:else if !requiresApiKey && !requiresCredentials}
 					<div class="rounded-lg bg-success/10 p-3">
 						<div class="flex items-center gap-2 text-success">
 							<CheckCircle2 class="h-4 w-4" />
@@ -456,42 +656,6 @@
 						<p class="mt-1 text-xs text-base-content/60">
 							{m.subtitleProviders_modal_noApiKeyDescription()}
 						</p>
-					</div>
-				{/if}
-
-				{#if requiresCredentials}
-					<div class="grid grid-cols-2 gap-2 sm:gap-3">
-						<div class="form-control">
-							<label class="label py-1" for="username">
-								<span class="label-text">{m.subtitleProviders_modal_username()}</span>
-							</label>
-							<input
-								id="username"
-								type="text"
-								class="input-bordered input input-sm"
-								bind:value={username}
-							/>
-						</div>
-
-						<div class="form-control">
-							<label class="label py-1" for="password">
-								<span class="label-text">
-									{m.subtitleProviders_modal_password()}
-									{#if mode === 'edit' && hasPassword}
-										<span class="text-xs opacity-50">({m.auth_blankToKeep()})</span>
-									{/if}
-								</span>
-							</label>
-							<input
-								id="password"
-								type="password"
-								class="input-bordered input input-sm"
-								bind:value={password}
-								placeholder={mode === 'edit' && hasPassword
-									? m.subtitleProviders_modal_passwordPlaceholder()
-									: ''}
-							/>
-						</div>
 					</div>
 				{/if}
 
@@ -534,15 +698,7 @@
 				>
 			{/if}
 
-			<button
-				class="btn btn-ghost"
-				onclick={handleTest}
-				disabled={testing ||
-					saving ||
-					!name ||
-					nameTooLong ||
-					(requiresApiKey && !apiKey.trim() && !(mode === 'edit' && hasApiKey))}
-			>
+			<button class="btn btn-ghost" onclick={handleTest} disabled={testing || saving || !canSubmit}>
 				{#if testing}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{/if}
@@ -551,14 +707,7 @@
 
 			<button class="btn btn-ghost" onclick={onClose}>{m.subtitleProviders_modal_cancel()}</button>
 
-			<button
-				class="btn btn-primary"
-				onclick={handleSave}
-				disabled={saving ||
-					!name ||
-					nameTooLong ||
-					(requiresApiKey && !apiKey.trim() && !(mode === 'edit' && hasApiKey))}
-			>
+			<button class="btn btn-primary" onclick={handleSave} disabled={saving || !canSubmit}>
 				{#if saving}
 					<Loader2 class="h-4 w-4 animate-spin" />
 				{/if}

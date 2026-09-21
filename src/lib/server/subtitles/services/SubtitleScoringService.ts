@@ -11,12 +11,22 @@ import type {
 	SubtitleScoreBreakdown
 } from '../types';
 
-/** Score weights for movies (max ~120) */
+/**
+ * Score weights, normalized to a single 0-100 scale shared by movies and
+ * episodes (see `score()`), so a profile's `minimumScore` (0-100) means the
+ * same thing for both. A hash match is 100; the non-hash weights sum to at most
+ * 100 and never include an unconditional "it was returned" floor.
+ *
+ * The old episode scale added series+season+episode unconditionally (~210), so
+ * every episode result cleared every threshold. Here the always-on episode
+ * contribution is series(30)+season(10)+episode(10) = 50, which must still earn
+ * year/release/source/bonus credit to reach a typical 70 threshold.
+ */
 const MOVIE_SCORE_WEIGHTS = {
-	hashMatch: 100, // Hash match is the gold standard
-	titleMatch: 50, // Title matches
-	yearMatch: 20, // Year matches
-	releaseGroupMatch: 15, // Known release group
+	hashMatch: 100, // Hash match is the gold standard (clamped to the 0-100 scale)
+	titleMatch: 40, // Title matches
+	yearMatch: 15, // Year matches
+	releaseGroupMatch: 12, // Known release group
 	sourceMatch: 10, // Source matches (BluRay, Web, etc.)
 	codecMatch: 5, // Codec matches
 	hiPenalty: -10, // Penalty for HI when not wanted
@@ -25,21 +35,24 @@ const MOVIE_SCORE_WEIGHTS = {
 	ratingBonus: 5 // Max bonus from ratings
 };
 
-/** Score weights for episodes (max ~360) */
+/** Score weights for episodes on the same 0-100 scale (non-hash sum = 100). */
 const EPISODE_SCORE_WEIGHTS = {
-	hashMatch: 300, // Hash match is the gold standard
-	seriesMatch: 150, // Series name matches
-	seasonMatch: 30, // Season matches
-	episodeMatch: 30, // Episode matches
-	yearMatch: 20, // Year matches
-	releaseGroupMatch: 15, // Known release group
+	hashMatch: 100, // Hash match is the gold standard (clamped to the 0-100 scale)
+	seriesMatch: 30, // Series name matches
+	seasonMatch: 10, // Season matches
+	episodeMatch: 10, // Episode matches
+	yearMatch: 10, // Year matches
+	releaseGroupMatch: 12, // Known release group
 	sourceMatch: 10, // Source matches
 	codecMatch: 5, // Codec matches
 	hiPenalty: -10, // Penalty for HI when not wanted
 	forcedBonus: 10, // Bonus for forced when wanted
-	popularityBonus: 10, // Max bonus from downloads
+	popularityBonus: 8, // Max bonus from downloads
 	ratingBonus: 5 // Max bonus from ratings
 };
+
+/** Upper bound of the normalized score scale. */
+const MAX_SCORE = 100;
 
 /**
  * Service for scoring subtitle search results
@@ -57,20 +70,22 @@ export class SubtitleScoringService {
 	}
 
 	/**
-	 * Score a single search result
+	 * Score a single search result on the normalized 0-100 scale.
+	 *
+	 * A hash match is definitive and always scores 100 (clamped). Non-hash
+	 * results start at 0 and earn credit only for signals actually matched.
 	 */
 	score(result: SubtitleSearchResult, criteria: SubtitleSearchCriteria): number {
 		const isEpisode = criteria.season !== undefined || criteria.episode !== undefined;
 		const weights = isEpisode ? EPISODE_SCORE_WEIGHTS : MOVIE_SCORE_WEIGHTS;
 		let score = 0;
 
-		// Hash match - highest confidence
+		// Hash match - highest confidence. A hash match is exactly 100.
 		if (result.isHashMatch) {
 			score += weights.hashMatch;
-			// Hash match is definitive - return immediately with small adjustments
 			score += this.getPopularityBonus(result, weights.popularityBonus);
 			score += this.getRatingBonus(result, weights.ratingBonus);
-			return Math.round(score);
+			return Math.min(MAX_SCORE, Math.round(score));
 		}
 
 		// Title/series match (base assumption since it was returned)
@@ -125,7 +140,7 @@ export class SubtitleScoringService {
 		// Rating bonus
 		score += this.getRatingBonus(result, weights.ratingBonus);
 
-		return Math.max(0, Math.round(score));
+		return Math.min(MAX_SCORE, Math.max(0, Math.round(score)));
 	}
 
 	/**
@@ -185,21 +200,10 @@ export class SubtitleScoringService {
 	}
 
 	/**
-	 * Get maximum possible score for media type
+	 * Maximum possible score for a media type on the normalized 0-100 scale.
 	 */
-	getMaxScore(isEpisode: boolean): number {
-		if (isEpisode) {
-			return (
-				EPISODE_SCORE_WEIGHTS.hashMatch +
-				EPISODE_SCORE_WEIGHTS.popularityBonus +
-				EPISODE_SCORE_WEIGHTS.ratingBonus
-			);
-		}
-		return (
-			MOVIE_SCORE_WEIGHTS.hashMatch +
-			MOVIE_SCORE_WEIGHTS.popularityBonus +
-			MOVIE_SCORE_WEIGHTS.ratingBonus
-		);
+	getMaxScore(_isEpisode: boolean): number {
+		return MAX_SCORE;
 	}
 
 	/**

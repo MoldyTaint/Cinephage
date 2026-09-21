@@ -77,6 +77,7 @@ describe('GrabService - failed grab persists a real download_history record', ()
 	});
 
 	beforeEach(() => {
+		testDb.sqlite.exec('DELETE FROM acquisition_reservations; DELETE FROM acquisition_intents;');
 		testDb.sqlite.exec('DELETE FROM download_history;');
 		testDb.sqlite.exec('DELETE FROM movies;');
 	});

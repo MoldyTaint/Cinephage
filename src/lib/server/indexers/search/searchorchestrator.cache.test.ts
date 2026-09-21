@@ -235,8 +235,15 @@ describe('SearchOrchestrator interactive search cache semantics', () => {
 		});
 
 		expect(second.fromCache).toBe(true);
-		expect(second.releases.map((r) => r.infoHash)).not.toContain('blocked-hash');
-		expect(second.releases.map((r) => r.infoHash)).toContain('kept-hash');
+		// Interactive searches keep blocklisted releases visible, surfaced
+		// through the existing rejected-releases machinery (showRejected
+		// toggle + badges) instead of silent removal.
+		const annotated = second.releases.find((r) => r.infoHash === 'blocked-hash');
+		expect(annotated).toBeDefined();
+		expect(annotated?.rejected).toBe(true);
+		expect(annotated?.rejections).toContain('Blocklisted');
+		const keptRelease = second.releases.find((r) => r.infoHash === 'kept-hash');
+		expect(keptRelease?.rejected ?? false).toBe(false);
 	});
 });
 

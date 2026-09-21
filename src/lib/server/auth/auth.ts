@@ -11,6 +11,10 @@ import {
 	getAuthSecret,
 	getBaseURL
 } from './secret.js';
+import {
+	createBetterAuthTables,
+	createBetterAuthIndexes
+} from '$lib/server/db/migration-helpers.js';
 import { getSystemSettingsService } from '$lib/server/settings/SystemSettingsService.js';
 import { ac, admin as adminRole, user as userRole } from '$lib/auth/access-control.js';
 import { isHardReservedUsername, isValidUsernameFormat } from '$lib/auth/username-policy.js';
@@ -78,6 +82,14 @@ function generateDisplayUsername(username: string): string {
 const DB_PATH = getAuthDatabasePath();
 ensureAuthDatabaseDirectory();
 const authDb = new Database(DB_PATH);
+
+// Better Auth 1.7 validates the database schema on first access and caches a
+// mismatch permanently (only its own migrate clears the cache). The tables
+// normally come from schema-sync at startup, but a request can reach auth
+// before that runs on a fresh install — so create them here, idempotently,
+// before betterAuth() is ever constructed.
+createBetterAuthTables(authDb);
+createBetterAuthIndexes(authDb);
 
 const disableSecureCookies = process.env.BETTER_AUTH_DISABLE_SECURE_COOKIES === 'true';
 const useSecureCookies = !disableSecureCookies && getBaseURL().startsWith('https://');

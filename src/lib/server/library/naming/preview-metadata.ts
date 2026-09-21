@@ -81,23 +81,15 @@ export function chooseBestParsedRelease(options: {
 }
 
 /**
- * Resolve {AudioLanguages} for rename previews with the same priority the
- * import path uses (ImportService.buildMovieFileName/buildEpisodeFileName):
- * prefer ffprobe scan data, but fall back to languages parsed from the
- * filename when the scan found none — otherwise previews would propose
- * stripping a token the importer itself rendered from that same filename.
+ * Resolve {AudioLanguages} for renames and imports from real audio evidence
+ * only: ffprobe/mediaInfo scan data. Languages parsed from release names or
+ * filenames are NOT proof of the file's audio languages, so they are never
+ * used here. When the scan found no languages, returns undefined — the
+ * {AudioLanguages} token then renders `und` (or omits the token entirely
+ * under the includeMediaInfo config gate).
  */
 export function resolveAudioLanguages(
-	mediaInfoLanguages: string[] | null | undefined,
-	filenameLanguages: string[] | null | undefined
+	mediaInfoLanguages: string[] | null | undefined
 ): string[] | undefined {
-	if (mediaInfoLanguages && mediaInfoLanguages.length > 0) {
-		return mediaInfoLanguages;
-	}
-
-	if (filenameLanguages && filenameLanguages.length > 0) {
-		return filenameLanguages;
-	}
-
-	return undefined;
+	return mediaInfoLanguages && mediaInfoLanguages.length > 0 ? mediaInfoLanguages : undefined;
 }

@@ -226,16 +226,34 @@ class MediaBrowserManager {
 	// ========================================================================
 
 	/**
-	 * Test server configuration (before saving)
+	 * Test server configuration (before saving).
+	 *
+	 * The running server decides the type: the public product probe wins over
+	 * the caller's pick (which is only a fallback when nothing answers), and a
+	 * type mismatch that fails auth is retried with the detected type.
 	 */
 	async testServerConfig(config: MediaBrowserTestConfig): Promise<MediaBrowserTestResult> {
+		const host = config.host.replace(/\/+$/, '');
+		const detected = await MediaBrowserClient.detectServerType(host, config.apiKey);
+		const serverType = detected?.type ?? config.serverType ?? 'jellyfin';
+
 		const client = new MediaBrowserClient({
-			host: config.host.replace(/\/+$/, ''),
+			host,
 			apiKey: config.apiKey,
-			serverType: config.serverType ?? 'jellyfin'
+			serverType
 		});
 
-		return client.test();
+		const result = await client.test();
+
+		if (!result.success && detected && detected.type !== serverType) {
+			return new MediaBrowserClient({
+				host,
+				apiKey: config.apiKey,
+				serverType: detected.type
+			}).test();
+		}
+
+		return result;
 	}
 
 	/**
@@ -292,6 +310,19 @@ class MediaBrowserManager {
 			updates.serverName = result.serverInfo.serverName;
 			updates.serverVersion = result.serverInfo.version;
 			updates.serverId = result.serverInfo.id;
+
+			// Connect/test is authoritative for which product runs: when the
+			// server identifies itself as a different type than the stored one,
+			// adopt the detected type (and drop the stale client).
+			const detectedType = result.serverInfo.detectedType;
+			if (detectedType && detectedType !== record.serverType) {
+				updates.serverType = detectedType;
+				this.clearClientCache(id);
+				logger.info(
+					{ id, storedType: record.serverType, detectedType },
+					'[MediaBrowserManager] Corrected server type from running server'
+				);
+			}
 		}
 
 		await db.update(mediaBrowserServers).set(updates).where(eq(mediaBrowserServers.id, id));
@@ -338,9 +369,11 @@ class MediaBrowserManager {
 
 	/**
 	 * Delete a media item (series or movie) from all enabled Jellyfin/Emby servers
-	 * by its TMDB ID. This removes only the server's library entry — files on disk
-	 * are never touched. Used before renaming a folder to avoid the ghost-entry
-	 * resurrection loop (jellyfin#16883).
+	 * by its TMDB ID. DESTRUCTIVE on Jellyfin/Emby: their item-delete API also
+	 * deletes the item's file location, so callers MUST only invoke this after
+	 * the file/folder has already been moved locally (post-rename) — the stale
+	 * stored path then makes the file deletion a no-op and the call only clears
+	 * the old library entry (jellyfin#16883). Plex is skipped entirely.
 	 *
 	 * Best-effort: failures from unreachable servers or stale item IDs are logged
 	 * but do not block the caller. A failed delete is retried once after a short

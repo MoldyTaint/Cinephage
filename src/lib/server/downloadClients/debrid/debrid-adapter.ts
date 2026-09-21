@@ -59,6 +59,14 @@ export interface DebridAdapter {
 	inspect(providerItemId: string): Promise<ProviderItem>;
 	resolveFreshLink(providerItemId: string, providerFileId: string): Promise<EphemeralLink>;
 	delete(providerItemId: string): Promise<DeleteResult>;
+	/**
+	 * Pre-download file listing for a CACHED torrent (best-effort evidence
+	 * probe for audio-language acquisition; audio-language design 2026-09-15
+	 * tier 3). Returns null when the torrent is not cached or the provider
+	 * cannot answer — absence of evidence, never an error the caller must
+	 * handle beyond catching transport failures.
+	 */
+	checkInstantFiles?(infoHash: string): Promise<ProviderFile[] | null>;
 }
 export interface RealDebridAdapter extends DebridAdapter {
 	readonly provider: 'realdebrid';
@@ -405,6 +413,58 @@ class RealDebrid extends BaseAdapter implements RealDebridAdapter {
 		return null;
 	}
 
+	/**
+	 * Real-Debrid instant availability: per-host variants of file id →
+	 * {filename, filesize} for cached torrents. The endpoint has a history of
+	 * deprecation churn (rdt-client #545/#617) — 404 and empty bodies are
+	 * treated as "no evidence" (null), never an error.
+	 */
+	async checkInstantFiles(hash: string): Promise<ProviderFile[] | null> {
+		const wanted = infoHash(hash, this.provider);
+		const response = await this.request({
+			operation: 'checkInstantFiles',
+			url: `${RD_BASE}/torrents/instantavailability/${wanted}`,
+			allow: [404]
+		});
+		if (response.status === 404) return null;
+		const body = record(
+			await this.json(response, 'checkInstantFiles'),
+			this.provider,
+			'checkInstantFiles'
+		);
+		// Response is keyed by the hash (historically upper-case); match
+		// case-insensitively and tolerate a bare variant object.
+		const entry = Object.keys(body).find((key) => key.toLowerCase() === wanted) ?? null;
+		const variants = entry ? body[entry] : null;
+		const rdVariants = (variants as { rd?: unknown }).rd;
+		if (!Array.isArray(rdVariants)) {
+			return null;
+		}
+		// Variants are alternative file sets; the most complete one is the
+		// best evidence (others are partial cached subsets).
+		let best: Array<[string, { filename?: unknown; filesize?: unknown }]> = [];
+		for (const rawVariant of rdVariants) {
+			const variant = record(rawVariant, this.provider, 'checkInstantFiles');
+			const entries = Object.entries(variant) as Array<
+				[string, { filename?: unknown; filesize?: unknown }]
+			>;
+			if (entries.length > best.length) best = entries;
+		}
+		if (best.length === 0) return null;
+		const files: ProviderFile[] = [];
+		for (const [id, meta] of best) {
+			if (typeof meta?.filename !== 'string' || !meta.filename) continue;
+			const name = meta.filename.split(/[\\/]/).pop() ?? meta.filename;
+			files.push({
+				providerFileId: id,
+				path: meta.filename,
+				name,
+				sizeBytes: typeof meta.filesize === 'number' ? meta.filesize : 0
+			});
+		}
+		return files.length > 0 ? files : null;
+	}
+
 	async submit(input: SubmissionInput): Promise<SubmissionResult> {
 		const magnet = input.kind === 'magnet';
 		const response = await this.request({
@@ -623,6 +683,44 @@ class TorBox extends BaseAdapter implements DebridAdapter {
 			if (item.hash.toLowerCase() === wanted) return String(item.id);
 		}
 		return null;
+	}
+
+	/**
+	 * TorBox cached check with file listings (`checkcached?format=list&
+	 * listFiles=true`): returns per-hash cached status plus the file list for
+	 * cached torrents. Not cached / not listed → null.
+	 */
+	async checkInstantFiles(hash: string): Promise<ProviderFile[] | null> {
+		const wanted = infoHash(hash, this.provider);
+		const response = await this.request({
+			operation: 'checkInstantFiles',
+			url: `${TB_BASE}/torrents/checkcached?hash=${wanted}&format=list&listFiles=true`,
+			allow: [404]
+		});
+		if (response.status === 404) return null;
+		const data = await this.envelope(response, 'checkInstantFiles');
+		if (!Array.isArray(data)) return null;
+		const entry = data.find((raw) => {
+			const candidate = record(raw, this.provider, 'checkInstantFiles');
+			return typeof candidate.hash === 'string' && candidate.hash.toLowerCase() === wanted;
+		});
+		if (!entry) return null;
+		const item = record(entry, this.provider, 'checkInstantFiles');
+		if (!item.cached) return null;
+		const rawFiles = item.files;
+		if (!Array.isArray(rawFiles) || rawFiles.length === 0) return null;
+		const files: ProviderFile[] = [];
+		for (const rawFile of rawFiles) {
+			const file = record(rawFile, this.provider, 'checkInstantFiles');
+			if (typeof file.name !== 'string' || !file.name) continue;
+			files.push({
+				providerFileId: String(file.id ?? ''),
+				path: typeof file.path === 'string' && file.path ? file.path : file.name,
+				name: file.name.split(/[\\/]/).pop() ?? file.name,
+				sizeBytes: Number.isFinite(file.size) ? (file.size as number) : 0
+			});
+		}
+		return files.length > 0 ? files : null;
 	}
 
 	async submit(input: SubmissionInput): Promise<SubmissionResult> {

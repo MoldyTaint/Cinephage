@@ -15,6 +15,17 @@ export type JsonObject = { [key: string]: JsonValue };
 export type JsonArray = JsonValue[];
 
 /**
+ * torznab/newznab definitions select XML attributes with a `prefix|attr`
+ * pseudo-namespace DSL (`torznab|attr[name='seeders']`). css-select rejects
+ * namespaced tag selectors outright ("Namespaced tag names are not yet
+ * supported"), so rewrite to the escaped-colon form cheerio matches in
+ * xmlMode (`torznab\:attr[name='seeders']`).
+ */
+export function normalizeXmlAttrSelector(selector: string): string {
+	return selector.replace(/\b([A-Za-z][\w.-]*)\|attr\b/g, '$1\\:attr');
+}
+
+/**
  * Result from selector extraction.
  */
 export interface SelectorResult {
@@ -80,6 +91,7 @@ export class SelectorEngine {
 			if (this.templateEngine) {
 				selectorStr = this.templateEngine.expand(selectorStr);
 			}
+			selectorStr = normalizeXmlAttrSelector(selectorStr);
 
 			// Handle :root pseudo-selector
 			if (selectorStr.startsWith(':root')) {
@@ -167,7 +179,8 @@ export class SelectorEngine {
 		element: Cheerio<AnyNode>,
 		selector: string
 	): string | null {
-		const selected = element.is(selector) ? element : element.find(selector);
+		const normalized = normalizeXmlAttrSelector(selector);
+		const selected = element.is(normalized) ? element : element.find(normalized);
 		if (selected.length === 0) return null;
 		return selected.first().text().trim();
 	}

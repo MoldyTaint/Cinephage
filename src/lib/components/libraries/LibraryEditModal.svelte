@@ -6,6 +6,7 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { createLibrary, updateLibrary, getScoringProfiles } from '$lib/api/settings.js';
+	import { getLanguageProfiles } from '$lib/api/subtitles.js';
 	import type { LibraryCreate, LibraryUpdate } from '$lib/validation/schemas.js';
 	import type { RootFolderMediaType, RootFolderMediaSubType } from '$lib/types/downloadClient';
 
@@ -27,6 +28,8 @@
 		defaultSearchOnAdd?: boolean | null;
 		defaultWantsSubtitles?: boolean | null;
 		qualityProfileId?: string | null;
+		/** Library-wide subtitle language profile; null = inherit instance default */
+		languageProfileId?: string | null;
 	};
 
 	type RootFolderRef = {
@@ -51,6 +54,8 @@
 		defaultSearchOnAdd: boolean;
 		defaultWantsSubtitles: boolean;
 		qualityProfileId: string | null;
+		/** '' = inherit the instance default; persisted as null */
+		languageProfileId: string;
 	};
 
 	interface Props {
@@ -70,11 +75,17 @@
 		rootFolderIds: [],
 		defaultSearchOnAdd: true,
 		defaultWantsSubtitles: false,
-		qualityProfileId: null
+		qualityProfileId: null,
+		languageProfileId: ''
 	});
 	let librarySaving = $state(false);
+	let editingLibraryLanguageProfileId = '';
+	let showApplyConfirm = $state(false);
+	let pendingApplyProfileId: string | null = null;
+	let applyingToItems = $state(false);
 	let librarySaveError = $state<string | null>(null);
 	let availableProfiles = $state<ProfileRef[]>([]);
+	let availableLanguageProfiles = $state<ProfileRef[]>([]);
 
 	onMount(() => {
 		void (async () => {
@@ -89,6 +100,17 @@
 				}));
 			} catch {
 				availableProfiles = [];
+			}
+		})();
+		void (async () => {
+			try {
+				const profiles = (await getLanguageProfiles()) as unknown as Array<{
+					id: string;
+					name: string;
+				}>;
+				availableLanguageProfiles = (profiles ?? []).map((p) => ({ id: p.id, name: p.name }));
+			} catch {
+				availableLanguageProfiles = [];
 			}
 		})();
 	});
@@ -123,12 +145,14 @@
 				rootFolderIds: [],
 				defaultSearchOnAdd: true,
 				defaultWantsSubtitles: false,
-				qualityProfileId: null
+				qualityProfileId: null,
+				languageProfileId: ''
 			};
 			librarySaveError = null;
 		} else if (libraryId) {
 			const library = libraries.find((l) => l.id === libraryId) ?? null;
 			if (library) {
+				const profileId = library.languageProfileId ?? '';
 				libraryForm = {
 					name: library.name,
 					mediaType: library.mediaType,
@@ -136,8 +160,12 @@
 					rootFolderIds: library.rootFolders?.map((f) => f.id) ?? [],
 					defaultSearchOnAdd: library.defaultSearchOnAdd ?? true,
 					defaultWantsSubtitles: library.defaultWantsSubtitles ?? false,
-					qualityProfileId: library.qualityProfileId ?? null
+					qualityProfileId: library.qualityProfileId ?? null,
+					languageProfileId: profileId
 				};
+				// Read from the row (not libraryForm) so this effect doesn't
+				// depend on the state it just wrote.
+				editingLibraryLanguageProfileId = profileId;
 				librarySaveError = null;
 			}
 		}
@@ -147,21 +175,69 @@
 		librarySaving = true;
 		librarySaveError = null;
 
+		// '' (inherit the instance default) is persisted as null.
+		const payload = {
+			...libraryForm,
+			languageProfileId: libraryForm.languageProfileId || null
+		};
+
 		try {
 			if (isCreateMode) {
-				await createLibrary(libraryForm as LibraryCreate);
+				await createLibrary(payload as LibraryCreate);
 				toasts.success(m.settings_general_libraryCreated());
 			} else if (libraryId) {
-				await updateLibrary(libraryId, libraryForm as LibraryUpdate);
+				await updateLibrary(libraryId, payload as LibraryUpdate);
 				toasts.success(m.settings_general_libraryUpdated());
 			}
 			await invalidateAll();
+
+			// Offer to apply the new library default to existing items when the
+			// profile assignment CHANGED (edit mode only).
+			const previous = editingLibraryLanguageProfileId;
+			const next = libraryForm.languageProfileId || '';
+			if (!isCreateMode && previous !== next) {
+				pendingApplyProfileId = next || null;
+				showApplyConfirm = true;
+				return; // keep the modal open until the user decides
+			}
 			onClose();
 		} catch (error) {
 			librarySaveError =
 				error instanceof Error ? error.message : m.settings_general_failedToSaveLibrary();
 		} finally {
 			librarySaving = false;
+		}
+	}
+
+	async function applyToExistingItems(): Promise<void> {
+		if (!libraryId || !pendingApplyProfileId) {
+			showApplyConfirm = false;
+			onClose();
+			return;
+		}
+		applyingToItems = true;
+		try {
+			const response = await fetch('/api/subtitles/language-profiles/bulk-assign', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					mediaType: libraryForm.mediaType === 'tv' ? 'series' : 'movie',
+					libraryId,
+					languageProfileId: pendingApplyProfileId || null,
+					clearOverrides: true
+				})
+			});
+			if (!response.ok) {
+				const body = (await response.json().catch(() => ({}))) as { error?: string };
+				throw new Error(body.error ?? 'Bulk assignment failed');
+			}
+			toasts.success(m.settings_general_libraryUpdated());
+			showApplyConfirm = false;
+			onClose();
+		} catch (error) {
+			toasts.error(error instanceof Error ? error.message : 'Bulk assignment failed');
+		} finally {
+			applyingToItems = false;
 		}
 	}
 </script>
@@ -241,6 +317,22 @@
 				>
 					<option value={null}>{defaultProfileName}</option>
 					{#each availableProfiles.filter((p) => !p.isDefault) as profile (profile.id)}
+						<option value={profile.id}>{profile.name}</option>
+					{/each}
+				</select>
+			</div>
+
+			<div class="form-control">
+				<label class="label py-1" for="status-library-language-profile">
+					<span class="label-text">{m.settings_general_subtitleProfile()}</span>
+				</label>
+				<select
+					id="status-library-language-profile"
+					class="select-bordered select select-sm"
+					bind:value={libraryForm.languageProfileId}
+				>
+					<option value="">{m.settings_general_subtitleProfileInherit()}</option>
+					{#each availableLanguageProfiles as profile (profile.id)}
 						<option value={profile.id}>{profile.name}</option>
 					{/each}
 				</select>
@@ -328,4 +420,44 @@
 		saveLabel={m.settings_general_saveLibrary()}
 		saveDisabled={!libraryForm.name.trim()}
 	/>
+
+	{#if showApplyConfirm}
+		<div class="modal modal-open">
+			<div class="modal-box max-w-md">
+				<h3 class="text-lg font-bold">{m.library_languageProfile_applyConfirmTitle()}</h3>
+				<p class="mt-2 text-sm text-base-content/70">
+					{m.library_languageProfile_applyConfirmBody()}
+				</p>
+				<div class="modal-action">
+					<button
+						class="btn btn-ghost btn-sm"
+						onclick={() => {
+							showApplyConfirm = false;
+							onClose();
+						}}
+					>
+						{m.library_languageProfile_applySkip()}
+					</button>
+					<button
+						class="btn btn-primary btn-sm"
+						onclick={applyToExistingItems}
+						disabled={applyingToItems}
+					>
+						{#if applyingToItems}
+							<span class="loading loading-xs loading-spinner"></span>
+						{/if}
+						{m.library_languageProfile_applyConfirmAction()}
+					</button>
+				</div>
+			</div>
+			<button
+				class="modal-backdrop cursor-default"
+				aria-label="Close"
+				onclick={() => {
+					showApplyConfirm = false;
+					onClose();
+				}}
+			></button>
+		</div>
+	{/if}
 </ModalWrapper>

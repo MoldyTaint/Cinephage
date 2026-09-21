@@ -23,7 +23,14 @@ export interface LanguageResource {
 
 export async function buildLanguages(): Promise<LanguageResource[]> {
 	const rows = await db.select().from(languageProfiles);
-	const codes = [...new Set(rows.flatMap((row) => row.languages.map((pref) => pref.code)))];
+	const codes = [
+		...new Set(
+			rows.flatMap((row) => [
+				...row.subtitles.map((req) => req.tag),
+				...(row.audio?.languages ?? [])
+			])
+		)
+	];
 
 	if (codes.length === 0) {
 		return [{ id: 1, name: 'English', nameLower: 'english' }];

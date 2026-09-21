@@ -27,20 +27,18 @@ import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { extractFromZip } from '../mixins';
+import { languageSatisfies } from '../../requirement-matcher';
 import { ConfigurationError } from '../../errors/ProviderErrors';
-
-/** Rate limiting: requests per minute */
-const MAX_REQUESTS_PER_MINUTE = 30;
-const REQUEST_DELAY_MS = Math.ceil(60000 / MAX_REQUESTS_PER_MINUTE);
 
 /**
  * Assrt Provider
  *
- * Chinese subtitle provider with rate-limited API.
+ * Chinese subtitle provider. Request throttling is handled centrally by the
+ * shared per-provider `RateLimiter` (driven by the stored
+ * `requestsPerMinute`); no provider-local delay remains.
  */
 export class AssrtProvider extends BaseSubtitleProvider implements ISubtitleProvider {
 	private readonly token: string;
-	private lastRequestTime = 0;
 
 	constructor(config: SubtitleProviderConfig) {
 		super(config);
@@ -75,21 +73,6 @@ export class AssrtProvider extends BaseSubtitleProvider implements ISubtitleProv
 	}
 
 	/**
-	 * Rate-limited fetch
-	 */
-	private async rateLimitedFetch(url: string, options?: RequestInit): Promise<Response> {
-		const now = Date.now();
-		const elapsed = now - this.lastRequestTime;
-
-		if (elapsed < REQUEST_DELAY_MS) {
-			await new Promise((resolve) => setTimeout(resolve, REQUEST_DELAY_MS - elapsed));
-		}
-
-		this.lastRequestTime = Date.now();
-		return this.fetchWithTimeout(url, { ...options, timeout: 15000 });
-	}
-
-	/**
 	 * Search for subtitles
 	 */
 	async search(
@@ -117,8 +100,9 @@ export class AssrtProvider extends BaseSubtitleProvider implements ISubtitleProv
 			q: query
 		});
 
-		const response = await this.rateLimitedFetch(
-			`${ASSRT_API_URL}/sub/search?${params.toString()}`
+		const response = await this.fetchWithTimeout(
+			`${ASSRT_API_URL}/sub/search?${params.toString()}`,
+			{ timeout: 15000 }
 		);
 
 		const data: AssrtSearchResponse = await response.json();
@@ -150,7 +134,7 @@ export class AssrtProvider extends BaseSubtitleProvider implements ISubtitleProv
 				}
 			}
 
-			if (!languages.includes(langCode) && !languages.includes('zh')) {
+			if (!languages.some((requested) => languageSatisfies(langCode, requested))) {
 				continue;
 			}
 
@@ -185,8 +169,9 @@ export class AssrtProvider extends BaseSubtitleProvider implements ISubtitleProv
 			id: result.providerSubtitleId
 		});
 
-		const response = await this.rateLimitedFetch(
-			`${ASSRT_API_URL}/sub/detail?${params.toString()}`
+		const response = await this.fetchWithTimeout(
+			`${ASSRT_API_URL}/sub/detail?${params.toString()}`,
+			{ timeout: 15000 }
 		);
 
 		const data: AssrtDetailResponse = await response.json();
@@ -204,7 +189,7 @@ export class AssrtProvider extends BaseSubtitleProvider implements ISubtitleProv
 			throw new Error('No download URL available');
 		}
 
-		const downloadResponse = await this.rateLimitedFetch(file.url);
+		const downloadResponse = await this.fetchWithTimeout(file.url, { timeout: 30000 });
 		const content = Buffer.from(await downloadResponse.arrayBuffer());
 
 		// Check if it's a ZIP
@@ -230,8 +215,9 @@ export class AssrtProvider extends BaseSubtitleProvider implements ISubtitleProv
 				q: 'test'
 			});
 
-			const response = await this.rateLimitedFetch(
-				`${ASSRT_API_URL}/sub/search?${params.toString()}`
+			const response = await this.fetchWithTimeout(
+				`${ASSRT_API_URL}/sub/search?${params.toString()}`,
+				{ timeout: 15000 }
 			);
 
 			const data: AssrtSearchResponse = await response.json();

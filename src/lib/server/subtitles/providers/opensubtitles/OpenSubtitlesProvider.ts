@@ -5,7 +5,11 @@
  * Supports hash-based matching for best accuracy
  */
 
-import { BaseSubtitleProvider } from '../BaseProvider';
+import {
+	BaseSubtitleProvider,
+	DEFAULT_CAPABILITIES,
+	type ProviderCapabilities
+} from '../BaseProvider';
 import type {
 	SubtitleSearchCriteria,
 	SubtitleSearchResult,
@@ -37,6 +41,12 @@ const API_BASE_URL = 'https://api.opensubtitles.com/api/v1';
 const DEFAULT_USER_AGENT = 'Cinephage v1.0';
 
 export class OpenSubtitlesProvider extends BaseSubtitleProvider {
+	// Parses hearing_impaired and moviehash_match per result.
+	protected override _capabilities: ProviderCapabilities = {
+		...DEFAULT_CAPABILITIES,
+		hashVerifiable: true,
+		hearingImpairedVerifiable: true
+	};
 	private token: string | null = null;
 	private tokenExpiry: Date | null = null;
 	private baseUrl: string = API_BASE_URL;

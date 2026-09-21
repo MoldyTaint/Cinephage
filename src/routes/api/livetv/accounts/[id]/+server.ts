@@ -15,6 +15,7 @@ import { liveTvEvents } from '$lib/server/livetv/LiveTvEvents';
 import { createChildLogger } from '$lib/logging';
 import { z } from 'zod';
 import { ValidationError } from '$lib/errors';
+import { stalkerLanguageSchema } from '$lib/validation/schemas.js';
 
 const logger = createChildLogger({ module: 'LiveTvAccountById', logDomain: 'livetv' });
 
@@ -32,6 +33,7 @@ const liveTvAccountUpdateSchema = z.object({
 			deviceId2: z.string().optional(),
 			model: z.string().optional(),
 			timezone: z.string().optional(),
+			language: stalkerLanguageSchema.optional(),
 			username: z.string().optional(),
 			password: z.string().optional()
 		})

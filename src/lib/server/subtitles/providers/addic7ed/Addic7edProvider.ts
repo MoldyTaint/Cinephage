@@ -5,7 +5,11 @@
  * Uses HTML scraping with authentication support.
  */
 
-import { BaseSubtitleProvider } from '../BaseProvider';
+import {
+	BaseSubtitleProvider,
+	DEFAULT_CAPABILITIES,
+	type ProviderCapabilities
+} from '../BaseProvider';
 import type {
 	SubtitleSearchCriteria,
 	SubtitleSearchResult,
@@ -63,6 +67,11 @@ const ADDIC7ED_LANGUAGES: Record<string, number> = {
 };
 
 export class Addic7edProvider extends BaseSubtitleProvider {
+	// Parses isHi per search result.
+	protected override _capabilities: ProviderCapabilities = {
+		...DEFAULT_CAPABILITIES,
+		hearingImpairedVerifiable: true
+	};
 	private cookies: string = '';
 
 	get implementation(): string {

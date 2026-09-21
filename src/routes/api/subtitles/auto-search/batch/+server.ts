@@ -1,7 +1,4 @@
 import type { RequestHandler } from './$types.js';
-import { getSubtitleSearchService } from '$lib/server/subtitles/services/SubtitleSearchService.js';
-import { getSubtitleDownloadService } from '$lib/server/subtitles/services/SubtitleDownloadService.js';
-import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { db } from '$lib/server/db/index.js';
 import { episodes, series, movies } from '$lib/server/db/schema.js';
 import { eq, and, inArray } from 'drizzle-orm';
@@ -10,9 +7,24 @@ import type { SubtitleBatchAutoSearchRequest } from '$lib/validation/schemas.js'
 import { parseBody } from '$lib/server/api/validate.js';
 import { createSSEOperationStream } from '$lib/server/sse.js';
 import { createChildLogger } from '$lib/logging/index.js';
-import type { SubtitleSearchResult } from '$lib/server/subtitles/types.js';
+import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
+import {
+	autoSearchEpisode,
+	autoSearchMovie,
+	summarizeAutoSearchReason,
+	type AutoSearchItemResult,
+	type AutoSearchReason
+} from '$lib/server/subtitles/auto-search.js';
+import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
 
 const logger = createChildLogger({ module: 'SubtitleAutoSearchBatchApi', logDomain: 'subtitles' });
+
+/**
+ * Hard cap on resolved batch items. Mirrors the `.max(500)` cap on the
+ * `episodes` request array so a season/series/collection cannot expand into an
+ * unbounded provider run.
+ */
+const MAX_BATCH_ITEMS = 500;
 
 interface BatchProgressEvent {
 	current: number;
@@ -20,9 +32,13 @@ interface BatchProgressEvent {
 	episodeId?: string;
 	movieId?: string;
 	title: string;
-	status: 'searching' | 'downloaded' | 'not_found' | 'error';
+	status: AutoSearchReason | 'searching';
+	reason?: AutoSearchReason | 'satisfied';
 	seasonNumber?: number;
 	episodeNumber?: number;
+	bestRejectedScore?: number;
+	bestRejectedReason?: string;
+	outcomes?: AutoSearchItemResult['outcomes'];
 	subtitle?: {
 		language: string;
 		matchScore: number;
@@ -35,112 +51,10 @@ interface BatchCompletedEvent {
 	total: number;
 	downloaded: number;
 	notFound: number;
+	skipped: number;
 	errors: number;
+	reasons: Partial<Record<AutoSearchReason | 'satisfied', number>>;
 	error?: string;
-}
-
-function getLanguages(
-	profile:
-		| {
-				languages: Array<{ code: string }>;
-		  }
-		| undefined
-): string[] {
-	if (profile && profile.languages && profile.languages.length > 0) {
-		return profile.languages.map((l) => l.code);
-	}
-	return ['en'];
-}
-
-async function autoSearchAndDownloadEpisode(episodeId: string): Promise<{
-	downloaded: boolean;
-	subtitle?: { language: string; matchScore: number; providerName: string };
-}> {
-	const searchService = getSubtitleSearchService();
-	const downloadService = getSubtitleDownloadService();
-	const profileService = LanguageProfileService.getInstance();
-
-	const episode = await db.query.episodes.findFirst({
-		where: eq(episodes.id, episodeId)
-	});
-	if (!episode) return { downloaded: false };
-
-	const seriesData = await db.query.series.findFirst({
-		where: eq(series.id, episode.seriesId)
-	});
-	if (!seriesData) return { downloaded: false };
-
-	const profile = await profileService.getProfileForSeries(seriesData.id);
-	const languages = getLanguages(profile);
-	const minScore = profile?.minimumScore ?? 60;
-
-	const searchResults = await searchService.searchForEpisode(episodeId, languages);
-
-	if (!searchResults.results || searchResults.results.length === 0) {
-		return { downloaded: false };
-	}
-
-	const bestResult = searchResults.results
-		.filter((r: SubtitleSearchResult) => r.matchScore >= minScore)
-		.sort((a: SubtitleSearchResult, b: SubtitleSearchResult) => b.matchScore - a.matchScore)[0];
-
-	if (!bestResult) {
-		return { downloaded: false };
-	}
-
-	await downloadService.downloadForEpisode(episodeId, bestResult);
-
-	return {
-		downloaded: true,
-		subtitle: {
-			language: bestResult.language,
-			matchScore: bestResult.matchScore,
-			providerName: bestResult.providerName
-		}
-	};
-}
-
-async function autoSearchAndDownloadMovie(movieId: string): Promise<{
-	downloaded: boolean;
-	subtitle?: { language: string; matchScore: number; providerName: string };
-}> {
-	const searchService = getSubtitleSearchService();
-	const downloadService = getSubtitleDownloadService();
-	const profileService = LanguageProfileService.getInstance();
-
-	const movie = await db.query.movies.findFirst({
-		where: eq(movies.id, movieId)
-	});
-	if (!movie) return { downloaded: false };
-
-	const profile = await profileService.getProfileForMovie(movieId);
-	const languages = getLanguages(profile);
-	const minScore = profile?.minimumScore ?? 60;
-
-	const searchResults = await searchService.searchForMovie(movieId, languages);
-
-	if (!searchResults.results || searchResults.results.length === 0) {
-		return { downloaded: false };
-	}
-
-	const bestResult = searchResults.results
-		.filter((r: SubtitleSearchResult) => r.matchScore >= minScore)
-		.sort((a: SubtitleSearchResult, b: SubtitleSearchResult) => b.matchScore - a.matchScore)[0];
-
-	if (!bestResult) {
-		return { downloaded: false };
-	}
-
-	await downloadService.downloadForMovie(movieId, bestResult);
-
-	return {
-		downloaded: true,
-		subtitle: {
-			language: bestResult.language,
-			matchScore: bestResult.matchScore,
-			providerName: bestResult.providerName
-		}
-	};
 }
 
 interface EpisodeBatchItem {
@@ -171,7 +85,8 @@ async function resolveEpisodeItems(
 				.from(episodes)
 				.where(
 					and(eq(episodes.seriesId, body.seriesId), eq(episodes.seasonNumber, body.seasonNumber))
-				);
+				)
+				.limit(MAX_BATCH_ITEMS);
 			return eps.map((ep) => ({
 				id: ep.id,
 				title: ep.title || `Episode ${ep.episodeNumber}`,
@@ -186,6 +101,7 @@ async function resolveEpisodeItems(
 			const missingSet = new Set(missingIds);
 			return eps
 				.filter((ep) => missingSet.has(ep.id))
+				.slice(0, MAX_BATCH_ITEMS)
 				.map((ep) => ({
 					id: ep.id,
 					title: ep.title || `Episode ${ep.episodeNumber}`,
@@ -220,11 +136,69 @@ async function resolveMovieItems(body: SubtitleBatchAutoSearchRequest): Promise<
 	const collectionMovies = await db
 		.select()
 		.from(movies)
-		.where(eq(movies.tmdbCollectionId, body.collectionId));
+		.where(eq(movies.tmdbCollectionId, body.collectionId))
+		.limit(MAX_BATCH_ITEMS);
 	return collectionMovies.map((m) => ({
 		id: m.id,
 		title: m.title
 	}));
+}
+
+/** Load the owned rows an episode batch item needs, then run the shared orchestration. */
+async function autoSearchEpisodeItem(
+	item: EpisodeBatchItem,
+	requirement?: SubtitleRequirement
+): Promise<AutoSearchItemResult> {
+	const episode = await db.query.episodes.findFirst({ where: eq(episodes.id, item.id) });
+	if (!episode) {
+		return {
+			ownerType: 'episode',
+			ownerId: item.id,
+			title: item.title,
+			skipped: 'no_file',
+			searched: false,
+			outcomes: [],
+			downloaded: 0
+		};
+	}
+	const seriesData = await db.query.series.findFirst({ where: eq(series.id, episode.seriesId) });
+	if (!seriesData) {
+		return {
+			ownerType: 'episode',
+			ownerId: item.id,
+			title: item.title,
+			skipped: 'no_file',
+			searched: false,
+			outcomes: [],
+			downloaded: 0
+		};
+	}
+	return autoSearchEpisode(episode, seriesData, { requirement });
+}
+
+/** Load the movie row a batch item needs, then run the shared orchestration. */
+async function autoSearchMovieItem(
+	item: MovieBatchItem,
+	requirement?: SubtitleRequirement
+): Promise<AutoSearchItemResult> {
+	const movie = await db.query.movies.findFirst({ where: eq(movies.id, item.id) });
+	if (!movie) {
+		return {
+			ownerType: 'movie',
+			ownerId: item.id,
+			title: item.title,
+			skipped: 'no_file',
+			searched: false,
+			outcomes: [],
+			downloaded: 0
+		};
+	}
+	return autoSearchMovie(movie, { requirement });
+}
+
+/** Map a result to the progress status the client renders. */
+function resultStatus(result: AutoSearchItemResult): AutoSearchReason | 'satisfied' {
+	return summarizeAutoSearchReason(result);
 }
 
 /**
@@ -255,7 +229,9 @@ export const POST: RequestHandler = async ({ request }) => {
 						total: 0,
 						downloaded: 0,
 						notFound: 0,
-						errors: 0
+						skipped: 0,
+						errors: 0,
+						reasons: {}
 					} satisfies BatchCompletedEvent);
 					close();
 					return;
@@ -265,58 +241,76 @@ export const POST: RequestHandler = async ({ request }) => {
 
 				let downloaded = 0;
 				let notFound = 0;
+				let skipped = 0;
 				let errors = 0;
+				const reasons: Partial<Record<AutoSearchReason | 'satisfied', number>> = {};
 
 				for (let i = 0; i < items.length; i++) {
 					if (isAborted()) return;
 
 					const item = items[i];
 					const isEpisode = isEpisodeItem(item);
-
-					sendEvent('subtitle:progress', {
+					const base = {
 						current: i + 1,
 						total: items.length,
 						episodeId: isEpisode ? item.id : undefined,
 						movieId: !isEpisode ? item.id : undefined,
 						title: item.title,
-						status: 'searching',
 						seasonNumber: isEpisode ? item.seasonNumber : undefined,
 						episodeNumber: isEpisode ? item.episodeNumber : undefined
+					};
+
+					sendEvent('subtitle:progress', {
+						...base,
+						status: 'searching'
 					} satisfies BatchProgressEvent);
 
 					try {
 						const result = isEpisode
-							? await autoSearchAndDownloadEpisode(item.id)
-							: await autoSearchAndDownloadMovie(item.id);
+							? await autoSearchEpisodeItem(item, body.requirement)
+							: await autoSearchMovieItem(item, body.requirement);
+						const reason = resultStatus(result);
+						reasons[reason] = (reasons[reason] ?? 0) + 1;
 
-						if (result.downloaded) {
-							downloaded++;
+						if (result.downloaded > 0) {
+							downloaded += result.downloaded;
+							const downloadedOutcome = result.outcomes.find((o) => o.reason === 'downloaded');
 							sendEvent('subtitle:progress', {
-								current: i + 1,
-								total: items.length,
-								episodeId: isEpisode ? item.id : undefined,
-								movieId: !isEpisode ? item.id : undefined,
-								title: item.title,
+								...base,
 								status: 'downloaded',
-								seasonNumber: isEpisode ? item.seasonNumber : undefined,
-								episodeNumber: isEpisode ? item.episodeNumber : undefined,
-								subtitle: result.subtitle
+								reason,
+								outcomes: result.outcomes,
+								subtitle: downloadedOutcome
+									? {
+											language: downloadedOutcome.language ?? 'unknown',
+											matchScore: downloadedOutcome.matchScore ?? 0,
+											providerName: downloadedOutcome.providerName ?? 'unknown'
+										}
+									: undefined
+							} satisfies BatchProgressEvent);
+						} else if (result.skipped || result.outcomes.length === 0) {
+							skipped++;
+							sendEvent('subtitle:progress', {
+								...base,
+								status: (result.skipped ?? 'no_results') as AutoSearchReason,
+								reason,
+								outcomes: result.outcomes
 							} satisfies BatchProgressEvent);
 						} else {
 							notFound++;
+							const rejected = result.outcomes.find((o) => o.reason === 'below_threshold');
 							sendEvent('subtitle:progress', {
-								current: i + 1,
-								total: items.length,
-								episodeId: isEpisode ? item.id : undefined,
-								movieId: !isEpisode ? item.id : undefined,
-								title: item.title,
-								status: 'not_found',
-								seasonNumber: isEpisode ? item.seasonNumber : undefined,
-								episodeNumber: isEpisode ? item.episodeNumber : undefined
+								...base,
+								status: reason as AutoSearchReason,
+								reason,
+								outcomes: result.outcomes,
+								bestRejectedScore: rejected?.bestRejectedScore,
+								bestRejectedReason: rejected?.bestRejectedReason
 							} satisfies BatchProgressEvent);
 						}
 					} catch (error) {
 						errors++;
+						reasons.error = (reasons.error ?? 0) + 1;
 						logger.error(
 							{
 								itemId: item.id,
@@ -326,14 +320,9 @@ export const POST: RequestHandler = async ({ request }) => {
 							'[SubtitleBatch] Failed to auto-search subtitle'
 						);
 						sendEvent('subtitle:progress', {
-							current: i + 1,
-							total: items.length,
-							episodeId: isEpisode ? item.id : undefined,
-							movieId: !isEpisode ? item.id : undefined,
-							title: item.title,
+							...base,
 							status: 'error',
-							seasonNumber: isEpisode ? item.seasonNumber : undefined,
-							episodeNumber: isEpisode ? item.episodeNumber : undefined
+							reason: 'error'
 						} satisfies BatchProgressEvent);
 					}
 
@@ -347,7 +336,9 @@ export const POST: RequestHandler = async ({ request }) => {
 					total: items.length,
 					downloaded,
 					notFound,
-					errors
+					skipped,
+					errors,
+					reasons
 				} satisfies BatchCompletedEvent);
 			},
 			{ heartbeatInterval: 25000 }

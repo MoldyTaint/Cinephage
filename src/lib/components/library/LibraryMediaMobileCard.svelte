@@ -32,6 +32,8 @@
 		onManualGrab?: (id: string) => void;
 		onDelete: (id: string) => void;
 		onNavigate: () => void;
+		/** Instance default for items with no explicit prefer-original flag. */
+		preferOriginalTitleDefault?: boolean | null;
 	}
 
 	let {
@@ -46,7 +48,8 @@
 		onAutoGrab,
 		onManualGrab,
 		onDelete,
-		onNavigate
+		onNavigate,
+		preferOriginalTitleDefault = false
 	}: Props = $props();
 
 	const itemIsMovie = $derived(isMovie(item));
@@ -143,7 +146,7 @@
 
 		<div class="min-w-0 flex-1">
 			<span class="line-clamp-2 text-sm font-medium">
-				{displayTitle(item)}
+				{displayTitle(item, preferOriginalTitleDefault)}
 			</span>
 			{#if itemIsMovie && 'collectionName' in item && item.collectionName}
 				<span class="mt-1 badge badge-outline badge-xs">{item.collectionName}</span>

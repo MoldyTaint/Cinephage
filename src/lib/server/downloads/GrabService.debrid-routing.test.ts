@@ -42,8 +42,28 @@ vi.mock('$lib/server/db/index.js', () => ({
 			},
 			series: { findFirst: mocks.seriesFindFirst },
 			episodes: { findMany: mocks.episodesFindMany },
-			movieFiles: { findMany: vi.fn(async () => []) }
-		}
+			movieFiles: { findMany: vi.fn(async () => []) },
+			alternateTitles: { findMany: vi.fn(async () => []) }
+		},
+		select: () => ({
+			from: () => ({
+				where: () => Object.assign([], { limit: () => ({ all: () => [] }) })
+			})
+		})
+	}
+}));
+
+vi.mock('$lib/server/acquisition/AcquisitionService.js', () => ({
+	acquisitionService: {
+		createIntent: vi.fn(() => ({ ok: true, intentId: 'intent-1' })),
+		attachQueueId: vi.fn(),
+		completeIntent: vi.fn(),
+		failIntent: vi.fn(),
+		cancelIntent: vi.fn(),
+		setIdentity: vi.fn(() => ({ ok: true })),
+		completeByQueueId: vi.fn(),
+		failByQueueId: vi.fn(),
+		cancelByQueueId: vi.fn()
 	}
 }));
 
@@ -225,6 +245,7 @@ describe('GrabService debrid acquisition routing', () => {
 		});
 
 		expect(resolved.episodeIds).toEqual(['wire-s01e01', 'wire-s05e10']);
-		expect(mocks.episodesFindMany).toHaveBeenCalledOnce();
+		// 2x: the missing-episode backfill + the episodeScope materialization.
+		expect(mocks.episodesFindMany).toHaveBeenCalledTimes(2);
 	});
 });

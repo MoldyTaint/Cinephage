@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { db } from '$lib/server/db';
-import { movies, series, episodes } from '$lib/server/db/schema';
+import { movies, series, episodes, libraries } from '$lib/server/db/schema';
 import { inArray, and, eq } from 'drizzle-orm';
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
 import { searchSubtitlesForMediaBatch } from '$lib/server/subtitles/services/SubtitleImportService';
@@ -18,26 +18,73 @@ const logger = createChildLogger({
 /**
  * Schema for bulk profile assignment request
  */
-const bulkAssignSchema = z.object({
-	/** Target media type */
-	mediaType: z.enum(['movie', 'series']),
-	/** IDs of media items to update */
-	mediaIds: z.array(z.string().uuid()).min(1, 'At least one media ID is required'),
-	/** Language profile ID to assign (null to remove profile) */
-	languageProfileId: z.string().uuid().nullable(),
-	/** Whether to enable subtitle searching for these items */
-	wantsSubtitles: z.boolean().optional()
-});
+const bulkAssignSchema = z
+	.object({
+		/** Target media type */
+		mediaType: z.enum(['movie', 'series']),
+		/** IDs of media items to update */
+		mediaIds: z.array(z.string().uuid()).default([]),
+		/** Assign to ALL items of the library instead of explicit ids.
+		 * Not a UUID: seeded/built-in libraries use slug ids (e.g.
+		 * 'lib-movies-standard'). */
+		libraryId: z.string().min(1).optional(),
+		/** Language profile ID to assign (null to remove profile) */
+		languageProfileId: z.string().uuid().nullable(),
+		/** Whether to enable subtitle searching for these items */
+		wantsSubtitles: z.boolean().optional(),
+		/** Also clear per-item subtitle requirement overrides so items inherit */
+		clearOverrides: z.boolean().optional()
+	})
+	.refine((data) => data.libraryId || data.mediaIds.length > 0, {
+		message: 'Either libraryId or at least one media ID is required'
+	})
+	.refine((data) => !data.libraryId || data.mediaIds.length === 0, {
+		message: 'Pass either libraryId or mediaIds, not both'
+	});
 
 /**
  * POST /api/subtitles/language-profiles/bulk-assign
  * Assign a language profile to multiple movies or series at once.
  */
 export const POST: RequestHandler = async ({ request }) => {
-	const { mediaType, mediaIds, languageProfileId, wantsSubtitles } = await parseBody(
-		request,
-		bulkAssignSchema
-	);
+	const {
+		mediaType,
+		mediaIds: explicitIds,
+		languageProfileId,
+		wantsSubtitles,
+		clearOverrides,
+		libraryId
+	} = await parseBody(request, bulkAssignSchema);
+
+	// Library-wide mode: expand to all items of the library's media type.
+	let mediaIds: string[];
+	if (libraryId) {
+		const [library] = await db
+			.select({ id: libraries.id, mediaType: libraries.mediaType })
+			.from(libraries)
+			.where(eq(libraries.id, libraryId))
+			.limit(1);
+		if (!library) {
+			return json({ success: false, error: 'Library not found' }, { status: 404 });
+		}
+		const resolvedType = library.mediaType === 'tv' ? 'series' : 'movie';
+		if (resolvedType !== mediaType) {
+			return json(
+				{ success: false, error: `Library media type is ${resolvedType}, not ${mediaType}` },
+				{ status: 400 }
+			);
+		}
+		const rows =
+			resolvedType === 'series'
+				? await db.select({ id: series.id }).from(series).where(eq(series.libraryId, libraryId))
+				: await db.select({ id: movies.id }).from(movies).where(eq(movies.libraryId, libraryId));
+		mediaIds = rows.map((row) => row.id);
+		if (mediaIds.length === 0) {
+			return json({ success: true, updated: 0 });
+		}
+	} else {
+		mediaIds = explicitIds;
+	}
 
 	// Validate profile exists if provided
 	if (languageProfileId) {
@@ -49,6 +96,10 @@ export const POST: RequestHandler = async ({ request }) => {
 	const updateData: Record<string, unknown> = {
 		languageProfileId
 	};
+
+	if (clearOverrides) {
+		updateData.subtitleRequirementsOverride = null;
+	}
 
 	// If wantsSubtitles is explicitly set, include it
 	if (wantsSubtitles !== undefined) {

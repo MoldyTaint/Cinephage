@@ -8,15 +8,9 @@ import type { GrabResponse } from '$lib/types/queue';
 import type { GrabRequest as ServiceGrabRequest } from '$lib/server/downloads/grab-types.js';
 import type { GrabTarget } from '$lib/server/filters/stages/grab/types.js';
 import { categoryMatchesSearchType, getCategoryContentType } from '$lib/server/indexers/types';
-import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
-import { db } from '$lib/server/db';
-import { series } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
 import { logger } from '$lib/logging';
 import { isAppError } from '$lib/errors';
 import { getDefaultAcquisitionProtocol } from '$lib/server/settings/acquisition.js';
-
-const parser = new ReleaseParser();
 
 export const POST: RequestHandler = async (event) => {
 	const authError = requireAuth(event);
@@ -69,46 +63,6 @@ export const POST: RequestHandler = async (event) => {
 		}
 	}
 
-	if (data.seriesId && data.isAutomatic) {
-		const targetSeries = await db
-			.select()
-			.from(series)
-			.where(eq(series.id, data.seriesId))
-			.limit(1);
-		if (targetSeries.length > 0) {
-			const parsed = parser.parse(data.title);
-			const parsedTitle = (parsed.cleanTitle || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-			const targetTitle = targetSeries[0].title.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-			const titlesMatch =
-				parsedTitle === targetTitle ||
-				(parsedTitle.length > 3 && targetTitle.includes(parsedTitle)) ||
-				(targetTitle.length > 3 && parsedTitle.includes(targetTitle));
-
-			if (!titlesMatch && parsedTitle.length > 0) {
-				logger.error(
-					{
-						logDomain: 'downloads',
-						releaseTitle: data.title,
-						parsedTitle: parsed.cleanTitle,
-						normalizedParsed: parsedTitle,
-						targetTitle: targetSeries[0].title,
-						normalizedTarget: targetTitle,
-						seriesId: data.seriesId
-					},
-					'[Grab] BLOCKED: Release title does not match target series'
-				);
-				return json(
-					{
-						success: false,
-						error: `Title mismatch: "${parsed.cleanTitle || data.title}" does not match series "${targetSeries[0].title}"`
-					} satisfies GrabResponse,
-					{ status: 422 }
-				);
-			}
-		}
-	}
-
 	if (!data.protocol) {
 		logger.warn(
 			{
@@ -146,6 +100,9 @@ export const POST: RequestHandler = async (event) => {
 			guid: data.guid,
 			commentsUrl: data.commentsUrl,
 			categories: data.categories,
+			tmdbId: data.tmdbId,
+			imdbId: data.imdbId,
+			tvdbId: data.tvdbId,
 			releaseGroup: undefined
 		},
 		target,
@@ -154,6 +111,7 @@ export const POST: RequestHandler = async (event) => {
 			skipBlocklist: false,
 			allowSidegrade: false,
 			isAutomatic: data.isAutomatic ?? false,
+			source: data.source,
 			downloadClientId: undefined,
 			isUpgrade: data.isUpgrade,
 			streamUsenet: data.streamUsenet,

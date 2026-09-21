@@ -2,7 +2,8 @@ import type {
 	GrabDecision,
 	GrabTarget,
 	ReleaseInfo,
-	GrabDecisionOptions
+	GrabDecisionOptions,
+	TargetIdentityInfo
 } from '$lib/server/filters/stages/grab/types.js';
 import type { ScoringProfile } from '$lib/server/scoring/types.js';
 import type { Resolution } from '$lib/server/indexers/parser/types.js';
@@ -21,6 +22,10 @@ export interface GrabRequest {
 		downloadClientId?: number | string;
 		streamUsenet?: boolean;
 		acquisitionProtocol?: 'default' | 'torrent' | 'debrid';
+		/** Acquisition intent id once the slot is reserved (set by GrabService). */
+		intentId?: string;
+		/** Acquisition origin; defaults from isAutomatic when absent. */
+		source?: 'manual' | 'automatic' | 'arr_push' | 'override';
 	};
 }
 
@@ -52,6 +57,8 @@ export interface ResolvedContext {
 	seriesPath?: string;
 	/** Per-movie desired qualities (multi-quality mode). Movies only. */
 	desiredQualities?: Resolution[];
+	/** Identity facts for the hard IdentityStage. */
+	targetInfo?: TargetIdentityInfo;
 }
 
 export interface HandlerResult {

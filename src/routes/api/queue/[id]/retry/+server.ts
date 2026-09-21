@@ -11,6 +11,7 @@ import { createChildLogger } from '$lib/logging';
 import { redactUrl } from '$lib/server/utils/urlSecurity';
 import { matchesImportError } from '$lib/types/activity.js';
 import { DebridHandler } from '$lib/server/downloads/handlers/DebridHandler.js';
+import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
 
 const logger = createChildLogger({ module: 'QueueRetryApi', logDomain: 'downloads' });
 
@@ -397,6 +398,14 @@ export const POST: RequestHandler = async ({ params }) => {
 				400,
 				'No download URL available for retry. Consider re-searching and grabbing again.'
 			);
+		}
+
+		// Re-arm the acquisition authority before touching the client: the
+		// retried transport must reserve its slot like any other acquisition,
+		// or a concurrent automatic grab can claim it.
+		const rearm = await acquisitionService.rearmForQueueId(id);
+		if (!rearm.ok) {
+			return json({ success: false, error: rearm.reason }, { status: 409 });
 		}
 
 		// Try native client retry first (SABnzbd/NZBGet can retry from history cache)

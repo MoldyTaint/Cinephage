@@ -86,7 +86,11 @@ const STREAMING_SERVICE_PATTERNS: Array<{ service: string; pattern: RegExp }> = 
 ];
 
 export interface ParseOptions {
-	/** Source indexer language (ISO 639-1 code) - used for language tagging */
+	/**
+	 * Source indexer language (ISO 639-1 code). Recorded verbatim on the
+	 * parsed release as source metadata (where the release came from) — it is
+	 * NOT merged into `languages`, which reflects only what the title asserts.
+	 */
 	sourceLanguage?: string;
 	/**
 	 * Content context of the search that produced this title. In 'movie' mode,
@@ -143,8 +147,10 @@ export class ReleaseParser {
 		const year = this.extractYear(normalized);
 		const edition = this.extractEdition(normalized);
 
-		// Merge detected languages with source language
-		const languages = this.mergeLanguages(languageMatch.languages, options?.sourceLanguage);
+		// Title-detected languages only: the indexer definition language is
+		// source metadata (where the release came from), not audio evidence,
+		// and stays available separately via `sourceLanguage`.
+		const languages = languageMatch.languages;
 
 		// Extract special flags
 		const isProper = FLAG_PATTERNS.proper.test(normalized);
@@ -325,26 +331,6 @@ export class ReleaseParser {
 			}
 		}
 		return undefined;
-	}
-
-	/**
-	 * Merge detected languages with source indexer language.
-	 * Source language is added if not already detected from the title.
-	 */
-	private mergeLanguages(detectedLanguages: string[], sourceLanguage?: string): string[] {
-		if (!sourceLanguage) {
-			return detectedLanguages;
-		}
-
-		// Normalize source language to ISO 639-1
-		const normalizedSource = sourceLanguage.toLowerCase().split('-')[0];
-
-		// If source language is not already detected, add it
-		if (!detectedLanguages.includes(normalizedSource)) {
-			return [...detectedLanguages, normalizedSource];
-		}
-
-		return detectedLanguages;
 	}
 
 	/**

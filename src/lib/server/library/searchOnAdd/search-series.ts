@@ -151,7 +151,10 @@ export async function searchForSeries(
 					downloadUrl: release.downloadUrl,
 					indexerId: release.indexerId,
 					indexerName: release.indexerName,
-					protocol: release.protocol as 'torrent' | 'usenet' | 'streaming' | undefined
+					protocol: release.protocol as 'torrent' | 'usenet' | 'streaming' | undefined,
+					tmdbId: release.tmdbId,
+					imdbId: release.imdbId,
+					tvdbId: release.tvdbId
 				},
 				target: {
 					type: 'series' as const,

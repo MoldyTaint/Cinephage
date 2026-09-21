@@ -26,6 +26,8 @@ const { mediaOccupancyService } = await import('./MediaOccupancyService.js');
 
 function resetDb() {
 	testDb.sqlite.exec(`
+		DELETE FROM acquisition_reservations;
+		DELETE FROM acquisition_intents;
 		DELETE FROM download_queue;
 		DELETE FROM episode_files;
 		DELETE FROM movie_files;

@@ -1,10 +1,12 @@
 <script lang="ts">
-	import { FolderOpen, BarChart3, Search, Captions } from 'lucide-svelte';
+	import { FolderOpen, BarChart3, Search, Captions, TriangleAlert } from 'lucide-svelte';
 	import { resolve } from '$app/paths';
 	import { getWritableRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import * as m from '$lib/paraglide/messages.js';
 	import { formatBytes } from '$lib/utils/format.js';
 	import type { RootFolderWithSpaceAndDefault as RootFolder } from '$lib/types/downloadClient.js';
+	import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
+	import SubtitleRequirementsSection from '$lib/components/subtitles/SubtitleRequirementsSection.svelte';
 
 	interface ScoringProfile {
 		id: string;
@@ -16,6 +18,12 @@
 		maxResolution?: string | null;
 	}
 
+	/** The subtitle profile a new item will inherit, plus the level it came from. */
+	interface EffectiveSubtitleProfileInfo {
+		profile: { id: string; name: string };
+		source: 'movie' | 'series' | 'library' | 'default';
+	}
+
 	interface Props {
 		mediaType: 'movie' | 'tv';
 		rootFolders: RootFolder[];
@@ -24,6 +32,16 @@
 		selectedScoringProfile: string;
 		searchOnAdd: boolean;
 		wantsSubtitles: boolean;
+		/** Resolved subtitle profile for a NEW item; undefined while loading, null when unset. */
+		effectiveSubtitleProfile?: EffectiveSubtitleProfileInfo | null;
+		/** Available language profiles for the add-time picker. */
+		languageProfiles?: Array<{ id: string; name: string }>;
+		/** Effective requirements for a NEW item (seeds the customize editor). */
+		effectiveSubtitleRequirements?: SubtitleRequirement[] | null;
+		/** Add-time language profile override ('' = inherit). */
+		selectedLanguageProfile?: string;
+		/** Add-time per-item subtitle requirement override (null = inherit). */
+		subtitleRequirementsOverride?: SubtitleRequirement[] | null;
 		requiredMediaSubType?: 'standard' | 'anime';
 		onSearchOnAddInput?: () => void;
 		onWantsSubtitlesInput?: () => void;
@@ -37,10 +55,17 @@
 		selectedScoringProfile = $bindable(),
 		searchOnAdd = $bindable(),
 		wantsSubtitles = $bindable(),
+		effectiveSubtitleProfile,
+		languageProfiles = [],
+		effectiveSubtitleRequirements = null,
+		selectedLanguageProfile = $bindable(''),
+		subtitleRequirementsOverride = $bindable<SubtitleRequirement[] | null>(null),
 		requiredMediaSubType,
 		onSearchOnAddInput,
 		onWantsSubtitlesInput
 	}: Props = $props();
+
+	let customizingSubtitles = $state(false);
 
 	const filteredRootFolders = $derived(
 		getWritableRootFoldersForMediaType(rootFolders, mediaType, requiredMediaSubType)
@@ -49,6 +74,14 @@
 		filteredRootFolders.find((f) => f.id === selectedRootFolder)
 	);
 	const selectedProfileObj = $derived(scoringProfiles.find((p) => p.id === selectedScoringProfile));
+
+	const effectiveSubtitleSource = $derived(
+		effectiveSubtitleProfile?.source === 'default'
+			? m.library_subtitleProfile_sourceDefault()
+			: effectiveSubtitleProfile?.source === 'library'
+				? m.library_subtitleProfile_sourceLibrary()
+				: m.library_subtitleProfile_sourceItem()
+	);
 </script>
 
 <!-- Root Folder Select -->
@@ -173,5 +206,70 @@
 				? m.library_add_autoDownloadSubtitlesYes()
 				: m.library_add_autoDownloadSubtitlesNo()}
 		</p>
+		{#if wantsSubtitles && effectiveSubtitleProfile}
+			<p class="mt-1 text-xs text-base-content/60">
+				{m.library_add_subtitleProfileLine({
+					name: effectiveSubtitleProfile.profile.name,
+					source: effectiveSubtitleSource
+				})}
+			</p>
+		{/if}
 	</div>
 </label>
+
+{#if wantsSubtitles}
+	<!-- Language Profile (add-time override) -->
+	<div class="form-control min-w-0">
+		<label class="label" for="add-language-profile">
+			<span class="label-text text-sm font-medium">{m.library_subtitleProfile_label()}</span>
+		</label>
+		<select
+			id="add-language-profile"
+			class="select-bordered select w-full max-w-full select-sm"
+			bind:value={selectedLanguageProfile}
+		>
+			<option value="">
+				{effectiveSubtitleProfile
+					? m.library_subtitleProfile_inherit()
+					: m.library_subtitleProfile_sourceDefault()}
+			</option>
+			{#each languageProfiles as profile (profile.id)}
+				<option value={profile.id}>{profile.name}</option>
+			{/each}
+		</select>
+		<button
+			type="button"
+			class="btn mt-1 self-start btn-ghost px-0 text-base-content/70 btn-xs"
+			onclick={() => (customizingSubtitles = !customizingSubtitles)}
+		>
+			{customizingSubtitles ? '▾' : '▸'}
+			{m.library_subtitleRequirements_customized()}
+		</button>
+		{#if customizingSubtitles}
+			<div class="mt-2">
+				<SubtitleRequirementsSection
+					requirements={subtitleRequirementsOverride ??
+						effectiveSubtitleRequirements ?? [
+							{ tag: 'en', variant: 'regular', accessibility: 'any' }
+						]}
+					editable
+					onSave={(requirements) => {
+						subtitleRequirementsOverride = requirements;
+					}}
+				/>
+			</div>
+		{/if}
+	</div>
+{/if}
+
+{#if wantsSubtitles && effectiveSubtitleProfile === null}
+	<div class="alert text-sm alert-warning" role="status">
+		<TriangleAlert class="h-4 w-4 shrink-0" />
+		<span>
+			{m.library_add_noDefaultProfileWarning()}
+			<a href={resolve('/settings/library/languages')} class="link">
+				{m.library_add_noDefaultProfileWarningLink()}
+			</a>
+		</span>
+	</div>
+{/if}

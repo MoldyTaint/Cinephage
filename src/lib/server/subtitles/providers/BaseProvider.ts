@@ -17,6 +17,7 @@ import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { normalizeLanguageCode } from '$lib/shared/languages';
+import { languageSatisfies } from '../requirement-matcher';
 
 /**
  * Provider state enum
@@ -268,6 +269,11 @@ export abstract class BaseSubtitleProvider implements ISubtitleProvider {
 	/** Provider implementation type */
 	abstract get implementation(): string;
 
+	/** Request priority (lower runs first); defaults to 25 when unset. */
+	get priority(): number {
+		return this.config.priority ?? 25;
+	}
+
 	/** Languages supported by this provider */
 	abstract get supportedLanguages(): LanguageCode[];
 
@@ -293,12 +299,24 @@ export abstract class BaseSubtitleProvider implements ISubtitleProvider {
 	abstract test(): Promise<ProviderTestResult>;
 
 	/**
-	 * Default implementation - checks if any requested language is supported
+	 * Default implementation - checks if any requested language is supported.
+	 *
+	 * Languages are compared with the shared `languageSatisfies` rule (the same
+	 * base/region semantics the requirement matcher uses) instead of exact array
+	 * membership:
+	 * - a provider that supports a bare base tag (`pt`) can serve a regional
+	 *   requirement (`pt-BR`) because the provider may return a regional variant;
+	 * - a provider that supports a regional tag (`pt-BR`) can serve a bare base
+	 *   requirement (`pt`) because a base requirement accepts any region;
+	 * - disjoint regions/scripts (`pt-BR` vs `pt-PT`, `zh-Hans` vs `zh-Hant`)
+	 *   are rejected.
 	 */
 	canSearch(criteria: SubtitleSearchCriteria): boolean {
-		// Check if we support at least one of the requested languages
+		// Check if we support at least one of the requested languages.
 		const hasLanguageSupport = criteria.languages.some((lang) =>
-			this.supportedLanguages.includes(lang)
+			this.supportedLanguages.some(
+				(supported) => languageSatisfies(supported, lang) || languageSatisfies(lang, supported)
+			)
 		);
 
 		// Need at least a title or hash to search

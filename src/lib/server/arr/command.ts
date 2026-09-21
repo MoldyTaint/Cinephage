@@ -28,6 +28,7 @@ import { db } from '$lib/server/db/index.js';
 import { movies, series, blocklist } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { getEntityIdForArrId } from './ArrIdMappingService.js';
+import { searchOnAdd } from '$lib/server/library/searchOnAdd/index.js';
 import type { ArrAppName } from './systemStatus.js';
 
 const logger = createChildLogger({ module: 'ArrCompatCommand', logDomain: 'system' });
@@ -78,6 +79,67 @@ async function renameEntity(appName: ArrAppName, arrId: number): Promise<void> {
 	await service.executeRenames(fileIds, appName === 'Radarr' ? 'movie' : 'episode');
 }
 
+function collectIds(body: Record<string, unknown>, single: string, plural: string): number[] {
+	const ids: number[] = [];
+	if (typeof body[single] === 'number') ids.push(body[single] as number);
+	if (Array.isArray(body[plural])) {
+		for (const id of body[plural]) {
+			if (typeof id === 'number') ids.push(id);
+		}
+	}
+	return ids;
+}
+
+/**
+ * Targeted per-entity searches. Arr clients send command bodies with explicit
+ * movieId/seriesId/episodeId(s); honoring them prevents a requested
+ * single-entity search from launching a global library sweep.
+ */
+async function searchTargetedMovies(movieArrIds: number[]): Promise<void> {
+	for (const arrId of movieArrIds) {
+		const entityId = await getEntityIdForArrId('movie', arrId);
+		if (!entityId) continue;
+		const movie = await db.select().from(movies).where(eq(movies.id, entityId)).get();
+		if (!movie) continue;
+		await searchOnAdd.searchForMovie({
+			movieId: movie.id,
+			tmdbId: movie.tmdbId,
+			imdbId: movie.imdbId,
+			title: movie.title,
+			year: movie.year ?? undefined,
+			scoringProfileId: movie.scoringProfileId ?? undefined,
+			bypassMonitoring: true
+		});
+	}
+}
+
+async function searchTargetedSeries(seriesArrIds: number[]): Promise<void> {
+	for (const arrId of seriesArrIds) {
+		const entityId = await getEntityIdForArrId('series', arrId);
+		if (!entityId) continue;
+		const show = await db.select().from(series).where(eq(series.id, entityId)).get();
+		if (!show) continue;
+		await searchOnAdd.searchForSeries({
+			seriesId: show.id,
+			tmdbId: show.tmdbId,
+			tvdbId: show.tvdbId ?? null,
+			imdbId: show.imdbId ?? null,
+			title: show.title,
+			year: show.year ?? undefined,
+			scoringProfileId: show.scoringProfileId ?? undefined,
+			bypassMonitoring: true
+		});
+	}
+}
+
+async function searchTargetedEpisodes(episodeArrIds: number[]): Promise<void> {
+	for (const arrId of episodeArrIds) {
+		const entityId = await getEntityIdForArrId('episode', arrId);
+		if (!entityId) continue;
+		await searchOnAdd.searchForEpisode({ episodeId: entityId, bypassMonitoring: true });
+	}
+}
+
 export function handleCommand(
 	appName: ArrAppName,
 	body: Record<string, unknown>
@@ -88,14 +150,29 @@ export function handleCommand(
 
 	switch (name) {
 		case 'MissingMoviesSearch':
-		case 'MoviesSearch':
-			fireAndForget(name, () => monitoringSearchService.searchMissingMovies());
+		case 'MoviesSearch': {
+			const movieIds = collectIds(body, 'movieId', 'movieIds');
+			if (movieIds.length > 0) {
+				fireAndForget(name, () => searchTargetedMovies(movieIds));
+			} else {
+				fireAndForget(name, () => monitoringSearchService.searchMissingMovies());
+			}
 			break;
+		}
 		case 'MissingEpisodeSearch':
 		case 'SeriesSearch':
-		case 'EpisodeSearch':
-			fireAndForget(name, () => monitoringSearchService.searchMissingEpisodes());
+		case 'EpisodeSearch': {
+			const episodeIds = collectIds(body, 'episodeId', 'episodeIds');
+			const seriesIds = collectIds(body, 'seriesId', 'seriesIds');
+			if (episodeIds.length > 0) {
+				fireAndForget(name, () => searchTargetedEpisodes(episodeIds));
+			} else if (seriesIds.length > 0) {
+				fireAndForget(name, () => searchTargetedSeries(seriesIds));
+			} else {
+				fireAndForget(name, () => monitoringSearchService.searchMissingEpisodes());
+			}
 			break;
+		}
 		case 'RescanMovie':
 			if (typeof body.movieId === 'number') {
 				fireAndForget(name, () => resolveRootFolderScan('Radarr', body.movieId as number));

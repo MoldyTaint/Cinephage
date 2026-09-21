@@ -5,7 +5,12 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<script>
 			(function () {
-				const theme = localStorage.getItem('theme');
+				// Storage access throws in browsers that block site data
+				// (e.g. Firefox ETP / blocked cookies) — fall back to system theme.
+				let theme = null;
+				try {
+					theme = localStorage.getItem('theme');
+				} catch {}
 				const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
 					? 'dark'
 					: 'light';
