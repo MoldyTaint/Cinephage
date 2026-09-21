@@ -34,11 +34,22 @@ export const migration_v066: MigrationDefinition = {
 
 		logger.info('[SchemaSync] Fixing stuck apikey schema migration...');
 
-		if (hasUserId) {
+		if (hasUserId && hasReferenceId) {
+			// Both columns present is a corrupted intermediate state; the
+			// rename below would fail on it. Drop the stray legacy column.
+			try {
+				sqlite.prepare(`ALTER TABLE apikey DROP COLUMN userId`).run();
+				logger.info('[SchemaSync] Dropped stray apikey.userId column');
+			} catch {
+				logger.warn('[SchemaSync] Could not drop stray apikey.userId column');
+			}
+		}
+
+		if (hasUserId && !hasReferenceId) {
 			// Rename userId to referenceId
 			logger.info('[SchemaSync] Renaming apikey.userId to referenceId...');
 			sqlite.prepare(`ALTER TABLE apikey RENAME COLUMN userId TO referenceId`).run();
-			logger.info('[SchemaSync] Renamed userId column to referenceId');
+			logger.info('[SchemaSync] Renamed apikey column to referenceId');
 		}
 
 		// Add configId column if it doesn't exist

@@ -84,7 +84,8 @@ export const BETTER_AUTH_TABLE_DEFINITIONS = [
 			"start" text,
 			"prefix" text,
 			"key" text NOT NULL,
-			"userId" text NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+			"referenceId" text NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+			"configId" text DEFAULT 'default',
 			"refillInterval" integer,
 			"refillAmount" integer,
 			"lastRefillAt" date,
@@ -311,6 +312,22 @@ export function createBetterAuthIndexes(sqlite: Database.Database): void {
 	if (hasUserId) {
 		sqlite.prepare(`CREATE INDEX IF NOT EXISTS "idx_apikey_user" ON "apikey" ("userId")`).run();
 	}
+}
+
+/**
+ * Converge the apikey table to the v1.5+ shape (referenceId + configId).
+ * Runs at auth module init, before betterAuth() is constructed: better-auth
+ * >= 1.7 validates the schema on first access and latches a mismatch for the
+ * process lifetime, so a pre-1.5 database must be converged before the first
+ * auth request — it cannot wait for schema-sync migrations 065/066.
+ */
+export function convergeApikeySchemaToV15(sqlite: Database.Database): void {
+	if (!tableExists(sqlite, 'apikey')) {
+		return;
+	}
+
+	renameColumnIfExists(sqlite, 'apikey', 'userId', 'referenceId');
+	ensureColumn(sqlite, 'apikey', 'configId', `"configId" text DEFAULT 'default'`);
 }
 
 export function recreateBetterAuthSchema(sqlite: Database.Database): void {

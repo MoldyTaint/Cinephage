@@ -13,7 +13,8 @@ import {
 } from './secret.js';
 import {
 	createBetterAuthTables,
-	createBetterAuthIndexes
+	createBetterAuthIndexes,
+	convergeApikeySchemaToV15
 } from '$lib/server/db/migration-helpers.js';
 import { getSystemSettingsService } from '$lib/server/settings/SystemSettingsService.js';
 import { ac, admin as adminRole, user as userRole } from '$lib/auth/access-control.js';
@@ -87,8 +88,11 @@ const authDb = new Database(DB_PATH);
 // mismatch permanently (only its own migrate clears the cache). The tables
 // normally come from schema-sync at startup, but a request can reach auth
 // before that runs on a fresh install — so create them here, idempotently,
-// before betterAuth() is ever constructed.
+// before betterAuth() is ever constructed. Databases created before apikey
+// v1.5 additionally need their legacy userId column converged here, or the
+// same first-access validation would latch a mismatch before migrations run.
 createBetterAuthTables(authDb);
+convergeApikeySchemaToV15(authDb);
 createBetterAuthIndexes(authDb);
 
 const disableSecureCookies = process.env.BETTER_AUTH_DISABLE_SECURE_COOKIES === 'true';
