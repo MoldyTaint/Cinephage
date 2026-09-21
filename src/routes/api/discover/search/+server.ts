@@ -5,6 +5,7 @@ import { contentFilterPipeline } from '$lib/server/filters/ContentFilterPipeline
 import { enrichWithReleaseDates } from '$lib/server/release-enrichment.js';
 import { z } from 'zod';
 import { createChildLogger } from '$lib/logging';
+import { extractSearchYear } from '$lib/utils/search-query.js';
 
 const logger = createChildLogger({ module: 'DiscoverSearchApi', logDomain: 'system' });
 
@@ -42,10 +43,14 @@ export const GET: RequestHandler = async ({ url }) => {
 		let results: Array<{ id: number; media_type?: string; [key: string]: unknown }> = [];
 		let totalResults = 0;
 		let totalPages = 0;
+		const { title, year } =
+			type === 'movie' || type === 'tv'
+				? extractSearchYear(query)
+				: { title: query, year: undefined };
 
 		if (type === 'movie') {
 			const data = (await tmdb.fetch(
-				`/search/movie?query=${encodeURIComponent(query)}&page=${page}`
+				`/search/movie?query=${encodeURIComponent(title)}&page=${page}${year ? `&year=${year}` : ''}`
 			)) as SearchResponse | null;
 			if (!data) return json({ error: 'TMDB API key not configured' }, { status: 503 });
 			results = data.results.map((m) => ({ ...m, media_type: 'movie' }));
@@ -53,7 +58,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			totalPages = data.total_pages;
 		} else if (type === 'tv') {
 			const data = (await tmdb.fetch(
-				`/search/tv?query=${encodeURIComponent(query)}&page=${page}`
+				`/search/tv?query=${encodeURIComponent(title)}&page=${page}${year ? `&first_air_date_year=${year}` : ''}`
 			)) as SearchResponse | null;
 			if (!data) return json({ error: 'TMDB API key not configured' }, { status: 503 });
 			results = data.results.map((t) => ({ ...t, media_type: 'tv' }));
