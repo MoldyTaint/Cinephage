@@ -34,40 +34,36 @@ interface FetchCall {
 }
 
 function stubFetch(provider: BetaseriesProvider, calls: FetchCall[]) {
-	// @ts-expect-error spying on a protected method
-	vi.spyOn(provider, 'fetchWithTimeout').mockImplementation(
-		// @ts-expect-error mock implementation type mismatch for protected method
-		async (url: string) => {
-			calls.push({ url });
+	vi.spyOn(provider, 'fetchWithTimeout').mockImplementation(async (url: string) => {
+		calls.push({ url });
 
-			if (url.includes('episodes/display')) {
-				return {
-					ok: true,
-					json: async () => ({
-						episode: {
-							subtitles: [
-								{
-									id: 55,
-									language: 'VF',
-									file: 'Show.S01E02.FR.srt',
-									url: DOWNLOAD_URL
-								}
-							]
-						}
-					})
-				} as Response;
-			}
-
-			if (url === DOWNLOAD_URL) {
-				return {
-					ok: true,
-					arrayBuffer: async () => new TextEncoder().encode(SRT_CONTENT).buffer
-				} as Response;
-			}
-
-			throw new Error(`Unexpected fetch URL in test: ${url}`);
+		if (url.includes('episodes/display')) {
+			return {
+				ok: true,
+				json: async () => ({
+					episode: {
+						subtitles: [
+							{
+								id: 55,
+								language: 'VF',
+								file: 'Show.S01E02.FR.srt',
+								url: DOWNLOAD_URL
+							}
+						]
+					}
+				})
+			} as Response;
 		}
-	);
+
+		if (url === DOWNLOAD_URL) {
+			return {
+				ok: true,
+				arrayBuffer: async () => new TextEncoder().encode(SRT_CONTENT).buffer
+			} as Response;
+		}
+
+		throw new Error(`Unexpected fetch URL in test: ${url}`);
+	});
 }
 
 describe('BetaseriesProvider manual download', () => {

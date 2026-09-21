@@ -47,9 +47,9 @@
 		"@types/js-yaml": "^4.0.9",
 		"@types/node": "^26.1.2",
 		"@types/parse-torrent": "^11.0.0",
-		"@vitest/browser": "^4.1.8",
-		"@vitest/browser-playwright": "^4.1.5",
-		"@vitest/coverage-v8": "^4.1.5",
+		"@vitest/browser": "^5.0.1",
+		"@vitest/browser-playwright": "^5.0.1",
+		"@vitest/coverage-v8": "^5.0.1",
 		"daisyui": "^5.7.9",
 		"drizzle-orm": "^0.45.2",
 		"eslint": "^10.8.0",
@@ -70,7 +70,7 @@
 		"typescript": "^6.0.3",
 		"typescript-eslint": "^8.65.0",
 		"vite": "^8.2.0",
-		"vitest": "^4.1.5"
+		"vitest": "^5.0.1"
 	},
 	"overrides": {
 		"cookie": "^0.7.0",
