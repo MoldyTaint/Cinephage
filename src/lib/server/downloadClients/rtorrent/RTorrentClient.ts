@@ -487,7 +487,8 @@ export class RTorrentClient implements IDownloadClient {
 			basePath,
 			category,
 			ratio,
-			createdAt
+			createdAt,
+			finishedTs
 		] = await Promise.all([
 			this.getTorrentField<string>(hash, ['d.name', 'd.get_name'], hash),
 			this.getTorrentField<number | string>(hash, ['d.size_bytes', 'd.get_size_bytes'], 0),
@@ -505,7 +506,8 @@ export class RTorrentClient implements IDownloadClient {
 			this.getTorrentField<string>(hash, ['d.base_path', 'd.get_base_path'], ''),
 			this.getTorrentField<string>(hash, ['d.custom1', 'd.get_custom1'], ''),
 			this.getTorrentField<number | string>(hash, ['d.ratio', 'd.get_ratio'], 0),
-			this.getTorrentField<number | string>(hash, ['d.creation_date', 'd.get_creation_date'], 0)
+			this.getTorrentField<number | string>(hash, ['d.creation_date', 'd.get_creation_date'], 0),
+			this.getTorrentField<number | string>(hash, ['d.timestamp.finished'], 0)
 		]);
 
 		const size = toNumber(sizeBytes);
@@ -532,6 +534,9 @@ export class RTorrentClient implements IDownloadClient {
 			typeof category === 'string' && category.trim().length > 0 ? category.trim() : undefined;
 		const normalizedName = typeof name === 'string' ? name : hash;
 		const contentPath = resolveContentPath(savePath, basePath, normalizedName);
+		const finishedAt = toNumber(finishedTs);
+		const secondsSinceFinished =
+			finishedAt > 0 ? Math.max(0, Math.floor(Date.now() / 1000) - finishedAt) : 0;
 
 		return {
 			id: hash,
@@ -547,13 +552,42 @@ export class RTorrentClient implements IDownloadClient {
 			category: normalizedCategory,
 			ratio: normalizedRatio,
 			addedOn: toDate(toNumber(createdAt)),
-			completedOn: undefined,
+			completedOn: finishedAt > 0 ? new Date(finishedAt * 1000) : undefined,
+			seedingTime: completeFlag > 0 && finishedAt > 0 ? secondsSinceFinished : undefined,
+			ratioLimit: this.config.seedRatioLimit,
+			seedingTimeLimit: this.config.seedTimeLimit,
 			canMoveFiles: status !== 'downloading' && status !== 'seeding' && status !== 'queued',
 			// 'completed' means the torrent finished downloading and has no active
-			// transfer or upload — an actively seeding torrent is never removable
-			// (rTorrent exposes no seed-limit signals to query).
-			canBeRemoved: status === 'completed'
+			// transfer or upload — an actively seeding torrent is never removable.
+			// On top of that, the client-level seed goals must be met (evaluated
+			// app-side; rTorrent has no per-torrent stop-at-ratio command).
+			canBeRemoved:
+				status === 'completed' && this.hasReachedSeedLimit(normalizedRatio, secondsSinceFinished)
 		};
+	}
+
+	/**
+	 * Seed goals come from the client's own configuration (seedRatioLimit as a
+	 * decimal, seedTimeLimit in minutes), parsed once in DownloadClientManager.
+	 * With no limits configured a torrent is never removable, matching the
+	 * Transmission/qBittorrent behavior.
+	 */
+	private hasReachedSeedLimit(ratio: number, secondsSinceFinished: number): boolean {
+		const ratioLimit = this.config.seedRatioLimit;
+		if (typeof ratioLimit === 'number' && ratioLimit > 0 && ratio >= ratioLimit) {
+			return true;
+		}
+
+		const seedTimeLimit = this.config.seedTimeLimit;
+		if (
+			typeof seedTimeLimit === 'number' &&
+			seedTimeLimit > 0 &&
+			secondsSinceFinished >= seedTimeLimit * 60
+		) {
+			return true;
+		}
+
+		return false;
 	}
 
 	async test(): Promise<ConnectionTestResult> {
@@ -749,7 +783,11 @@ export class RTorrentClient implements IDownloadClient {
 		_id: string,
 		_config: { ratioLimit?: number; seedingTimeLimit?: number }
 	): Promise<void> {
-		// Not implemented for rTorrent yet. Global rTorrent settings are typically used.
+		// Deliberately not implemented: rTorrent has no per-torrent stop-at-ratio
+		// XMLRPC command, so seed goals cannot be pushed into the client (Radarr
+		// evaluates them app-side for the same reason). This client reads the
+		// client-level seedRatioLimit/seedTimeLimit from its own config instead.
+		// Known limitation: indexer-level per-grab overrides are not honored here.
 	}
 
 	async getBasePath(): Promise<string | undefined> {

@@ -289,7 +289,7 @@ export class DownloadClientManager {
 			username: isDebrid ? null : input.username,
 			password: isDebrid ? null : input.password,
 			apiToken,
-			removeAfterImport: isDebrid ? (input.removeAfterImport ?? false) : false,
+			removeAfterImport: input.removeAfterImport ?? false,
 			allowMovies: isDebrid ? (input.allowMovies ?? true) : true,
 			allowTv: isDebrid ? (input.allowTv ?? true) : true,
 			movieCategory: isDebrid ? 'movies' : (input.movieCategory ?? 'movies'),
@@ -617,6 +617,14 @@ export class DownloadClientManager {
 			implementation: config.implementation,
 			sequentialDownload:
 				config.implementation === 'qbittorrent' ? (config.sequentialDownload ?? false) : false,
+			// rTorrent evaluates seed goals app-side (see RTorrentClient); the
+			// row's decimal string is parsed once here.
+			seedRatioLimit:
+				config.implementation === 'rtorrent' && config.seedRatioLimit
+					? parseFloat(config.seedRatioLimit)
+					: undefined,
+			seedTimeLimit:
+				config.implementation === 'rtorrent' ? (config.seedTimeLimit ?? undefined) : undefined,
 			// For SABnzbd, the API key is stored in the password field
 			apiKey:
 				this.normalizeImplementation(config.implementation) === 'sabnzbd'

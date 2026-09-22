@@ -509,7 +509,94 @@ describe('RTorrentClient canBeRemoved', () => {
 		expect(download?.canBeRemoved).toBe(false);
 	});
 
-	it('is removable once finished and fully idle', async () => {
+	it('is removable once finished, idle, and the ratio goal is met', async () => {
+		vi.stubGlobal(
+			'fetch',
+			mockTorrentRpc({
+				'd.complete': 1,
+				'd.is_active': 0,
+				'd.up.rate': 0,
+				'd.down.rate': 0,
+				'd.size_bytes': 1000,
+				'd.completed_bytes': 1000,
+				'd.state': 0,
+				'd.ratio': 2000
+			})
+		);
+
+		const client = new RTorrentClient({
+			host: 'localhost',
+			port: 80,
+			useSsl: false,
+			seedRatioLimit: 1.5
+		});
+		const download = await client.getDownload(hash);
+
+		expect(download?.status).toBe('completed');
+		expect(download?.ratio).toBe(2);
+		expect(download?.ratioLimit).toBe(1.5);
+		expect(download?.canBeRemoved).toBe(true);
+	});
+
+	it('is removable via the seed-time goal using d.timestamp.finished', async () => {
+		const finishedThreeHoursAgo = Math.floor(Date.now() / 1000) - 3 * 60 * 60;
+		vi.stubGlobal(
+			'fetch',
+			mockTorrentRpc({
+				'd.complete': 1,
+				'd.is_active': 0,
+				'd.up.rate': 0,
+				'd.down.rate': 0,
+				'd.size_bytes': 1000,
+				'd.completed_bytes': 1000,
+				'd.state': 0,
+				'd.ratio': 0,
+				'd.timestamp.finished': finishedThreeHoursAgo
+			})
+		);
+
+		const client = new RTorrentClient({
+			host: 'localhost',
+			port: 80,
+			useSsl: false,
+			seedTimeLimit: 120
+		});
+		const download = await client.getDownload(hash);
+
+		expect(download?.status).toBe('completed');
+		expect(download?.seedingTime).toBeGreaterThanOrEqual(3 * 60 * 60);
+		expect(download?.canBeRemoved).toBe(true);
+	});
+
+	it('is not removable when the configured goals are not met', async () => {
+		vi.stubGlobal(
+			'fetch',
+			mockTorrentRpc({
+				'd.complete': 1,
+				'd.is_active': 0,
+				'd.up.rate': 0,
+				'd.down.rate': 0,
+				'd.size_bytes': 1000,
+				'd.completed_bytes': 1000,
+				'd.state': 0,
+				'd.ratio': 500
+			})
+		);
+
+		const client = new RTorrentClient({
+			host: 'localhost',
+			port: 80,
+			useSsl: false,
+			seedRatioLimit: 1.5,
+			seedTimeLimit: 120
+		});
+		const download = await client.getDownload(hash);
+
+		expect(download?.status).toBe('completed');
+		expect(download?.canBeRemoved).toBe(false);
+	});
+
+	it('is not removable when no seed goals are configured', async () => {
 		vi.stubGlobal(
 			'fetch',
 			mockTorrentRpc({
@@ -527,7 +614,34 @@ describe('RTorrentClient canBeRemoved', () => {
 		const download = await client.getDownload(hash);
 
 		expect(download?.status).toBe('completed');
-		expect(download?.canBeRemoved).toBe(true);
+		expect(download?.canBeRemoved).toBe(false);
+	});
+
+	it('is not removable while actively seeding even with the ratio goal met', async () => {
+		vi.stubGlobal(
+			'fetch',
+			mockTorrentRpc({
+				'd.complete': 1,
+				'd.is_active': 1,
+				'd.up.rate': 2048,
+				'd.down.rate': 0,
+				'd.size_bytes': 1000,
+				'd.completed_bytes': 1000,
+				'd.state': 1,
+				'd.ratio': 5000
+			})
+		);
+
+		const client = new RTorrentClient({
+			host: 'localhost',
+			port: 80,
+			useSsl: false,
+			seedRatioLimit: 1.5
+		});
+		const download = await client.getDownload(hash);
+
+		expect(download?.status).toBe('seeding');
+		expect(download?.canBeRemoved).toBe(false);
 	});
 
 	it('is not removable while downloading', async () => {

@@ -32,6 +32,13 @@ export interface DownloadClientConfig {
 	tempPathRemote?: string | null;
 	/** qBittorrent only: enable sequential downloading when adding a torrent. */
 	sequentialDownload?: boolean;
+	/**
+	 * rTorrent only: client-level seed goals, parsed from the client row and
+	 * evaluated app-side (rTorrent has no per-torrent stop-at-ratio command).
+	 */
+	seedRatioLimit?: number;
+	/** rTorrent only: seed time goal in minutes. */
+	seedTimeLimit?: number;
 }
 
 /**
