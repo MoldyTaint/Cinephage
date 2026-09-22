@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { manualImportSchema } from '$lib/validation/schemas.js';
 import { manualImportService } from '$lib/server/library/manual-import-service.js';
+import { libraryJobService } from '$lib/server/library/jobs/LibraryJobService.js';
 import { isPathAllowed, isPathInsideManagedRoot } from '$lib/server/filesystem/path-guard.js';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
@@ -73,6 +74,18 @@ export const POST: RequestHandler = async (event) => {
 				},
 				{ status: 400 }
 			);
+		}
+
+		// Background mode (#530): enqueue a durable library job and return
+		// immediately; the worker runs the import and reports progress over the
+		// standard library-jobs endpoints.
+		if (payload.background) {
+			const job = libraryJobService.enqueueJob({
+				type: 'manual_import',
+				dedupeKey: `manual_import:${importPath}:${payload.tmdbId}:${payload.libraryId ?? 'new'}`,
+				metadata: { request: payload }
+			});
+			return json({ success: true, data: { jobId: job.id, background: true } }, { status: 202 });
 		}
 
 		const result = await manualImportService.executeImport(payload);

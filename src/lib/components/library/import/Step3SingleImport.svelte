@@ -31,6 +31,7 @@
 		destinationLibrariesForType = [],
 		selectedRootFolder = $bindable(''),
 		importMode = $bindable('move' as 'move' | 'copy' | 'symlink'),
+		backgroundImport = $bindable(false),
 		loadingRootFolders = false,
 		seasonNumber = 1,
 		episodeNumber = 1,
@@ -52,6 +53,7 @@
 		destinationLibrariesForType: DestinationLibrary[];
 		selectedRootFolder: string;
 		importMode: 'move' | 'copy' | 'symlink';
+		backgroundImport: boolean;
 		loadingRootFolders: boolean;
 		seasonNumber: number;
 		episodeNumber: number;
@@ -291,7 +293,13 @@
 	</div>
 
 	<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-		<button class="btn btn-ghost" onclick={() => onGoToStep(2)}>{m.action_back()}</button>
+		<div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+			<button class="btn btn-ghost" onclick={() => onGoToStep(2)}>{m.action_back()}</button>
+			<label class="flex cursor-pointer items-center gap-2 text-sm text-base-content/80">
+				<input type="checkbox" class="checkbox checkbox-sm" bind:checked={backgroundImport} />
+				{m.library_import_runInBackground()}
+			</label>
+		</div>
 		<button
 			class="btn btn-primary"
 			onclick={onExecuteImport}

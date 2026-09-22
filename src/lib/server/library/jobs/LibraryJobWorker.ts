@@ -6,6 +6,11 @@ import { diskScanService } from '$lib/server/library/disk-scan.js';
 import { librarySchedulerService } from '$lib/server/library/library-scheduler.js';
 import { mediaMatcherService } from '$lib/server/library/media-matcher.js';
 import type { MatchResult } from '$lib/server/library/media-matcher.js';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import type {
+	ExecuteManualImportRequest,
+	ExecuteManualImportResult
+} from '../manual-import-service.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 
@@ -28,6 +33,7 @@ export interface WorkerDeps {
 		limit?: number,
 		afterId?: string | null
 	) => Promise<{ results: MatchResult[]; hasMore: boolean; nextCursor: string | null }>;
+	executeManualImport?: (request: ExecuteManualImportRequest) => Promise<ExecuteManualImportResult>;
 }
 
 export class LibraryJobWorker extends EventEmitter implements BackgroundService {
@@ -44,6 +50,9 @@ export class LibraryJobWorker extends EventEmitter implements BackgroundService 
 		limit?: number,
 		afterId?: string | null
 	) => Promise<{ results: MatchResult[]; hasMore: boolean; nextCursor: string | null }>;
+	private executeManualImport: (
+		request: ExecuteManualImportRequest
+	) => Promise<ExecuteManualImportResult>;
 
 	constructor(deps: WorkerDeps = {}) {
 		super();
@@ -56,6 +65,12 @@ export class LibraryJobWorker extends EventEmitter implements BackgroundService 
 			deps.matchUnmatchedByRootFolder ??
 			((rootFolderId, limit, afterId) =>
 				mediaMatcherService.processUnmatchedByRootFolder(rootFolderId, limit, afterId));
+		this.executeManualImport =
+			deps.executeManualImport ??
+			((request) =>
+				import('../manual-import-service.js').then((m) =>
+					m.manualImportService.executeImport(request)
+				));
 	}
 
 	get status(): ServiceStatus {
@@ -158,6 +173,30 @@ export class LibraryJobWorker extends EventEmitter implements BackgroundService 
 					progressCurrent: total,
 					progressTotal: total
 				});
+			} else if (queuedJob.type === 'manual_import') {
+				const request = (queuedJob.metadata as { request?: ExecuteManualImportRequest } | null)
+					?.request;
+				if (!request) {
+					throw new Error('manual_import job missing request metadata');
+				}
+				await this.jobService.markProgress(queuedJob.id, {
+					phase: 'importing',
+					progressTotal: 1,
+					progressCurrent: 0
+				});
+				const result = await this.executeManualImport(request);
+				await this.jobService.markCompleted(queuedJob.id, {
+					phase: 'done',
+					progressCurrent: 1,
+					progressTotal: 1,
+					filesAdded: result.importedCount
+				});
+				// Mirror the sync import endpoint: downstream caches (rename preview,
+				// library views) key off this event.
+				libraryMediaEvents.emitLibraryDataChanged({
+					source: request.mediaType === 'movie' ? 'movie' : 'series',
+					reason: 'manual-import'
+				});
 			} else if (queuedJob.type === 'scan_all_root_folders') {
 				const results = await this.scanAll();
 				const failed = results.filter((r) => !r.success);
@@ -184,6 +223,13 @@ export class LibraryJobWorker extends EventEmitter implements BackgroundService 
 					}
 				);
 				this.jobService.markCompleted(queuedJob.id, { ...totals, phase: 'done' });
+			} else {
+				// Declared job types without a handler must never sit in `running`
+				// forever — fail them visibly so retry/cancel stays available.
+				await this.jobService.markFailed(
+					queuedJob.id,
+					`Unsupported library job type: ${queuedJob.type}`
+				);
 			}
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);

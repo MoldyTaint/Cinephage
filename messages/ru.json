@@ -1075,6 +1075,8 @@
 	"library_import_sourcePathPlaceholder": "/path/to/file-or-folder",
 	"library_import_startImport": "Начать импорт",
 	"library_import_startImportCount": "Начать импорт ({count})",
+	"library_import_runInBackground": "Выполнить в фоне",
+	"library_import_backgroundStarted": "Импорт запущен в фоновом режиме. Можно продолжать работу, пока он выполняется.",
 	"library_import_stepComplete": "Завершено",
 	"library_import_stepImport": "Импорт",
 	"library_import_stepReviewMatches": "Проверка совпадений",

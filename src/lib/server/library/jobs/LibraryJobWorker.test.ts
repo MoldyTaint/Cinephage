@@ -234,3 +234,89 @@ describe('match_unmatched cursor paging (issue #513)', () => {
 		expect(processFn.mock.calls[1][2]).toBe('a2');
 	});
 });
+
+describe('manual_import job (issue #530)', () => {
+	const request = {
+		sourcePath: '/downloads/movie.mkv',
+		mediaType: 'movie' as const,
+		tmdbId: 155,
+		importTarget: 'new' as const
+	};
+
+	it('runs the injected import and marks the job completed', async () => {
+		const executeFn = vi.fn().mockResolvedValue({
+			success: true,
+			mediaType: 'movie',
+			tmdbId: 155,
+			libraryId: 'movie-1',
+			importedPath: '/library/movie.mkv',
+			importedPaths: ['/library/movie.mkv'],
+			importedCount: 1
+		});
+
+		const job = libraryJobService.enqueueJob({
+			type: 'manual_import',
+			dedupeKey: 'manual_import:test-1',
+			metadata: { request }
+		});
+
+		const worker = new LibraryJobWorker({ executeManualImport: executeFn });
+		const processed = await worker.processOne();
+		expect(processed).toBe(true);
+		expect(executeFn).toHaveBeenCalledWith(request);
+
+		const updated = libraryJobService.getJob(job.id);
+		expect(updated!.status).toBe('completed');
+		expect(updated!.phase).toBe('done');
+		expect(updated!.filesAdded).toBe(1);
+		expect(updated!.progressCurrent).toBe(1);
+		expect(updated!.progressTotal).toBe(1);
+	});
+
+	it('marks the job failed when the import throws', async () => {
+		const executeFn = vi.fn().mockRejectedValue(new Error('no space left on device'));
+
+		const job = libraryJobService.enqueueJob({
+			type: 'manual_import',
+			dedupeKey: 'manual_import:test-2',
+			metadata: { request }
+		});
+
+		await new LibraryJobWorker({ executeManualImport: executeFn }).processOne();
+
+		const updated = libraryJobService.getJob(job.id);
+		expect(updated!.status).toBe('failed');
+		expect(updated!.errorMessage).toBe('no space left on device');
+	});
+
+	it('marks the job failed when request metadata is missing', async () => {
+		const executeFn = vi.fn();
+
+		const job = libraryJobService.enqueueJob({
+			type: 'manual_import',
+			dedupeKey: 'manual_import:test-3',
+			metadata: {}
+		});
+
+		await new LibraryJobWorker({ executeManualImport: executeFn }).processOne();
+
+		const updated = libraryJobService.getJob(job.id);
+		expect(updated!.status).toBe('failed');
+		expect(updated!.errorMessage).toContain('missing request metadata');
+		expect(executeFn).not.toHaveBeenCalled();
+	});
+
+	it('fails declared-but-unsupported job types instead of leaving them running', async () => {
+		const job = libraryJobService.enqueueJob({
+			type: 'watcher_path_change',
+			dedupeKey: 'watcher_path_change:test',
+			metadata: {}
+		});
+
+		await new LibraryJobWorker().processOne();
+
+		const updated = libraryJobService.getJob(job.id);
+		expect(updated!.status).toBe('failed');
+		expect(updated!.errorMessage).toContain('Unsupported library job type');
+	});
+});

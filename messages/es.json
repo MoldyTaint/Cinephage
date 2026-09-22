@@ -1075,6 +1075,8 @@
 	"library_import_sourcePathPlaceholder": "/ruta/a/archivo-o-carpeta",
 	"library_import_startImport": "Iniciar importación",
 	"library_import_startImportCount": "Iniciar importación ({count})",
+	"library_import_runInBackground": "Ejecutar en segundo plano",
+	"library_import_backgroundStarted": "Importación iniciada en segundo plano. Puedes seguir trabajando mientras se ejecuta.",
 	"library_import_stepComplete": "Completar",
 	"library_import_stepImport": "Importar",
 	"library_import_stepReviewMatches": "Revisar coincidencias",

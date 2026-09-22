@@ -21,6 +21,7 @@
 		detectMedia,
 		getLibraryStatus,
 		bulkImport,
+		getLibraryJob,
 		type BulkImportJob
 	} from '$lib/api';
 	import { searchTmdb as searchTmdbApi } from '$lib/api';
@@ -182,6 +183,8 @@
 	let bulkProgress = $state<{ completed: number; failed: number; total: number } | null>(null);
 	let bulkCurrentGroup = $state<string | null>(null);
 	let bulkEventSource = $state<EventSource | null>(null);
+	let backgroundImport = $state(false);
+	let backgroundJobPoll: ReturnType<typeof setInterval> | null = null;
 	// Cache keyed by "{tmdbId}-S{season}" → map of episodeNumber → title
 	let episodeTitleCache = $state<Record<string, Record<number, string>>>({});
 	let bypassNavigationGuard = false;
@@ -2054,6 +2057,8 @@
 
 	function resetWizard() {
 		disconnectBulkSSE();
+		stopBackgroundImportPoll();
+		backgroundImport = false;
 		preferredMediaType = routeImportContext?.mediaType ?? 'auto';
 		sourcePath = '/';
 		browserPath = '/';
@@ -2104,6 +2109,11 @@
 		if (!canProceedToImport) return;
 		persistActiveGroupState();
 
+		if (backgroundImport) {
+			await executeBackgroundImportFlow(currentGroup);
+			return;
+		}
+
 		executingImport = true;
 		executeError = null;
 		try {
@@ -2132,6 +2142,70 @@
 		} finally {
 			executingImport = false;
 		}
+	}
+
+	/**
+	 * Background imports (#530): hand the work to the library job queue and let
+	 * the user keep using the wizard. A poller tracks the job to completion.
+	 */
+	async function executeBackgroundImportFlow(currentGroup: DetectionGroup) {
+		executingImport = true;
+		executeError = null;
+		try {
+			const payload = buildImportPayload(currentGroup);
+			const data = await executeImport({ ...payload, background: true });
+			const result = data.data as { jobId: string; background: boolean };
+			toasts.info(m.library_import_backgroundStarted());
+			watchBackgroundImport(result.jobId, selectedGroupId);
+			if (isDirectLibraryImportContext && originLibraryLink) {
+				bypassNavigationGuard = true;
+				await goto(originLibraryLink);
+				return;
+			}
+			step = 4;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Import failed';
+			if (isDirectLibraryImportContext) {
+				executeError = message;
+				step = 4;
+			} else {
+				toasts.error(message);
+			}
+		} finally {
+			executingImport = false;
+		}
+	}
+
+	function stopBackgroundImportPoll() {
+		if (backgroundJobPoll) {
+			clearInterval(backgroundJobPoll);
+			backgroundJobPoll = null;
+		}
+	}
+
+	function watchBackgroundImport(jobId: string, groupId: string | null) {
+		stopBackgroundImportPoll();
+		backgroundJobPoll = setInterval(() => {
+			void (async () => {
+				try {
+					const response = await getLibraryJob(jobId);
+					const status = (response as { job?: { status?: string } } | undefined)?.job?.status;
+					if (status === 'completed') {
+						stopBackgroundImportPoll();
+						toasts.success(m.toast_library_import_importComplete());
+						if (groupId && groupId === selectedGroupId) {
+							markGroupImported(groupId);
+						}
+					} else if (status === 'failed' || status === 'cancelled') {
+						stopBackgroundImportPoll();
+						toasts.error(m.library_import_importFailed());
+					}
+				} catch {
+					// Transient poll errors (server restart) — keep polling; the job
+					// is durable in the library_jobs table.
+				}
+			})();
+		}, 2000);
 	}
 
 	function disconnectBulkSSE() {
@@ -2581,6 +2655,7 @@
 			{destinationLibrariesForType}
 			bind:selectedRootFolder
 			bind:importMode
+			bind:backgroundImport
 			{loadingRootFolders}
 			{seasonNumber}
 			{episodeNumber}

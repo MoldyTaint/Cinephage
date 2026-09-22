@@ -176,6 +176,28 @@ export class LibraryJobService {
 		return result;
 	}
 
+	/**
+	 * Non-terminal in-flight progress update. Terminal transitions use
+	 * markCompleted / markFailed.
+	 */
+	markProgress(
+		id: string,
+		updates: Pick<LibraryJobUpdate, 'phase' | 'progressCurrent' | 'progressTotal'>
+	) {
+		const job = this.getJob(id);
+		if (!job) throw new NotFoundError('LibraryJob', id);
+
+		const now = new Date().toISOString();
+		const result = db
+			.update(libraryJobs)
+			.set({ ...updates, updatedAt: now })
+			.where(eq(libraryJobs.id, id))
+			.returning()
+			.get();
+		if (!result) throw new NotFoundError('LibraryJob', id);
+		return result;
+	}
+
 	markCompleted(id: string, updates?: LibraryJobUpdate) {
 		const job = this.getJob(id);
 		if (!job) throw new NotFoundError('LibraryJob', id);

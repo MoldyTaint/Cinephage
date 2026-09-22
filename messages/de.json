@@ -1075,6 +1075,8 @@
 	"library_import_sourcePathPlaceholder": "/pfad/zur/datei-oder-ordner",
 	"library_import_startImport": "Import starten",
 	"library_import_startImportCount": "Import starten ({count})",
+	"library_import_runInBackground": "Im Hintergrund ausführen",
+	"library_import_backgroundStarted": "Import im Hintergrund gestartet. Du kannst weiterarbeiten, während er läuft.",
 	"library_import_stepComplete": "Abgeschlossen",
 	"library_import_stepImport": "Importieren",
 	"library_import_stepReviewMatches": "Übereinstimmungen überprüfen",

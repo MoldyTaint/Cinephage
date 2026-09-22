@@ -2080,7 +2080,10 @@ export const manualImportSchema = z
 		libraryId: z.string().optional(),
 		seasonNumber: z.number().int().min(0).optional(),
 		episodeNumber: z.number().int().min(1).optional(),
-		importMode: importMethodSchema.optional()
+		importMode: importMethodSchema.optional(),
+		// Queue the import as a background library job and return immediately (#530).
+		// Omitted means run synchronously, as before.
+		background: z.boolean().optional()
 	})
 	.superRefine((value, ctx) => {
 		if (!value.sourcePath && !value.selectedFilePath) {

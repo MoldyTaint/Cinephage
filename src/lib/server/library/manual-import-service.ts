@@ -106,6 +106,8 @@ export interface ExecuteManualImportRequest {
 	episodeNumber?: number;
 	/** Override the global file management import mode for this specific import */
 	importMode?: 'move' | 'copy' | 'symlink';
+	/** When set, the import was requested as a background library job (#530) */
+	background?: boolean;
 }
 
 export interface ExecuteManualImportResult {
@@ -766,7 +768,7 @@ export class ManualImportService {
 			...namingInfo,
 			originalExtension: sourceExtension
 		});
-		const seasonFolderName = this.namingService.generateSeasonFolderName(seasonNumber);
+		const seasonFolderName = this.namingService.generateSeasonFolderName(seasonNumber, namingInfo);
 		return useSeasonFolders
 			? join(rootFolderPath, seriesFolderName, seasonFolderName, episodeFileName)
 			: join(rootFolderPath, seriesFolderName, episodeFileName);
