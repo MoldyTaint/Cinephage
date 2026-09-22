@@ -509,7 +509,7 @@ export class StrmService {
 		const relativePath =
 			(show.seasonFolder ?? true)
 				? join(
-						namingService.generateSeasonFolderName(seasonNumber),
+						namingService.generateSeasonFolderName(seasonNumber, seriesInfo),
 						namingService.generateEpisodeFileName(episodeInfo)
 					)
 				: namingService.generateEpisodeFileName(episodeInfo);

@@ -187,14 +187,18 @@ export class NamingService {
 	}
 
 	/**
-	 * Generate a season folder name
+	 * Generate a season folder name. The optional series context lets season
+	 * folder formats that reference series-level tokens ({Year}, {Title},
+	 * media IDs) render instead of collapsing to empty; without it only
+	 * season tokens resolve.
 	 */
-	generateSeasonFolderName(seasonNumber: number): string {
+	generateSeasonFolderName(seasonNumber: number, series?: Partial<MediaNamingInfo>): string {
 		if (seasonNumber === 0 && this.config.useSpecialsFolder) {
 			return 'Specials';
 		}
 		return this.formatName(this.config.seasonFolderFormat, {
 			title: '',
+			...series,
 			seasonNumber
 		});
 	}

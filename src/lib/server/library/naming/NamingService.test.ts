@@ -146,6 +146,41 @@ describe('NamingService', () => {
 			const result = service.generateSeasonFolderName(12);
 			expect(result).toBe('Season 12');
 		});
+
+		it('should render series tokens in season folder when series context is given', () => {
+			const service = new NamingService({
+				...DEFAULT_NAMING_CONFIG,
+				seasonFolderFormat: '{Title} ({Year}) - Season {Season:00}'
+			});
+			const result = service.generateSeasonFolderName(1, {
+				title: 'Breaking Bad',
+				year: 2008,
+				tvdbId: 81189
+			});
+			expect(result).toBe('Breaking Bad (2008) - Season 01');
+		});
+
+		it('should render media server ID tokens in season folder', () => {
+			const service = new NamingService({
+				...DEFAULT_NAMING_CONFIG,
+				seasonFolderFormat: 'Season {Season:00} {SeriesId}'
+			});
+			const result = service.generateSeasonFolderName(1, {
+				title: 'Breaking Bad',
+				year: 2008,
+				tvdbId: 81189
+			});
+			expect(result).toBe('Season 01 {tvdb-81189}');
+		});
+
+		it('should leave series tokens empty in season folder without series context', () => {
+			const service = new NamingService({
+				...DEFAULT_NAMING_CONFIG,
+				seasonFolderFormat: '{Year} - Season {Season:00}'
+			});
+			const result = service.generateSeasonFolderName(1);
+			expect(result).toBe('Season 01');
+		});
 	});
 
 	describe('Episode Naming', () => {

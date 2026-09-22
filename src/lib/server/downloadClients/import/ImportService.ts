@@ -2023,7 +2023,15 @@ export class ImportService extends EventEmitter {
 		const relativePath = this.buildEpisodeRelativePath(
 			seriesData.seasonFolder ?? true,
 			seasonNum,
-			destFileName
+			destFileName,
+			{
+				title: seriesData.title,
+				originalTitle: seriesData.originalTitle ?? undefined,
+				year: seriesData.year ?? undefined,
+				tmdbId: seriesData.tmdbId,
+				tvdbId: seriesData.tvdbId ?? undefined,
+				imdbId: seriesData.imdbId ?? undefined
+			}
 		);
 		const destPath = join(seriesFolder, relativePath);
 
@@ -2851,17 +2859,18 @@ export class ImportService extends EventEmitter {
 		return new NamingService(config);
 	}
 
-	private buildSeasonFolderName(seasonNumber: number): string {
-		return this.getNamingService().generateSeasonFolderName(seasonNumber);
+	private buildSeasonFolderName(seasonNumber: number, series?: Partial<MediaNamingInfo>): string {
+		return this.getNamingService().generateSeasonFolderName(seasonNumber, series);
 	}
 
 	private buildEpisodeRelativePath(
 		useSeasonFolders: boolean,
 		seasonNumber: number,
-		destFileName: string
+		destFileName: string,
+		series?: Partial<MediaNamingInfo>
 	): string {
 		return useSeasonFolders
-			? join(this.buildSeasonFolderName(seasonNumber), destFileName)
+			? join(this.buildSeasonFolderName(seasonNumber, series), destFileName)
 			: destFileName;
 	}
 

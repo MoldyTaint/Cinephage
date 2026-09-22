@@ -137,7 +137,7 @@ export const POST: RequestHandler = async (event) => {
 			},
 			series: {
 				folder: namingService.generateSeriesFolderName(SAMPLE_EPISODE),
-				season: namingService.generateSeasonFolderName(1)
+				season: namingService.generateSeasonFolderName(1, SAMPLE_EPISODE)
 			},
 			episode: {
 				file: namingService.generateEpisodeFileName(SAMPLE_EPISODE)
@@ -187,7 +187,7 @@ export const GET: RequestHandler = async () => {
 			},
 			series: {
 				folder: namingService.generateSeriesFolderName(SAMPLE_EPISODE),
-				season: namingService.generateSeasonFolderName(1)
+				season: namingService.generateSeasonFolderName(1, SAMPLE_EPISODE)
 			},
 			episode: {
 				file: namingService.generateEpisodeFileName(SAMPLE_EPISODE)

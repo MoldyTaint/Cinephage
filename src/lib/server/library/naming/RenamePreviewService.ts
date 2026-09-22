@@ -2438,7 +2438,10 @@ export class RenamePreviewService {
 			let newRelativePath: string;
 
 			if (useSeasonFolders) {
-				const seasonFolder = this.namingService.generateSeasonFolderName(file.seasonNumber);
+				const seasonFolder = this.namingService.generateSeasonFolderName(
+					file.seasonNumber,
+					namingInfo
+				);
 				newRelativePath = join(seasonFolder, newFileName);
 			} else {
 				newRelativePath = newFileName;
