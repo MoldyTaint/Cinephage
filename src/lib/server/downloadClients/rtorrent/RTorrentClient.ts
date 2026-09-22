@@ -549,7 +549,10 @@ export class RTorrentClient implements IDownloadClient {
 			addedOn: toDate(toNumber(createdAt)),
 			completedOn: undefined,
 			canMoveFiles: status !== 'downloading' && status !== 'seeding' && status !== 'queued',
-			canBeRemoved: status !== 'downloading'
+			// 'completed' means the torrent finished downloading and has no active
+			// transfer or upload — an actively seeding torrent is never removable
+			// (rTorrent exposes no seed-limit signals to query).
+			canBeRemoved: status === 'completed'
 		};
 	}
 

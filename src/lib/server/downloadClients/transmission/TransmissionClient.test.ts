@@ -47,7 +47,7 @@ function mockRpcAddSuccess(payloads: RpcRequestPayload[]): ReturnType<typeof vi.
 
 function mockRpcTorrentGet(
 	mockTorrent: Record<string, unknown>,
-	statusOverride?: number
+	sessionOverrides: Record<string, unknown> = {}
 ): ReturnType<typeof vi.fn> {
 	return vi.fn(async (_url: string, init?: RequestInit) => {
 		const payload = JSON.parse(String(init?.body ?? '{}')) as RpcRequestPayload;
@@ -59,7 +59,12 @@ function mockRpcTorrentGet(
 					arguments: {
 						version: '4.0.6',
 						'rpc-version': 17,
-						'download-dir': '/downloads'
+						'download-dir': '/downloads',
+						'idle-seeding-limit-enabled': false,
+						'idle-seeding-limit': 30,
+						'seed-ratio-limited': false,
+						'seed-ratio-limit': 2,
+						...sessionOverrides
 					}
 				}),
 				{ status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -67,9 +72,6 @@ function mockRpcTorrentGet(
 		}
 
 		const torrent = { ...mockTorrent };
-		if (statusOverride !== undefined) {
-			torrent.status = statusOverride;
-		}
 
 		return new Response(
 			JSON.stringify({
@@ -139,6 +141,8 @@ describe('TransmissionClient', () => {
 			name: 'test',
 			hashString: 'deadbeef',
 			percentDone: 1,
+			status: 6,
+			isFinished: true,
 			totalSize: 1000,
 			rateDownload: 0,
 			rateUpload: 0,
@@ -150,24 +154,15 @@ describe('TransmissionClient', () => {
 			secondsSeeding: 3600,
 			uploadRatio: 1.5,
 			seedRatioLimit: 2.0,
+			seedRatioMode: 1,
 			seedIdleLimit: 60,
 			seedIdleMode: 1,
 			error: 0,
 			errorString: ''
 		};
 
-		it('returns true when seeding and isFinished is true', async () => {
-			vi.stubGlobal('fetch', mockRpcTorrentGet({ ...baseTorrent, status: 6, isFinished: true }));
-
-			const client = createClient();
-			const download = await client.getDownload('deadbeef');
-
-			expect(download?.status).toBe('seeding');
-			expect(download?.canBeRemoved).toBe(true);
-		});
-
-		it('returns false when seeding and isFinished is false', async () => {
-			vi.stubGlobal('fetch', mockRpcTorrentGet({ ...baseTorrent, status: 6, isFinished: false }));
+		it('returns false while actively seeding even when isFinished is true', async () => {
+			vi.stubGlobal('fetch', mockRpcTorrentGet({ ...baseTorrent }));
 
 			const client = createClient();
 			const download = await client.getDownload('deadbeef');
@@ -176,14 +171,115 @@ describe('TransmissionClient', () => {
 			expect(download?.canBeRemoved).toBe(false);
 		});
 
-		it('returns true when completed regardless of isFinished', async () => {
-			vi.stubGlobal('fetch', mockRpcTorrentGet({ ...baseTorrent, status: 0, isFinished: false }));
+		it('returns false while seeding with limits not yet met', async () => {
+			vi.stubGlobal(
+				'fetch',
+				mockRpcTorrentGet({ ...baseTorrent, isFinished: false, secondsSeeding: 10 })
+			);
+
+			const client = createClient();
+			const download = await client.getDownload('deadbeef');
+
+			expect(download?.status).toBe('seeding');
+			expect(download?.canBeRemoved).toBe(false);
+		});
+
+		it('returns true when stopped and the per-torrent ratio limit is met', async () => {
+			vi.stubGlobal('fetch', mockRpcTorrentGet({ ...baseTorrent, status: 0, uploadRatio: 2.5 }));
 
 			const client = createClient();
 			const download = await client.getDownload('deadbeef');
 
 			expect(download?.status).toBe('completed');
 			expect(download?.canBeRemoved).toBe(true);
+		});
+
+		it('returns true when stopped and the per-torrent idle limit is met', async () => {
+			vi.stubGlobal(
+				'fetch',
+				mockRpcTorrentGet({
+					...baseTorrent,
+					status: 0,
+					uploadRatio: 0.5,
+					seedIdleLimit: 60,
+					secondsSeeding: 3600
+				})
+			);
+
+			const client = createClient();
+			const download = await client.getDownload('deadbeef');
+
+			expect(download?.status).toBe('completed');
+			expect(download?.canBeRemoved).toBe(true);
+		});
+
+		it('returns false when stopped but no seed limits are configured', async () => {
+			vi.stubGlobal(
+				'fetch',
+				mockRpcTorrentGet({
+					...baseTorrent,
+					status: 0,
+					uploadRatio: 2.5,
+					seedRatioMode: 2,
+					seedIdleMode: 2
+				})
+			);
+
+			const client = createClient();
+			const download = await client.getDownload('deadbeef');
+
+			expect(download?.status).toBe('completed');
+			expect(download?.canBeRemoved).toBe(false);
+		});
+
+		it('returns false when stopped and per-torrent limits are not met', async () => {
+			vi.stubGlobal(
+				'fetch',
+				mockRpcTorrentGet({
+					...baseTorrent,
+					status: 0,
+					uploadRatio: 1.5,
+					secondsSeeding: 10
+				})
+			);
+
+			const client = createClient();
+			const download = await client.getDownload('deadbeef');
+
+			expect(download?.status).toBe('completed');
+			expect(download?.canBeRemoved).toBe(false);
+		});
+
+		it('applies the global session ratio limit when the torrent follows global mode', async () => {
+			vi.stubGlobal(
+				'fetch',
+				mockRpcTorrentGet(
+					{ ...baseTorrent, status: 0, seedRatioMode: 0, uploadRatio: 1.5 },
+					{ 'seed-ratio-limited': true, 'seed-ratio-limit': 1 }
+				)
+			);
+
+			const client = createClient();
+			const download = await client.getDownload('deadbeef');
+
+			expect(download?.status).toBe('completed');
+			expect(download?.canBeRemoved).toBe(true);
+		});
+
+		it('ignores the global session limit when it is disabled', async () => {
+			vi.stubGlobal(
+				'fetch',
+				mockRpcTorrentGet(
+					{ ...baseTorrent, status: 0, seedRatioMode: 0, seedIdleMode: 2 },
+					{ 'seed-ratio-limited': false }
+				)
+			);
+
+			const client = createClient();
+			const download = await client.getDownload('deadbeef');
+
+			expect(download?.status).toBe('completed');
+			expect(download?.canBeRemoved).toBe(false);
 		});
 
 		it('returns false when downloading', async () => {
@@ -199,7 +295,7 @@ describe('TransmissionClient', () => {
 			expect(download?.canBeRemoved).toBe(false);
 		});
 
-		it('returns true when paused', async () => {
+		it('returns false when paused before finishing', async () => {
 			vi.stubGlobal(
 				'fetch',
 				mockRpcTorrentGet({ ...baseTorrent, status: 0, isFinished: false, percentDone: 0 })
@@ -209,7 +305,7 @@ describe('TransmissionClient', () => {
 			const download = await client.getDownload('deadbeef');
 
 			expect(download?.status).toBe('paused');
-			expect(download?.canBeRemoved).toBe(true);
+			expect(download?.canBeRemoved).toBe(false);
 		});
 	});
 });

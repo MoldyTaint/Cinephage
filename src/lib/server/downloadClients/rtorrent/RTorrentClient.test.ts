@@ -448,3 +448,127 @@ describe('RTorrentClient', () => {
 		expect(download?.contentPath).toBe(expectedPath);
 	});
 });
+
+describe('RTorrentClient canBeRemoved', () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	const hash = 'cccccccccccccccccccccccccccccccccccccccc';
+
+	function mockTorrentRpc(props: Record<string, number | string>): ReturnType<typeof vi.fn> {
+		return vi.fn(async (_url: string, init?: RequestInit) => {
+			const body = String(init?.body ?? '');
+			const method = body.match(/<methodName>([^<]+)<\/methodName>/)?.[1] ?? '';
+
+			if (method === 'd.multicall2') {
+				if (body.includes('<string>main</string>')) {
+					return new Response(xmlStringArray([hash]), { status: 200 });
+				}
+				return new Response(xmlStringArray([]), { status: 200 });
+			}
+			if (method === 'd.multicall' || method === 'download_list') {
+				return new Response(xmlStringArray([]), { status: 200 });
+			}
+
+			const value = props[method];
+			if (value !== undefined) {
+				return typeof value === 'string'
+					? new Response(xmlString(value), { status: 200 })
+					: new Response(xmlInt(value), { status: 200 });
+			}
+			if (method === 'd.name') {
+				return new Response(xmlString('test'), { status: 200 });
+			}
+			return new Response(xmlInt(0), { status: 200 });
+		});
+	}
+
+	it('is not removable while actively seeding', async () => {
+		vi.stubGlobal(
+			'fetch',
+			mockTorrentRpc({
+				'd.complete': 1,
+				'd.is_active': 1,
+				'd.up.rate': 2048,
+				'd.down.rate': 0,
+				'd.size_bytes': 1000,
+				'd.completed_bytes': 1000,
+				'd.state': 1
+			})
+		);
+
+		const client = new RTorrentClient({ host: 'localhost', port: 80, useSsl: false });
+		const download = await client.getDownload(hash);
+
+		expect(download?.status).toBe('seeding');
+		expect(download?.canBeRemoved).toBe(false);
+	});
+
+	it('is removable once finished and fully idle', async () => {
+		vi.stubGlobal(
+			'fetch',
+			mockTorrentRpc({
+				'd.complete': 1,
+				'd.is_active': 0,
+				'd.up.rate': 0,
+				'd.down.rate': 0,
+				'd.size_bytes': 1000,
+				'd.completed_bytes': 1000,
+				'd.state': 0
+			})
+		);
+
+		const client = new RTorrentClient({ host: 'localhost', port: 80, useSsl: false });
+		const download = await client.getDownload(hash);
+
+		expect(download?.status).toBe('completed');
+		expect(download?.canBeRemoved).toBe(true);
+	});
+
+	it('is not removable while downloading', async () => {
+		vi.stubGlobal(
+			'fetch',
+			mockTorrentRpc({
+				'd.complete': 0,
+				'd.is_active': 1,
+				'd.up.rate': 0,
+				'd.down.rate': 1024,
+				'd.size_bytes': 1000,
+				'd.completed_bytes': 500,
+				'd.state': 1
+			})
+		);
+
+		const client = new RTorrentClient({ host: 'localhost', port: 80, useSsl: false });
+		const download = await client.getDownload(hash);
+
+		expect(download?.status).toBe('downloading');
+		expect(download?.canBeRemoved).toBe(false);
+	});
+
+	it('is not removable when paused before finishing', async () => {
+		vi.stubGlobal(
+			'fetch',
+			mockTorrentRpc({
+				'd.complete': 0,
+				'd.is_active': 0,
+				'd.up.rate': 0,
+				'd.down.rate': 0,
+				'd.size_bytes': 1000,
+				'd.completed_bytes': 0,
+				'd.state': 0
+			})
+		);
+
+		const client = new RTorrentClient({ host: 'localhost', port: 80, useSsl: false });
+		const download = await client.getDownload(hash);
+
+		expect(download?.status).toBe('paused');
+		expect(download?.canBeRemoved).toBe(false);
+	});
+});
