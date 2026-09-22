@@ -36,6 +36,8 @@ export interface DownloadClientFormState {
 	olderPriority: DownloadPriority;
 	initialState: DownloadInitialState;
 	sequentialDownload: boolean;
+	seedRatioLimit?: string;
+	seedTimeLimit?: string;
 	downloadPathLocal: string;
 	downloadPathRemote: string;
 	tempPathLocal: string;
@@ -109,8 +111,11 @@ export function serializeDownloadClientForm(
 		recentPriority: formState.recentPriority,
 		olderPriority: formState.olderPriority,
 		initialState: formState.initialState,
-		seedRatioLimit: null,
-		seedTimeLimit: null,
+		// Seeding-goal fields: blank means "no limit pushed". removeAfterImport
+		// defaults to removing (backfilled behavior) when untouched.
+		seedRatioLimit: (formState.seedRatioLimit ?? '').trim() || null,
+		seedTimeLimit: (formState.seedTimeLimit ?? '').trim() ? Number(formState.seedTimeLimit) : null,
+		removeAfterImport: formState.removeAfterImport ?? true,
 		...(formState.implementation === 'qbittorrent'
 			? { sequentialDownload: formState.sequentialDownload }
 			: {}),

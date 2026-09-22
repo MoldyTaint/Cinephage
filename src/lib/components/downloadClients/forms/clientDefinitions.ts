@@ -53,7 +53,8 @@ export const clientDefinitions: DownloadClientDefinition[] = [
 		protocol: 'torrent',
 		supportsCategories: false,
 		supportsPriority: false,
-		supportsSeedingLimits: false
+		// aria2 honors seed-time goals at add time (seed-time option).
+		supportsSeedingLimits: true
 	},
 	// Usenet clients
 	{

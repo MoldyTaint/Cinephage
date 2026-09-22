@@ -57,7 +57,8 @@ function makeClient(overrides: Partial<DownloadClient> = {}): DownloadClient {
 		useSsl: false,
 		hasPassword: false,
 		hasApiToken: false,
-		removeAfterImport: false,
+		// Matches the migration backfill: existing clients keep auto-removal.
+		removeAfterImport: true,
 		allowMovies: true,
 		allowTv: true,
 		movieCategory: 'movies',
@@ -197,6 +198,16 @@ describe('removeCompletedDownloads', () => {
 
 		expect(instance.removeDownload).toHaveBeenCalledWith('deadbeef', false);
 		expect(await rowExists(row.id)).toBe(false);
+	});
+
+	it('keeps the row and torrent when the client policy disables removal', async () => {
+		const row = await insertQueueRow();
+		const instance = makeInstance(makeDownload({ status: 'completed', canBeRemoved: true }));
+
+		await callRemoveCompleted(makeClient({ removeAfterImport: false }), instance);
+
+		expect(instance.removeDownload).not.toHaveBeenCalled();
+		expect(await rowExists(row.id)).toBe(true);
 	});
 
 	it('leaves rows for clients that are not enabled', async () => {

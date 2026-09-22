@@ -14,6 +14,9 @@
 		olderPriority: 'normal' | 'high' | 'force';
 		initialState: 'start' | 'pause' | 'force';
 		sequentialDownload: boolean;
+		removeAfterImport: boolean;
+		seedRatioLimit: string;
+		seedTimeLimit: string;
 		downloadPathLocal: string;
 		downloadPathRemote: string;
 		tempPathLocal: string;
@@ -38,6 +41,9 @@
 		olderPriority = $bindable(),
 		initialState = $bindable(),
 		sequentialDownload = $bindable(),
+		removeAfterImport = $bindable(),
+		seedRatioLimit = $bindable(),
+		seedTimeLimit = $bindable(),
 		downloadPathLocal = $bindable(),
 		downloadPathRemote = $bindable(),
 		tempPathLocal = $bindable(),
@@ -66,6 +72,9 @@
 		bind:olderPriority
 		bind:initialState
 		bind:sequentialDownload
+		bind:removeAfterImport
+		bind:seedRatioLimit
+		bind:seedTimeLimit
 		bind:downloadPathLocal
 		bind:downloadPathRemote
 		bind:tempPathLocal

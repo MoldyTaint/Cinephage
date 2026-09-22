@@ -514,7 +514,9 @@ const nonDebridDownloadClientCreateSchema = z
 		implementation: z.enum(NON_DEBRID_IMPLEMENTATIONS),
 		...nonDebridDownloadClientFields,
 		apiToken: z.never().optional(),
-		removeAfterImport: z.never().optional(),
+		// Torrent/usenet clients: removes completed downloads once seed goals
+		// are met (debrid clients use the same flag for provider-side removal).
+		removeAfterImport: z.boolean().optional(),
 		allowMovies: z.never().optional(),
 		allowTv: z.never().optional()
 	})
@@ -608,7 +610,7 @@ const nonDebridDownloadClientUpdateSchema = z
 		tempPathLocal: z.string().optional().nullable(),
 		tempPathRemote: z.string().optional().nullable(),
 		apiToken: z.never().optional(),
-		removeAfterImport: z.never().optional(),
+		removeAfterImport: z.boolean().optional(),
 		allowMovies: z.never().optional(),
 		allowTv: z.never().optional()
 	})
@@ -618,12 +620,7 @@ export const downloadClientUpdateSchema = z.union([
 	nonDebridDownloadClientUpdateSchema
 ]);
 
-const DEBRID_ONLY_UPDATE_FIELDS = [
-	'apiToken',
-	'removeAfterImport',
-	'allowMovies',
-	'allowTv'
-] as const;
+const DEBRID_ONLY_UPDATE_FIELDS = ['apiToken', 'allowMovies', 'allowTv'] as const;
 const NON_DEBRID_ONLY_UPDATE_FIELDS = [
 	'host',
 	'port',

@@ -1267,10 +1267,13 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			return;
 		}
 
-		// Create a map of clients for quick lookup
+		// Maps for quick lookup: the instance for client calls, and the hydrated
+		// config for the per-client removal policy.
 		const clientMap = new Map<string, IDownloadClient>();
+		const clientConfigMap = new Map<string, DownloadClient>();
 		for (const { client, instance } of enabledClients) {
 			clientMap.set(client.id, instance);
+			clientConfigMap.set(client.id, client);
 		}
 
 		for (const item of importedItems) {
@@ -1278,6 +1281,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			if (!clientInstance) {
 				continue;
 			}
+			const clientConfig = clientConfigMap.get(item.downloadClientId);
 
 			try {
 				// Check if the download still exists and can be removed
@@ -1300,8 +1304,9 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 					continue;
 				}
 
-				if (download.canBeRemoved) {
+				if (download.canBeRemoved && (clientConfig?.removeAfterImport ?? true)) {
 					// Download has met requirements (seeding limits for torrents, completed for usenet)
+					// and the client's remove-after-import policy allows removal.
 					logger.info(
 						{
 							title: item.title,
@@ -1333,6 +1338,18 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 					this.emit('queue:removed', item.id);
 					this.emitSSE('queue:removed', { id: item.id });
+				} else if (download.canBeRemoved) {
+					// Goals met, but this client's remove-after-import policy keeps
+					// the torrent in the client (user opted out of auto-removal).
+					logger.debug(
+						{
+							title: item.title,
+							hash: downloadHash,
+							ratio: download.ratio,
+							status: download.status
+						},
+						'Download met seed goals but client policy keeps it'
+					);
 				} else {
 					// Still seeding/processing, leave it alone
 					logger.debug(
