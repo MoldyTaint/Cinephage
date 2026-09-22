@@ -25,7 +25,14 @@ describe('ReleaseParser', () => {
 				"Director's Cut"
 			],
 			['Aquaman (2018-Imax)', 'Aquaman', 2018, 'IMAX'],
-			['Alien (1979-Theatrical Cut)', 'Alien', 1979, 'Theatrical']
+			['Alien (1979-Theatrical Cut)', 'Alien', 1979, 'Theatrical'],
+			['Se7en (1995 Remastered)', 'Se7en', 1995, 'Remastered'],
+			[
+				"Straight Outta Compton (2015 Director's Cut)",
+				'Straight Outta Compton',
+				2015,
+				"Director's Cut"
+			]
 		])('parses year and edition from %s', (filename, cleanTitle, year, edition) => {
 			const result = parseRelease(filename);
 			expect(result.cleanTitle).toBe(cleanTitle);

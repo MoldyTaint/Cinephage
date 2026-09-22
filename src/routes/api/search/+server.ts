@@ -7,6 +7,7 @@ import {
 	expandCategoriesForClassification
 } from '$lib/server/indexers/types';
 import { searchQuerySchema } from '$lib/validation/schemas';
+import { extractSearchYear } from '$lib/utils/search-query.js';
 import { qualityFilter, type EnrichmentOptions } from '$lib/server/quality';
 import { createChildLogger } from '$lib/logging';
 
@@ -103,6 +104,16 @@ export const GET: RequestHandler = async ({ url }) => {
 		: (categories ?? getCategoriesForSearchType(searchType));
 	const effectiveLimit = isMultiSeasonPackTvSearch ? (limit ?? 200) : limit;
 
+	// Movie/TV queries often carry a trailing year ("Se7en (1995)"). Indexers
+	// match better with the bare title plus a separate year criterion; for
+	// basic search there is no year field, so the query is left untouched.
+	const isTypedSearch = searchType === 'movie' || searchType === 'tv';
+	const { title: strippedTitle, year: embeddedYear } = isTypedSearch
+		? extractSearchYear(q ?? '')
+		: { title: q ?? '', year: undefined };
+	const effectiveQuery = isTypedSearch ? strippedTitle : q;
+	const effectiveYear = isTypedSearch ? (year ?? embeddedYear) : year;
+
 	// Resolve language preference and global adult toggle from settings.
 	// Explicit ?language= param takes precedence over the stored language preference.
 	// An empty or "any" language means no preference (all alternate titles used,
@@ -133,26 +144,26 @@ export const GET: RequestHandler = async ({ url }) => {
 	if (searchType === 'movie') {
 		criteria = {
 			searchType: 'movie',
-			query: q,
+			query: effectiveQuery ?? '',
 			categories: effectiveCategories.length > 0 ? effectiveCategories : undefined,
 			indexerIds: indexers,
 			limit: effectiveLimit,
 			imdbId,
 			tmdbId,
-			year,
+			year: effectiveYear,
 			language: effectiveLanguage
 		};
 	} else if (searchType === 'tv') {
 		criteria = {
 			searchType: 'tv',
-			query: q,
+			query: effectiveQuery ?? '',
 			categories: effectiveCategories.length > 0 ? effectiveCategories : undefined,
 			indexerIds: indexers,
 			limit: effectiveLimit,
 			imdbId,
 			tmdbId,
 			tvdbId,
-			year,
+			year: effectiveYear,
 			season,
 			episode,
 			language: effectiveLanguage
