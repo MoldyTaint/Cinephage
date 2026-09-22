@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { randomUUID } from 'node:crypto';
 import { createChildLogger } from '$lib/logging';
 import { manualImportService } from '$lib/server/library/manual-import-service.js';
+import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 import type { ManualImportRequest } from '$lib/validation/schemas.js';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
@@ -159,6 +160,13 @@ export class ManualImportQueueService extends EventEmitter {
 						}
 					});
 				}
+
+				// Imported files change rename plans; the queue import path must feed
+				// the same invalidation event the single-import endpoint emits.
+				libraryMediaEvents.emitLibraryDataChanged({
+					source: job.request.mediaType === 'movie' ? 'movie' : 'series',
+					reason: 'manual-import'
+				});
 			}
 
 			entry.progress.status =

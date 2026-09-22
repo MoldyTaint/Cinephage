@@ -115,9 +115,17 @@ export async function getNamingTokens() {
 	return apiGet('/api/naming/tokens');
 }
 
-export async function getRenamePreview(mediaType?: string) {
+export type RenamePreviewCategory = 'willChange' | 'alreadyCorrect' | 'collisions' | 'errors';
+
+export async function getRenamePreview(
+	mediaType?: string,
+	options?: { category?: RenamePreviewCategory; limit?: number; offset?: number }
+) {
 	const params: Record<string, string> = {};
 	if (mediaType) params.mediaType = mediaType;
+	if (options?.category) params.category = options.category;
+	if (options?.limit !== undefined) params.limit = String(options.limit);
+	if (options?.offset !== undefined && options.offset > 0) params.offset = String(options.offset);
 	return apiGet('/api/rename/preview', params);
 }
 

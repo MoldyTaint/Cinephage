@@ -10,6 +10,7 @@ import {
 } from '$lib/server/crypto/backupCrypto.js';
 import { decryptDebridToken, encryptDebridToken } from '$lib/server/crypto/debridTokenCrypto.js';
 import { db } from '$lib/server/db';
+import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 import { getCookieStore } from '$lib/server/indexers/auth/CookieStore.js';
 import {
 	captchaSolverSettings,
@@ -838,6 +839,16 @@ export class ConfigurationBackupService {
 				}
 			}
 		});
+
+		if (restoredTables.includes('namingSettings')) {
+			// Rows were written directly to the DB, bypassing NamingSettingsService.
+			// Drop both its config cache and the rename-preview cache so naming
+			// previews reflect the restored formats.
+			namingSettingsService.invalidateCache();
+			const { renamePreviewCache } =
+				await import('$lib/server/library/naming/RenamePreviewCache.js');
+			renamePreviewCache.invalidateAll();
+		}
 
 		if (selectedSections.has('indexers') && decryptedSecrets.indexerCookies) {
 			const cookieStore = getCookieStore();
