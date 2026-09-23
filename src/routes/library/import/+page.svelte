@@ -21,6 +21,7 @@
 		detectMedia,
 		getLibraryStatus,
 		bulkImport,
+		getBulkImportProgress,
 		getLibraryJob,
 		type BulkImportJob
 	} from '$lib/api';
@@ -2215,6 +2216,147 @@
 		}
 	}
 
+	interface BulkJobResult {
+		success: boolean;
+		groupName?: string;
+		libraryId?: string;
+	}
+
+	interface BulkQueueProgress {
+		status: 'processing' | 'completed' | 'failed';
+		total: number;
+		completed: number;
+		failed: number;
+		results: BulkJobResult[];
+		errors: string[];
+	}
+
+	/** Mark a group imported from its queue job result; shared by the live SSE
+	 * path (one result per group:complete event) and the background poll path
+	 * (the whole results array, read once at completion). */
+	function applyBulkJobResult(
+		result: BulkJobResult | undefined,
+		groupIdMap: Record<string, string>
+	) {
+		if (!result?.success) return;
+		const groupId = groupIdMap[result.groupName ?? ''];
+		if (!groupId) return;
+		markGroupImported(groupId);
+		if (result.libraryId) {
+			importedGroupLibraryIds = { ...importedGroupLibraryIds, [groupId]: result.libraryId };
+		}
+	}
+
+	/** Shared completion handling for both the SSE-driven (foreground) and
+	 * poll-driven (background) bulk import paths. */
+	function finalizeBulkOutcome(imported: number, failed: number, errors: string[]) {
+		executeResult = null;
+		bulkImportSummary = { importedGroups: imported, failedGroups: failed };
+
+		// Collect library links from successfully imported groups
+		const collectedItems: ImportedBulkItem[] = [];
+		for (const groupId of importedGroupIds) {
+			const group = detectionGroups.find((g) => g.id === groupId);
+			if (!group) continue;
+			const state = groupReviewState[groupId];
+			if (!state?.selectedMatch) continue;
+			const match = state.selectedMatch;
+			let libraryId: string | null = null;
+			if (importedGroupLibraryIds[groupId]) {
+				// Prefer the real library ID returned by the server after import.
+				libraryId = importedGroupLibraryIds[groupId];
+			} else if (state.importTarget === 'existing' && match.inLibrary && match.libraryId) {
+				libraryId = match.libraryId;
+			}
+			const mediaTypePath = state.selectedMediaType === 'movie' ? 'movie' : 'tv';
+			const href = libraryId ? resolvePath(`/library/${mediaTypePath}/${libraryId}`) : null;
+			collectedItems.push({
+				title: match.title,
+				year: match.year ?? null,
+				mediaType: state.selectedMediaType,
+				libraryId,
+				href
+			});
+		}
+		importedBulkItems = collectedItems;
+
+		if (imported === 0 && failed > 0) {
+			toasts.error(errors[0] ?? m.toast_library_import_noGroupsImported());
+			executeError = errors[0] ?? m.toast_library_import_noGroupsImported();
+			step = 4;
+		} else if (imported > 0) {
+			if (isDirectLibraryImportContext && originLibraryLink) {
+				toasts.success(m.toast_library_import_importComplete());
+				bypassNavigationGuard = true;
+				void goto(originLibraryLink);
+				return;
+			}
+			step = 4;
+			if (failed > 0) {
+				toasts.warning(m.toast_library_import_bulkImportPartial({ imported, failed }));
+			} else {
+				toasts.success(m.toast_library_import_bulkImportSuccess({ count: imported }));
+			}
+		} else {
+			toasts.error(m.toast_library_import_noGroupsImported());
+			step = 4;
+		}
+
+		bulkProgress = null;
+	}
+
+	/**
+	 * Background bulk imports: submit to the same manual-import queue the live
+	 * flow uses, but instead of holding an SSE connection open on step 3, let
+	 * the user keep going and poll the same progress endpoint (plain GET) for
+	 * completion.
+	 */
+	async function executeBulkImportFlowBackground(
+		jobs: BulkImportJob[],
+		groupIdMap: Record<string, string>
+	) {
+		executingImport = true;
+		try {
+			const response = await bulkImport(jobs);
+			const data = response.data as { jobId: string; totalGroups: number };
+			toasts.info(m.library_import_backgroundStarted());
+			watchBulkBackgroundImport(data.jobId, groupIdMap);
+			if (isDirectLibraryImportContext && originLibraryLink) {
+				bypassNavigationGuard = true;
+				await goto(originLibraryLink);
+				return;
+			}
+			step = 4;
+		} catch (error) {
+			toasts.error(error instanceof Error ? error.message : 'Failed to start bulk import');
+		} finally {
+			executingImport = false;
+		}
+	}
+
+	function watchBulkBackgroundImport(jobId: string, groupIdMap: Record<string, string>) {
+		stopBackgroundImportPoll();
+		backgroundJobPoll = setInterval(() => {
+			void (async () => {
+				try {
+					const response = await getBulkImportProgress(jobId);
+					const progress = (response as { data?: BulkQueueProgress } | undefined)?.data;
+					if (!progress) return;
+					if (progress.status === 'completed' || progress.status === 'failed') {
+						stopBackgroundImportPoll();
+						for (const result of progress.results) {
+							applyBulkJobResult(result, groupIdMap);
+						}
+						finalizeBulkOutcome(progress.completed, progress.failed, progress.errors);
+					}
+				} catch {
+					// Transient poll errors (server restart) — keep polling; the job
+					// is durable in the queue for a grace window after completion.
+				}
+			})();
+		}, 2000);
+	}
+
 	async function executeBulkImportFlow() {
 		if (selectedImportGroupCount === 0) {
 			toasts.warning(m.toast_library_import_noSelectedItems());
@@ -2261,6 +2403,11 @@
 			return;
 		}
 
+		if (backgroundImport) {
+			await executeBulkImportFlowBackground(jobs, groupIdMap);
+			return;
+		}
+
 		executingImport = true;
 		bulkProgress = { completed: 0, failed: 0, total: jobs.length };
 		bulkCurrentGroup = null;
@@ -2279,15 +2426,7 @@
 
 			eventSource.addEventListener('group:complete', (event) => {
 				const payload = JSON.parse(event.data);
-				const groupName = payload.groupName as string;
-				const groupId = groupIdMap[groupName];
-				if (groupId) {
-					markGroupImported(groupId);
-					const realLibraryId = payload.result?.libraryId as string | undefined;
-					if (realLibraryId) {
-						importedGroupLibraryIds = { ...importedGroupLibraryIds, [groupId]: realLibraryId };
-					}
-				}
+				applyBulkJobResult(payload.result as BulkJobResult, groupIdMap);
 				bulkProgress = { ...payload.progress };
 				bulkCurrentGroup = payload.groupName;
 			});
@@ -2315,63 +2454,7 @@
 				executingImport = false;
 				bulkJobId = null;
 				bulkCurrentGroup = null;
-
-				const imported = progress.completed;
-				const failed = progress.failed;
-
-				executeResult = null;
-				bulkImportSummary = { importedGroups: imported, failedGroups: failed };
-
-				// Collect library links from successfully imported groups
-				const collectedItems: ImportedBulkItem[] = [];
-				for (const groupId of importedGroupIds) {
-					const group = detectionGroups.find((g) => g.id === groupId);
-					if (!group) continue;
-					const state = groupReviewState[groupId];
-					if (!state?.selectedMatch) continue;
-					const match = state.selectedMatch;
-					let libraryId: string | null = null;
-					if (importedGroupLibraryIds[groupId]) {
-						// Prefer the real library ID returned by the server after import.
-						libraryId = importedGroupLibraryIds[groupId];
-					} else if (state.importTarget === 'existing' && match.inLibrary && match.libraryId) {
-						libraryId = match.libraryId;
-					}
-					const mediaTypePath = state.selectedMediaType === 'movie' ? 'movie' : 'tv';
-					const href = libraryId ? resolvePath(`/library/${mediaTypePath}/${libraryId}`) : null;
-					collectedItems.push({
-						title: match.title,
-						year: match.year ?? null,
-						mediaType: state.selectedMediaType,
-						libraryId,
-						href
-					});
-				}
-				importedBulkItems = collectedItems;
-
-				if (imported === 0 && failed > 0) {
-					toasts.error(progress.errors[0] ?? m.toast_library_import_noGroupsImported());
-					executeError = progress.errors[0] ?? m.toast_library_import_noGroupsImported();
-					step = 4;
-				} else if (imported > 0) {
-					if (isDirectLibraryImportContext && originLibraryLink) {
-						toasts.success(m.toast_library_import_importComplete());
-						bypassNavigationGuard = true;
-						void goto(originLibraryLink);
-						return;
-					}
-					step = 4;
-					if (failed > 0) {
-						toasts.warning(m.toast_library_import_bulkImportPartial({ imported, failed }));
-					} else {
-						toasts.success(m.toast_library_import_bulkImportSuccess({ count: imported }));
-					}
-				} else {
-					toasts.error(m.toast_library_import_noGroupsImported());
-					step = 4;
-				}
-
-				bulkProgress = null;
+				finalizeBulkOutcome(progress.completed, progress.failed, progress.errors);
 			});
 
 			eventSource.addEventListener('progress', (event) => {
@@ -2588,6 +2671,7 @@
 	{#if step === 3 && isMultiGroupReview && detection}
 		<Step3MultiImport
 			bind:importMode={bulkImportMode}
+			bind:backgroundImport
 			{importMovieSections}
 			{importTvSections}
 			{activeImportTvSection}

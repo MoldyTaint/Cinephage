@@ -32,6 +32,7 @@ export interface QueueProgress {
 	failed: number;
 	currentGroup?: string;
 	lastResult?: ManualImportJobResult;
+	results: ManualImportJobResult[];
 	errors: string[];
 }
 
@@ -41,10 +42,13 @@ interface QueueEntry {
 	progress: QueueProgress;
 }
 
+const COMPLETED_RETENTION_MS = 5 * 60_000;
+
 export class ManualImportQueueService extends EventEmitter {
 	private static instance: ManualImportQueueService;
 	private processing = false;
 	private queue: QueueEntry[] = [];
+	private completed = new Map<string, { progress: QueueProgress; completedAt: number }>();
 
 	private constructor() {
 		super();
@@ -69,6 +73,7 @@ export class ManualImportQueueService extends EventEmitter {
 				total: jobs.length,
 				completed: 0,
 				failed: 0,
+				results: [],
 				errors: []
 			}
 		};
@@ -80,8 +85,16 @@ export class ManualImportQueueService extends EventEmitter {
 
 	getProgress(jobId: string): QueueProgress | null {
 		const entry = this.queue.find((e) => e.jobId === jobId);
-		if (!entry) return null;
-		return { ...entry.progress };
+		if (entry) return { ...entry.progress };
+		const done = this.completed.get(jobId);
+		return done ? { ...done.progress } : null;
+	}
+
+	private pruneCompleted(): void {
+		const cutoff = Date.now() - COMPLETED_RETENTION_MS;
+		for (const [jobId, entry] of this.completed) {
+			if (entry.completedAt < cutoff) this.completed.delete(jobId);
+		}
 	}
 
 	private startProcessing(): void {
@@ -124,6 +137,7 @@ export class ManualImportQueueService extends EventEmitter {
 						importedCount: result.importedCount
 					};
 					progress.lastResult = jobResult;
+					progress.results.push(jobResult);
 
 					this.emit('group:complete', {
 						jobId: entry.jobId,
@@ -141,6 +155,15 @@ export class ManualImportQueueService extends EventEmitter {
 					progress.failed++;
 					const errorMsg = error instanceof Error ? error.message : String(error);
 					progress.errors.push(errorMsg);
+
+					const jobResult: ManualImportJobResult = {
+						success: false,
+						jobId: entry.jobId,
+						groupName: progress.currentGroup,
+						error: errorMsg
+					};
+					progress.lastResult = jobResult;
+					progress.results.push(jobResult);
 
 					logger.error(
 						{ jobId: entry.jobId, groupName: progress.currentGroup, error },
@@ -183,6 +206,8 @@ export class ManualImportQueueService extends EventEmitter {
 			this.emit('batch:complete', entry.progress);
 		}
 
+		this.completed.set(entry.jobId, { progress: { ...entry.progress }, completedAt: Date.now() });
+		this.pruneCompleted();
 		this.queue.shift();
 		setImmediate(() => this.processNext());
 	}

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages.js';
-	import { Check, Loader2 } from 'lucide-svelte';
+	import { Check, Clock, Loader2 } from 'lucide-svelte';
 	import type { MediaType, DetectionGroup, DetectionSection, TvSeasonSection } from './types.js';
 
 	interface DestinationLibrary {
@@ -25,6 +25,7 @@
 		hasMultipleImportTvSeries = false,
 		importMediaFilter = $bindable('all' as QueueMediaFilter),
 		importMode = $bindable('move' as 'move' | 'copy' | 'symlink'),
+		backgroundImport = $bindable(false),
 		bulkDestinationBySectionId = {},
 		selectedImportGroupCount = 0,
 		selectedNeedsInputCount = 0,
@@ -54,6 +55,7 @@
 		hasMultipleImportTvSeries: boolean;
 		importMediaFilter: QueueMediaFilter;
 		importMode: 'move' | 'copy' | 'symlink';
+		backgroundImport: boolean;
 		bulkDestinationBySectionId: Record<string, string>;
 		selectedImportGroupCount: number;
 		selectedNeedsInputCount: number;
@@ -457,6 +459,34 @@
 			</span>
 		</div>
 	{/if}
+
+	<label
+		class="flex cursor-pointer items-center justify-between gap-4 rounded-xl border p-4 transition-colors sm:p-5
+			{backgroundImport ? 'border-primary bg-primary/5' : 'border-base-300 bg-base-100'}
+			{executingImport ? 'cursor-not-allowed opacity-50' : ''}"
+	>
+		<span class="flex items-start gap-3">
+			<span
+				class="mt-0.5 rounded-lg p-2 {backgroundImport
+					? 'bg-primary/10 text-primary'
+					: 'bg-base-200 text-base-content/60'}"
+			>
+				<Clock class="h-4 w-4" />
+			</span>
+			<span>
+				<span class="block font-medium">{m.library_import_runInBackground()}</span>
+				<span class="block text-sm text-base-content/70"
+					>{m.library_import_runInBackgroundHint()}</span
+				>
+			</span>
+		</span>
+		<input
+			type="checkbox"
+			class="toggle toggle-primary"
+			bind:checked={backgroundImport}
+			disabled={executingImport}
+		/>
+	</label>
 
 	<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 		<button class="btn btn-ghost" onclick={() => onGoToStep(2)}
