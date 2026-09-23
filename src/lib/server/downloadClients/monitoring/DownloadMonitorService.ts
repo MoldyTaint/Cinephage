@@ -21,6 +21,7 @@ import {
 } from '$lib/server/db/schema';
 import { eq, and, or, inArray, not, notInArray, isNull, isNotNull, desc, sql } from 'drizzle-orm';
 import { getDownloadClientManager } from '../DownloadClientManager';
+import { sanitizeCategorySegment } from '../core/client-utils.js';
 import { mapClientPathToLocal } from './PathMapping';
 import { resolveInfoHash } from '../utils/hashUtils';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
@@ -145,7 +146,7 @@ export function buildTorrentRecoveryPath(
 	category: string
 ): string | null {
 	const normalizedBase = downloadPathLocal.replace(/\/+$/, '');
-	const normalizedCategory = category.replace(/\/+$/, '').replace(/^\//, '');
+	const normalizedCategory = sanitizeCategorySegment(category);
 	const parts = outputPath.replace(/\\/g, '/').split('/').filter(Boolean);
 	const lastComponent = parts[parts.length - 1];
 	if (!lastComponent) return null;

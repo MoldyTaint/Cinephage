@@ -126,8 +126,12 @@ describe('DelugeClient', () => {
 			const addCall = captured.find((call) => call.method === 'core.add_torrent_magnet');
 			const addOptions = addCall?.params?.[1] as Record<string, unknown>;
 			expect(addOptions.download_location).toBe('/downloads/movies');
-			expect(addOptions.label).toBe('movies');
+			// The classic label plugin has no label add-option; it must be applied
+			// via label.set_torrent after the add succeeds, not in addOptions.
+			expect(addOptions.label).toBeUndefined();
 			expect(captured.some((call) => call.method === 'label.add')).toBe(true);
+			const labelSetCall = captured.find((call) => call.method === 'label.set_torrent');
+			expect(labelSetCall?.params).toEqual(['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'movies']);
 		});
 
 		it('prefers an explicit savePath over the derived category path', async () => {

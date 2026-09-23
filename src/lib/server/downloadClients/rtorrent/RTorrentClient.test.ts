@@ -483,8 +483,81 @@ describe('RTorrentClient', () => {
 
 		expect(result).toBe(infoHash);
 		expect(loadBodies).toHaveLength(1);
-		expect(loadBodies[0]).toContain('d.directory.set=/downloads/movies');
-		expect(loadBodies[0]).toContain('d.custom1.set=movies');
+		expect(loadBodies[0]).toContain('d.directory.set=&quot;/downloads/movies&quot;');
+		expect(loadBodies[0]).toContain('d.custom1.set=&quot;movies&quot;');
+	});
+
+	it('quotes a category containing rTorrent command metacharacters', async () => {
+		// rTorrent's own command parser (not XML) treats `,` as an argument
+		// separator and `;` as a command separator within a single string;
+		// an unquoted value here can splice in a second command.
+		const infoHash = '3bd0fecad68932cb2e320d4dc19b750a36824173';
+		const loadBodies: string[] = [];
+
+		const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+			const body = String(init?.body ?? '');
+			const method = body.match(/<methodName>([^<]+)<\/methodName>/)?.[1] ?? '';
+
+			if (method === 'directory.default') {
+				return new Response(xmlString('/downloads'), { status: 200 });
+			}
+			if (method === 'd.multicall2' || method === 'd.multicall' || method === 'download_list') {
+				return new Response(xmlStringArray([]), { status: 200 });
+			}
+			if (method === 'load.start') {
+				loadBodies.push(body);
+				return new Response(xmlInt(0), { status: 200 });
+			}
+			return new Response(xmlInt(0), { status: 200 });
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		const client = new RTorrentClient({
+			host: 'localhost',
+			port: 80,
+			useSsl: false
+		});
+
+		await client.addDownload({ infoHash, category: 'movies;d.erase=' });
+
+		expect(loadBodies).toHaveLength(1);
+		// The whole value, semicolon included, stays inside one quoted argument.
+		expect(loadBodies[0]).toContain('d.custom1.set=&quot;movies;d.erase=&quot;');
+		expect(loadBodies[0]).not.toContain('d.custom1.set=movies;d.erase=');
+	});
+
+	it('escapes embedded quotes when quoting a category value', async () => {
+		const infoHash = '3bd0fecad68932cb2e320d4dc19b750a36824173';
+		const loadBodies: string[] = [];
+
+		const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+			const body = String(init?.body ?? '');
+			const method = body.match(/<methodName>([^<]+)<\/methodName>/)?.[1] ?? '';
+
+			if (method === 'directory.default') {
+				return new Response(xmlString('/downloads'), { status: 200 });
+			}
+			if (method === 'd.multicall2' || method === 'd.multicall' || method === 'download_list') {
+				return new Response(xmlStringArray([]), { status: 200 });
+			}
+			if (method === 'load.start') {
+				loadBodies.push(body);
+				return new Response(xmlInt(0), { status: 200 });
+			}
+			return new Response(xmlInt(0), { status: 200 });
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		const client = new RTorrentClient({
+			host: 'localhost',
+			port: 80,
+			useSsl: false
+		});
+
+		await client.addDownload({ infoHash, category: 'He said "hi"' });
+
+		expect(loadBodies).toHaveLength(1);
+		expect(loadBodies[0]).toContain('d.custom1.set=&quot;He said \\&quot;hi\\&quot;&quot;');
 	});
 
 	it('prefers an explicit savePath over the derived category path', async () => {
@@ -520,7 +593,7 @@ describe('RTorrentClient', () => {
 
 		expect(methodsCalled).not.toContain('directory.default');
 		expect(loadBodies).toHaveLength(1);
-		expect(loadBodies[0]).toContain('d.directory.set=/custom/path');
+		expect(loadBodies[0]).toContain('d.directory.set=&quot;/custom/path&quot;');
 	});
 });
 

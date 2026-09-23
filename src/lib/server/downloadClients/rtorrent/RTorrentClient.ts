@@ -18,6 +18,9 @@ import {
 	extractInfoHashFromMagnet,
 	parseTorrentFile
 } from '../utils/torrentParser';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 
 type RTorrentStatus = DownloadInfo['status'];
 
@@ -141,6 +144,20 @@ function escapeXml(value: string): string {
 		.replace(/>/g, '&gt;')
 		.replace(/"/g, '&quot;')
 		.replace(/'/g, '&apos;');
+}
+
+/**
+ * Quote a value for embedding inside an rTorrent command string (e.g. the
+ * extra commands ridden on `load.start`/`load.raw_start`). rTorrent's own
+ * command parser treats `,` as an argument separator and `;` as a command
+ * separator within a single string; unrelated to XML escaping, which only
+ * protects the surrounding XML-RPC envelope. Without quoting, a category or
+ * default save path containing `,`, `;`, `"`, or `\` can break the command
+ * parse or splice in a second command.
+ * https://rtorrent-docs.readthedocs.io/en/latest/cmd-ref.html
+ */
+function quoteRtorrentArg(value: string): string {
+	return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 export class RTorrentClient implements IDownloadClient {
@@ -647,17 +664,21 @@ export class RTorrentClient implements IDownloadClient {
 		if (!effectiveSavePath && options.category?.trim()) {
 			try {
 				effectiveSavePath = joinCategoryPath(await this.getDefaultSavePath(), options.category);
-			} catch {
+			} catch (error) {
 				effectiveSavePath = '';
+				logger.warn(
+					{ err: error, category: options.category },
+					'[rTorrent] Failed to resolve default save path; falling back to label-only'
+				);
 			}
 		}
 		const normalizedCategory = options.category?.trim() || '';
 		const extraCommands: string[] = [];
 		if (effectiveSavePath) {
-			extraCommands.push(`d.directory.set=${effectiveSavePath}`);
+			extraCommands.push(`d.directory.set=${quoteRtorrentArg(effectiveSavePath)}`);
 		}
 		if (normalizedCategory) {
-			extraCommands.push(`d.custom1.set=${normalizedCategory}`);
+			extraCommands.push(`d.custom1.set=${quoteRtorrentArg(normalizedCategory)}`);
 		}
 
 		if (options.torrentFile) {

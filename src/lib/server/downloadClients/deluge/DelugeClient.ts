@@ -18,6 +18,9 @@ import {
 	extractInfoHashFromMagnet,
 	parseTorrentFile
 } from '../utils/torrentParser';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 
 interface DelugeJsonError {
 	code?: number;
@@ -372,8 +375,12 @@ export class DelugeClient implements IDownloadClient {
 				if (derived) {
 					addOptions.download_location = derived;
 				}
-			} catch {
-				// Fall back to label-only when the default path is unavailable.
+			} catch (error) {
+				// download_location stays unset; the label still gets applied below.
+				logger.warn(
+					{ err: error, category: options.category },
+					'[Deluge] Failed to resolve default save path; falling back to label-only'
+				);
 			}
 		}
 		if (options.category?.trim()) {
@@ -385,9 +392,6 @@ export class DelugeClient implements IDownloadClient {
 		}
 		if (options.paused) {
 			addOptions.add_paused = true;
-		}
-		if (options.category?.trim()) {
-			addOptions.label = options.category.trim();
 		}
 		if (typeof options.seedRatioLimit === 'number') {
 			addOptions.stop_at_ratio = options.seedRatioLimit >= 0;
@@ -424,6 +428,17 @@ export class DelugeClient implements IDownloadClient {
 		const resultHash = (hash || infoHash || '').toLowerCase();
 		if (!resultHash) {
 			throw new Error('Deluge did not return a torrent hash');
+		}
+
+		if (options.category?.trim()) {
+			try {
+				// The classic label plugin has no label add-option; core.add_torrent_*
+				// silently ignores one. label.set_torrent after the add is the real
+				// mechanism (same one markItemAsImported already uses below).
+				await this.call<unknown>('label.set_torrent', [resultHash, options.category.trim()]);
+			} catch {
+				// Label plugin is optional; never block the download on it.
+			}
 		}
 
 		if (options.priority === 'force') {

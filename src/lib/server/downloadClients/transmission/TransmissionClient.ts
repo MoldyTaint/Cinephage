@@ -14,6 +14,9 @@ import type {
 	IDownloadClient
 } from '../core/interfaces';
 import { getBasicAuthHeader, joinCategoryPath } from '../core/client-utils.js';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 
 interface TransmissionRpcResponse<T> {
 	result: string;
@@ -458,8 +461,14 @@ export class TransmissionClient implements IDownloadClient {
 				if (derived) {
 					args['download-dir'] = derived;
 				}
-			} catch {
-				// Fall back to labels-only when the default path is unavailable.
+			} catch (error) {
+				// download-dir stays unset; the torrent lands in the client root
+				// while recovery still assumes <base>/<category>/<name>, so this
+				// degrades recovery silently unless logged.
+				logger.warn(
+					{ err: error, category: options.category },
+					'[Transmission] Failed to resolve default save path; falling back to labels-only'
+				);
 			}
 		}
 
