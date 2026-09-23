@@ -208,6 +208,31 @@ describe('ManualImportQueueService', () => {
 			expect(batchData!.failed).toBe(1);
 			expect(batchData!.status).toBe('completed');
 		});
+
+		it('records a per-job result for both the success and the failure', async () => {
+			const service = createTestService();
+			mockExecuteImport
+				.mockResolvedValueOnce(makeSuccessfulResult())
+				.mockRejectedValueOnce(new Error('boom'));
+
+			const batchPromise = waitForBatchComplete(service);
+
+			const jobId = service.submit([
+				{ request: makeImportRequest({ sourcePath: '/tmp/a.mkv' }), groupName: 'A' },
+				{ request: makeImportRequest({ sourcePath: '/tmp/b.mkv' }), groupName: 'B' }
+			]);
+
+			await batchPromise;
+
+			const progress = service.getProgress(jobId);
+			expect(progress!.results).toHaveLength(2);
+			expect(progress!.results[0]).toMatchObject({ success: true, groupName: 'A' });
+			expect(progress!.results[1]).toMatchObject({
+				success: false,
+				groupName: 'B',
+				error: 'boom'
+			});
+		});
 	});
 
 	describe('group name', () => {
@@ -227,6 +252,24 @@ describe('ManualImportQueueService', () => {
 			await batchPromise;
 
 			expect(startGroupName).toBe('Action Movies');
+		});
+	});
+
+	describe('getProgress after completion', () => {
+		it('keeps returning the final progress after the job leaves the active queue', async () => {
+			const service = createTestService();
+			mockExecuteImport.mockResolvedValue(makeSuccessfulResult());
+
+			const batchPromise = waitForBatchComplete(service);
+			const jobId = service.submit([{ request: makeImportRequest() }]);
+			await batchPromise;
+
+			// The entry is no longer being processed, but a poll-based client
+			// (background bulk import) must still be able to read the final state.
+			const progress = service.getProgress(jobId);
+			expect(progress).not.toBeNull();
+			expect(progress!.status).toBe('completed');
+			expect(progress!.completed).toBe(1);
 		});
 	});
 

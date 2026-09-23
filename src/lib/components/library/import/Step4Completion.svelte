@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
 	import * as m from '$lib/paraglide/messages.js';
-	import { Check, X, ExternalLink } from 'lucide-svelte';
+	import { Check, X, ExternalLink, Loader2 } from 'lucide-svelte';
 
 	const MAX_LIBRARY_LINKS = 8;
 
@@ -198,6 +198,27 @@
 					<button class="btn btn-ghost btn-sm" onclick={onReset}
 						>{m.library_import_importAnother()}</button
 					>
+				</div>
+			</div>
+		</div>
+	</div>
+{:else}
+	<!-- Reached step 4 with nothing to show yet: a background import (single or
+	     bulk) was just started and hasn't reported completion through its poll. -->
+	<div class="rounded-xl border border-base-300 bg-base-100 p-5">
+		<div class="flex items-start gap-3">
+			<div class="mt-0.5 rounded-full bg-primary/10 p-2">
+				<Loader2 class="h-5 w-5 animate-spin text-primary" />
+			</div>
+			<div class="min-w-0 flex-1">
+				<h2 class="text-xl font-semibold">{m.library_import_backgroundRunningHeading()}</h2>
+				<p class="mt-1 text-sm text-base-content/80">
+					{m.library_import_backgroundRunningHint()}
+				</p>
+				<div class="mt-4 flex flex-wrap gap-2">
+					<button class="btn btn-ghost btn-sm" onclick={onReset}>
+						{m.library_import_importAnother()}
+					</button>
 				</div>
 			</div>
 		</div>

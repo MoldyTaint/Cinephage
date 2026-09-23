@@ -33,6 +33,11 @@ export async function bulkImport(jobs: BulkImportJob[]) {
 	return apiPost('/api/library/import/bulk', { jobs });
 }
 
+/** Plain JSON poll of the same endpoint the wizard's SSE progress view uses. */
+export async function getBulkImportProgress(jobId: string) {
+	return apiGet('/api/library/import/progress', { jobId });
+}
+
 export async function getLibraryStatus(params?: {
 	tmdbIds?: number[];
 	tmdbId?: number;
