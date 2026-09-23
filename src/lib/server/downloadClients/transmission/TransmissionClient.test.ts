@@ -1,4 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { mockLogger } = vi.hoisted(() => ({
+	mockLogger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+}));
+vi.mock('$lib/logging', () => ({
+	logger: mockLogger,
+	createChildLogger: vi.fn(() => mockLogger)
+}));
+
 import { TransmissionClient } from './TransmissionClient';
 
 interface RpcRequestPayload {
@@ -171,6 +180,53 @@ describe('TransmissionClient', () => {
 		expect(payloads.some((payload) => payload.method === 'session-get')).toBe(false);
 		const torrentAdd = payloads.find((payload) => payload.method === 'torrent-add');
 		expect(torrentAdd?.arguments?.['download-dir']).toBe('/custom/path');
+	});
+
+	it('logs a warning and falls back to labels-only when the default save path lookup fails', async () => {
+		mockLogger.warn.mockClear();
+		const payloads: RpcRequestPayload[] = [];
+		const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+			const payload = JSON.parse(String(init?.body ?? '{}')) as RpcRequestPayload;
+			payloads.push(payload);
+
+			if (payloads.length === 1) {
+				return new Response(null, {
+					status: 409,
+					headers: { 'X-Transmission-Session-Id': 'session-1' }
+				});
+			}
+
+			if (payload.method === 'session-get') {
+				// Simulate the default-save-path lookup failing (e.g. RPC error).
+				return new Response('boom', { status: 500 });
+			}
+
+			return new Response(
+				JSON.stringify({
+					result: 'success',
+					arguments: {
+						'torrent-added': { id: 42, name: 'test', hashString: 'deadbeef' }
+					}
+				}),
+				{ status: 200, headers: { 'Content-Type': 'application/json' } }
+			);
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		const client = createClient();
+		const hash = await client.addDownload({
+			magnetUri: 'magnet:?xt=urn:btih:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+			category: 'tv'
+		});
+
+		expect(hash).toBe('deadbeef');
+		const torrentAdd = payloads.find((payload) => payload.method === 'torrent-add');
+		expect(torrentAdd?.arguments?.['download-dir']).toBeUndefined();
+		expect(torrentAdd?.arguments?.labels).toEqual(['tv']);
+		expect(mockLogger.warn).toHaveBeenCalledWith(
+			expect.objectContaining({ category: 'tv' }),
+			expect.stringContaining('Failed to resolve default save path')
+		);
 	});
 
 	describe('canBeRemoved', () => {
