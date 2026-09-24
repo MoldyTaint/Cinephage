@@ -85,6 +85,7 @@ export const PUT: RequestHandler = async (event) => {
 			baseUrl: validated.baseUrl,
 			alternateUrls: validated.alternateUrls,
 			priority: validated.priority,
+			rateLimitPerMinute: validated.rateLimitPerMinute,
 			settings,
 
 			// Search capability toggles

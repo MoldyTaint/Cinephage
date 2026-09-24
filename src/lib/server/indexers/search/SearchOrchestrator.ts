@@ -35,6 +35,7 @@ import {
 	type EpisodeFormat
 } from './SearchFormatProvider';
 import { getPersistentStatusTracker, type PersistentStatusTracker } from '../status';
+import { isQuotaExceededMessage } from '../status/types';
 import { getRateLimitRegistry, type RateLimitRegistry } from '../ratelimit';
 import { getHostRateLimiter, type HostRateLimiter } from '../ratelimit/HostRateLimiter';
 import {
@@ -1103,6 +1104,20 @@ export class SearchOrchestrator {
 				},
 				'Indexer search failed'
 			);
+
+			// The indexer telling us outright that its API quota is exhausted is
+			// authoritative, not flaky - disable it until the quota is expected to
+			// reset rather than treating it like an ordinary transient failure.
+			if (isQuotaExceededMessage(message)) {
+				await this.statusTracker.recordQuotaExceeded(indexer.id, message);
+				return {
+					indexerId: indexer.id,
+					indexerName: indexer.name,
+					results: [],
+					searchTimeMs: Date.now() - startTime,
+					error: message
+				};
+			}
 
 			// Timeouts are caused by slow upstream aggregators (Prowlarr/Jackett gathering
 			// results across many trackers) and don't mean the indexer is broken.

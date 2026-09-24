@@ -22,7 +22,7 @@ import {
 	type RetryConfig
 } from './RetryPolicy';
 import { getRateLimitRegistry, getHostRateLimiter } from '../ratelimit';
-import type { RateLimitConfig } from '../ratelimit/types';
+import { DEFAULT_RATE_LIMIT, type RateLimitConfig } from '../ratelimit/types';
 import { captchaSolverSettingsService, getCaptchaSolver } from '$lib/server/captcha';
 import { CloudflareBypassError } from '$lib/errors';
 import { CookieStore } from '../auth/CookieStore';
@@ -116,7 +116,7 @@ export class IndexerHttp {
 			baseUrl: config.baseUrl.replace(/\/$/, ''),
 			alternateUrls: config.alternateUrls?.map((u) => u.replace(/\/$/, '')) ?? [],
 			userAgent: config.userAgent ?? 'Cinephage/1.0',
-			rateLimit: config.rateLimit ?? { requests: 30, periodMs: 60_000 },
+			rateLimit: config.rateLimit ?? DEFAULT_RATE_LIMIT,
 			retry: config.retry ?? { maxRetries: 2, initialDelayMs: 1000 },
 			defaultTimeout: config.defaultTimeout ?? 30000,
 			encoding: config.encoding ?? 'UTF-8'

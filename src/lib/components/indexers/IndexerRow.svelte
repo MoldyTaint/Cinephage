@@ -128,6 +128,8 @@
 			consecutiveFailures={indexer.status?.consecutiveFailures ?? 0}
 			lastFailure={indexer.status?.lastFailure}
 			disabledUntil={indexer.status?.disabledUntil}
+			disabledReason={indexer.status?.disabledReason}
+			lastFailureMessage={indexer.status?.lastFailureMessage}
 			jackettManaged={isJackettIndexer()}
 		/>
 	</td>

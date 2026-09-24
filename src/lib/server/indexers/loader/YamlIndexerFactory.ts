@@ -144,9 +144,11 @@ export class YamlIndexerFactory implements IIndexerFactory {
 			settings: cleanSettings ?? {},
 			protocolSettings,
 			definition,
-			rateLimit: definition.requestdelay
-				? { requests: 1, periodMs: definition.requestdelay * 1000 }
-				: undefined,
+			rateLimit: config.rateLimitPerMinute
+				? { requests: config.rateLimitPerMinute, periodMs: 60_000 }
+				: definition.requestdelay
+					? { requests: 1, periodMs: definition.requestdelay * 1000 }
+					: undefined,
 			liveCapabilities,
 			additionalCategories: config.additionalCategories
 		});

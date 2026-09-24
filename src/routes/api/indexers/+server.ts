@@ -61,6 +61,7 @@ export const POST: RequestHandler = async (event) => {
 		alternateUrls: validated.alternateUrls,
 		enabled: validated.enabled,
 		priority: validated.priority,
+		rateLimitPerMinute: validated.rateLimitPerMinute ?? null,
 		settings: (validated.settings ?? {}) as Record<string, string>,
 
 		// Search capability toggles

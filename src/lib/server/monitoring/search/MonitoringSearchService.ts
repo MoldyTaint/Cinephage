@@ -180,6 +180,14 @@ export class MonitoringSearchService {
 	private readonly AUTO_GRAB_MIN_SCORE = 0;
 	private readonly MAX_CONCURRENT_SEARCHES = 10;
 
+	// Ceiling on individual per-episode indexer searches within a single
+	// series search invocation. Without this, an automatic/manual search on
+	// a large back-catalog series with hundreds of missing episodes falls
+	// through the season-pack strategy (skipped below 50% missing per
+	// season) into this per-episode loop and can fire hundreds of
+	// sequential indexer requests, exhausting a real indexer's API quota.
+	private readonly MAX_INDIVIDUAL_EPISODE_SEARCHES_PER_SERIES = 40;
+
 	// Queue statuses that can block new searches for the same media.
 	// 'paused' and 'seeding' are only blocking when import has not completed yet.
 	private readonly BLOCKING_DOWNLOAD_STATUSES = [
@@ -1267,6 +1275,7 @@ export class MonitoringSearchService {
 		}
 
 		// Strategy 2: Search for remaining individual episodes
+		let individualSearchCount = 0;
 		for (const [seasonNumber, missingEpisodes] of seasonMap) {
 			for (const episode of missingEpisodes) {
 				// Check for cancellation before each episode
@@ -1278,6 +1287,29 @@ export class MonitoringSearchService {
 				if (grabbedEpisodeIds.has(episode.id)) {
 					continue;
 				}
+
+				if (individualSearchCount >= this.MAX_INDIVIDUAL_EPISODE_SEARCHES_PER_SERIES) {
+					logger.warn(
+						{
+							seriesTitle: seriesData.title,
+							season: seasonNumber,
+							limit: this.MAX_INDIVIDUAL_EPISODE_SEARCHES_PER_SERIES
+						},
+						'[MonitoringSearch] Hit per-series individual episode search cap, remaining episodes will be picked up on a later search'
+					);
+					results.push({
+						itemId: episode.id,
+						itemType: 'episode',
+						title: `${seriesData.title} S${seasonNumber.toString().padStart(2, '0')}E${episode.episodeNumber.toString().padStart(2, '0')}`,
+						searched: false,
+						releasesFound: 0,
+						grabbed: false,
+						skipped: true,
+						skipReason: 'Per-series individual episode search cap reached for this run'
+					});
+					continue;
+				}
+				individualSearchCount++;
 
 				// Update lastSearchTime before searching
 				await db

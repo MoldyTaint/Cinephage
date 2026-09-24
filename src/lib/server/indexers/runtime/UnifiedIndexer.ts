@@ -40,7 +40,7 @@ import { SearchCapabilityChecker } from './SearchCapabilityChecker';
 import { getPersistentStatusTracker } from '../status';
 import { getRateLimitRegistry } from '../ratelimit';
 import { getHostRateLimiter, type HostRateLimiter } from '../ratelimit/HostRateLimiter';
-import type { RateLimitConfig } from '../ratelimit/types';
+import { DEFAULT_RATE_LIMIT, type RateLimitConfig } from '../ratelimit/types';
 import { createChildLogger } from '$lib/logging';
 import { IndexerHttp, createIndexerHttp } from '../http/IndexerHttp';
 import { DatabaseQueryExecutor, createDatabaseQueryExecutor } from './DatabaseQueryExecutor';
@@ -239,7 +239,7 @@ export class UnifiedIndexer implements IIndexer {
 				? record.alternateUrls
 				: definition.links.slice(1),
 			userAgent: 'Cinephage/1.0',
-			rateLimit: rateLimit ?? { requests: 30, periodMs: 60_000 },
+			rateLimit: rateLimit ?? DEFAULT_RATE_LIMIT,
 			encoding: definition.encoding,
 			defaultTimeout: definition.requesttimeout
 		});
