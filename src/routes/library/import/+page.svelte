@@ -180,10 +180,8 @@
 	let executeResult = $state<ExecuteResult | null>(null);
 	let executeError = $state<string | null>(null);
 	let bulkImportSummary = $state<{ importedGroups: number; failedGroups: number } | null>(null);
-	let bulkJobId = $state<string | null>(null);
 	let bulkProgress = $state<{ completed: number; failed: number; total: number } | null>(null);
 	let bulkCurrentGroup = $state<string | null>(null);
-	let bulkEventSource = $state<EventSource | null>(null);
 	let backgroundImport = $state(false);
 	let backgroundJobPoll: ReturnType<typeof setInterval> | null = null;
 	// Cache keyed by "{tmdbId}-S{season}" → map of episodeNumber → title
@@ -448,16 +446,14 @@
 		return selectedRootFolder.length > 0;
 	});
 	const hasActiveImportSession = $derived.by(
-		() => Boolean(detection) && (step === 2 || step === 3 || (executingImport && !bulkJobId))
+		() => Boolean(detection) && (step === 2 || step === 3 || (executingImport && !bulkProgress))
 	);
 
 	beforeNavigate((navigation) => {
 		if (bypassNavigationGuard || !hasActiveImportSession) {
-			disconnectBulkSSE();
 			return;
 		}
 		if (navigation.willUnload) {
-			disconnectBulkSSE();
 			return;
 		}
 
@@ -490,7 +486,7 @@
 			browse(startPath);
 		});
 		return () => {
-			disconnectBulkSSE();
+			stopBackgroundImportPoll();
 		};
 	});
 
@@ -1796,10 +1792,9 @@
 	}
 
 	function applyDetectionResult(detectedData: DetectionResult) {
-		disconnectBulkSSE();
+		stopBackgroundImportPoll();
 		executeResult = null;
 		bulkImportSummary = null;
-		bulkJobId = null;
 		bulkProgress = null;
 		bulkCurrentGroup = null;
 		importedGroupIds = [];
@@ -2057,7 +2052,6 @@
 	}
 
 	function resetWizard() {
-		disconnectBulkSSE();
 		stopBackgroundImportPoll();
 		backgroundImport = false;
 		preferredMediaType = routeImportContext?.mediaType ?? 'auto';
@@ -2079,7 +2073,6 @@
 		executeError = null;
 		bulkImportSummary = null;
 		importedBulkItems = [];
-		bulkJobId = null;
 		bulkProgress = null;
 		bulkCurrentGroup = null;
 		importTarget = 'new';
@@ -2157,6 +2150,9 @@
 			const data = await executeImport({ ...payload, background: true });
 			const result = data.data as { jobId: string; background: boolean };
 			toasts.info(m.library_import_backgroundStarted());
+			bulkProgress = { completed: 0, failed: 0, total: 1 };
+			bulkCurrentGroup = currentGroup.displayName;
+			bulkImportSummary = null;
 			watchBackgroundImport(result.jobId, selectedGroupId);
 			if (isDirectLibraryImportContext && originLibraryLink) {
 				bypassNavigationGuard = true;
@@ -2190,15 +2186,33 @@
 			void (async () => {
 				try {
 					const response = await getLibraryJob(jobId);
-					const status = (response as { job?: { status?: string } } | undefined)?.job?.status;
-					if (status === 'completed') {
+					const job = (
+						response as
+							| {
+									job?: {
+										status?: string;
+										metadata?: { result?: { libraryId?: string } } | null;
+									};
+							  }
+							| undefined
+					)?.job;
+					if (job?.status === 'completed') {
 						stopBackgroundImportPoll();
+						bulkProgress = { completed: 1, failed: 0, total: 1 };
+						bulkCurrentGroup = null;
+						bulkImportSummary = { importedGroups: 1, failedGroups: 0 };
 						toasts.success(m.toast_library_import_importComplete());
 						if (groupId && groupId === selectedGroupId) {
 							markGroupImported(groupId);
+							const libraryId = job.metadata?.result?.libraryId;
+							if (libraryId) {
+								importedGroupLibraryIds = { ...importedGroupLibraryIds, [groupId]: libraryId };
+							}
 						}
-					} else if (status === 'failed' || status === 'cancelled') {
+					} else if (job?.status === 'failed' || job?.status === 'cancelled') {
 						stopBackgroundImportPoll();
+						bulkProgress = null;
+						executeError = m.library_import_importFailed();
 						toasts.error(m.library_import_importFailed());
 					}
 				} catch {
@@ -2209,41 +2223,25 @@
 		}, 2000);
 	}
 
-	function disconnectBulkSSE() {
-		if (bulkEventSource) {
-			bulkEventSource.close();
-			bulkEventSource = null;
-		}
+	interface BulkImportJobRow {
+		id: string;
+		status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+		errorMessage?: string | null;
+		metadata?: {
+			groupName?: string;
+			result?: { libraryId?: string };
+		} | null;
 	}
 
-	interface BulkJobResult {
-		success: boolean;
-		groupName?: string;
-		libraryId?: string;
-	}
-
-	interface BulkQueueProgress {
-		status: 'processing' | 'completed' | 'failed';
-		total: number;
-		completed: number;
-		failed: number;
-		results: BulkJobResult[];
-		errors: string[];
-	}
-
-	/** Mark a group imported from its queue job result; shared by the live SSE
-	 * path (one result per group:complete event) and the background poll path
-	 * (the whole results array, read once at completion). */
-	function applyBulkJobResult(
-		result: BulkJobResult | undefined,
-		groupIdMap: Record<string, string>
-	) {
-		if (!result?.success) return;
-		const groupId = groupIdMap[result.groupName ?? ''];
+	/** Mark a group imported from its finished job row. */
+	function applyBulkJobResult(row: BulkImportJobRow, groupIdMap: Record<string, string>) {
+		if (row.status !== 'completed') return;
+		const groupId = groupIdMap[row.metadata?.groupName ?? ''];
 		if (!groupId) return;
 		markGroupImported(groupId);
-		if (result.libraryId) {
-			importedGroupLibraryIds = { ...importedGroupLibraryIds, [groupId]: result.libraryId };
+		const libraryId = row.metadata?.result?.libraryId;
+		if (libraryId) {
+			importedGroupLibraryIds = { ...importedGroupLibraryIds, [groupId]: libraryId };
 		}
 	}
 
@@ -2306,55 +2304,55 @@
 	}
 
 	/**
-	 * Background bulk imports: submit to the same manual-import queue the live
-	 * flow uses, but instead of holding an SSE connection open on step 3, let
-	 * the user keep going and poll the same progress endpoint (plain GET) for
-	 * completion.
+	 * Poll every manual_import job in a bulk batch (grouped by parentJobId)
+	 * until all are terminal. Used for both the foreground "stay and watch"
+	 * path (progress bar visible on step 3) and the background path (wizard
+	 * moves on immediately); they're the same mechanism, differing only
+	 * in whether `foreground` keeps `executingImport`/the progress bar active
+	 * until completion.
 	 */
-	async function executeBulkImportFlowBackground(
-		jobs: BulkImportJob[],
-		groupIdMap: Record<string, string>
+	function watchBulkImportBatch(
+		parentJobId: string,
+		groupIdMap: Record<string, string>,
+		foreground: boolean
 	) {
-		executingImport = true;
-		try {
-			const response = await bulkImport(jobs);
-			const data = response.data as { jobId: string; totalGroups: number };
-			toasts.info(m.library_import_backgroundStarted());
-			watchBulkBackgroundImport(data.jobId, groupIdMap);
-			if (isDirectLibraryImportContext && originLibraryLink) {
-				bypassNavigationGuard = true;
-				await goto(originLibraryLink);
-				return;
-			}
-			step = 4;
-		} catch (error) {
-			toasts.error(error instanceof Error ? error.message : 'Failed to start bulk import');
-		} finally {
-			executingImport = false;
-		}
-	}
-
-	function watchBulkBackgroundImport(jobId: string, groupIdMap: Record<string, string>) {
 		stopBackgroundImportPoll();
 		backgroundJobPoll = setInterval(() => {
 			void (async () => {
 				try {
-					const response = await getBulkImportProgress(jobId);
-					const progress = (response as { data?: BulkQueueProgress } | undefined)?.data;
-					if (!progress) return;
-					if (progress.status === 'completed' || progress.status === 'failed') {
-						stopBackgroundImportPoll();
-						for (const result of progress.results) {
-							applyBulkJobResult(result, groupIdMap);
-						}
-						finalizeBulkOutcome(progress.completed, progress.failed, progress.errors);
+					const response = await getBulkImportProgress(parentJobId);
+					const rows = (response as { jobs?: BulkImportJobRow[] } | undefined)?.jobs;
+					if (!rows || rows.length === 0) return;
+
+					const completed = rows.filter((r) => r.status === 'completed').length;
+					const failed = rows.filter(
+						(r) => r.status === 'failed' || r.status === 'cancelled'
+					).length;
+					const total = rows.length;
+
+					// Track progress regardless of foreground/background; if the
+					// user lands on step 4 while a background batch is still
+					// running, it shows the same live numbers instead of a static
+					// "still running" message.
+					bulkProgress = { completed, failed, total };
+					const running = rows.find((r) => r.status === 'running');
+					bulkCurrentGroup = running?.metadata?.groupName ?? null;
+
+					if (completed + failed < total) return;
+
+					stopBackgroundImportPoll();
+					for (const row of rows) {
+						applyBulkJobResult(row, groupIdMap);
 					}
+					const errors = rows.filter((r) => r.errorMessage).map((r) => r.errorMessage as string);
+					if (foreground) executingImport = false;
+					finalizeBulkOutcome(completed, failed, errors);
 				} catch {
-					// Transient poll errors (server restart) — keep polling; the job
-					// is durable in the queue for a grace window after completion.
+					// Transient poll errors (server restart) — keep polling; jobs
+					// are durable rows, not lost like the old in-memory queue.
 				}
 			})();
-		}, 2000);
+		}, 1500);
 	}
 
 	async function executeBulkImportFlow() {
@@ -2403,93 +2401,30 @@
 			return;
 		}
 
-		if (backgroundImport) {
-			await executeBulkImportFlowBackground(jobs, groupIdMap);
-			return;
-		}
-
 		executingImport = true;
 		bulkProgress = { completed: 0, failed: 0, total: jobs.length };
 		bulkCurrentGroup = null;
 
 		try {
 			const response = await bulkImport(jobs);
-			const data = response.data as { jobId: string; totalGroups: number };
-			bulkJobId = data.jobId;
+			const data = response.data as { parentJobId: string; totalGroups: number };
 
-			disconnectBulkSSE();
-
-			const eventSource = new EventSource(
-				`/api/library/import/progress?jobId=${encodeURIComponent(data.jobId)}`
-			);
-			bulkEventSource = eventSource;
-
-			eventSource.addEventListener('group:complete', (event) => {
-				const payload = JSON.parse(event.data);
-				applyBulkJobResult(payload.result as BulkJobResult, groupIdMap);
-				bulkProgress = { ...payload.progress };
-				bulkCurrentGroup = payload.groupName;
-			});
-
-			eventSource.addEventListener('group:error', (event) => {
-				const payload = JSON.parse(event.data);
-				bulkProgress = { ...payload.progress };
-				bulkCurrentGroup = payload.groupName;
-			});
-
-			eventSource.addEventListener('group:start', (event) => {
-				const payload = JSON.parse(event.data);
-				bulkCurrentGroup = payload.groupName;
-			});
-
-			eventSource.addEventListener('batch:complete', (event) => {
-				const payload = JSON.parse(event.data);
-				const progress = payload as {
-					completed: number;
-					failed: number;
-					total: number;
-					errors: string[];
-				};
-				disconnectBulkSSE();
+			if (backgroundImport) {
+				toasts.info(m.library_import_backgroundStarted());
+				watchBulkImportBatch(data.parentJobId, groupIdMap, false);
 				executingImport = false;
-				bulkJobId = null;
-				bulkCurrentGroup = null;
-				finalizeBulkOutcome(progress.completed, progress.failed, progress.errors);
-			});
-
-			eventSource.addEventListener('progress', (event) => {
-				const payload = JSON.parse(event.data);
-				bulkProgress = {
-					completed: payload.completed,
-					failed: payload.failed,
-					total: payload.total
-				};
-			});
-
-			eventSource.onerror = () => {
-				if (bulkEventSource) {
-					const imported = bulkProgress?.completed ?? 0;
-					const failed = bulkProgress?.failed ?? 0;
-					disconnectBulkSSE();
-					executingImport = false;
-					bulkJobId = null;
-					bulkCurrentGroup = null;
-
-					if (imported > 0 || failed > 0) {
-						bulkImportSummary = { importedGroups: imported, failedGroups: failed };
-						step = 4;
-						if (imported > 0) {
-							toasts.success(m.toast_library_import_bulkImportSuccess({ count: imported }));
-						}
-					} else {
-						toasts.error('Lost connection to import progress');
-					}
-					bulkProgress = null;
+				if (isDirectLibraryImportContext && originLibraryLink) {
+					bypassNavigationGuard = true;
+					await goto(originLibraryLink);
+					return;
 				}
-			};
+				step = 4;
+				return;
+			}
+
+			watchBulkImportBatch(data.parentJobId, groupIdMap, true);
 		} catch (error) {
 			executingImport = false;
-			bulkJobId = null;
 			bulkProgress = null;
 			bulkCurrentGroup = null;
 			toasts.error(error instanceof Error ? error.message : 'Failed to start bulk import');
@@ -2703,7 +2638,7 @@
 			onGoToStep={(s: number) => goToStep(s as WizardStep)}
 		/>
 
-		{#if bulkJobId && bulkProgress}
+		{#if bulkProgress}
 			{@const progressPct = bulkProgress.completed + bulkProgress.failed}
 			{@const progressRemaining = bulkProgress.total - progressPct}
 			<div class="mt-4 rounded-lg border border-primary/30 bg-base-200 p-4">
@@ -2764,6 +2699,8 @@
 			{remainingGroupCount}
 			{completionLink}
 			{originLibraryLink}
+			backgroundProgress={bulkProgress}
+			backgroundCurrentItem={bulkCurrentGroup}
 			onTryAgain={() => {
 				executeError = null;
 				step = 3;

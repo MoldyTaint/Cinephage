@@ -4,6 +4,7 @@ import { db } from '$lib/server/db';
 import { downloadClients, indexers } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { activityService } from '$lib/server/activity';
+import { libraryJobService } from '$lib/server/library/jobs/LibraryJobService.js';
 import { z } from 'zod';
 
 type ActivityTab = 'active' | 'history';
@@ -81,7 +82,11 @@ export const load: PageServerLoad = async ({ url }) => {
 		try {
 			// Lightweight COUNT query instead of a full API round-trip through the 8-query pipeline
 			const activeCount = await activityService.getActiveCount();
-			tab = activeCount > 0 ? 'active' : 'history';
+			// A running/queued background import has nothing in the download
+			// queue, so it never shows up in activeCount; check it too, or the
+			// page defaults to History while an import is actively running.
+			const hasActiveImports = libraryJobService.hasActiveJobs('manual_import');
+			tab = activeCount > 0 || hasActiveImports ? 'active' : 'history';
 		} catch {
 			tab = 'history';
 		}
@@ -91,7 +96,7 @@ export const load: PageServerLoad = async ({ url }) => {
 
 	// Fetch filter options and activity data in parallel — call the service directly
 	// instead of routing through an internal HTTP fetch
-	const [indexerRows, clientRows, activityResult, cardStats] = await Promise.all([
+	const [indexerRows, clientRows, activityResult, cardStats, importBatches] = await Promise.all([
 		db
 			.select({ id: indexers.id, name: indexers.name })
 			.from(indexers)
@@ -105,7 +110,8 @@ export const load: PageServerLoad = async ({ url }) => {
 		activityService
 			.getActivities(filters, { field: 'time', direction: 'desc' }, { limit: 50, offset: 0 }, tab)
 			.catch(() => null),
-		activityService.getQueueCardStats().catch(() => null)
+		activityService.getQueueCardStats().catch(() => null),
+		(async () => libraryJobService.summarizeManualImportBatches())().catch(() => [])
 	]);
 
 	const filterOptions: FilterOptions = {
@@ -122,6 +128,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			hasMore: activityResult.hasMore,
 			summary: activityResult.summary,
 			cardStats,
+			importBatches,
 			tab,
 			filters,
 			filterOptions
@@ -134,6 +141,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		hasMore: false,
 		summary: null,
 		cardStats,
+		importBatches,
 		tab,
 		filters,
 		filterOptions

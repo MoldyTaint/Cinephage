@@ -1,8 +1,9 @@
 import { json } from '@sveltejs/kit';
+import { randomUUID } from 'node:crypto';
 import type { RequestHandler } from './$types.js';
 import { z } from 'zod';
 import { manualImportSchema } from '$lib/validation/schemas.js';
-import { manualImportQueueService } from '$lib/server/library/ManualImportQueueService.js';
+import { libraryJobService } from '$lib/server/library/jobs/LibraryJobService.js';
 import { isPathAllowed, isPathInsideManagedRoot } from '$lib/server/filesystem/path-guard.js';
 import { MAX_BULK_IMPORT_JOBS } from '$lib/shared/bulk-import.js';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
@@ -78,15 +79,34 @@ export const POST: RequestHandler = async (event) => {
 			}
 		}
 
-		const jobId = manualImportQueueService.submit(parsed.data.jobs);
+		// Bulk imports (#565 follow-up): enqueue one durable manual_import job
+		// per group instead of the old in-memory queue, so the batch survives a
+		// restart and gets picked up by the import worker pool. parentJobId
+		// groups them for aggregate progress via GET /api/library/jobs.
+		const parentJobId = randomUUID();
+		const jobIds: string[] = [];
+		for (const job of parsed.data.jobs) {
+			const importPath = job.request.sourcePath ?? job.request.selectedFilePath;
+			const enqueued = libraryJobService.enqueueJob({
+				type: 'manual_import',
+				parentJobId,
+				dedupeKey: `manual_import:${importPath}:${job.request.tmdbId}:${job.request.libraryId ?? 'new'}`,
+				metadata: { request: job.request, groupName: job.groupName }
+			});
+			jobIds.push(enqueued.id);
+		}
 
-		logger.info({ jobId, count: parsed.data.jobs.length }, '[API] Manual import bulk submitted');
+		logger.info(
+			{ parentJobId, count: jobIds.length },
+			'[API] Manual import bulk submitted as library jobs'
+		);
 
 		return json({
 			success: true,
 			data: {
-				jobId,
-				totalGroups: parsed.data.jobs.length
+				parentJobId,
+				totalGroups: parsed.data.jobs.length,
+				jobIds
 			}
 		});
 	} catch (error) {
