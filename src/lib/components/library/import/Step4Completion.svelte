@@ -32,6 +32,8 @@
 		remainingGroupCount = 0,
 		completionLink = null,
 		originLibraryLink = null,
+		backgroundProgress = null,
+		backgroundCurrentItem = null,
 		onTryAgain = () => {},
 		onReset = () => {},
 		onContinueWithNext = () => {}
@@ -44,6 +46,8 @@
 		remainingGroupCount: number;
 		completionLink: string | null;
 		originLibraryLink: string | null;
+		backgroundProgress?: { completed: number; failed: number; total: number } | null;
+		backgroundCurrentItem?: string | null;
 		onTryAgain: () => void;
 		onReset: () => void;
 		onContinueWithNext: () => void;
@@ -204,7 +208,8 @@
 	</div>
 {:else}
 	<!-- Reached step 4 with nothing to show yet: a background import (single or
-	     bulk) was just started and hasn't reported completion through its poll. -->
+	     bulk) was just started and hasn't reported completion through its poll.
+	     Show its live progress. -->
 	<div class="rounded-xl border border-base-300 bg-base-100 p-5">
 		<div class="flex items-start gap-3">
 			<div class="mt-0.5 rounded-full bg-primary/10 p-2">
@@ -212,9 +217,27 @@
 			</div>
 			<div class="min-w-0 flex-1">
 				<h2 class="text-xl font-semibold">{m.library_import_backgroundRunningHeading()}</h2>
-				<p class="mt-1 text-sm text-base-content/80">
-					{m.library_import_backgroundRunningHint()}
-				</p>
+				{#if backgroundProgress}
+					{@const progressPct =
+						backgroundProgress.total > 0
+							? ((backgroundProgress.completed + backgroundProgress.failed) /
+									backgroundProgress.total) *
+								100
+							: 0}
+					<p class="mt-1 text-sm text-base-content/80">
+						{m.library_import_backgroundProgressCount({
+							completed: backgroundProgress.completed,
+							total: backgroundProgress.total
+						})}
+					</p>
+					{#if backgroundCurrentItem}
+						<p class="mt-0.5 truncate text-xs text-base-content/60">
+							{m.activity_importJobsCardCurrentItem({ name: backgroundCurrentItem })}
+						</p>
+					{/if}
+					<progress class="progress mt-2 w-full progress-primary" value={progressPct} max={100}
+					></progress>
+				{/if}
 				<div class="mt-4 flex flex-wrap gap-2">
 					<button class="btn btn-ghost btn-sm" onclick={onReset}>
 						{m.library_import_importAnother()}

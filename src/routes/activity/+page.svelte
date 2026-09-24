@@ -26,6 +26,7 @@
 	import ActivityFilters from '$lib/components/activity/ActivityFilters.svelte';
 	import ActiveFilters from '$lib/components/activity/ActiveFilters.svelte';
 	import QueueStatsCards from '$lib/components/activity/QueueStatsCards.svelte';
+	import LibraryImportJobsCard from '$lib/components/activity/LibraryImportJobsCard.svelte';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import {
 		isActiveActivity,
@@ -1521,6 +1522,7 @@
 			activeFilter={(filters.status ?? 'all') as QueueCardStatusFilter}
 			onFilterSelect={applyQueueCardFilter}
 		/>
+		<LibraryImportJobsCard batches={data.importBatches} />
 	{/if}
 
 	<!-- Unified Toolbar -->

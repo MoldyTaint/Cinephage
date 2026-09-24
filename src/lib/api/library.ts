@@ -11,6 +11,7 @@ import type {
 } from '$lib/validation/schemas.js';
 
 import { apiGet, apiPost, apiPatch, apiPut, apiDelete, type ApiResponse } from './client.js';
+import { MAX_BULK_IMPORT_JOBS } from '$lib/shared/bulk-import.js';
 
 export async function detectMedia(sourcePath: string, mediaType?: string, requireFile?: boolean) {
 	return apiPost('/api/library/import/detect', {
@@ -33,9 +34,9 @@ export async function bulkImport(jobs: BulkImportJob[]) {
 	return apiPost('/api/library/import/bulk', { jobs });
 }
 
-/** Plain JSON poll of the same endpoint the wizard's SSE progress view uses. */
-export async function getBulkImportProgress(jobId: string) {
-	return apiGet('/api/library/import/progress', { jobId });
+/** Poll every manual_import job belonging to a bulk-submitted parentJobId. */
+export async function getBulkImportProgress(parentJobId: string) {
+	return getLibraryJobs({ parentJobId, type: 'manual_import', limit: MAX_BULK_IMPORT_JOBS });
 }
 
 export async function getLibraryStatus(params?: {
@@ -232,8 +233,18 @@ export async function updateEpisode(
 	return apiPut(`/api/library/episodes/${episodeId}`, data);
 }
 
-export async function getLibraryJobs(params?: { limit?: number }) {
-	return apiGet('/api/library/jobs', params?.limit ? { limit: String(params.limit) } : undefined);
+export async function getLibraryJobs(params?: {
+	limit?: number;
+	type?: string;
+	status?: string;
+	parentJobId?: string;
+}) {
+	const query: Record<string, string> = {};
+	if (params?.limit) query.limit = String(params.limit);
+	if (params?.type) query.type = params.type;
+	if (params?.status) query.status = params.status;
+	if (params?.parentJobId) query.parentJobId = params.parentJobId;
+	return apiGet('/api/library/jobs', Object.keys(query).length > 0 ? query : undefined);
 }
 
 export async function getLibraryJob(id: string) {
@@ -246,4 +257,24 @@ export async function cancelLibraryJob(id: string) {
 
 export async function retryLibraryJob(id: string) {
 	return apiPost(`/api/library/jobs/${id}/retry`);
+}
+
+export async function getImportBatchSummary() {
+	return apiGet('/api/library/jobs/import-summary');
+}
+
+export async function retryImportBatch(key: string) {
+	return apiPost(`/api/library/jobs/batches/${encodeURIComponent(key)}/retry`);
+}
+
+export async function dismissImportBatch(key: string) {
+	return apiPost(`/api/library/jobs/batches/${encodeURIComponent(key)}/dismiss`);
+}
+
+export async function getImportBatchJobs(key: string) {
+	return apiGet(`/api/library/jobs/batches/${encodeURIComponent(key)}`);
+}
+
+export async function cancelImportBatch(key: string) {
+	return apiPost(`/api/library/jobs/batches/${encodeURIComponent(key)}/cancel`);
 }

@@ -768,6 +768,7 @@ const TABLE_DEFINITIONS: string[] = [
 		"metadata" text,
 		"started_at" text,
 		"completed_at" text,
+		"acknowledged_at" text,
 		"created_at" text,
 		"updated_at" text
 	)`,

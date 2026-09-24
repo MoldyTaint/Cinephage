@@ -1171,6 +1171,7 @@ export const libraryJobs = sqliteTable(
 		metadata: text('metadata', { mode: 'json' }).$type<Record<string, unknown>>(),
 		startedAt: text('started_at'),
 		completedAt: text('completed_at'),
+		acknowledgedAt: text('acknowledged_at'),
 		createdAt: text('created_at').$defaultFn(() => new Date().toISOString()),
 		updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
 	},

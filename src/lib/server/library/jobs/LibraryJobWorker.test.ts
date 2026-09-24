@@ -271,6 +271,15 @@ describe('manual_import job (issue #530)', () => {
 		expect(updated!.filesAdded).toBe(1);
 		expect(updated!.progressCurrent).toBe(1);
 		expect(updated!.progressTotal).toBe(1);
+		expect(updated!.metadata).toEqual({
+			request,
+			result: {
+				libraryId: 'movie-1',
+				mediaType: 'movie',
+				tmdbId: 155,
+				importedPaths: ['/library/movie.mkv']
+			}
+		});
 	});
 
 	it('marks the job failed when the import throws', async () => {
@@ -318,5 +327,49 @@ describe('manual_import job (issue #530)', () => {
 		const updated = libraryJobService.getJob(job.id);
 		expect(updated!.status).toBe('failed');
 		expect(updated!.errorMessage).toContain('Unsupported library job type');
+	});
+});
+
+describe('worker pool scoping (jobTypes)', () => {
+	it('a worker restricted to manual_import never claims a scan job', async () => {
+		libraryJobService.enqueueRootFolderScan('root-1');
+
+		const importWorker = new LibraryJobWorker({ jobTypes: ['manual_import'] });
+		const processed = await importWorker.processOne();
+
+		expect(processed).toBe(false);
+		expect(libraryJobService.listJobs({ type: 'scan_root_folder' })[0].status).toBe('queued');
+	});
+
+	it('a worker restricted to manual_import claims one when queued alongside a scan job', async () => {
+		libraryJobService.enqueueRootFolderScan('root-1');
+		const executeFn = vi.fn().mockResolvedValue({
+			success: true,
+			mediaType: 'movie',
+			tmdbId: 1,
+			libraryId: 'lib-1',
+			importedPath: '/x',
+			importedPaths: ['/x'],
+			importedCount: 1
+		});
+		const importJob = libraryJobService.enqueueJob({
+			type: 'manual_import',
+			dedupeKey: 'manual_import:pool-test',
+			metadata: {
+				request: { sourcePath: '/x', mediaType: 'movie', tmdbId: 1, importTarget: 'new' }
+			}
+		});
+
+		const importWorker = new LibraryJobWorker({
+			jobTypes: ['manual_import'],
+			executeManualImport: executeFn
+		});
+		const processed = await importWorker.processOne();
+
+		expect(processed).toBe(true);
+		expect(executeFn).toHaveBeenCalled();
+		expect(libraryJobService.getJob(importJob.id)?.status).toBe('completed');
+		// The scan job was never touched by this scoped worker.
+		expect(libraryJobService.listJobs({ type: 'scan_root_folder' })[0].status).toBe('queued');
 	});
 });

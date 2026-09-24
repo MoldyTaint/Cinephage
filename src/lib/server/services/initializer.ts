@@ -1,7 +1,7 @@
 import { building } from '$app/environment';
 import { createChildLogger, registerServerLogSinks } from '$lib/logging';
 import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
-import { libraryJobWorker } from '$lib/server/library/jobs/LibraryJobWorker.js';
+import { libraryJobWorker, LibraryJobWorker } from '$lib/server/library/jobs/LibraryJobWorker.js';
 import { isFFprobeAvailable, getFFprobeVersion } from '$lib/server/library/ffprobe.js';
 import { getDownloadMonitor } from '$lib/server/downloadClients/monitoring';
 import { getImportService } from '$lib/server/downloadClients/import/ImportService.js';
@@ -85,6 +85,19 @@ async function initializeServices(): Promise<void> {
 			serviceManager.register(libraryScheduler);
 
 			serviceManager.register(libraryJobWorker);
+
+			// Manual imports (single and bulk) can pile up into a long queue and
+			// don't touch diskScanService, so a few dedicated workers can safely
+			// run them alongside the primary worker without racing scan jobs.
+			const IMPORT_WORKER_POOL_SIZE = 3;
+			for (let i = 1; i <= IMPORT_WORKER_POOL_SIZE; i++) {
+				serviceManager.register(
+					new LibraryJobWorker({
+						name: `LibraryJobWorker:import-${i}`,
+						jobTypes: ['manual_import']
+					})
+				);
+			}
 
 			await getLibraryScheduler().initialize();
 			logger.info('Library scheduler initialized');

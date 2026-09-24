@@ -2,14 +2,26 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { libraryJobService } from '$lib/server/library/jobs/LibraryJobService.js';
+import { LIBRARY_JOB_TYPES, LIBRARY_JOB_STATUSES } from '$lib/server/library/jobs/types.js';
 
 export const GET: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);
 	if (authError) return authError;
 
 	const url = new URL(event.request.url);
-	const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') ?? 20)));
-	const jobs = await libraryJobService.listRecentJobs(limit);
+	const parentJobId = url.searchParams.get('parentJobId') ?? undefined;
+	// A parentJobId query is a bounded lookup of one specific bulk-import
+	// batch (up to MAX_BULK_IMPORT_JOBS groups), not a general listing: allow
+	// a much higher cap there than the default "recent activity" query.
+	const maxLimit = parentJobId ? 5000 : 100;
+	const limit = Math.min(maxLimit, Math.max(1, Number(url.searchParams.get('limit') ?? 20)));
+	const typeParam = url.searchParams.get('type');
+	const statusParam = url.searchParams.get('status');
+
+	const type = LIBRARY_JOB_TYPES.find((t) => t === typeParam);
+	const status = LIBRARY_JOB_STATUSES.find((s) => s === statusParam);
+
+	const jobs = await libraryJobService.listJobs({ type, status, parentJobId, limit });
 	return json({ success: true, jobs });
 };
 
