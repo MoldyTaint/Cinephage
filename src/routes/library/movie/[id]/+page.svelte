@@ -73,11 +73,11 @@
 		deriveSubtitleProgress(data.subtitleStatus, data.effectiveLanguageProfile?.profile ?? null)
 	);
 
-	// Back link target: the validated returnTo URL carries the exact filtered
-	// list state from the page the user navigated from (issue #515). It stays
-	// absolute — LibraryMovieHeader applies resolvePath() exactly once, and
-	// pre-resolving here relativizes it during SSR and throws (PR #518).
-	const moviesBackHref = $derived(getLibraryDetailBackHref(page.url, '/library/movies'));
+	// Back link target: the exact filtered list state from the page the user
+	// navigated from (issue #515), read from sessionStorage rather than a
+	// `?returnTo=` URL param so it doesn't show up in the address bar. Null
+	// during SSR (sessionStorage is client-only); fills in after hydration.
+	const moviesBackHref = $derived(getLibraryDetailBackHref('movies', '/library/movies'));
 
 	function describeError(error: unknown, fallback: string): string {
 		return error instanceof Error ? error.message : fallback;
