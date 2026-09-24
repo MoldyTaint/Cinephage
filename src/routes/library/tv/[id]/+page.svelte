@@ -59,11 +59,11 @@
 	const seasons = $derived(seasonsState ?? data.seasons);
 	const queueItems = $derived(queueItemsState ?? data.queueItems);
 
-	// Back link target: the validated returnTo URL carries the exact filtered
-	// list state from the page the user navigated from (issue #515). It stays
-	// absolute — LibrarySeriesHeader applies resolvePath() exactly once, and
-	// pre-resolving here relativizes it during SSR and throws (PR #518).
-	const tvBackHref = $derived(getLibraryDetailBackHref(page.url, '/library/tv'));
+	// Back link target: the exact filtered list state from the page the user
+	// navigated from (issue #515), read from sessionStorage rather than a
+	// `?returnTo=` URL param so it doesn't show up in the address bar. Null
+	// during SSR (sessionStorage is client-only); fills in after hydration.
+	const tvBackHref = $derived(getLibraryDetailBackHref('tv', '/library/tv'));
 
 	function computeSeriesEpisodeStats(seasonList: PageData['seasons']) {
 		const regularSeasons = seasonList.filter((season) => season.seasonNumber > 0);
