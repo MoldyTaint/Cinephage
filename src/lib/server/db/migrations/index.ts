@@ -151,6 +151,8 @@ import { migration_v151 } from './151-language-system-column-guards.js';
 import { migration_v152 } from './152-drop-subtitle-settings.js';
 import { migration_v153 } from './153-backfill-remove-after-import.js';
 import { migration_v154 } from './154-library-jobs-acknowledged.js';
+import { migration_v155 } from './155-indexer-rate-limit-override.js';
+import { migration_v156 } from './156-indexer-status-disabled-reason.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -304,5 +306,7 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v151,
 	migration_v152,
 	migration_v153,
-	migration_v154
+	migration_v154,
+	migration_v155,
+	migration_v156
 ];

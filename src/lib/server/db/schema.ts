@@ -209,6 +209,11 @@ export const indexers = sqliteTable(
 		// Extra Newznab category IDs the user wants included in all searches for this indexer,
 		// on top of the content-type defaults (e.g. [8000, 8010] to catch Other/Misc releases).
 		additionalCategories: text('additional_categories', { mode: 'json' }).$type<number[]>(),
+		// User override for max requests/minute sent to this indexer. Overrides the
+		// definition's `requestdelay` (if any) and the generic default. Null = use
+		// definition/default behavior. Protects real account API quotas (especially
+		// Usenet indexers) from being exceeded by a large automatic/manual search.
+		rateLimitPerMinute: integer('rate_limit_per_minute'),
 		// Timestamps
 		createdAt: text('created_at').$defaultFn(() => new Date().toISOString()),
 		updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
@@ -247,6 +252,10 @@ export const indexerStatus = sqliteTable(
 		isDisabled: integer('is_disabled', { mode: 'boolean' }).notNull().default(false),
 		disabledAt: text('disabled_at'),
 		disabledUntil: text('disabled_until'),
+		// Why isDisabled is set: 'consecutive_failures' | 'quota_exceeded' | 'manual'.
+		// Lets the UI distinguish "the indexer told us its quota is exhausted" (expected,
+		// self-clearing) from "we can't reach it" (a real health problem).
+		disabledReason: text('disabled_reason'),
 
 		// Last activity
 		lastSuccess: text('last_success'),

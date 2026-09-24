@@ -34,6 +34,11 @@ export const indexerCreateSchema = z.object({
 	/** True when upstream sync detected this indexer no longer exists; cleared on re-appearance */
 	orphaned: z.boolean().optional(),
 	priority: z.number().int().min(1).max(100).default(25),
+	/**
+	 * User override for max requests/minute sent to this indexer. Null/undefined
+	 * = use the definition's `requestdelay` (if any) or the generic default.
+	 */
+	rateLimitPerMinute: z.number().int().min(1).max(600).optional().nullable(),
 	/** User-provided settings for YAML indexers (apiKey, cookie, passkey, etc.) */
 	settings: z
 		.record(z.string(), z.union([z.string(), z.number(), z.boolean()]))

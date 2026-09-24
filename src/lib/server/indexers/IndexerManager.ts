@@ -268,6 +268,7 @@ export class IndexerManager {
 				baseUrl: config.baseUrl ?? defaultUrl,
 				alternateUrls: config.alternateUrls ?? null,
 				priority: config.priority,
+				rateLimitPerMinute: config.rateLimitPerMinute ?? null,
 				settings: config.settings as Record<string, string | number | boolean>,
 				protocolSettings: protocolSettings ?? undefined,
 
@@ -364,6 +365,8 @@ export class IndexerManager {
 		if (updates.baseUrl !== undefined) updateData.baseUrl = updates.baseUrl;
 		if (updates.alternateUrls !== undefined) updateData.alternateUrls = updates.alternateUrls;
 		if (updates.priority !== undefined) updateData.priority = updates.priority;
+		if (updates.rateLimitPerMinute !== undefined)
+			updateData.rateLimitPerMinute = updates.rateLimitPerMinute;
 		if (updates.settings !== undefined) updateData.settings = updates.settings;
 		if (updates.additionalCategories !== undefined)
 			updateData.additionalCategories = updates.additionalCategories;
@@ -706,6 +709,7 @@ export class IndexerManager {
 			baseUrl: row.baseUrl,
 			alternateUrls: row.alternateUrls ?? [],
 			priority: row.priority ?? 25,
+			rateLimitPerMinute: row.rateLimitPerMinute ?? null,
 			protocol,
 			// Note: cinephage-stream's settings JSON is no longer used as a
 			// source of truth after migration 103 — its config lives in the

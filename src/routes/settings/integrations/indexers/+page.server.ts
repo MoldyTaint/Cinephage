@@ -88,6 +88,8 @@ export const load: PageServerLoad = async () => {
 						consecutiveFailures: status.consecutiveFailures,
 						lastFailure: status.lastFailure?.toISOString(),
 						disabledUntil: status.disabledUntil?.toISOString(),
+						disabledReason: status.disabledReason,
+						lastFailureMessage: status.recentFailures[0]?.message,
 						averageResponseTime: status.avgResponseTime
 					}
 				: undefined

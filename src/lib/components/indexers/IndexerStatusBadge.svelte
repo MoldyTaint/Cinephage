@@ -8,6 +8,8 @@
 		consecutiveFailures?: number;
 		lastFailure?: string;
 		disabledUntil?: string;
+		disabledReason?: 'consecutive_failures' | 'quota_exceeded' | 'manual';
+		lastFailureMessage?: string;
 		jackettManaged?: boolean;
 	}
 
@@ -16,6 +18,8 @@
 		consecutiveFailures = 0,
 		lastFailure,
 		disabledUntil,
+		disabledReason,
+		lastFailureMessage,
 		jackettManaged = false
 	}: Props = $props();
 
@@ -33,6 +37,25 @@
 				class: 'badge-ghost',
 				icon: XCircle,
 				tooltip: m.settings_indexers_tooltip_disabled()
+			};
+		}
+		if (isAutoDisabled && disabledReason === 'quota_exceeded') {
+			const until = disabledUntil
+				? formatDisplayDate(disabledUntil, {
+						month: 'short',
+						day: 'numeric',
+						hour: 'numeric',
+						minute: '2-digit'
+					})
+				: m.common_unknown();
+			return {
+				text: m.settings_indexers_status_quotaExceeded(),
+				class: 'badge-warning',
+				icon: AlertTriangle,
+				tooltip: m.settings_indexers_tooltip_quotaExceeded({
+					until,
+					message: lastFailureMessage ?? m.common_unknown()
+				})
 			};
 		}
 		if (isAutoDisabled) {

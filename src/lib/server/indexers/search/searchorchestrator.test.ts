@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { SearchOrchestrator } from './SearchOrchestrator';
 import {
 	Category,
@@ -117,6 +117,18 @@ type OrchestratorPrivateApi = {
 			protocolFilter?: string[];
 		}
 	): { eligible: IIndexer[]; rejected: RejectedIndexer[] };
+	searchIndexer(
+		indexer: IIndexer,
+		criteria: SearchCriteria,
+		timeout: number,
+		useTieredSearch: boolean
+	): Promise<{ error?: string }>;
+	statusTracker: {
+		recordSuccess: (...args: unknown[]) => Promise<void>;
+		recordFailure: (...args: unknown[]) => Promise<void>;
+		recordQuotaExceeded: (...args: unknown[]) => Promise<void>;
+		getStatusSync: (...args: unknown[]) => { priority: number };
+	};
 };
 
 function privateApi(orchestrator: SearchOrchestrator): OrchestratorPrivateApi {
@@ -1946,5 +1958,61 @@ describe('filterOutNonVideoArtifacts — title-embedded artifact tokens (audit)'
 		const filtered = privateApi(orchestrator).filterOutNonVideoArtifacts(releases, criteria);
 
 		expect(filtered).toHaveLength(0);
+	});
+});
+
+describe('SearchOrchestrator.searchIndexer — quota-exceeded detection', () => {
+	it('disables the indexer via recordQuotaExceeded instead of the generic failure path', async () => {
+		const orchestrator = new SearchOrchestrator();
+		const api = privateApi(orchestrator);
+
+		const recordQuotaExceeded = vi.fn().mockResolvedValue(undefined);
+		const recordFailure = vi.fn().mockResolvedValue(undefined);
+		api.statusTracker = {
+			recordSuccess: vi.fn().mockResolvedValue(undefined),
+			recordFailure,
+			recordQuotaExceeded,
+			getStatusSync: vi.fn().mockReturnValue({ priority: 25 })
+		};
+
+		const indexer = buildIndexer({
+			search: async () => {
+				throw new Error('Indexer API error 500: Daily API request limit of 10000 reached');
+			}
+		});
+
+		const result = await api.searchIndexer(indexer, createTvCriteria({ query: 'x' }), 5000, false);
+
+		expect(recordQuotaExceeded).toHaveBeenCalledWith(
+			'test-indexer',
+			expect.stringContaining('Daily API request limit')
+		);
+		expect(recordFailure).not.toHaveBeenCalled();
+		expect(result.error).toContain('Daily API request limit');
+	});
+
+	it('still uses the generic failure path for ordinary errors', async () => {
+		const orchestrator = new SearchOrchestrator();
+		const api = privateApi(orchestrator);
+
+		const recordQuotaExceeded = vi.fn().mockResolvedValue(undefined);
+		const recordFailure = vi.fn().mockResolvedValue(undefined);
+		api.statusTracker = {
+			recordSuccess: vi.fn().mockResolvedValue(undefined),
+			recordFailure,
+			recordQuotaExceeded,
+			getStatusSync: vi.fn().mockReturnValue({ priority: 25 })
+		};
+
+		const indexer = buildIndexer({
+			search: async () => {
+				throw new Error('Connection refused');
+			}
+		});
+
+		await api.searchIndexer(indexer, createTvCriteria({ query: 'x' }), 5000, false);
+
+		expect(recordFailure).toHaveBeenCalledWith('test-indexer', 'Connection refused');
+		expect(recordQuotaExceeded).not.toHaveBeenCalled();
 	});
 });
