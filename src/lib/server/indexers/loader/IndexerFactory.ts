@@ -100,6 +100,7 @@ export class IndexerFactory {
 			baseUrl: config.baseUrl,
 			alternateUrls: config.alternateUrls ?? null,
 			priority: config.priority ?? 25,
+			rateLimitPerMinute: config.rateLimitPerMinute ?? null,
 			enableAutomaticSearch: config.enableAutomaticSearch,
 			enableInteractiveSearch: config.enableInteractiveSearch,
 			settings: cleanSettings,
