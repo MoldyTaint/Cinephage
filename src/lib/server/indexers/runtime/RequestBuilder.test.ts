@@ -268,6 +268,56 @@ describe('RequestBuilder category defaults', () => {
 		expect(cats).toContain('6040');
 		expect(cats).toContain('6070');
 	});
+
+	it('does not fall back to a Movies default category when scoping a TV search whose specific category ids are unmapped', () => {
+		// This indexer's categorymappings don't cover any of TV_CATEGORIES' specific
+		// ids (5000/5030/5040/...), only its own custom ids - but both its Movies and
+		// TV defaults happen to be marked `default: true`, which used to mean any
+		// unmapped search (movie OR tv) fell back to querying BOTH categories at once.
+		const definition = {
+			id: 'test-sparse-mappings',
+			name: 'Test Sparse Mappings',
+			type: 'private',
+			protocol: 'usenet',
+			links: ['https://example.test'],
+			caps: {
+				categorymappings: [
+					{ id: '2000', cat: 'Custom-Movies', default: true },
+					{ id: '5000', cat: 'Custom-TV', default: true }
+				]
+			},
+			search: {
+				paths: [
+					{
+						path: '/api',
+						method: 'get',
+						inputs: {
+							t: 'search',
+							cat: '{{ join .Categories "," }}',
+							q: '{{ .Keywords }}'
+						}
+					}
+				],
+				response: { type: 'xml' },
+				rows: { selector: 'rss channel item' },
+				fields: { title: { selector: 'title' } }
+			}
+		} as unknown as YamlDefinition;
+
+		const builder = new RequestBuilder(definition, createTemplateEngine(), createFilterEngine());
+		const criteria: SearchCriteria = {
+			searchType: 'tv',
+			query: 'Some Show',
+			season: 1,
+			episode: 1
+		};
+
+		const requests = builder.buildSearchRequests(criteria);
+		expect(requests).toHaveLength(1);
+		const cats = getParam(requests[0].url, 'cat')?.split(',') ?? [];
+		expect(cats).toEqual(['5000']);
+		expect(cats).not.toContain('2000');
+	});
 });
 
 describe('RequestBuilder supported param filtering', () => {
