@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
+import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { createChildLogger } from '$lib/logging/index.js';
 
@@ -28,10 +28,10 @@ export const POST: RequestHandler = async (event) => {
 	logger.info('[/api/library/reconcile] Starting manual reconciliation');
 
 	try {
-		await getLibraryEntityService().reconcileAll();
+		const result = await monitoringScheduler.runLibraryReconcile();
 		const durationMs = Date.now() - startedAt;
 		logger.info({ durationMs }, '[/api/library/reconcile] Completed');
-		return json({ success: true, durationMs });
+		return json({ success: true, durationMs, result });
 	} catch (err) {
 		logger.error({ err }, '[/api/library/reconcile] Failed');
 		return json(

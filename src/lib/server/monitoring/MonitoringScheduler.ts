@@ -37,7 +37,8 @@ const DEFAULT_INTERVALS = {
 	smartListRefresh: 1, // Hourly (checks which smart lists are due based on their individual intervals)
 	historyCleanup: 24, // Daily
 	libraryReconcile: 6, // Every 6 hours
-	dbBackup: 24 // Daily
+	dbBackup: 24, // Daily
+	metadataRefresh: 24 // Daily
 } as const;
 
 /**
@@ -125,8 +126,9 @@ export interface MonitoringStatus {
 		subtitleUpgrade: TaskStatus;
 		smartListRefresh: TaskStatus;
 		historyCleanup: TaskStatus;
-		libraryReconcile: TaskStatus;
+		'library-reconcile': TaskStatus;
 		dbBackup: TaskStatus;
+		'metadata-refresh': TaskStatus;
 	};
 }
 
@@ -513,6 +515,9 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			DEFAULT_INTERVALS.libraryReconcile;
 		const dbBackupInterval =
 			(await taskSettingsService.getTaskInterval('dbBackup')) ?? DEFAULT_INTERVALS.dbBackup;
+		const metadataRefreshInterval =
+			(await taskSettingsService.getTaskInterval('metadata-refresh')) ??
+			DEFAULT_INTERVALS.metadataRefresh;
 
 		this.taskIntervals.set('missing', Math.max(missingInterval, MIN_INTERVAL_HOURS));
 		this.taskIntervals.set('upgrade', Math.max(upgradeInterval, MIN_INTERVAL_HOURS));
@@ -537,6 +542,10 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			Math.max(libraryReconcileInterval, MIN_INTERVAL_HOURS)
 		);
 		this.taskIntervals.set('dbBackup', Math.max(dbBackupInterval, MIN_INTERVAL_HOURS));
+		this.taskIntervals.set(
+			'metadata-refresh',
+			Math.max(metadataRefreshInterval, MIN_INTERVAL_HOURS)
+		);
 
 		// Log scheduled intervals
 		for (const [taskType, intervalHours] of this.taskIntervals.entries()) {
@@ -1080,11 +1089,15 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 					DEFAULT_INTERVALS.smartListRefresh
 				),
 				historyCleanup: await getTaskStatus('historyCleanup', DEFAULT_INTERVALS.historyCleanup),
-				libraryReconcile: await getTaskStatus(
+				'library-reconcile': await getTaskStatus(
 					'library-reconcile',
 					DEFAULT_INTERVALS.libraryReconcile
 				),
-				dbBackup: await getTaskStatus('dbBackup', DEFAULT_INTERVALS.dbBackup)
+				dbBackup: await getTaskStatus('dbBackup', DEFAULT_INTERVALS.dbBackup),
+				'metadata-refresh': await getTaskStatus(
+					'metadata-refresh',
+					DEFAULT_INTERVALS.metadataRefresh
+				)
 			}
 		};
 	}

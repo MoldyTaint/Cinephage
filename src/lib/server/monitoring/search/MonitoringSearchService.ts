@@ -53,6 +53,7 @@ import {
 	MovieUpgradeableSpecification,
 	EpisodeUpgradeableSpecification,
 	NewEpisodeSpecification,
+	NEW_EPISODE_LOOKBACK_HOURS,
 	MovieAvailabilitySpecification,
 	MovieSearchCooldownSpecification,
 	EpisodeSearchCooldownSpecification,
@@ -2736,9 +2737,13 @@ export class MonitoringSearchService {
 				throw new TaskCancelledException('search');
 			}
 
-			// Calculate cutoff date
+			// Calculate cutoff date. This pre-filter must be at least as wide as
+			// NewEpisodeSpecification's own lookback window (NEW_EPISODE_LOOKBACK_HOURS),
+			// which is fixed and independent of intervalHours (the task's scheduling
+			// cadence) - otherwise this query could exclude episodes the spec would
+			// have accepted.
 			const cutoffDate = new Date();
-			cutoffDate.setHours(cutoffDate.getHours() - intervalHours);
+			cutoffDate.setHours(cutoffDate.getHours() - NEW_EPISODE_LOOKBACK_HOURS);
 
 			// Query recently aired episodes without files
 			// airDate is stored date-only ("YYYY-MM-DD") while the cutoff is a full
@@ -2777,9 +2782,14 @@ export class MonitoringSearchService {
 			await this.preloadSeasonEpisodeCounts(uniqueSeriesIds);
 
 			// Filter through specifications
-			const newEpisodeSpec = new NewEpisodeSpecification({ intervalHours });
+			const newEpisodeSpec = new NewEpisodeSpecification({});
 			const monitoredSpec = new EpisodeMonitoredSpecification();
 			const readOnlySpec = new EpisodeReadOnlyFolderSpecification();
+			// Cooldown is keyed off the task's own scheduling interval (how often this
+			// task runs), not the fixed air-date lookback window - without it, a
+			// frequently-scheduled task would re-query the indexer for the same
+			// not-yet-found episode on every single run for up to 48h.
+			const cooldownSpec = new EpisodeSearchCooldownSpecification(intervalHours);
 
 			for (const episode of recentEpisodes) {
 				// Check for cancellation before each episode
@@ -2832,6 +2842,19 @@ export class MonitoringSearchService {
 				if (!newEpisodeResult.accepted) {
 					continue; // Skip silently if not in time window
 				}
+
+				// Check search cooldown (prevent hammering indexers for the same
+				// not-yet-found episode across frequent runs within the lookback window)
+				const cooldownResult = await cooldownSpec.isSatisfied(context);
+				if (!cooldownResult.accepted) {
+					continue; // Skip silently - will be retried once cooldown passes
+				}
+
+				// Update lastSearchTime before searching
+				await db
+					.update(episodes)
+					.set({ lastSearchTime: new Date().toISOString() })
+					.where(eq(episodes.id, episode.id));
 
 				// Search and grab
 				const searchResult = await this.searchAndGrabEpisode(episode.series, episode);
