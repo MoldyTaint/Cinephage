@@ -25,6 +25,12 @@ export type FilterFunction = (
 function parseDateWithLayout(dateStr: string, layout: string): Date | null {
 	if (!dateStr || !layout) return null;
 
+	// date-format-parse matches literal whitespace in the layout exactly, so
+	// incidental leading/trailing whitespace or doubled spaces (common in
+	// pretty-printed RSS/XML pubDate text nodes) fails to parse even though
+	// the date is perfectly well-formed.
+	dateStr = dateStr.trim().replace(/[ \t]+/g, ' ');
+
 	// Handle special unix layouts
 	if (layout === 'unix' || layout === 'Unix') {
 		const timestamp = parseInt(dateStr, 10);
