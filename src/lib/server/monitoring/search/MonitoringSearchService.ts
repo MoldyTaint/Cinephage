@@ -1274,85 +1274,103 @@ export class MonitoringSearchService {
 			await new Promise((resolve) => setTimeout(resolve, 500));
 		}
 
-		// Strategy 2: Search for remaining individual episodes
-		let individualSearchCount = 0;
+		// Strategy 2: Search for remaining individual episodes, oldest-searched first.
+		// The per-series cap means a series with more missing episodes than the
+		// cap can't be fully covered in one run; ordering by lastSearchTime (never
+		// searched = treated as oldest) ensures each run advances through a different
+		// slice of the backlog instead of always hitting the same cap on the same
+		// low-numbered episodes and never reaching the rest.
+		const pendingEpisodes: Array<{
+			seasonNumber: number;
+			episode: typeof episodes.$inferSelect;
+		}> = [];
 		for (const [seasonNumber, missingEpisodes] of seasonMap) {
 			for (const episode of missingEpisodes) {
-				// Check for cancellation before each episode
-				if (signal?.aborted) {
-					throw new TaskCancelledException('search');
-				}
+				if (grabbedEpisodeIds.has(episode.id)) continue;
+				pendingEpisodes.push({ seasonNumber, episode });
+			}
+		}
+		pendingEpisodes.sort((a, b) => {
+			const aTime = a.episode.lastSearchTime ? new Date(a.episode.lastSearchTime).getTime() : 0;
+			const bTime = b.episode.lastSearchTime ? new Date(b.episode.lastSearchTime).getTime() : 0;
+			return aTime - bTime;
+		});
 
-				// Skip if already grabbed via pack
-				if (grabbedEpisodeIds.has(episode.id)) {
-					continue;
-				}
+		let individualSearchCount = 0;
+		for (const { seasonNumber, episode } of pendingEpisodes) {
+			// Check for cancellation before each episode
+			if (signal?.aborted) {
+				throw new TaskCancelledException('search');
+			}
 
-				if (individualSearchCount >= this.MAX_INDIVIDUAL_EPISODE_SEARCHES_PER_SERIES) {
-					logger.warn(
+			// Skip if already grabbed via a pack (strategy 1, or a sibling episode
+			// grabbing a pack earlier in this same loop)
+			if (grabbedEpisodeIds.has(episode.id)) {
+				continue;
+			}
+
+			if (individualSearchCount >= this.MAX_INDIVIDUAL_EPISODE_SEARCHES_PER_SERIES) {
+				logger.warn(
+					{
+						seriesTitle: seriesData.title,
+						season: seasonNumber,
+						limit: this.MAX_INDIVIDUAL_EPISODE_SEARCHES_PER_SERIES
+					},
+					'[MonitoringSearch] Hit per-series individual episode search cap, remaining episodes will be picked up on a later search'
+				);
+				results.push({
+					itemId: episode.id,
+					itemType: 'episode',
+					title: `${seriesData.title} S${seasonNumber.toString().padStart(2, '0')}E${episode.episodeNumber.toString().padStart(2, '0')}`,
+					searched: false,
+					releasesFound: 0,
+					grabbed: false,
+					skipped: true,
+					skipReason: 'Per-series individual episode search cap reached for this run'
+				});
+				continue;
+			}
+			individualSearchCount++;
+
+			// Update lastSearchTime before searching
+			await db
+				.update(episodes)
+				.set({ lastSearchTime: new Date().toISOString() })
+				.where(eq(episodes.id, episode.id));
+
+			// Search and grab individual episode
+			// Note: searchAndGrabEpisode now includes packs in results due to filterBySeasonEpisode change
+			// Pack bonus scoring will naturally prioritize packs if they're of similar quality
+			const searchResult = await this.searchAndGrabEpisode(seriesData, episode);
+
+			// If we grabbed a pack, mark all episodes in that season as handled.
+			// Episode pointers intentionally look like packs in title shape, but only grab one episode.
+			if (searchResult.grabbed) {
+				grabbedEpisodeIds.add(episode.id);
+			}
+			if (searchResult.grabbed && searchResult.grabbedRelease) {
+				const isEpisodePointer = Boolean(parseEpisodePointerFromTitle(searchResult.grabbedRelease));
+				const parsed = parser.parse(searchResult.grabbedRelease);
+				if (!isEpisodePointer && parsed.episode?.isSeasonPack) {
+					// Mark all episodes in this season as handled
+					for (const ep of seasonMap.get(seasonNumber) ?? []) {
+						grabbedEpisodeIds.add(ep.id);
+					}
+					logger.info(
 						{
 							seriesTitle: seriesData.title,
 							season: seasonNumber,
-							limit: this.MAX_INDIVIDUAL_EPISODE_SEARCHES_PER_SERIES
+							releaseName: searchResult.grabbedRelease
 						},
-						'[MonitoringSearch] Hit per-series individual episode search cap, remaining episodes will be picked up on a later search'
+						'[MonitoringSearch] Season pack grabbed via episode search'
 					);
-					results.push({
-						itemId: episode.id,
-						itemType: 'episode',
-						title: `${seriesData.title} S${seasonNumber.toString().padStart(2, '0')}E${episode.episodeNumber.toString().padStart(2, '0')}`,
-						searched: false,
-						releasesFound: 0,
-						grabbed: false,
-						skipped: true,
-						skipReason: 'Per-series individual episode search cap reached for this run'
-					});
-					continue;
 				}
-				individualSearchCount++;
-
-				// Update lastSearchTime before searching
-				await db
-					.update(episodes)
-					.set({ lastSearchTime: new Date().toISOString() })
-					.where(eq(episodes.id, episode.id));
-
-				// Search and grab individual episode
-				// Note: searchAndGrabEpisode now includes packs in results due to filterBySeasonEpisode change
-				// Pack bonus scoring will naturally prioritize packs if they're of similar quality
-				const searchResult = await this.searchAndGrabEpisode(seriesData, episode);
-
-				// If we grabbed a pack, mark all episodes in that season as handled.
-				// Episode pointers intentionally look like packs in title shape, but only grab one episode.
-				if (searchResult.grabbed) {
-					grabbedEpisodeIds.add(episode.id);
-				}
-				if (searchResult.grabbed && searchResult.grabbedRelease) {
-					const isEpisodePointer = Boolean(
-						parseEpisodePointerFromTitle(searchResult.grabbedRelease)
-					);
-					const parsed = parser.parse(searchResult.grabbedRelease);
-					if (!isEpisodePointer && parsed.episode?.isSeasonPack) {
-						// Mark all episodes in this season as handled
-						for (const ep of missingEpisodes) {
-							grabbedEpisodeIds.add(ep.id);
-						}
-						logger.info(
-							{
-								seriesTitle: seriesData.title,
-								season: seasonNumber,
-								releaseName: searchResult.grabbedRelease
-							},
-							'[MonitoringSearch] Season pack grabbed via episode search'
-						);
-					}
-				}
-
-				results.push(searchResult);
-
-				// Rate limiting
-				await new Promise((resolve) => setTimeout(resolve, 500));
 			}
+
+			results.push(searchResult);
+
+			// Rate limiting
+			await new Promise((resolve) => setTimeout(resolve, 500));
 		}
 
 		return results;

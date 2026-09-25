@@ -6,7 +6,7 @@
  * not an arbitrary file from the same series (issue #213).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { EpisodeContext, MovieContext } from '../specifications/types.js';
 import {
 	createEpisode,
@@ -520,6 +520,77 @@ describe('MonitoringSearchService - RuTracker missing-episode behavior', () => {
 
 		expect(result.grabbed).toBe(false);
 		expect(grabReleaseSpy).not.toHaveBeenCalled();
+	});
+});
+
+describe('MonitoringSearchService - per-series individual episode search cap', () => {
+	let service: InstanceType<typeof MonitoringSearchService>;
+	let testable: TestableService;
+
+	beforeEach(() => {
+		findManyDownloadQueueMock.mockReset().mockResolvedValue([]);
+		updateEpisodeMock.mockReset().mockImplementation(() => ({
+			set: vi.fn().mockImplementation(() => ({
+				where: vi.fn().mockResolvedValue(undefined)
+			}))
+		}));
+		searchEnhancedMock.mockReset().mockResolvedValue({ releases: [], rejections: [] });
+		service = new MonitoringSearchService();
+		testable = asTestable(service);
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('prioritizes never-searched episodes over recently-searched ones when a season exceeds the cap', async () => {
+		// Season pack search only kicks in above 50% missing; keep it well below so
+		// this test exercises strategy 2 (individual episodes) directly.
+		vi.spyOn(testable, 'getSeasonEpisodeCount').mockResolvedValue(1000);
+		const searchEpisodeSpy = vi
+			.spyOn(testable, 'searchAndGrabEpisode')
+			.mockResolvedValue({
+				itemId: '',
+				itemType: 'episode',
+				searched: true,
+				releasesFound: 0,
+				grabbed: false
+			});
+
+		// 40 episodes already searched "recently", plus 5 that have never been
+		// searched. The cap (40) is smaller than the total (45), so without
+		// prioritization the never-searched ones - appended last in DB order -
+		// would never be reached.
+		const recentlySearched = Array.from({ length: 40 }, (_, i) => ({
+			id: `recent-${i}`,
+			episodeNumber: i + 1,
+			lastSearchTime: '2026-01-01T00:00:00.000Z'
+		}));
+		const neverSearched = Array.from({ length: 5 }, (_, i) => ({
+			id: `new-${i}`,
+			episodeNumber: 41 + i,
+			lastSearchTime: null
+		}));
+
+		const seriesData = { id: 'series-1', title: 'Test Show' };
+		const seasonMap = new Map([[1, [...recentlySearched, ...neverSearched]]]);
+
+		const resultPromise = testable.searchSeriesWithCascadingStrategy(seriesData, seasonMap);
+		await vi.runAllTimersAsync();
+		const results = (await resultPromise) as Array<{ itemId: string; skipped?: boolean }>;
+
+		expect(searchEpisodeSpy).toHaveBeenCalledTimes(40);
+		const searchedIds = searchEpisodeSpy.mock.calls.map((call) => (call[1] as { id: string }).id);
+		for (const ep of neverSearched) {
+			expect(searchedIds).toContain(ep.id);
+		}
+
+		const skipped = results.filter((r) => r.skipped);
+		expect(skipped).toHaveLength(5);
+		for (const s of skipped) {
+			expect(neverSearched.some((ep) => ep.id === s.itemId)).toBe(false);
+		}
 	});
 });
 
