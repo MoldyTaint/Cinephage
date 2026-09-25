@@ -163,6 +163,20 @@ const SCHEDULED_TASKS: UnifiedTaskDefinition[] = [
 		defaultIntervalHours: 24,
 		minIntervalHours: 1,
 		intervalEditable: false
+	},
+	{
+		id: 'metadata-refresh',
+		name: 'Metadata Refresh',
+		description:
+			'Refresh metadata for all movies and series from TMDB. Updates titles, overviews, posters, air dates, and other metadata that may be missing or outdated.',
+		category: 'scheduled',
+		runEndpoint: '/api/monitoring/search/metadata-refresh',
+		intervalKey: 'metadata_refresh_interval_hours',
+		defaultIntervalHours: 24,
+		// A full metadata refresh fetches TMDB per-episode across the whole library;
+		// 24h is a floor, not just a default, to keep that load sane.
+		minIntervalHours: 24,
+		intervalEditable: true
 	}
 ];
 
@@ -193,14 +207,6 @@ const MAINTENANCE_TASKS: UnifiedTaskDefinition[] = [
 			'Reprobe existing .strm files to refresh media info, excluding Streamer Profile .strm files.',
 		category: 'maintenance',
 		runEndpoint: '/api/streaming/strm/reprobe'
-	},
-	{
-		id: 'metadata-refresh',
-		name: 'Metadata Refresh',
-		description:
-			'Refresh metadata for all movies and series from TMDB. Updates titles, overviews, posters, collection data, and other metadata that may be missing or outdated.',
-		category: 'maintenance',
-		runEndpoint: '/api/monitoring/search/metadata-refresh'
 	},
 	{
 		id: 'regenerate-sidecars',

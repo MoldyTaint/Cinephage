@@ -548,15 +548,13 @@ describe('MonitoringSearchService - per-series individual episode search cap', (
 		// Season pack search only kicks in above 50% missing; keep it well below so
 		// this test exercises strategy 2 (individual episodes) directly.
 		vi.spyOn(testable, 'getSeasonEpisodeCount').mockResolvedValue(1000);
-		const searchEpisodeSpy = vi
-			.spyOn(testable, 'searchAndGrabEpisode')
-			.mockResolvedValue({
-				itemId: '',
-				itemType: 'episode',
-				searched: true,
-				releasesFound: 0,
-				grabbed: false
-			});
+		const searchEpisodeSpy = vi.spyOn(testable, 'searchAndGrabEpisode').mockResolvedValue({
+			itemId: '',
+			itemType: 'episode',
+			searched: true,
+			releasesFound: 0,
+			grabbed: false
+		});
 
 		// 40 episodes already searched "recently", plus 5 that have never been
 		// searched. The cap (40) is smaller than the total (45), so without
