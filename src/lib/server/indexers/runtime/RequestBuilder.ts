@@ -190,7 +190,18 @@ export class CategoryMapper {
 			}
 		}
 
-		return trackerIds.length > 0 ? trackerIds : this.defaultCategories;
+		if (trackerIds.length > 0) return trackerIds;
+
+		// None of the requested categories are mapped for this indexer. Falling back
+		// to every `default: true` category is wrong when they span more than one
+		// content type (e.g. a generic Movies default AND a generic TV default) - it
+		// would silently widen a TV-scoped search into also querying Movies (or vice
+		// versa). Only keep defaults whose own Newznab range matches what was
+		// actually requested; if none match either, omit the filter entirely rather
+		// than guess a wrong content type.
+		return this.defaultCategories.filter((trackerId) =>
+			newznabIds.some((id) => this.categoryMatchesParent(trackerId, id))
+		);
 	}
 
 	/**
