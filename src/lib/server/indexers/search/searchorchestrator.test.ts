@@ -98,11 +98,6 @@ type OrchestratorPrivateApi = {
 	): ReleaseResult[];
 	isSeasonOnlyTvSearch(criteria: SearchCriteria): boolean;
 	filterByIdOrTitleMatch(releases: ReleaseResult[], criteria: SearchCriteria): ReleaseResult[];
-	executeSeasonPackSupplementalSearch(
-		indexer: IIndexer,
-		criteria: SearchCriteria,
-		seenReleases: ReleaseResult[]
-	): Promise<ReleaseResult[]>;
 	filterOutNonVideoArtifacts(releases: ReleaseResult[], criteria: SearchCriteria): ReleaseResult[];
 	filterIndexers(
 		indexers: IIndexer[],
@@ -1164,48 +1159,44 @@ describe('SearchOrchestrator.filterByIdOrTitleMatch', () => {
 	});
 });
 
-describe('SearchOrchestrator.executeSeasonPackSupplementalSearch', () => {
-	const orchestrator = new SearchOrchestrator();
+describe('SearchOrchestrator.executeWithTiering - season-only searches make exactly one request', () => {
+	it('does not fire a supplemental search even when the ID search finds no season pack', async () => {
+		const orchestrator = new SearchOrchestrator();
+		const searchCalls: SearchCriteria[] = [];
 
-	it('does not duplicate the season token when the query already contains it', async () => {
-		const capturedQueries: string[] = [];
-		const indexer = buildIndexer({
-			search: async (criteria: { query?: string }) => {
-				capturedQueries.push(criteria.query ?? '');
-				return [];
+		const fakeIndexer = buildIndexer({
+			capabilities: {
+				...mockCapabilities,
+				tvSearch: {
+					available: true,
+					supportedParams: ['q', 'imdbId', 'tvdbId', 'season']
+				},
+				searchFormats: { episode: ['standard'] }
+			},
+			search: async (criteria) => {
+				searchCalls.push(criteria as SearchCriteria);
+				return [
+					createRelease({
+						guid: 'episode-1',
+						title: 'My Show S01E01 1080p WEB-DL',
+						size: 1024,
+						categories: [Category.TV]
+					})
+				];
 			}
 		});
 
 		const criteria = createTvCriteria({
-			query: 'Mr. Robot S03',
-			season: 3
+			query: 'My Show',
+			imdbId: 'tt1234567',
+			tvdbId: 123456,
+			season: 1
 		});
 
-		await privateApi(orchestrator).executeSeasonPackSupplementalSearch(indexer, criteria, []);
+		const result = await privateApi(orchestrator).executeWithTiering(fakeIndexer, criteria);
 
-		expect(capturedQueries.length).toBeGreaterThan(0);
-		for (const q of capturedQueries) {
-			expect(q.match(/S03/gi)?.length ?? 0).toBe(1);
-		}
-	});
-
-	it('appends the season token when the query lacks one', async () => {
-		const capturedQueries: string[] = [];
-		const indexer = buildIndexer({
-			search: async (criteria: { query?: string }) => {
-				capturedQueries.push(criteria.query ?? '');
-				return [];
-			}
-		});
-
-		const criteria = createTvCriteria({ query: 'Mr. Robot', season: 3 });
-
-		await privateApi(orchestrator).executeSeasonPackSupplementalSearch(indexer, criteria, []);
-
-		expect(capturedQueries.length).toBeGreaterThan(0);
-		for (const q of capturedQueries) {
-			expect(q).toContain('Mr. Robot S03');
-		}
+		expect(searchCalls).toHaveLength(1);
+		expect(result.releases).toHaveLength(1);
 	});
 });
 
@@ -1788,6 +1779,77 @@ describe('SearchOrchestrator.filterIndexers protocol filter', () => {
 		expect(result.eligible).toHaveLength(1);
 		expect(result.eligible[0].protocol).toBe('streaming');
 		expect(result.rejected).toHaveLength(0);
+	});
+});
+
+describe('SearchOrchestrator.filterIndexers respects per-indexer category restriction', () => {
+	const baseOptions = {
+		respectEnabled: false,
+		respectBackoff: false,
+		useTieredSearch: false,
+		timeout: 30000,
+		useCache: false
+	} as const;
+
+	// Natively supports both Movies and TV - the restriction below is what
+	// should narrow it, not a lack of underlying capability.
+	const bothCapabilities: IndexerCapabilities = {
+		...mockCapabilities,
+		categories: new Map([
+			[Category.MOVIES_HD, 'Movies/HD'],
+			[Category.TV_HD, 'TV/HD']
+		])
+	};
+
+	function buildRestrictedIndexer(additionalCategories: number[]): IIndexer {
+		return _createMockIndexer({
+			id: 'restricted-indexer',
+			name: 'RestrictedIndexer',
+			protocol: 'torrent',
+			capabilities: bothCapabilities as unknown as Record<string, unknown>,
+			additionalCategories,
+			enableAutomaticSearch: true,
+			enableInteractiveSearch: true
+		}) as unknown as IIndexer;
+	}
+
+	it('excludes a Movies-restricted indexer from a TV search', () => {
+		const orchestrator = new SearchOrchestrator();
+		const indexer = buildRestrictedIndexer([Category.MOVIES_HD]);
+		const criteria = createTvCriteria({ query: 'Some Show', season: 1 });
+
+		const result = privateApi(orchestrator).filterIndexers([indexer], criteria, {
+			...baseOptions,
+			searchSource: 'interactive'
+		});
+
+		expect(result.eligible).toHaveLength(0);
+	});
+
+	it('keeps the same Movies-restricted indexer eligible for a movie search', () => {
+		const orchestrator = new SearchOrchestrator();
+		const indexer = buildRestrictedIndexer([Category.MOVIES_HD]);
+		const criteria = createMovieCriteria({ query: 'Some Movie' });
+
+		const result = privateApi(orchestrator).filterIndexers([indexer], criteria, {
+			...baseOptions,
+			searchSource: 'interactive'
+		});
+
+		expect(result.eligible).toHaveLength(1);
+	});
+
+	it('does not restrict anything when no category restriction is configured', () => {
+		const orchestrator = new SearchOrchestrator();
+		const indexer = buildRestrictedIndexer([]);
+		const criteria = createTvCriteria({ query: 'Some Show', season: 1 });
+
+		const result = privateApi(orchestrator).filterIndexers([indexer], criteria, {
+			...baseOptions,
+			searchSource: 'interactive'
+		});
+
+		expect(result.eligible).toHaveLength(1);
 	});
 });
 

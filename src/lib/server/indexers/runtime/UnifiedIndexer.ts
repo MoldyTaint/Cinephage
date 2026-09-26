@@ -96,7 +96,7 @@ export class UnifiedIndexer implements IIndexer {
 	private readonly log: ReturnType<typeof createChildLogger>;
 	private readonly http: IndexerHttp;
 	private readonly hostRateLimiter: HostRateLimiter;
-	private readonly additionalCategories: number[];
+	readonly additionalCategories: number[];
 	/** True when the user explicitly configured a category restriction (even an empty/open one). */
 	private readonly categoryRestrictionEnabled: boolean;
 	private readonly dbExecutor?: DatabaseQueryExecutor;
@@ -385,7 +385,7 @@ export class UnifiedIndexer implements IIndexer {
 	 * Check if this indexer can handle the given search criteria
 	 */
 	canSearch(criteria: SearchCriteria): boolean {
-		return this.capabilityChecker.canSearch(criteria, this.capabilities);
+		return this.capabilityChecker.canSearch(criteria, this.capabilities, this.additionalCategories);
 	}
 
 	/**
