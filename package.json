@@ -97,7 +97,7 @@
 		"camoufox-js": "^0.12.0",
 		"cheerio": "^1.2.0",
 		"date-format-parse": "^0.2.7",
-		"domhandler": "^5.0.3",
+		"domhandler": "^6.0.0",
 		"dotenv": "^18.0.0",
 		"fast-xml-parser": "^5.10.1",
 		"fflate": "^0.8.3",
