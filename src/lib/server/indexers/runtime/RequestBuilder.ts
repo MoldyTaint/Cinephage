@@ -10,7 +10,7 @@ import type {
 } from '../schema/yamlDefinition';
 import { resolveCategoryId } from '../schema/yamlDefinition';
 import type { SearchCriteria } from '../types';
-import { getCategoriesForSearchType, isMovieSearch } from '../types';
+import { getCategoriesForSearchType, isMovieSearch, isTvSearch } from '../types';
 import { TemplateEngine } from '../engine/TemplateEngine';
 import { FilterEngine } from '../engine/FilterEngine';
 import { createChildLogger } from '$lib/logging';
@@ -311,6 +311,7 @@ export class RequestBuilder {
 		this.templateEngine.setVariable('.Query.Keywords', queryKeywords);
 		this.templateEngine.setVariable('.Keywords', this.applyKeywordsFilters(queryKeywords, search));
 		this.templateEngine.setVariable('.Categories', catTrackerIds);
+		this.templateEngine.setVariable('.Query.IdTokens', this.buildIdTokens(pathCriteria));
 
 		// Get search paths — filtered by content-type, not by the category restriction
 		const paths = this.getSearchPaths(search);
@@ -420,6 +421,48 @@ export class RequestBuilder {
 		// It uses criteria.preferredEpisodeFormat to determine which format to add.
 
 		return parts.join(' ');
+	}
+
+	/**
+	 * Build Prowlarr query tokens ("{ImdbId:tt0111161} {Season:1} {Episode:5}") for
+	 * the criteria's IDs.
+	 *
+	 * Prowlarr's search API ignores separate imdbId/tmdbId params and only reads
+	 * IDs embedded in the query as tokens. It also skips a tracker outright when
+	 * asked for an ID the tracker doesn't support, so only IDs confirmed by live
+	 * caps are emitted — and none at all when the supported params are unknown.
+	 * Season/episode tokens only accompany an ID; on their own they are not an
+	 * ID search. Returns '' when there is nothing to emit.
+	 */
+	private buildIdTokens(criteria: SearchCriteria): string {
+		const isMovie = isMovieSearch(criteria);
+		const isTv = isTvSearch(criteria);
+		if (!isMovie && !isTv) return '';
+		const supported = this.supportedParams.get(isMovie ? 'movie' : 'tvsearch');
+		if (!supported) return '';
+
+		const tokens: string[] = [];
+		const addToken = (param: string, token: string, value: string | number | undefined) => {
+			if (value === undefined || value === '' || !supported.includes(param)) return;
+			tokens.push(`{${token}:${value}}`);
+		};
+
+		if (criteria.imdbId) {
+			const imdbId = criteria.imdbId.startsWith('tt') ? criteria.imdbId : `tt${criteria.imdbId}`;
+			addToken('imdbid', 'ImdbId', imdbId);
+		}
+		addToken('tmdbid', 'TmdbId', criteria.tmdbId);
+		if (isTv) {
+			addToken('tvdbid', 'TvdbId', criteria.tvdbId);
+			addToken('tvmazeid', 'TvMazeId', criteria.tvMazeId);
+		}
+		if (tokens.length === 0) return '';
+
+		if (isTv) {
+			addToken('season', 'Season', criteria.season);
+			addToken('ep', 'Episode', criteria.episode);
+		}
+		return tokens.join(' ');
 	}
 
 	/**
@@ -566,9 +609,10 @@ export class RequestBuilder {
 		}
 
 		// Filter inputs by supported params (for Newznab)
-		// Uses the 't' param value to determine search mode (e.g., 'movie', 'tvsearch')
-		const searchMode = inputs['t'] || 'search';
-		const filteredInputs = this.filterBySupportedParams(inputs, searchMode);
+		// Uses the 't' param value to determine search mode (e.g., 'movie', 'tvsearch').
+		// Without a 't' param the inputs aren't Newznab params (e.g. Prowlarr's JSON
+		// API, which carries IDs as query tokens), so there is nothing to filter.
+		const filteredInputs = inputs['t'] ? this.filterBySupportedParams(inputs, inputs['t']) : inputs;
 
 		// Skip paths that have no meaningful search criteria after filtering
 		// (only standard params like t, apikey, limit, cat remain - no actual search params)
