@@ -268,7 +268,10 @@ export class NewznabCapabilitiesProvider {
 		const response = await fetch(url.toString(), {
 			headers: {
 				Accept: 'application/xml, text/xml, */*'
-			}
+			},
+			// Indexers are created lazily before a search; an unresponsive caps
+			// endpoint must not stall it indefinitely.
+			signal: AbortSignal.timeout(15_000)
 		});
 
 		if (!response.ok) {
