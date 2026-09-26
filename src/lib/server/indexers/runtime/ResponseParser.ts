@@ -73,6 +73,14 @@ export class ResponseParser {
 
 		try {
 			if (responseType === 'json') {
+				// An indexer occasionally returns HTTP 200 with an empty body (a
+				// remote-side hiccup, not a bad request - the HTTP layer already
+				// throws on any non-2xx status before this ever runs). JSON.parse('')
+				// throws the cryptic "Unexpected end of JSON input", which reads like
+				// a Cinephage parsing bug rather than what it actually is.
+				if (content.trim().length === 0) {
+					throw new Error('Indexer returned an empty response body');
+				}
 				const parsed = this.selectorEngine.parseJson(content);
 				const results = this.parseJsonResponse(parsed, context);
 				releases.push(...results);
