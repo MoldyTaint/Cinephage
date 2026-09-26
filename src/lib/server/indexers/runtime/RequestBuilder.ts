@@ -362,8 +362,9 @@ export class RequestBuilder {
 		criteria: SearchCriteria,
 		trackerCategories: string[]
 	): SearchPathBlock[] {
+		const hadRequestedCategories = (criteria.categories ?? []).length > 0;
 		const matchingPaths = paths.filter((path) =>
-			this.pathMatchesCategories(path, trackerCategories)
+			this.pathMatchesCategories(path, trackerCategories, hadRequestedCategories)
 		);
 
 		if (criteria.searchType === 'basic') {
@@ -457,13 +458,27 @@ export class RequestBuilder {
 	 * Check if path categories match the requested categories.
 	 * Handles both numeric category IDs and category names (like "Movies", "TV").
 	 */
-	private pathMatchesCategories(path: SearchPathBlock, trackerCategories: string[]): boolean {
+	private pathMatchesCategories(
+		path: SearchPathBlock,
+		trackerCategories: string[],
+		hadRequestedCategories: boolean
+	): boolean {
 		if (!path.categories || path.categories.length === 0) {
 			return true; // No category restriction
 		}
 
 		if (trackerCategories.length === 0) {
-			return true; // No categories requested, match all
+			// Two different situations collapse to the same empty array here:
+			//  - No categories were requested at all (basic/open search) -> match
+			//    every path, including category-scoped ones.
+			//  - A typed search DID request categories (e.g. TV_CATEGORIES), but
+			//    this indexer has no mapping for any of them - CategoryMapper's
+			//    own fallback already came up empty. That's "this indexer doesn't
+			//    support the requested content type", not "no restriction"; a
+			//    category-scoped path (e.g. a Movies-only path) must not be
+			//    treated as a match just because nothing else fit, or a TV search
+			//    ends up firing against a movie-only indexer/path.
+			return !hadRequestedCategories;
 		}
 
 		// Check for exclusion (category list starting with "!")
