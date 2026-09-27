@@ -452,14 +452,21 @@ export class DiskScanService extends EventEmitter {
 				blockedExtensions = global.extensions;
 			}
 
+			const existingFiles = await this.getExistingFiles(rootFolderId, rootFolder.mediaType);
+			const transitions = await this.getRecentRenameTransitions();
 			const scanner = new StreamingDiskScanner({
 				batchSize: 500,
 				customExcludedFolders: customPatterns,
-				blockedExtensions
+				blockedExtensions,
+				alwaysScanPaths: [
+					...[...existingFiles.values()]
+						.filter((file) => file.source === 'tracked')
+						.map((file) => file.path),
+					...transitions.values()
+				]
 			});
 
 			let filesFound = 0;
-			const existingFiles = await this.getExistingFiles(rootFolderId, rootFolder.mediaType);
 			const seenPaths = new Set<string>();
 			// New on-disk files (not tracked in existingFiles by construction) that
 			// may be the relocated copy of a missing tracked file whose folder was
@@ -543,8 +550,6 @@ export class DiskScanService extends EventEmitter {
 				);
 			}
 
-			const transitions = await this.getRecentRenameTransitions();
-
 			// External-rename correlation: match missing tracked rows against
 			// newly-seen files that share basename+size and did not auto-link.
 			// Candidates never include already-tracked paths because newDiskFiles
@@ -609,6 +614,10 @@ export class DiskScanService extends EventEmitter {
 					}
 				}
 
+				logger.warn(
+					{ path, fileId: existingFile.id, mediaType: rootFolder.mediaType },
+					'[DiskScan] Removing missing file row after rename healing found no target'
+				);
 				await this.removeFile(existingFile.id, rootFolder.mediaType);
 				progress.filesRemoved++;
 			}
