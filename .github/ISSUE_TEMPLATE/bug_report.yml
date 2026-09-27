@@ -1,6 +1,6 @@
 name: Bug Report
 description: Report a bug to help us improve Cinephage
-title: '[Bug]: '
+title: '[Bug] '
 labels: ['Type: Bug']
 body:
   - type: markdown
