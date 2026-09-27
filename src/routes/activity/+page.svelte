@@ -1256,7 +1256,8 @@
 								removeQueueItem(queueId, {
 									refresh: false,
 									closeDetailModal: false,
-									removeFromClient: true
+									removeFromClient: true,
+									deleteFiles: true
 								});
 
 		for (const queueId of queueIds) {
@@ -1432,10 +1433,20 @@
 
 	async function removeQueueItem(
 		id: string,
-		options: { refresh?: boolean; closeDetailModal?: boolean; removeFromClient?: boolean } = {}
+		options: {
+			refresh?: boolean;
+			closeDetailModal?: boolean;
+			removeFromClient?: boolean;
+			deleteFiles?: boolean;
+		} = {}
 	): Promise<void> {
-		const { refresh = true, closeDetailModal = true, removeFromClient = true } = options;
-		await removeQueueItemApi(id, { removeFromClient });
+		const {
+			refresh = true,
+			closeDetailModal = true,
+			removeFromClient = true,
+			deleteFiles = false
+		} = options;
+		await removeQueueItemApi(id, { removeFromClient, deleteFiles });
 
 		if (refresh) {
 			await refreshActivityData({ force: true });
@@ -1476,8 +1487,11 @@
 		await runQueueAction(id, 'resume');
 	}
 
-	async function handleRemove(id: string) {
-		await removeQueueItem(id);
+	async function handleRemove(
+		id: string,
+		options?: { deleteFiles?: boolean; blocklist?: boolean }
+	) {
+		await removeQueueItem(id, { deleteFiles: options?.deleteFiles });
 	}
 
 	async function handleRetry(id: string) {
