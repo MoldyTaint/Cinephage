@@ -94,6 +94,54 @@ async function trackedFileCount(rootId: string): Promise<number> {
 }
 
 describe('DiskScanService.scanRootFolder data-safety', () => {
+	it('keeps the tracked ...And Justice for All movie inside its dot-prefixed folder', async () => {
+		const scanRoot = await mkdtemp(join(tmpdir(), 'cinephage-dot-title-scan-'));
+		healScanRoots.push(scanRoot);
+		const rootFolderId = randomUUID();
+		const movieId = randomUUID();
+		const fileId = randomUUID();
+		const folderName = '...And Justice for All (1979)';
+		const fileName = '...And Justice for All (1979).mkv';
+		const movieDir = join(scanRoot, folderName);
+		await mkdir(movieDir, { recursive: true });
+		await writeFile(join(movieDir, fileName), Buffer.alloc(11 * 1024 * 1024, 1));
+
+		await testDb.db.insert(rootFolders).values({
+			id: rootFolderId,
+			name: 'Dot-prefixed movie root',
+			path: scanRoot,
+			mediaType: 'movie',
+			blockedVideoExtensions: '[]'
+		});
+		await testDb.db.insert(movies).values({
+			id: movieId,
+			tmdbId: 17443,
+			title: '...And Justice for All',
+			path: folderName,
+			rootFolderId
+		});
+		await testDb.db.insert(movieFiles).values({
+			id: fileId,
+			movieId,
+			relativePath: fileName,
+			size: 11 * 1024 * 1024
+		});
+
+		const result = await diskScanService.scanRootFolder(rootFolderId);
+
+		expect(result.success).toBe(true);
+		expect(result.filesRemoved).toBe(0);
+		const [trackedFile] = await testDb.db
+			.select({ id: movieFiles.id })
+			.from(movieFiles)
+			.where(eq(movieFiles.id, fileId));
+		expect(trackedFile?.id).toBe(fileId);
+
+		await testDb.db.delete(movieFiles).where(eq(movieFiles.id, fileId));
+		await testDb.db.delete(movies).where(eq(movies.id, movieId));
+		await testDb.db.delete(rootFolders).where(eq(rootFolders.id, rootFolderId));
+	});
+
 	it('refuses to remove tracked records when an accessible folder scans as empty', async () => {
 		const result = await diskScanService.scanRootFolder('root-empty');
 
