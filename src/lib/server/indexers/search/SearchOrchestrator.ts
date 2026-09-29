@@ -1158,7 +1158,14 @@ export class SearchOrchestrator {
 
 			// Some Newznab providers over-constrain movie ID searches when q/year
 			// are present together. Retry once with IDs only before text fallback.
-			if (idReleases.length === 0 && isMovieSearch(criteria) && (criteria.query || criteria.year)) {
+			// Prowlarr ID searches already send only the ID tokens, so the retry
+			// would repeat the same request.
+			if (
+				idReleases.length === 0 &&
+				isMovieSearch(criteria) &&
+				(criteria.query || criteria.year) &&
+				indexer.definitionId !== 'prowlarr'
+			) {
 				const movieIdOnlyCriteria = {
 					...criteria,
 					query: undefined,
@@ -1178,7 +1185,12 @@ export class SearchOrchestrator {
 				}
 			}
 
-			if (idReleases.length > 0) {
+			// An ID answer ends the search only when it holds a release that actually
+			// matches; otherwise fall through to the title search and keep both.
+			if (
+				idReleases.length > 0 &&
+				(!hasTextFallbackSource || this.hasRelevantReleases(idReleases, criteria))
+			) {
 				// For anime episode searches, also run an absolute-format text search ("Show 02")
 				// even when the ID search succeeded.  ID search only finds releases catalogued as
 				// season=N/ep=N; releases titled with the absolute episode number are missed.
@@ -1217,11 +1229,13 @@ export class SearchOrchestrator {
 					query: criteria.query,
 					hasSearchTitles: !!criteria.searchTitles?.length
 				},
-				'ID search returned no results, falling back to text search'
+				idReleases.length > 0
+					? 'ID search returned no matching results, falling back to text search'
+					: 'ID search returned no results, falling back to text search'
 			);
 
 			const fallbackReleases = await this.executeMultiTitleTextSearch(indexer, criteria);
-			return { releases: fallbackReleases, searchMethod: 'text' };
+			return { releases: [...idReleases, ...fallbackReleases], searchMethod: 'text' };
 		}
 
 		// Tier 2: Fall back to text search with multi-title support
@@ -1390,25 +1404,29 @@ export class SearchOrchestrator {
 		const BATCH_SIZE = 3;
 
 		for (let i = 0; i < variantCriteria.length; i += BATCH_SIZE) {
-			// Early exit: results from a previous batch mean the primary query
-			// already matched - skip remaining variants to avoid redundant requests.
-			// This prevents FlareSolverr-backed indexers from being overwhelmed
-			// by follow-up queries that can't finish within the per-indexer timeout.
-			if (allReleases.length > 0) {
+			// Early exit: a matching release from a previous batch means an earlier
+			// title already answered the search - skip remaining variants to avoid
+			// redundant requests. This prevents FlareSolverr-backed indexers from being
+			// overwhelmed by follow-up queries that can't finish within the per-indexer
+			// timeout. Unrelated results (a generic localized title hitting other
+			// content) don't count, so the next title still gets its turn.
+			if (this.hasRelevantReleases(allReleases, criteria)) {
 				break;
 			}
 
 			const batch = variantCriteria.slice(i, i + BATCH_SIZE);
 			// Movie variants are redundant reformulations of the same query
-			// (title±year), so the first variant that returns results answers the
-			// search - don't block on slower siblings stuck in Cloudflare bypass,
-			// or their stall eats the whole per-indexer timeout and discards the
-			// results already parsed (TV episode formats are alternative encodings,
-			// not nested queries, so they still merge every variant).
-			const earlyExitOnResults = isMovieSearch(criteria);
+			// (title±year), so the first variant that returns a matching release
+			// answers the search - don't block on slower siblings stuck in Cloudflare
+			// bypass, or their stall eats the whole per-indexer timeout and discards
+			// the results already parsed (TV episode formats are alternative
+			// encodings, not nested queries, so they still merge every variant).
+			const answersSearch = isMovieSearch(criteria)
+				? (releases: ReleaseResult[]) => this.hasRelevantReleases(releases, criteria)
+				: null;
 			const { settled } = await this.settleVariantBatch(
 				batch.map((vc) => indexer.search(vc)),
-				earlyExitOnResults
+				answersSearch
 			);
 
 			for (let j = 0; j < batch.length; j++) {
@@ -1692,17 +1710,17 @@ export class SearchOrchestrator {
 	}
 
 	/**
-	 * Await a batch of variant searches. With `earlyExitOnResults`, resolve as
-	 * soon as any variant fulfills with non-empty results; slower siblings keep
-	 * running in the background and their outcomes are ignored (their rejections
-	 * stay handled, and the outer AbortController cancels them on timeout).
+	 * Await a batch of variant searches. With `answersSearch`, resolve as soon as
+	 * any variant fulfills with results it accepts; slower siblings keep running
+	 * in the background and their outcomes are ignored (their rejections stay
+	 * handled, and the outer AbortController cancels them on timeout).
 	 * Entries for still-in-flight variants remain unset when we resolve early.
 	 */
 	private settleVariantBatch(
 		promises: Promise<ReleaseResult[]>[],
-		earlyExitOnResults: boolean
+		answersSearch: ((releases: ReleaseResult[]) => boolean) | null
 	): Promise<{ settled: PromiseSettledResult<ReleaseResult[]>[] }> {
-		if (!earlyExitOnResults) {
+		if (!answersSearch) {
 			return Promise.allSettled(promises).then((settled) => ({ settled }));
 		}
 
@@ -1724,7 +1742,7 @@ export class SearchOrchestrator {
 						if (finished) return;
 						settled[index] = { status: 'fulfilled', value };
 						pending -= 1;
-						if (Array.isArray(value) && value.length > 0) {
+						if (Array.isArray(value) && answersSearch(value)) {
 							finished = true;
 							resolve({ settled });
 							return;
@@ -2836,6 +2854,19 @@ export class SearchOrchestrator {
 		if (distance > maxDistance) return 0;
 
 		return 1 - distance / maxLength;
+	}
+
+	/**
+	 * Whether any release actually matches the searched movie/series, using the
+	 * same ID/title/year check the final results go through. Decides when a
+	 * search step has answered the search: an unrelated hit (e.g. a generic
+	 * localized title matching other content) must not stop the remaining
+	 * titles from being searched. Non-movie/TV searches accept any result.
+	 */
+	private hasRelevantReleases(releases: ReleaseResult[], criteria: SearchCriteria): boolean {
+		if (releases.length === 0) return false;
+		if (!isMovieSearch(criteria) && !isTvSearch(criteria)) return true;
+		return this.filterByIdOrTitleMatch(releases, criteria).length > 0;
 	}
 
 	/**

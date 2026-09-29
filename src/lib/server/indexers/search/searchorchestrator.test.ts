@@ -269,6 +269,68 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 		await searchPromise;
 	});
 
+	it('keeps searching later titles when earlier titles only return unrelated releases', async () => {
+		const orchestrator = new SearchOrchestrator();
+		const captured: SearchCriteria[] = [];
+
+		const fakeIndexer = buildIndexer({
+			search: async (criteria) => {
+				captured.push(criteria);
+				if (criteria.query === 'The Hangover') {
+					return [
+						createRelease({ guid: 'hangover', title: 'The.Hangover.2009.1080p.BluRay.x264-GRP' })
+					];
+				}
+				// A generic localized title matches unrelated content.
+				return [
+					createRelease({
+						guid: `junk-${captured.length}`,
+						title: 'Leoni.Della.Savana.2015.1080p.WEB-DL.x264-GRP'
+					})
+				];
+			}
+		});
+
+		const criteria = createMovieCriteria({
+			query: 'Una notte da leoni',
+			searchTitles: ['Una notte da leoni', 'Leoni', 'The Hangover'],
+			year: 2009
+		});
+
+		const releases = await privateApi(orchestrator).executeMultiTitleTextSearch(
+			fakeIndexer,
+			criteria
+		);
+
+		// 'The Hangover' only appears in the second batch of variants.
+		expect(captured.some((c) => c.query === 'The Hangover')).toBe(true);
+		expect(releases.map((release) => release.guid)).toContain('hangover');
+	});
+
+	it('stops after the first title when it returns a matching release', async () => {
+		const orchestrator = new SearchOrchestrator();
+		const captured: SearchCriteria[] = [];
+
+		const fakeIndexer = buildIndexer({
+			search: async (criteria) => {
+				captured.push(criteria);
+				return [
+					createRelease({ guid: 'hangover', title: 'The.Hangover.2009.1080p.BluRay.x264-GRP' })
+				];
+			}
+		});
+
+		const criteria = createMovieCriteria({
+			query: 'The Hangover',
+			searchTitles: ['The Hangover', 'Una notte da leoni', 'Very Bad Trip'],
+			year: 2009
+		});
+
+		await privateApi(orchestrator).executeMultiTitleTextSearch(fakeIndexer, criteria);
+
+		expect(captured.some((c) => c.query === 'Very Bad Trip')).toBe(false);
+	});
+
 	it('keeps waiting for all TV episode-format variants before merging', async () => {
 		const orchestrator = new SearchOrchestrator();
 		let releaseSlowVariant!: () => void;
@@ -554,6 +616,62 @@ describe('SearchOrchestrator.executeWithTiering', () => {
 		expect(cap0.tvdbId).toBe(123456);
 	});
 
+	it('falls back to text search when ID results do not match the title', async () => {
+		const orchestrator = new SearchOrchestrator();
+		const captured: SearchCriteria[] = [];
+
+		const fakeIndexer = buildIndexer({
+			capabilities: {
+				...mockCapabilities,
+				tvSearch: {
+					available: true,
+					supportedParams: ['q', 'imdbId', 'tvdbId', 'season', 'ep']
+				},
+				searchFormats: {
+					episode: ['standard']
+				}
+			},
+			search: async (criteria) => {
+				captured.push(criteria);
+
+				if (isTvSearch(criteria) && (criteria.imdbId || criteria.tvdbId)) {
+					return [
+						createRelease({
+							guid: 'unrelated-id-result',
+							title: 'Another Show S01E05 1080p WEB-DL',
+							categories: [Category.TV]
+						})
+					];
+				}
+
+				return [
+					createRelease({
+						guid: 'fallback-result',
+						title: 'My Show S01E05 1080p WEB-DL',
+						categories: [Category.TV]
+					})
+				];
+			}
+		});
+
+		const criteria = createTvCriteria({
+			query: 'My Show',
+			imdbId: 'tt1234567',
+			tvdbId: 123456,
+			season: 1,
+			episode: 5
+		});
+
+		const result = await privateApi(orchestrator).executeWithTiering(fakeIndexer, criteria);
+
+		expect(result.searchMethod).toBe('text');
+		expect(result.releases.map((release) => release.guid)).toEqual([
+			'unrelated-id-result',
+			'fallback-result'
+		]);
+		expect(captured).toHaveLength(2);
+	});
+
 	it('retries movie ID search without q/year before falling back to text', async () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: SearchCriteria[] = [];
@@ -590,6 +708,9 @@ describe('SearchOrchestrator.executeWithTiering', () => {
 
 		const criteria = createMovieCriteria({
 			query: "Now You See Me: Now You Don't",
+			// The ID result is named after this alternate title; without it the
+			// result would not count as a match and text fallback would run.
+			searchTitles: ["Now You See Me: Now You Don't", 'Now You See Me 3'],
 			year: 2025,
 			imdbId: 'tt4712810'
 		});

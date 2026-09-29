@@ -144,7 +144,7 @@
 		formCutoffRank = formCutoffRank === index ? null : index;
 	}
 
-	// --- Audio fallback language list ---
+	// --- Preferred audio language list ---
 	function addAudioLanguage() {
 		formAudioLanguages = [...formAudioLanguages, 'en'];
 	}
@@ -443,6 +443,9 @@
 						{/if}
 					</button>
 				</div>
+				<p class="text-xs text-base-content/50">
+					{m.settings_languages_profiles_audioLanguagesHint()}
+				</p>
 				{#each formAudioLanguages as code, i (i)}
 					<div class="flex flex-wrap items-center gap-1.5 rounded-lg bg-base-200/50 px-2.5 py-1.5">
 						<span class="w-4 shrink-0 text-center font-mono text-xs text-base-content/50">

@@ -272,20 +272,20 @@ describe('language profile editor labels via paraglide keys', () => {
 
 		expect(screen.getByText('Audio & Matching')).not.toBeNull();
 		expect(screen.getByText('Prefer original audio track')).not.toBeNull();
-		expect(screen.getByText('Fallback audio languages')).not.toBeNull();
-		expect(screen.getByRole('button', { name: 'Add fallback language' })).not.toBeNull();
-		// No fallback rows yet: the per-row controls appear only after adding one.
-		await fireEvent.click(screen.getByRole('button', { name: 'Add fallback language' }));
-		expect(screen.getByRole('combobox', { name: 'Fallback audio language' })).not.toBeNull();
+		expect(screen.getByText('Preferred audio languages')).not.toBeNull();
+		expect(screen.getByRole('button', { name: 'Add audio language' })).not.toBeNull();
+		// No audio language rows yet: the per-row controls appear only after adding one.
+		await fireEvent.click(screen.getByRole('button', { name: 'Add audio language' }));
+		expect(screen.getByRole('combobox', { name: 'Preferred audio language' })).not.toBeNull();
 		expect(screen.getByRole('button', { name: 'Move audio language up' })).not.toBeNull();
 		expect(screen.getByRole('button', { name: 'Move audio language down' })).not.toBeNull();
-		expect(screen.getByRole('button', { name: 'Remove fallback audio language' })).not.toBeNull();
+		expect(screen.getByRole('button', { name: 'Remove audio language' })).not.toBeNull();
 	});
 
 	it('renders the profile card summary from message keys', () => {
 		renderManager('p2');
 
-		// p2 has fallback audio languages, so the summary line renders:
+		// p2 has preferred audio languages, so the summary line renders:
 		// "<Audio:> <prefer original> · French".
 		const summary = screen.getByText(/prefer original/);
 		expect(summary.textContent).toContain('Audio:');

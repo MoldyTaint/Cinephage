@@ -1996,7 +1996,7 @@ export const languageProfiles = sqliteTable('language_profiles', {
 		.primaryKey()
 		.$defaultFn(() => randomUUID()),
 	name: text('name').notNull(),
-	// Audio preference: prefer original track + ordered fallback languages
+	// Audio preference: prefer original track + ordered preferred languages
 	audio: text('audio', { mode: 'json' }).$type<AudioPreference>().notNull(),
 	// Ordered subtitle requirements (order = priority)
 	subtitles: text('subtitles', { mode: 'json' }).$type<SubtitleRequirement[]>().notNull(),
