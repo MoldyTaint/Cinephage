@@ -95,3 +95,13 @@ export async function ensureSoleUserIsAdminRecord(expectedUserId?: string): Prom
 
 	return true;
 }
+
+/**
+ * Total account count. The single-user bootstrap behaviors (role repair,
+ * demotion guard) key off this so they naturally switch off once a second
+ * account exists.
+ */
+export async function getUserCount(): Promise<number> {
+	const [{ value: userCount }] = await db.select({ value: count() }).from(user);
+	return userCount;
+}

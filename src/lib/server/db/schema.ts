@@ -32,7 +32,7 @@ export const user = sqliteTable(
 		image: text('image'),
 		username: text('username').unique(),
 		displayUsername: text('displayUsername'),
-		role: text('role').default('admin').notNull(),
+		role: text('role').default('user').notNull(),
 		language: text('language').default('en'),
 		banned: integer('banned').default(0),
 		banReason: text('banReason'),

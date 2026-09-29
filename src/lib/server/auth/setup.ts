@@ -29,11 +29,6 @@ export async function isSetupComplete(): Promise<boolean> {
 	}
 }
 
-/** Set after the first admin user is created (sign-up hook invalidates instead). */
-export function markSetupComplete(): void {
-	setupCompleteCache = true;
-}
-
 /** Force recomputation on the next isSetupComplete() call. */
 export function resetSetupCompleteCache(): void {
 	setupCompleteCache = null;

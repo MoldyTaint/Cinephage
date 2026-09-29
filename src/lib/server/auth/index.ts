@@ -24,12 +24,7 @@ export {
 	USERNAME_MIN_LENGTH,
 	USERNAME_PATTERN
 } from '$lib/auth/username-policy.js';
-export {
-	isSetupComplete,
-	markSetupComplete,
-	resetSetupCompleteCache,
-	requireSetup
-} from './setup.js';
+export { isSetupComplete, resetSetupCompleteCache, requireSetup } from './setup.js';
 export {
 	isAdmin,
 	requireAdmin,

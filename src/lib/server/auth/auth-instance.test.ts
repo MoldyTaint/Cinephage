@@ -215,3 +215,63 @@ describe('real Better Auth instance — managed API keys', () => {
 		expect(cleared ?? '').toBe('');
 	});
 });
+
+describe('real Better Auth instance — multi-user readiness', () => {
+	it('admin plugin createUser adds a user-role account once setup is complete', async () => {
+		const signIn = await harness.authRequest('/sign-in/username', {
+			method: 'POST',
+			body: JSON.stringify({ username: USERNAME, password: PASSWORD })
+		});
+		const sessionHeaders = new Headers({
+			cookie: harness.cookieHeader(harness.extractCookies(signIn))
+		});
+
+		// The admin plugin's createUser reads the request event internally.
+		const created = await harness.withStore(
+			harness.makeEvent('POST', '/api/auth/admin/create-user').event,
+			() =>
+				harness.auth.api.createUser({
+					body: {
+						email: 'viewer@test.local',
+						password: 'viewer-password-123',
+						name: 'Test Viewer',
+						role: 'user',
+						data: { username: 'testviewer' }
+					},
+					headers: sessionHeaders
+				})
+		);
+		expect(created.user?.id).toBeDefined();
+
+		const rows = db.select().from(user).all();
+		expect(rows).toHaveLength(2);
+		const viewer = rows.find((row) => row.username === 'testviewer');
+		expect(viewer?.role).toBe('user');
+	});
+
+	it('the user-role account signs in and is not silently promoted', async () => {
+		const response = await harness.authRequest('/sign-in/username', {
+			method: 'POST',
+			body: JSON.stringify({ username: 'testviewer', password: 'viewer-password-123' })
+		});
+		expect(response.status).toBe(200);
+
+		const session = await harness.auth.api.getSession({
+			headers: new Headers({ cookie: harness.cookieHeader(harness.extractCookies(response)) })
+		});
+		expect(session?.user?.role).toBe('user');
+	});
+
+	it('anonymous self-registration stays closed with multiple accounts present', async () => {
+		const response = await harness.authRequest('/sign-up/email', {
+			method: 'POST',
+			body: JSON.stringify({
+				email: 'third@test.local',
+				password: PASSWORD,
+				name: 'Third User',
+				username: 'thirdcurator'
+			})
+		});
+		expect(response.status).toBe(403);
+	});
+});

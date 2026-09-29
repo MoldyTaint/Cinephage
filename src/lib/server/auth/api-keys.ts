@@ -290,6 +290,12 @@ export async function getManagedApiKeysForRequest(headers: Headers): Promise<{
 	};
 }
 
+/**
+ * Recover a managed key's plaintext. Without userId this picks the most
+ * recent matching key of ANY account — an instance-level pickup that is only
+ * correct while a single admin exists (STRM generation, streaming handlers).
+ * Multi-user surfaces must pass the owning userId.
+ */
 export async function getRecoverableApiKeyByType(
 	type: ManagedApiKeyType,
 	userId?: string

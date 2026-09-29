@@ -24,7 +24,7 @@ export const BETTER_AUTH_TABLE_DEFINITIONS = [
 			"image" text,
 			"username" text UNIQUE,
 			"displayUsername" text,
-			"role" text DEFAULT 'admin' NOT NULL,
+			"role" text DEFAULT 'user' NOT NULL,
 			"language" text DEFAULT 'en',
 			"banned" integer DEFAULT 0,
 			"banReason" text,

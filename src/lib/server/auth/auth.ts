@@ -14,7 +14,7 @@ import {
 import { getSystemSettingsService } from '$lib/server/settings/SystemSettingsService.js';
 import { ac, admin as adminRole, user as userRole } from '$lib/auth/access-control.js';
 import { isHardReservedUsername, isValidUsernameFormat } from '$lib/auth/username-policy.js';
-import { ensureSoleUserIsAdminRecord } from './admin-bootstrap.js';
+import { ensureSoleUserIsAdminRecord, getUserCount } from './admin-bootstrap.js';
 import { isSetupComplete, resetSetupCompleteCache } from './setup.js';
 import { isLocalNetworkOrigin } from '$lib/server/utils/origin.js';
 
@@ -246,36 +246,59 @@ export const auth = betterAuth({
 		storage: 'database'
 	},
 
-	// Database hooks for user management
+	// Database hooks for user management. Written for multi-user readiness:
+	// single-account bootstrap behavior keys off the account count instead of
+	// being unconditional, so enabling multiple accounts later is a policy
+	// change, not auth-layer surgery.
 	databaseHooks: {
 		user: {
 			create: {
-				before: async (user) => {
-					if (await isSetupComplete()) {
+				before: async (user, ctx) => {
+					// Bootstrap: the very first account is always the admin.
+					if (!(await isSetupComplete())) {
+						// The insert hasn't happened yet — invalidate rather than
+						// assume, so a failed insert can still be retried.
+						resetSetupCompleteCache();
+
+						return {
+							data: {
+								...user,
+								role: 'admin'
+							}
+						};
+					}
+
+					// After bootstrap, public self-registration stays closed.
+					// An admin session may still create accounts through the
+					// admin plugin (auth.api.createUser) — that is the path a
+					// future multi-user surface uses.
+					const creatorIsAdmin = ctx?.context?.session?.user?.role === 'admin';
+					if (!creatorIsAdmin) {
 						throw new APIError('FORBIDDEN', {
 							message: 'User registration is disabled. Only one admin account is allowed.'
 						});
 					}
 
-					// The insert hasn't happened yet — invalidate rather than
-					// assume, so a failed insert can still be retried.
-					resetSetupCompleteCache();
-
 					return {
 						data: {
 							...user,
-							role: 'admin'
+							role: user.role ?? 'user'
 						}
 					};
 				}
 			},
 			update: {
 				before: async (data, ctx) => {
-					// Prevent changing admin role to user
+					// Role demotion is blocked only while this is the sole
+					// account — demoting it would lock the instance out. Once
+					// multiple accounts exist, role management flows through
+					// the admin plugin.
 					if (data.role === 'user' && ctx?.context?.session?.user?.role === 'admin') {
-						throw new APIError('FORBIDDEN', {
-							message: 'Cannot change admin role. Single admin system.'
-						});
+						if ((await getUserCount()) === 1) {
+							throw new APIError('FORBIDDEN', {
+								message: 'Cannot demote the only account.'
+							});
+						}
 					}
 					return { data };
 				}

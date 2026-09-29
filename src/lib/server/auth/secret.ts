@@ -1,20 +1,11 @@
 import { env } from '$env/dynamic/private';
-import { resolveDatabasePath, getSharedSqliteConnection } from '$lib/server/db/connection.js';
+import { getSharedSqliteConnection } from '$lib/server/db/connection.js';
 
 const DEFAULT_BASE_URL = 'http://localhost:5173';
 const BUILD_TIME_PLACEHOLDER = 'build-time-placeholder-do-not-use-in-production';
 
 function normalizeUrl(url: string): string {
 	return url.trim().replace(/\/+$/, '');
-}
-
-/**
- * Database path for the auth layer — same file, same resolution chain as the
- * application connection (see db/connection.ts). Kept as an export because
- * scripts and tests reason about "the auth database path".
- */
-export function getAuthDatabasePath(): string {
-	return resolveDatabasePath();
 }
 
 function getConfiguredExternalUrl(): string | null {

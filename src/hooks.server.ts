@@ -191,6 +191,9 @@ const customHandler: Handle = async ({ event, resolve }) => {
 					}
 
 					if (session) {
+						// Bootstrap repair: a non-admin session is promoted only
+						// while exactly one account exists; with multiple
+						// accounts a user-role session passes through un-promoted.
 						if (
 							session.user?.id &&
 							session.user.role !== 'admin' &&

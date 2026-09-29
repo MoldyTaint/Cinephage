@@ -11,7 +11,7 @@
  * Test order matters: fresh-install behavior first, then the sole admin is
  * created through the hook chain, and later tests use that session.
  */
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isRedirect } from '@sveltejs/kit';
 
 const mockLogger = vi.hoisted(() => ({
@@ -41,7 +41,7 @@ const harness = await import('./auth-test-harness.js').then((m) =>
 	m.createAuthTestHarness({ withHooks: true })
 );
 const { db } = await import('$lib/server/db/index.js');
-const { user } = await import('$lib/server/db/schema.js');
+const { user, authRateLimits } = await import('$lib/server/db/schema.js');
 const { ensureDefaultApiKeysForUser } = await import('$lib/server/auth/api-keys.js');
 
 const USERNAME = 'testcurator';
@@ -54,6 +54,12 @@ let adminUserId = '';
 // idempotent) and reused by the streaming gate block.
 let mainKey = '';
 let streamingKey = '';
+
+beforeEach(() => {
+	// Better Auth's database-backed limiter counts every auth request across
+	// tests (max 5 per 15 min); reset it so each test measures only itself.
+	db.delete(authRateLimits).run();
+});
 
 afterAll(() => {
 	harness.cleanup();
@@ -244,5 +250,65 @@ describe('hooks chain — streaming API key gate', () => {
 		expect(response.status).toBe(401);
 		const body = (await response.json()) as { code?: string };
 		expect(body.code).toBe('API_KEY_REQUIRED');
+	});
+});
+
+describe('hooks chain — multi-user readiness', () => {
+	// The admin plugin's user endpoints read the request event internally,
+	// so direct auth.api calls need the store wrapper.
+	function storeStub() {
+		return harness.makeEvent('POST', '/api/auth/admin/set-role').event;
+	}
+
+	it('blocks demoting the sole account', async () => {
+		const sessionHeaders = new Headers({ cookie: harness.cookieHeader(sessionCookies) });
+
+		await expect(
+			harness.withStore(storeStub(), () =>
+				harness.auth.api.setRole({
+					body: { userId: adminUserId, role: 'user' },
+					headers: sessionHeaders
+				})
+			)
+		).rejects.toThrow(/only account/);
+	});
+
+	it('admin-created second account gets a session that is NOT force-promoted', async () => {
+		const sessionHeaders = new Headers({ cookie: harness.cookieHeader(sessionCookies) });
+		await harness.withStore(storeStub(), () =>
+			harness.auth.api.createUser({
+				body: {
+					email: 'viewer@hooks.test',
+					password: 'viewer-password-123',
+					name: 'Hook Viewer',
+					role: 'user',
+					data: { username: 'hookviewer' }
+				},
+				headers: sessionHeaders
+			})
+		);
+		const rows = db.select().from(user).all();
+		expect(rows.find((row) => row.username === 'hookviewer')?.role).toBe('user');
+
+		// The viewer signs in through the full hook chain.
+		const signIn = harness.makeEvent('POST', '/api/auth/sign-in/username', {
+			headers: {
+				'content-type': 'application/json',
+				origin: 'http://localhost:5173'
+			},
+			body: JSON.stringify({ username: 'hookviewer', password: 'viewer-password-123' })
+		});
+		const signInResponse = await harness.callHandle(signIn.event);
+		expect(signInResponse.status).toBe(200);
+		const viewerCookies = harness.extractCookies(signInResponse);
+
+		// With two accounts, the bootstrap repair must leave the role alone.
+		const apiRequest = harness.makeEvent('GET', '/api/activity', {
+			headers: { cookie: harness.cookieHeader(viewerCookies) }
+		});
+		const response = await harness.callHandle(apiRequest.event);
+		expect(response.status).toBe(200);
+		expect(apiRequest.event.locals.user?.username).toBe('hookviewer');
+		expect(apiRequest.event.locals.user?.role).toBe('user');
 	});
 });
