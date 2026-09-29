@@ -78,7 +78,9 @@ export interface AuthTestHarness {
 	cleanup: () => void;
 }
 
-export async function createAuthTestHarness(options: { withHooks: boolean }): Promise<AuthTestHarness> {
+export async function createAuthTestHarness(options: {
+	withHooks: boolean;
+}): Promise<AuthTestHarness> {
 	const tempDir = mkdtempSync(join(tmpdir(), 'cinephage-auth-it-'));
 	const previousEnv = {
 		DATA_DIR: process.env.DATA_DIR,
@@ -176,7 +178,8 @@ export async function createAuthTestHarness(options: { withHooks: boolean }): Pr
 		return withStore(event, () =>
 			handle!({
 				event,
-				resolve: () => Promise.resolve(endpointResponse ?? new Response('endpoint-ok', { status: 200 }))
+				resolve: () =>
+					Promise.resolve(endpointResponse ?? new Response('endpoint-ok', { status: 200 }))
 			})
 		);
 	}

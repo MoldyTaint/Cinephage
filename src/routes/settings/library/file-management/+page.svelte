@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { FolderSync } from 'lucide-svelte';
 	import FolderBrowser from '$lib/components/library/FolderBrowser.svelte';
 	import TagInput from '$lib/components/ui/TagInput.svelte';
@@ -18,27 +19,19 @@
 
 	let { data }: { data: PageData } = $props();
 
-	// Form fields intentionally capture the initial load value once — $state initializer does not need to re-run on data changes
-	// svelte-ignore state_referenced_locally
-	let importMode = $state<ImportMethod>(data.settings.importMode);
-	// svelte-ignore state_referenced_locally
-	let preferHardlink = $state<boolean>(data.settings.preferHardlink);
-	// svelte-ignore state_referenced_locally
-	let minimumFreeSpaceGb = $state<number>(data.settings.minimumFreeSpaceGb);
-	// svelte-ignore state_referenced_locally
-	let deleteEmptyFolders = $state<boolean>(data.settings.deleteEmptyFolders);
-	// svelte-ignore state_referenced_locally
-	let recycleEnabled = $state<boolean>(data.settings.recycleEnabled);
-	// svelte-ignore state_referenced_locally
-	let extraFileExtensions = $state<string[]>(data.settings.extraFileExtensions);
-
-	// svelte-ignore state_referenced_locally
-	let defaultImportFolder = $state<string>(data.settings.defaultImportFolder ?? '');
+	// Form fields intentionally capture the initial load value once — untrack
+	// keeps the data reads out of the reactive graph inside $state initializers.
+	let importMode = $state<ImportMethod>(untrack(() => data.settings.importMode));
+	let preferHardlink = $state<boolean>(untrack(() => data.settings.preferHardlink));
+	let minimumFreeSpaceGb = $state<number>(untrack(() => data.settings.minimumFreeSpaceGb));
+	let deleteEmptyFolders = $state<boolean>(untrack(() => data.settings.deleteEmptyFolders));
+	let recycleEnabled = $state<boolean>(untrack(() => data.settings.recycleEnabled));
+	let extraFileExtensions = $state<string[]>(untrack(() => data.settings.extraFileExtensions));
+	let defaultImportFolder = $state<string>(untrack(() => data.settings.defaultImportFolder ?? ''));
 	let showFolderBrowser = $state(false);
 
 	// Sidecar files (.nfo + artwork)
-	// svelte-ignore state_referenced_locally
-	let sidecar = $state({ ...data.sidecarSettings });
+	let sidecar = $state(untrack(() => ({ ...data.sidecarSettings })));
 	// Keyed per-field so toggling one checkbox doesn't disable/flash all the others.
 	let sidecarSaving = $state<Partial<Record<keyof typeof sidecar, boolean>>>({});
 
@@ -66,12 +59,16 @@
 
 	// Permissions
 	type PermissionsMode = 'default' | 'preserve' | 'custom';
-	// svelte-ignore state_referenced_locally
 	let permissionsMode = $state<PermissionsMode>(
-		data.settings.chmodFile ? 'custom' : data.settings.preservePermissions ? 'preserve' : 'default'
+		untrack(() =>
+			data.settings.chmodFile
+				? 'custom'
+				: data.settings.preservePermissions
+					? 'preserve'
+					: 'default'
+		)
 	);
-	// svelte-ignore state_referenced_locally
-	let chmodInput = $state(data.settings.chmodFile);
+	let chmodInput = $state(untrack(() => data.settings.chmodFile));
 	const chmodError = $derived(
 		permissionsMode === 'custom' && !/^[0-7]{3,4}$/.test(chmodInput)
 			? m.settings_fileManagement_permissionsChmodError()

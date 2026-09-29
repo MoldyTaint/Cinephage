@@ -182,7 +182,10 @@ describe('hooks chain — API key authentication (arr-compatible)', () => {
 	});
 
 	it('authenticates via the ?apikey= query parameter (Seerr-style arr clients)', async () => {
-		const { event } = harness.makeEvent('GET', '/api/activity?apikey=' + encodeURIComponent(mainKey));
+		const { event } = harness.makeEvent(
+			'GET',
+			'/api/activity?apikey=' + encodeURIComponent(mainKey)
+		);
 
 		const response = await harness.callHandle(event);
 		expect(response.status).toBe(200);

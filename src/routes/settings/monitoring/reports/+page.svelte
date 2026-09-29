@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import {
 		AlertTriangle,
@@ -57,7 +57,7 @@
 	type TabId = (typeof TABS)[number]['id'];
 	type AnyRecord = { id: string; [key: string]: unknown };
 
-	const activeTab = $derived(($page.url.searchParams.get('tab') as TabId) || TABS[0].id);
+	const activeTab = $derived((page.url.searchParams.get('tab') as TabId) || TABS[0].id);
 
 	let records = $state<AnyRecord[]>([]);
 	let loading = $state(false);

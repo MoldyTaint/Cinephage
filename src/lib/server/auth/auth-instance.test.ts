@@ -35,9 +35,8 @@ const harness = await import('../../../test/auth-test-harness.js').then((m) =>
 );
 const { db } = await import('$lib/server/db/index.js');
 const { user, session, authRateLimits } = await import('$lib/server/db/schema.js');
-const { ensureDefaultApiKeysForUser, getRecoverableApiKeyValue } = await import(
-	'$lib/server/auth/api-keys.js'
-);
+const { ensureDefaultApiKeysForUser, getRecoverableApiKeyValue } =
+	await import('$lib/server/auth/api-keys.js');
 
 const USERNAME = 'testcurator';
 const EMAIL = 'curator@test.local';
@@ -61,7 +60,12 @@ describe('real Better Auth instance — setup and single-admin policy', () => {
 	it('signs up the first user as the sole admin via /sign-up/email', async () => {
 		const response = await harness.authRequest('/sign-up/email', {
 			method: 'POST',
-			body: JSON.stringify({ email: EMAIL, password: PASSWORD, name: 'Test Curator', username: USERNAME })
+			body: JSON.stringify({
+				email: EMAIL,
+				password: PASSWORD,
+				name: 'Test Curator',
+				username: USERNAME
+			})
 		});
 
 		expect(response.status).toBe(200);
@@ -127,7 +131,9 @@ describe('real Better Auth instance — managed API keys', () => {
 			body: JSON.stringify({ username: USERNAME, password: PASSWORD })
 		});
 		expect(signIn.status).toBe(200);
-		const sessionHeaders = new Headers({ cookie: harness.cookieHeader(harness.extractCookies(signIn)) });
+		const sessionHeaders = new Headers({
+			cookie: harness.cookieHeader(harness.extractCookies(signIn))
+		});
 		const session = await harness.auth.api.getSession({ headers: sessionHeaders });
 		expect(session?.user?.id).toBeDefined();
 
@@ -170,7 +176,9 @@ describe('real Better Auth instance — managed API keys', () => {
 			method: 'POST',
 			body: JSON.stringify({ username: USERNAME, password: PASSWORD })
 		});
-		const sessionHeaders = new Headers({ cookie: harness.cookieHeader(harness.extractCookies(signIn)) });
+		const sessionHeaders = new Headers({
+			cookie: harness.cookieHeader(harness.extractCookies(signIn))
+		});
 		const session = await harness.auth.api.getSession({ headers: sessionHeaders });
 
 		const apiSession = await harness.auth.api.getSession({
