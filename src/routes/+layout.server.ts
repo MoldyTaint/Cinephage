@@ -2,8 +2,19 @@ import type { LayoutServerLoad } from './$types';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { tmdb } from '$lib/server/tmdb.js';
 
-export const load: LayoutServerLoad = async () => {
+export const load: LayoutServerLoad = async ({ locals }) => {
 	const defaultRegion = await tmdb.getRegion();
+
+	// Minimal identity for the shell (avatar/name/role); populated by the
+	// auth hook for every authenticated request.
+	const user = locals.user
+		? {
+				id: locals.user.id,
+				username: locals.user.username ?? null,
+				displayUsername: locals.user.displayUsername ?? locals.user.name,
+				role: locals.user.role ?? 'user'
+			}
+		: null;
 
 	try {
 		const libraries = await getLibraryEntityService().listLibraries({ includeSystem: true });
@@ -35,6 +46,7 @@ export const load: LayoutServerLoad = async () => {
 
 		return {
 			defaultRegion,
+			user,
 			libraryNav: {
 				movieLibraries,
 				tvLibraries,
@@ -45,6 +57,7 @@ export const load: LayoutServerLoad = async () => {
 	} catch {
 		return {
 			defaultRegion,
+			user,
 			libraryNav: {
 				movieLibraries: [],
 				tvLibraries: [],

@@ -4856,5 +4856,12 @@
 	"library_metadata_locale": "Locale",
 	"library_metadata_preferOriginalTitle": "Prefer Original Title",
 	"library_add_subtitleProfileLine": "Subtitles: {name} (Inherited: {source})",
-	"library_add_noDefaultProfileWarning": "Auto-download subtitles is on, but no default subtitle profile is configured. New items will not download subtitles until one is set in Settings > Languages & Localization."
+	"library_add_noDefaultProfileWarning": "Auto-download subtitles is on, but no default subtitle profile is configured. New items will not download subtitles until one is set in Settings > Languages & Localization.",
+	"profile_changePassword": "Cambiar contraseña",
+	"profile_changePasswordDescription": "Establece una contraseña nueva para tu cuenta de administrador.",
+	"profile_currentPassword": "Contraseña actual",
+	"profile_newPassword": "Contraseña nueva",
+	"profile_confirmPassword": "Confirmar contraseña nueva",
+	"profile_passwordUpdated": "Contraseña actualizada",
+	"profile_passwordMismatch": "Las contraseñas nuevas no coinciden"
 }

@@ -33,8 +33,9 @@
 				return;
 			}
 
-			// Redirect to dashboard on success
-			goto('/');
+			// Refresh all server load data (root layout now carries user
+			// identity) before entering the app.
+			await goto('/', { invalidateAll: true });
 		} catch (e) {
 			error = e instanceof Error ? e.message : m.login_unexpectedError();
 		} finally {

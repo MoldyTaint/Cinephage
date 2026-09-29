@@ -4881,5 +4881,12 @@
 	"settings_languages_profiles_deleteImpactLibraries": "{count} item(s) inherit it through library defaults",
 	"settings_languages_profiles_deleteImpactSmartLists": "{count} smart list(s) reference it",
 	"settings_languages_profiles_deleteImpactDefault": "it is the instance default",
-	"settings_languages_profiles_deleteImpactFallback": "Deleting it makes these items fall back to the next level in the chain."
+	"settings_languages_profiles_deleteImpactFallback": "Deleting it makes these items fall back to the next level in the chain.",
+	"profile_changePassword": "Change password",
+	"profile_changePasswordDescription": "Set a new password for your admin account.",
+	"profile_currentPassword": "Current password",
+	"profile_newPassword": "New password",
+	"profile_confirmPassword": "Confirm new password",
+	"profile_passwordUpdated": "Password updated",
+	"profile_passwordMismatch": "New passwords do not match"
 }

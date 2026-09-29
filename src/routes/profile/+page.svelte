@@ -1,6 +1,46 @@
 <script lang="ts">
-	import { User, Lock, Bell, Shield } from 'lucide-svelte';
+	import { User, Lock, KeyRound, Check, Eye, EyeOff } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import { authClient } from '$lib/auth/client.js';
+	import { toasts } from '$lib/stores/toast.svelte';
+
+	let { data } = $props();
+
+	let currentPassword = $state('');
+	let newPassword = $state('');
+	let confirmPassword = $state('');
+	let showPasswords = $state(false);
+	let saving = $state(false);
+	let saved = $state(false);
+
+	const passwordsValid = $derived(currentPassword.length >= 8 && newPassword.length >= 8);
+	const passwordsMatch = $derived(newPassword === confirmPassword);
+
+	async function changePassword() {
+		if (saving || !passwordsValid || !passwordsMatch) return;
+		saving = true;
+		saved = false;
+		try {
+			const result = await authClient.changePassword({
+				currentPassword,
+				newPassword,
+				revokeOtherSessions: true
+			});
+			if (result.error) {
+				toasts.error(result.error.message || m.login_invalidCredentials());
+				return;
+			}
+			currentPassword = '';
+			newPassword = '';
+			confirmPassword = '';
+			saved = true;
+			toasts.success(m.profile_passwordUpdated());
+		} catch (error) {
+			toasts.error(error instanceof Error ? error.message : m.common_failedToSave());
+		} finally {
+			saving = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -14,74 +54,128 @@
 		<p class="text-base-content/70">{m.profile_subtitle()}</p>
 	</div>
 
-	<!-- Placeholder Message -->
-	<div class="card bg-base-200">
-		<div class="card-body">
-			<div class="mb-4 flex items-center gap-3 text-warning">
-				<User class="h-8 w-8" />
-				<h2 class="text-xl font-semibold">{m.profile_comingSoon()}</h2>
-			</div>
-			<p class="mb-4 text-base-content/80">
-				{m.profile_comingSoonDescription()}
-			</p>
-			<ul class="ml-4 list-disc space-y-2 text-base-content/80">
-				<li>{m.profile_featureAccountSettings()}</li>
-				<li>{m.profile_featureNotifications()}</li>
-				<li>{m.profile_featureAuth()}</li>
-				<li>{m.profile_featureCustomize()}</li>
-			</ul>
-			<div class="divider"></div>
-			<p class="text-sm text-base-content/60">
-				{m.profile_singleAdminNote()}
-			</p>
-		</div>
-	</div>
-
-	<!-- Feature Preview Cards -->
-	<div class="mt-8 grid gap-4 md:grid-cols-2">
-		<div class="card bg-base-200">
-			<div class="card-body">
-				<div class="mb-2 flex items-center gap-2">
-					<Lock class="h-5 w-5 text-base-content/50" />
-					<h3 class="font-semibold">{m.profile_accountSecurity()}</h3>
-				</div>
-				<p class="text-sm text-base-content/70">
-					{m.profile_accountSecurityDescription()}
-				</p>
-			</div>
-		</div>
-		<div class="card bg-base-200">
-			<div class="card-body">
-				<div class="mb-2 flex items-center gap-2">
-					<Bell class="h-5 w-5 text-base-content/50" />
-					<h3 class="font-semibold">{m.profile_notifications()}</h3>
-				</div>
-				<p class="text-sm text-base-content/70">
-					{m.profile_notificationsDescription()}
-				</p>
-			</div>
-		</div>
-		<div class="card bg-base-200">
-			<div class="card-body">
-				<div class="mb-2 flex items-center gap-2">
-					<Shield class="h-5 w-5 text-base-content/50" />
-					<h3 class="font-semibold">{m.profile_permissions()}</h3>
-				</div>
-				<p class="text-sm text-base-content/70">
-					{m.profile_permissionsDescription()}
-				</p>
-			</div>
-		</div>
+	<!-- Account identity -->
+	{#if data.user}
 		<div class="card bg-base-200">
 			<div class="card-body">
 				<div class="mb-2 flex items-center gap-2">
 					<User class="h-5 w-5 text-base-content/50" />
-					<h3 class="font-semibold">{m.profile_personalization()}</h3>
+					<h2 class="font-semibold">{m.profile_accountSecurity()}</h2>
 				</div>
-				<p class="text-sm text-base-content/70">
-					{m.profile_personalizationDescription()}
-				</p>
+				<div class="flex items-center gap-4">
+					<span
+						class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xl font-semibold text-primary"
+					>
+						{(data.user.displayUsername || data.user.username || '?').charAt(0).toUpperCase()}
+					</span>
+					<div class="min-w-0">
+						<p class="truncate text-lg font-medium">
+							{data.user.displayUsername || data.user.username}
+						</p>
+						<p class="truncate text-sm text-base-content/60">@{data.user.username}</p>
+					</div>
+				</div>
+				<div class="divider"></div>
+				<p class="text-sm text-base-content/60">{m.profile_singleAdminNote()}</p>
 			</div>
+		</div>
+	{/if}
+
+	<!-- Change password -->
+	<div class="card mt-4 bg-base-200">
+		<div class="card-body">
+			<div class="mb-2 flex items-center gap-2">
+				<Lock class="h-5 w-5 text-base-content/50" />
+				<h2 class="font-semibold">{m.profile_changePassword()}</h2>
+			</div>
+			<p class="mb-4 text-sm text-base-content/70">{m.profile_changePasswordDescription()}</p>
+
+			<form
+				class="space-y-4"
+				onsubmit={(e) => {
+					e.preventDefault();
+					changePassword();
+				}}
+			>
+				<div class="form-control">
+					<label class="label" for="current-password">
+						<span class="label-text">{m.profile_currentPassword()}</span>
+					</label>
+					<div class="relative">
+						<input
+							id="current-password"
+							type={showPasswords ? 'text' : 'password'}
+							class="input-bordered input w-full pr-12"
+							bind:value={currentPassword}
+							required
+							autocomplete="current-password"
+						/>
+						<button
+							type="button"
+							class="btn absolute top-1/2 right-2 -translate-y-1/2 btn-ghost btn-sm"
+							aria-label={showPasswords ? 'Hide password' : 'Show password'}
+							aria-pressed={showPasswords}
+							onclick={() => (showPasswords = !showPasswords)}
+						>
+							{#if showPasswords}
+								<EyeOff class="h-4 w-4" />
+							{:else}
+								<Eye class="h-4 w-4" />
+							{/if}
+						</button>
+					</div>
+				</div>
+
+				<div class="form-control">
+					<label class="label" for="new-password">
+						<span class="label-text">{m.profile_newPassword()}</span>
+					</label>
+					<input
+						id="new-password"
+						type={showPasswords ? 'text' : 'password'}
+						class="input-bordered input w-full"
+						bind:value={newPassword}
+						required
+						minlength="8"
+						autocomplete="new-password"
+					/>
+				</div>
+
+				<div class="form-control">
+					<label class="label" for="confirm-password">
+						<span class="label-text">{m.profile_confirmPassword()}</span>
+					</label>
+					<input
+						id="confirm-password"
+						type={showPasswords ? 'text' : 'password'}
+						class="input-bordered input w-full"
+						bind:value={confirmPassword}
+						required
+						minlength="8"
+						autocomplete="new-password"
+					/>
+					{#if confirmPassword && !passwordsMatch}
+						<p class="mt-1 text-xs text-error">{m.profile_passwordMismatch()}</p>
+					{/if}
+				</div>
+
+				<button
+					type="submit"
+					class="btn btn-primary"
+					disabled={saving || !passwordsValid || !passwordsMatch}
+				>
+					{#if saving}
+						<span class="loading loading-spinner">&#8203;</span>
+						{m.common_saving()}
+					{:else if saved}
+						<Check class="h-4 w-4" />
+						{m.profile_passwordUpdated()}
+					{:else}
+						<KeyRound class="h-4 w-4" />
+						{m.profile_changePassword()}
+					{/if}
+				</button>
+			</form>
 		</div>
 	</div>
 </div>

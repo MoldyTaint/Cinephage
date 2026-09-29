@@ -198,6 +198,9 @@
 		isLoggingOut = true;
 		try {
 			await authClient.signOut();
+			// Drop all server-loaded state (the root layout carries user
+			// identity) before leaving the app.
+			await invalidateAll();
 			await goto('/login');
 		} catch {
 			// Error handled by auth client
@@ -794,6 +797,29 @@
 								/>
 							</div>
 							<div class="mt-2 border-t border-base-300/70 pt-2">
+								{#if data.user}
+									<a
+										href="/profile"
+										class="mb-1 flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-base-200"
+										title={m.nav_profile()}
+									>
+										<span
+											class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary"
+										>
+											{(data.user.displayUsername || data.user.username || '?')
+												.charAt(0)
+												.toUpperCase()}
+										</span>
+										<span class="min-w-0 flex-1">
+											<span class="block truncate text-sm font-medium">
+												{data.user.displayUsername || data.user.username}
+											</span>
+											<span class="block truncate text-xs text-base-content/50">
+												{data.user.username}
+											</span>
+										</span>
+									</a>
+								{/if}
 								<div class="flex items-center gap-1">
 									<button
 										class="btn flex-1 justify-start btn-ghost text-error btn-sm hover:bg-error/10"
