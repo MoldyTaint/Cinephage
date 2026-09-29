@@ -157,6 +157,8 @@ export interface LibrarySeries {
 	added: string;
 	episodeCount: number | null;
 	episodeFileCount: number | null;
+	/** Aired episodes without a tracked file (derived at list load). */
+	missingCount?: number;
 	percentComplete: number;
 	totalSize?: number;
 	/** Per-item metadata language override mode ('inherit' | 'original' | 'explicit') */

@@ -28,6 +28,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	const monitored = url.searchParams.get('monitored') || 'all';
 	const status = url.searchParams.get('status') || 'all';
 	const progress = url.searchParams.get('progress') || 'all';
+	const missing = url.searchParams.get('missing') || 'all';
 	const qualityProfile = url.searchParams.get('qualityProfile') || 'all';
 	const resolution = url.searchParams.get('resolution') || 'all';
 	const videoCodec = url.searchParams.get('videoCodec') || 'all';
@@ -203,6 +204,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				...s,
 				episodeCount: derivedEpisodeCount,
 				episodeFileCount: derivedEpisodeFileCount,
+				missingCount: Math.max(0, derivedEpisodeCount - derivedEpisodeFileCount),
 				missingRootFolder: !s.rootFolderId || !s.rootFolderPath || s.rootFolderMediaType !== 'tv',
 				percentComplete:
 					derivedEpisodeCount > 0
@@ -361,6 +363,11 @@ export const load: PageServerLoad = async ({ url }) => {
 			filteredSeries = filteredSeries.filter((s) => s.percentComplete === 0);
 		}
 
+		// Filter by missing episodes (aired episodes without a file)
+		if (missing === 'missing') {
+			filteredSeries = filteredSeries.filter((s) => (s.missingCount ?? 0) > 0);
+		}
+
 		// Filter by quality profile (treat null as "uses resolved default profile")
 		if (effectiveQualityProfileFilter !== 'all') {
 			filteredSeries = filteredSeries.filter(
@@ -403,6 +410,12 @@ export const load: PageServerLoad = async ({ url }) => {
 				case 'progress':
 					comparison = a.percentComplete - b.percentComplete;
 					break;
+				case 'missing':
+					comparison = (a.missingCount ?? 0) - (b.missingCount ?? 0);
+					break;
+				case 'missingPercent':
+					comparison = 100 - a.percentComplete - (100 - b.percentComplete);
+					break;
 				case 'size':
 					comparison = (seriesTotalSizeMap.get(a.id) ?? 0) - (seriesTotalSizeMap.get(b.id) ?? 0);
 					break;
@@ -437,6 +450,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				monitored,
 				status,
 				progress,
+				missing,
 				qualityProfile: effectiveQualityProfileFilter,
 				resolution,
 				videoCodec,
@@ -478,6 +492,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				monitored,
 				status,
 				progress,
+				missing,
 				qualityProfile,
 				resolution,
 				videoCodec,

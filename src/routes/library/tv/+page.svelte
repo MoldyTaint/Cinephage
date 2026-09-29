@@ -381,6 +381,10 @@
 		{ value: 'added-asc', label: m.library_tv_sortAddedAsc() },
 		{ value: 'progress-desc', label: m.library_tv_sortProgressDesc() },
 		{ value: 'progress-asc', label: m.library_tv_sortProgressAsc() },
+		{ value: 'missing-desc', label: m.library_tv_sortMissingDesc() },
+		{ value: 'missing-asc', label: m.library_tv_sortMissingAsc() },
+		{ value: 'missingPercent-desc', label: m.library_tv_sortMissingPercentDesc() },
+		{ value: 'missingPercent-asc', label: m.library_tv_sortMissingPercentAsc() },
 		{ value: 'year-desc', label: m.library_tv_sortYearDesc() },
 		{ value: 'year-asc', label: m.library_tv_sortYearAsc() },
 		{ value: 'size-desc', label: m.library_tv_sortSizeDesc() },
@@ -430,6 +434,14 @@
 				{ value: 'complete', label: m.library_tv_filterComplete() },
 				{ value: 'inProgress', label: m.library_tv_filterInProgress() },
 				{ value: 'notStarted', label: m.library_tv_filterNotStarted() }
+			]
+		},
+		{
+			key: 'missing',
+			label: m.library_tv_filterMissing(),
+			options: [
+				{ value: 'all', label: m.library_tv_filterAll() },
+				{ value: 'missing', label: m.library_tv_filterHasMissing() }
 			]
 		},
 		{
@@ -524,6 +536,7 @@
 		monitored: data.filters.monitored,
 		status: data.filters.status,
 		progress: data.filters.progress,
+		missing: data.filters.missing,
 		qualityProfile: data.filters.qualityProfile,
 		resolution: data.filters.resolution,
 		videoCodec: data.filters.videoCodec,
