@@ -1,25 +1,64 @@
 import type { GrabRequest } from '$lib/validation/schemas.js';
+import type { GrabResponse, QueueItem, QueueItemWithMedia, QueueStats } from '$lib/types/queue.js';
 
 import { apiGet, apiPost, apiPatch, apiDelete, type ApiResponse } from './client.js';
 
+/** Response of GET /api/queue. */
+export interface QueueListResponse {
+	data: {
+		items: QueueItemWithMedia[];
+		stats: QueueStats;
+	};
+}
+
+/** Response of POST /api/queue/relink-orphans. */
+export interface RelinkOrphansResponse {
+	relinked: number;
+	details: string[];
+}
+
+/** Response of POST /api/queue/clear-failed. */
+export interface ClearFailedResponse {
+	dryRun: boolean;
+	olderThanDays: number | null;
+	summary: {
+		cleared: number;
+		total: number;
+	};
+}
+
+/** Response of POST /api/queue/:id/retry. */
+export interface RetryQueueResponse {
+	message: string;
+	retryMode: string;
+	queueItem: QueueItem;
+}
+
 export async function grabRelease(payload: GrabRequest) {
-	return apiPost('/api/download/grab', payload);
+	return apiPost<GrabResponse>('/api/download/grab', payload);
 }
 
 export async function getQueue(params?: Record<string, string>) {
-	return apiGet('/api/queue', params);
+	return apiGet<QueueListResponse>('/api/queue', params);
 }
 
-export async function getQueueItem(id: string) {
-	return apiGet(`/api/queue/${id}`);
+/**
+ * The single-item endpoint returns the bare queue row (no envelope) with
+ * media and client info attached.
+ */
+export async function getQueueItem(
+	id: string
+): Promise<QueueItem & { media: unknown; downloadClient: unknown }> {
+	const response = await apiGet(`/api/queue/${id}`);
+	return response as unknown as QueueItem & { media: unknown; downloadClient: unknown };
 }
 
 export async function pauseQueueItem(id: string) {
-	return apiPatch(`/api/queue/${id}`, { action: 'pause' });
+	return apiPatch<{ action: 'paused' }>(`/api/queue/${id}`, { action: 'pause' });
 }
 
 export async function resumeQueueItem(id: string) {
-	return apiPatch(`/api/queue/${id}`, { action: 'resume' });
+	return apiPatch<{ action: 'resumed' }>(`/api/queue/${id}`, { action: 'resume' });
 }
 
 export async function removeQueueItem(
@@ -30,23 +69,23 @@ export async function removeQueueItem(
 	if (opts?.removeFromClient === false) params.removeFromClient = 'false';
 	if (opts?.deleteFiles) params.deleteFiles = 'true';
 	if (opts?.blocklist) params.blocklist = 'true';
-	return apiDelete(`/api/queue/${id}${buildQuery(params)}`);
+	return apiDelete<{ message: string }>(`/api/queue/${id}${buildQuery(params)}`);
 }
 
-export async function retryQueueItem(id: string): Promise<ApiResponse> {
-	return apiPost(`/api/queue/${id}/retry`);
+export async function retryQueueItem(id: string): Promise<ApiResponse<RetryQueueResponse>> {
+	return apiPost<RetryQueueResponse>(`/api/queue/${id}/retry`);
 }
 
 export async function refreshQueue(): Promise<ApiResponse> {
 	return apiPost('/api/queue/refresh');
 }
 
-export async function relinkOrphans(): Promise<ApiResponse> {
-	return apiPost('/api/queue/relink-orphans');
+export async function relinkOrphans(): Promise<ApiResponse<RelinkOrphansResponse>> {
+	return apiPost<RelinkOrphansResponse>('/api/queue/relink-orphans');
 }
 
-export async function clearFailedQueue(): Promise<ApiResponse & { cleared?: number }> {
-	return apiPost('/api/queue/clear-failed');
+export async function clearFailedQueue(): Promise<ApiResponse<ClearFailedResponse>> {
+	return apiPost<ClearFailedResponse>('/api/queue/clear-failed');
 }
 
 function buildQuery(params: Record<string, string>): string {

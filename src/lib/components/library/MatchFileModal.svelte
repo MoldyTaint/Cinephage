@@ -25,9 +25,9 @@
 		id: number;
 		name?: string;
 		title?: string;
-		poster_path: string | null;
-		first_air_date?: string;
-		release_date?: string;
+		poster_path?: string | null;
+		first_air_date?: string | null;
+		release_date?: string | null;
 		overview?: string;
 	}
 
@@ -205,7 +205,7 @@
 			<div class="flex items-center gap-3">
 				<div class="h-16 w-12 shrink-0 overflow-hidden rounded">
 					<TmdbImage
-						path={selectedShow.poster_path}
+						path={selectedShow.poster_path ?? null}
 						alt={selectedShow.name ?? 'Show poster'}
 						size="w92"
 						class="h-full w-full object-cover"

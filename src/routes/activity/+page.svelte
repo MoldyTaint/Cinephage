@@ -1459,7 +1459,8 @@
 	async function retryQueueItem(id: string, options: { refresh?: boolean } = {}): Promise<void> {
 		const { refresh = true } = options;
 		const data = await retryQueueItemApi(id);
-		const payload = data as Record<string, unknown>;
+		// Retry responses vary by mode (download vs import); read dynamically.
+		const payload = data as unknown as Record<string, unknown>;
 
 		const retryMode = typeof payload.retryMode === 'string' ? payload.retryMode : 'download';
 		const importStatus = typeof payload.importStatus === 'string' ? payload.importStatus : null;
