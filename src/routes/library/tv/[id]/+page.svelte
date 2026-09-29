@@ -609,12 +609,15 @@
 
 	async function refreshSeriesFromApi(): Promise<void> {
 		try {
-			const result = (await getSeries(series.id)) as {
-				series?: Record<string, unknown> & { seasons?: PageData['seasons'] };
-			};
+			const result = await getSeries(series.id);
 			if (!result.series) return;
 
-			const { seasons: refreshedSeasons, ...seriesFields } = result.series;
+			// Narrow to the page's season shape; the server series row is a
+			// superset of the load() projection.
+			const { seasons: refreshedSeasons, ...seriesFields } = result.series as unknown as Record<
+				string,
+				unknown
+			> & { seasons?: PageData['seasons'] };
 			seriesState = { ...series, ...seriesFields };
 			if (Array.isArray(refreshedSeasons)) {
 				seasonsState = refreshedSeasons;

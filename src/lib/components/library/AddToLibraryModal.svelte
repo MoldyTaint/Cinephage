@@ -19,7 +19,13 @@
 	} from '$lib/api/settings.js';
 	import { getEffectiveSubtitleProfile, getLanguageProfiles } from '$lib/api/subtitles.js';
 	import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
-	import { getLibraryStatus, createMovie, createSeries, bulkAddMovies } from '$lib/api/library.js';
+	import {
+		getLibraryStatus,
+		createMovie,
+		createSeries,
+		bulkAddMovies,
+		type LibraryStatus
+	} from '$lib/api/library.js';
 	import { getTmdb } from '$lib/api/discover.js';
 
 	interface Props {
@@ -456,8 +462,8 @@
 			const tmdbIds = collectionData.parts.map((p: CollectionPart) => p.id);
 			const statusData = await getLibraryStatus({ tmdbIds, mediaType: 'movie' });
 
-			let statusMap: Record<number, { inLibrary: boolean }> = {};
-			statusMap = statusData.status ?? {};
+			// tmdbIds (plural) always yields the map-shaped response.
+			const statusMap = statusData.status as Record<number, LibraryStatus>;
 
 			collection = {
 				id: collectionData.id,

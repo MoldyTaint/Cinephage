@@ -10,7 +10,7 @@
 	import { createSSE } from '$lib/sse';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import { cancelTask, setTaskEnabled, runTask } from '$lib/api/tasks.js';
-	import { apiPost } from '$lib/api/client.js';
+	import { apiPost, type ApiResponse } from '$lib/api/client.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -197,8 +197,16 @@
 
 		// Determine the endpoint: maintenance tasks go through the generic runner
 		// (which emits SSE events), scheduled tasks call their endpoint directly
-		// (MonitoringScheduler emits SSE events).
-		const fireRequest =
+		// (MonitoringScheduler emits SSE events). The generic runner proxies the
+		// underlying task endpoint's own result payload, so only the fields this
+		// page reads are declared.
+		type TaskFireResult = ApiResponse<{
+			result?: { itemsProcessed?: number; itemsGrabbed?: number };
+			updatedFiles?: number;
+			totalFiles?: number;
+			[key: string]: unknown;
+		}>;
+		const fireRequest: Promise<TaskFireResult> =
 			task.category === 'maintenance' ? runTask(taskId) : apiPost(task.runEndpoint);
 
 		if (sse.isConnected) {
@@ -219,7 +227,7 @@
 
 				if (!result.success) {
 					updateTask(taskId, { isRunning: false });
-					throw new Error(result.error || result.message || m.settings_tasks_taskFailedGeneric());
+					throw new Error(result.error || m.settings_tasks_taskFailedGeneric());
 				}
 
 				updateTask(taskId, { isRunning: false });
