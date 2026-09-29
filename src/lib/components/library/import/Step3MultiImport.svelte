@@ -25,6 +25,7 @@
 		hasMultipleImportTvSeries = false,
 		importMediaFilter = $bindable('all' as QueueMediaFilter),
 		importMode = $bindable('move' as 'move' | 'copy' | 'symlink'),
+		preferHardlink = $bindable(true),
 		backgroundImport = $bindable(false),
 		bulkDestinationBySectionId = {},
 		selectedImportGroupCount = 0,
@@ -55,6 +56,7 @@
 		hasMultipleImportTvSeries: boolean;
 		importMediaFilter: QueueMediaFilter;
 		importMode: 'move' | 'copy' | 'symlink';
+		preferHardlink: boolean;
 		backgroundImport: boolean;
 		bulkDestinationBySectionId: Record<string, string>;
 		selectedImportGroupCount: number;
@@ -450,6 +452,22 @@
 				</div>
 			</label>
 		</div>
+		<label
+			class="mt-3 flex items-start gap-3 rounded-lg border p-3 transition-colors
+				{importMode === 'copy' ? 'border-primary/40 bg-base-200/50' : 'border-base-300 opacity-50'}
+				{executingImport || importMode !== 'copy' ? 'cursor-not-allowed' : 'cursor-pointer'}"
+		>
+			<input
+				type="checkbox"
+				class="checkbox mt-0.5 checkbox-primary"
+				bind:checked={preferHardlink}
+				disabled={executingImport || importMode !== 'copy'}
+			/>
+			<div>
+				<div class="font-medium">{m.library_import_preferHardlinkLabel()}</div>
+				<div class="text-sm text-base-content/70">{m.library_import_preferHardlinkDesc()}</div>
+			</div>
+		</label>
 	</div>
 
 	{#if selectedNeedsInputCount > 0}

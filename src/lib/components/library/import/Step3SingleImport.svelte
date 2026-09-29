@@ -31,6 +31,7 @@
 		destinationLibrariesForType = [],
 		selectedRootFolder = $bindable(''),
 		importMode = $bindable('move' as 'move' | 'copy' | 'symlink'),
+		preferHardlink = $bindable(true),
 		backgroundImport = $bindable(false),
 		loadingRootFolders = false,
 		seasonNumber = 1,
@@ -53,6 +54,7 @@
 		destinationLibrariesForType: DestinationLibrary[];
 		selectedRootFolder: string;
 		importMode: 'move' | 'copy' | 'symlink';
+		preferHardlink: boolean;
 		backgroundImport: boolean;
 		loadingRootFolders: boolean;
 		seasonNumber: number;
@@ -223,6 +225,22 @@
 				</div>
 			</label>
 		</div>
+		<label
+			class="mt-3 flex items-start gap-3 rounded-lg border p-3 transition-colors
+				{importMode === 'copy' ? 'border-primary/40 bg-base-200/50' : 'border-base-300 opacity-50'}
+				{executingImport || importMode !== 'copy' ? 'cursor-not-allowed' : 'cursor-pointer'}"
+		>
+			<input
+				type="checkbox"
+				class="checkbox mt-0.5 checkbox-primary"
+				bind:checked={preferHardlink}
+				disabled={executingImport || importMode !== 'copy'}
+			/>
+			<div>
+				<div class="font-medium">{m.library_import_preferHardlinkLabel()}</div>
+				<div class="text-sm text-base-content/70">{m.library_import_preferHardlinkDesc()}</div>
+			</div>
+		</label>
 	</div>
 
 	<div class="rounded-xl border border-base-300 bg-base-100 p-4 sm:p-5">

@@ -2083,6 +2083,12 @@ export const manualImportSchema = z
 		seasonNumber: z.number().int().min(0).optional(),
 		episodeNumber: z.number().int().min(1).optional(),
 		importMode: importMethodSchema.optional(),
+		// Per-import hardlink override; omitted means the global File Management
+		// setting applies (resolved at execution time). Must live in this schema:
+		// routes persist the parsed payload and the durable bulk/worker path
+		// replays the stored request without re-validation, so an unknown key
+		// is stripped before the job is even enqueued.
+		preferHardlink: z.boolean().optional(),
 		// Queue the import as a background library job and return immediately (#530).
 		// Omitted means run synchronously, as before.
 		background: z.boolean().optional()

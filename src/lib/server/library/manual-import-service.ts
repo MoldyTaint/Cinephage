@@ -106,6 +106,8 @@ export interface ExecuteManualImportRequest {
 	episodeNumber?: number;
 	/** Override the global file management import mode for this specific import */
 	importMode?: 'move' | 'copy' | 'symlink';
+	/** Override the global "use hardlinks when possible" setting for this import */
+	preferHardlink?: boolean;
 	/** When set, the import was requested as a background library job (#530) */
 	background?: boolean;
 }
@@ -562,7 +564,8 @@ export class ManualImportService {
 				sourceFile.path,
 				destinationPath,
 				rootFolder.preserveSymlinks ?? false,
-				request.importMode
+				request.importMode,
+				request.preferHardlink
 			);
 			const unmatchedId = await this.insertUnmatchedImportRecord({
 				destinationPath,
@@ -643,7 +646,8 @@ export class ManualImportService {
 					sourceFile.path,
 					destinationPath,
 					rootFolder.preserveSymlinks ?? false,
-					request.importMode
+					request.importMode,
+					request.preferHardlink
 				);
 				const unmatchedId = await this.insertUnmatchedImportRecord({
 					destinationPath,
@@ -1471,7 +1475,8 @@ export class ManualImportService {
 		sourcePath: string,
 		destinationPath: string,
 		preserveSymlinks: boolean,
-		importModeOverride?: 'move' | 'copy' | 'symlink'
+		importModeOverride?: 'move' | 'copy' | 'symlink',
+		preferHardlinkOverride?: boolean
 	): Promise<{ transferMode: string }> {
 		await ensureDirectory(dirname(destinationPath));
 
@@ -1499,7 +1504,7 @@ export class ManualImportService {
 			importMode,
 			canMoveFiles,
 			preserveSymlinks,
-			preferHardlink: settings.preferHardlink
+			preferHardlink: preferHardlinkOverride ?? settings.preferHardlink
 		});
 
 		if (!transferResult.success) {

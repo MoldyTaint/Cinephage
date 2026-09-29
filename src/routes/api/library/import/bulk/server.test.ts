@@ -145,4 +145,22 @@ describe('Bulk Import API', () => {
 		);
 		expect(enqueueJobMock).not.toHaveBeenCalled();
 	});
+
+	it('passes a per-import preferHardlink override through to the durable job (#584)', async () => {
+		// The stored request is replayed by the import worker without
+		// re-validation, so the override must survive the zod parse + enqueue
+		// round-trip or it is stripped for good.
+		const job = buildJob(0);
+		const { status } = await api.post(POST, {
+			jobs: [{ ...job, request: { ...job.request, preferHardlink: false } }]
+		});
+
+		expect(status).toBe(200);
+		expect(enqueueJobMock).toHaveBeenCalledTimes(1);
+		const enqueued = enqueueJobMock.mock.calls[0][0];
+		expect(enqueued.metadata.request).toMatchObject({
+			importMode: 'symlink',
+			preferHardlink: false
+		});
+	});
 });

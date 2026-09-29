@@ -92,6 +92,7 @@
 		batchSeasonOverride: number | null;
 		selectedRootFolder: string;
 		importMode: 'move' | 'copy' | 'symlink';
+		preferHardlink: boolean;
 	}
 
 	interface ExecuteResult {
@@ -173,7 +174,9 @@
 	let batchSeasonOverride = $state<number | null>(null);
 	let selectedRootFolder = $state('');
 	let importMode = $state<'move' | 'copy' | 'symlink'>('move');
+	let preferHardlink = $state(true);
 	let bulkImportMode = $state<'move' | 'copy' | 'symlink'>('move');
+	let bulkPreferHardlink = $state(true);
 	let importedBulkItems = $state<ImportedBulkItem[]>([]);
 	let bulkDestinationBySectionId = $state<Record<string, string>>({});
 	let executingImport = $state(false);
@@ -480,6 +483,10 @@
 			if (s?.importMode === 'copy' || s?.importMode === 'symlink') {
 				importMode = s.importMode;
 				bulkImportMode = s.importMode;
+			}
+			if (typeof s?.preferHardlink === 'boolean') {
+				preferHardlink = s.preferHardlink;
+				bulkPreferHardlink = s.preferHardlink;
 			}
 			const startPath = s?.defaultImportFolder?.trim() || '/';
 			defaultImportFolder = startPath;
@@ -924,7 +931,8 @@
 			episodeNumber: group.parsedEpisode ?? 1,
 			batchSeasonOverride: group.suggestedSeason ?? null,
 			selectedRootFolder: initialRootFolder ?? '',
-			importMode
+			importMode,
+			preferHardlink
 		};
 	}
 
@@ -951,6 +959,7 @@
 		batchSeasonOverride = state.batchSeasonOverride;
 		selectedRootFolder = state.selectedRootFolder;
 		importMode = state.importMode;
+		preferHardlink = state.preferHardlink;
 	}
 
 	function persistActiveGroupState() {
@@ -967,7 +976,8 @@
 				episodeNumber,
 				batchSeasonOverride,
 				selectedRootFolder,
-				importMode
+				importMode,
+				preferHardlink
 			}
 		};
 	}
@@ -1001,7 +1011,8 @@
 				episodeNumber,
 				batchSeasonOverride: nextBatchSeasonOverride,
 				selectedRootFolder,
-				importMode
+				importMode,
+				preferHardlink
 			}
 		};
 	}
@@ -1737,6 +1748,10 @@
 			tmdbId: state.selectedMatch.tmdbId,
 			importTarget: resolvedImportTarget,
 			importMode: state.importMode,
+			// Always concrete so background/bulk jobs run with the behavior the
+			// user saw at submit time instead of re-reading global settings at
+			// execution time.
+			preferHardlink: state.preferHardlink,
 			...(resolvedImportTarget === 'new'
 				? { rootFolderId: state.selectedRootFolder || librariesForType[0]?.id }
 				: {}),
@@ -2379,7 +2394,7 @@
 			try {
 				const payload = buildImportPayload(group);
 				jobs.push({
-					request: { ...payload, importMode: bulkImportMode },
+					request: { ...payload, importMode: bulkImportMode, preferHardlink: bulkPreferHardlink },
 					groupName: group.displayName
 				});
 				groupIdMap[group.displayName] = group.id;
@@ -2606,6 +2621,7 @@
 	{#if step === 3 && isMultiGroupReview && detection}
 		<Step3MultiImport
 			bind:importMode={bulkImportMode}
+			bind:preferHardlink={bulkPreferHardlink}
 			bind:backgroundImport
 			{importMovieSections}
 			{importTvSections}
@@ -2674,6 +2690,7 @@
 			{destinationLibrariesForType}
 			bind:selectedRootFolder
 			bind:importMode
+			bind:preferHardlink
 			bind:backgroundImport
 			{loadingRootFolders}
 			{seasonNumber}
