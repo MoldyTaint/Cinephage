@@ -25,19 +25,19 @@ function createEvent(
 			user: options.authenticatedUser
 				? ({
 						id: 'test-user',
-						name: null,
+						name: 'Test Admin',
 						email: 'admin@example.com',
-						emailVerified: 1,
+						emailVerified: false,
 						image: null,
 						username: 'admin',
 						displayUsername: 'admin',
 						role: 'admin',
 						language: 'en',
-						banned: 0,
+						banned: false,
 						banReason: null,
 						banExpires: null,
-						createdAt: new Date().toISOString(),
-						updatedAt: new Date().toISOString()
+						createdAt: new Date(),
+						updatedAt: new Date()
 					} as App.Locals['user'])
 				: null,
 			session: null,

@@ -173,6 +173,18 @@ export const auth = betterAuth({
 	// Use native SQLite adapter instead of Drizzle to avoid boolean binding issues
 	database: authDb,
 
+	// Declare the custom user column so $Infer session types cover it
+	// (the column itself is owned by BETTER_AUTH_TABLE_DEFINITIONS).
+	user: {
+		additionalFields: {
+			language: {
+				type: 'string',
+				required: false,
+				input: false
+			}
+		}
+	},
+
 	// Enable email/password (required for username plugin)
 	// The username plugin extends email/password auth
 	emailAndPassword: {
@@ -296,6 +308,7 @@ export async function repairCurrentUserAdminRole(userId: string): Promise<boolea
 // Export helper functions
 export { validateUsername, generateDisplayUsername };
 
-// Export types
-type AuthType = typeof auth;
-export type { AuthType };
+// Inferred session shapes — the single source of truth for what
+// App.Locals.user / App.Locals.session carry (see session-helpers.ts).
+export type AuthSessionUser = typeof auth.$Infer.Session.user;
+export type AuthSessionRecord = typeof auth.$Infer.Session.session;

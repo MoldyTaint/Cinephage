@@ -24,19 +24,19 @@ interface HandlerOptions extends RequestOptions {
 }
 
 function createTestUser(role: 'admin' | 'user'): App.Locals['user'] {
-	const now = new Date().toISOString();
+	const now = new Date();
 
 	return {
 		id: `test-${role}-user`,
 		name: `${role} tester`,
 		email: `${role}@example.com`,
-		emailVerified: 1,
+		emailVerified: false,
 		image: null,
 		username: `${role}_tester`,
 		displayUsername: `${role}_tester`,
 		role,
 		language: 'en',
-		banned: 0,
+		banned: false,
 		banReason: null,
 		banExpires: null,
 		createdAt: now,

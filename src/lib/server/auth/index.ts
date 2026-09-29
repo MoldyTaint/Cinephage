@@ -2,7 +2,9 @@ export {
 	auth,
 	validateUsername,
 	generateDisplayUsername,
-	repairCurrentUserAdminRole
+	repairCurrentUserAdminRole,
+	type AuthSessionUser,
+	type AuthSessionRecord
 } from './auth.js';
 export {
 	ensureDefaultApiKeysForUser,
@@ -22,13 +24,12 @@ export {
 	USERNAME_MIN_LENGTH,
 	USERNAME_PATTERN
 } from '$lib/auth/username-policy.js';
-export { isSetupComplete, requireSetup } from './setup.js';
 export {
-	checkApiKeyPermission,
-	requireApiKeyPermission,
-	type Permission,
-	type PermissionSet
-} from './permissions.js';
+	isSetupComplete,
+	markSetupComplete,
+	resetSetupCompleteCache,
+	requireSetup
+} from './setup.js';
 export {
 	isAdmin,
 	requireAdmin,
@@ -44,4 +45,3 @@ export {
 	user,
 	type UserRole as AccessControlUserRole
 } from '$lib/auth/access-control.js';
-export type { AuthType } from './auth.js';

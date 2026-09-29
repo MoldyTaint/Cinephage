@@ -13,6 +13,9 @@ export type ManagedApiKeyType = 'main' | 'streaming';
 
 type ApiKeyPermissions = Record<string, string[]>;
 
+/** What auth.api.createApiKey actually returns — inferred, no hand-mirror. */
+type CreatedApiKey = Awaited<ReturnType<typeof auth.api.createApiKey>>;
+
 const DEFAULT_STREAMING_API_KEY_RATE_LIMIT_WINDOW_MS = 1000 * 60 * 60;
 const DEFAULT_STREAMING_API_KEY_RATE_LIMIT_MAX = 10000;
 
@@ -39,17 +42,8 @@ const STREAMING_API_KEY_RATE_LIMIT_MAX = getPositiveIntegerEnv(
 	DEFAULT_STREAMING_API_KEY_RATE_LIMIT_MAX
 );
 
-type BetterAuthApiKey = {
-	id: string;
-	name?: string | null;
-	key?: string | null;
-	start?: string | null;
-	prefix?: string | null;
-	createdAt?: Date | string | null;
-	metadata?: Record<string, unknown> | null;
-	permissions?: ApiKeyPermissions | null;
-	referenceId?: string;
-};
+/** Shape of a key as returned by auth.api.listApiKeys — inferred, no hand-mirror. */
+type ListedApiKey = Awaited<ReturnType<typeof auth.api.listApiKeys>>['apiKeys'][number];
 
 export type RecoverableApiKey = {
 	id: string;
@@ -67,7 +61,7 @@ function isManagedApiKeyType(
 }
 
 function formatRecoverableApiKey(
-	key: BetterAuthApiKey | null,
+	key: ListedApiKey | CreatedApiKey | null,
 	recoveredKey: string | null
 ): RecoverableApiKey | null {
 	if (!key) {
@@ -77,7 +71,10 @@ function formatRecoverableApiKey(
 	return {
 		id: key.id,
 		name: key.name ?? null,
-		key: recoveredKey || key.key || `${key.prefix || 'cinephage'}_${key.start || ''}...`,
+		key:
+			recoveredKey ||
+			('key' in key ? key.key : undefined) ||
+			`${key.prefix || 'cinephage'}_${key.start || ''}...`,
 		createdAt: key.createdAt,
 		metadata: key.metadata ?? null
 	};
@@ -122,8 +119,8 @@ export async function createRecoverableApiKey(options: {
 	name: string;
 	metadata: Record<string, unknown>;
 	permissions: ApiKeyPermissions;
-}): Promise<BetterAuthApiKey> {
-	const apiKey = (await auth.api.createApiKey({
+}): Promise<CreatedApiKey> {
+	const apiKey = await auth.api.createApiKey({
 		body: {
 			userId: options.userId,
 			name: options.name,
@@ -135,7 +132,7 @@ export async function createRecoverableApiKey(options: {
 			rateLimitMax:
 				options.metadata.type === 'streaming' ? STREAMING_API_KEY_RATE_LIMIT_MAX : undefined
 		}
-	})) as BetterAuthApiKey;
+	});
 
 	if (!apiKey.key) {
 		throw new Error('Better Auth did not return a recoverable API key value');
@@ -179,9 +176,9 @@ export async function ensureDefaultApiKeysForUser(
 	mainKey: KeyCreationResult | null;
 	streamingKey: KeyCreationResult | null;
 }> {
-	const apiKeysResult = (await auth.api.listApiKeys({
+	const apiKeysResult = await auth.api.listApiKeys({
 		headers
-	})) as { apiKeys: BetterAuthApiKey[] };
+	});
 	const existingKeys = apiKeysResult.apiKeys;
 
 	const hasMainKey = existingKeys.some((key) => isManagedApiKeyType(key, 'main'));
@@ -239,10 +236,10 @@ export async function regenerateRecoverableApiKey(options: {
 	userId: string;
 	headers: Headers;
 }): Promise<RecoverableApiKey | null> {
-	const existingKey = (await auth.api.getApiKey({
+	const existingKey = await auth.api.getApiKey({
 		query: { id: options.keyId },
 		headers: options.headers
-	})) as BetterAuthApiKey | null;
+	});
 
 	if (!existingKey || existingKey.referenceId !== options.userId) {
 		return null;
@@ -275,9 +272,9 @@ export async function getManagedApiKeysForRequest(headers: Headers): Promise<{
 	mainApiKey: RecoverableApiKey | null;
 	streamingApiKey: RecoverableApiKey | null;
 }> {
-	const apiKeysResult = (await auth.api.listApiKeys({
+	const apiKeysResult = await auth.api.listApiKeys({
 		headers
-	})) as { apiKeys: BetterAuthApiKey[] };
+	});
 	const mainApiKey = apiKeysResult.apiKeys.find((key) => isManagedApiKeyType(key, 'main')) || null;
 	const streamingApiKey =
 		apiKeysResult.apiKeys.find((key) => isManagedApiKeyType(key, 'streaming')) || null;
