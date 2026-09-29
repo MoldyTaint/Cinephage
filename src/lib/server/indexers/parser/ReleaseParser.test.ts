@@ -732,6 +732,50 @@ describe('ReleaseParser', () => {
 			expect(extractEnhancedAudio('FLAC').codec).toBe('flac');
 		});
 
+		it('should detect codecs with channel digits glued on (#585)', () => {
+			// Releases routinely glue the channel spec straight onto the codec
+			// token (FLAC1.0, DTSHDMA7.1) and a trailing \b never matches there.
+			expect(extractEnhancedAudio('FLAC1.0').codec).toBe('flac');
+			expect(extractEnhancedAudio('FLAC.1.0').codec).toBe('flac');
+			expect(extractEnhancedAudio('LPCM7.1').codec).toBe('pcm');
+			expect(extractEnhancedAudio('PCM2.0').codec).toBe('pcm');
+			expect(extractEnhancedAudio('DTSHDMA7.1').codec).toBe('dts-hdma');
+			expect(extractEnhancedAudio('DTS-HDMA7.1').codec).toBe('dts-hdma');
+			expect(extractEnhancedAudio('DTS-HD.MA.5.1').codec).toBe('dts-hdma');
+			expect(extractEnhancedAudio('DTS-HD7.1').codec).toBe('dts-hd');
+			expect(extractEnhancedAudio('DTS-HD-HRA7.1').codec).toBe('dts-hd-hra');
+			expect(extractEnhancedAudio('DTS-ES6.1').codec).toBe('dts-es');
+			expect(extractEnhancedAudio('DTSX5.1').codec).toBe('dts-x');
+			expect(extractEnhancedAudio('EAC35.1').codec).toBe('dd+');
+			expect(extractEnhancedAudio('AC35.1').codec).toBe('dd');
+			expect(extractEnhancedAudio('DolbyDigitalPlus5.1').codec).toBe('dd+');
+			expect(extractEnhancedAudio('DolbyDigital5.1').codec).toBe('dd');
+			expect(extractEnhancedAudio('DTS5.1').codec).toBe('dts');
+			expect(extractEnhancedAudio('MP3 320kbps').codec).toBe('mp3');
+		});
+
+		it('should still parse channels glued after letter-ending codecs (#585)', () => {
+			expect(extractEnhancedAudio('FLAC1.0').channels).toBe('1.0');
+			expect(extractEnhancedAudio('LPCM7.1').channels).toBe('7.1');
+			// AC3-style codecs end in a digit themselves, so the channel guard
+			// still cannot see the glued spec; codec detection is what scoring
+			// depends on.
+			expect(extractEnhancedAudio('EAC35.1').channels).toBe('unknown');
+		});
+
+		it('should detect Atmos glued to codec tokens and channel digits (#585)', () => {
+			expect(extractEnhancedAudio('TrueHDAtmos7.1').hasAtmos).toBe(true);
+			expect(extractEnhancedAudio('Atmos7.1').hasAtmos).toBe(true);
+			expect(extractEnhancedAudio('TrueHD.Atmos.7.1').hasAtmos).toBe(true);
+			expect(extractEnhancedAudio('Atmospheric.Disaster.2020.1080p').hasAtmos).toBe(false);
+		});
+
+		it('should parse FLAC1.0 inside a full release title (#585)', () => {
+			const parsed = parseRelease('And.Justice.for.All.1979.1080p.BluRay.FLAC1.0.x264-ZoroSenpai');
+			expect(parsed.audioCodec).toBe('flac');
+			expect(parsed.audioChannels).toBe('1.0');
+		});
+
 		it('should detect HDR formats', () => {
 			expect(extractHdr('Dolby Vision')?.hdr).toBe('dolby-vision');
 			expect(extractHdr('DoVi')?.hdr).toBe('dolby-vision');
