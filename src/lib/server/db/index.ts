@@ -1,6 +1,4 @@
 import { drizzle } from 'drizzle-orm/better-sqlite3';
-import Database from 'better-sqlite3';
-import { existsSync, mkdirSync } from 'node:fs';
 import * as schema from './schema';
 import { createChildLogger } from '$lib/logging';
 
@@ -8,34 +6,11 @@ const logger = createChildLogger({ logDomain: 'system' as const });
 import { syncSchema } from './schema-sync';
 import { tableExists, getAppliedMigrations, getSchemaVersion } from './migration-helpers';
 import { MIGRATIONS } from './migrations/index';
+import { getSharedSqliteConnection } from './connection';
 
-// Ensure data directory exists before creating database connection
-const DATA_DIR = process.env.DATA_DIR || 'data';
-if (!existsSync(DATA_DIR)) {
-	mkdirSync(DATA_DIR, { recursive: true });
-}
-
-const sqlite = new Database(`${DATA_DIR}/cinephage.db`);
-
-try {
-	// Improve concurrent read/write behavior during heavy background jobs (for example EPG sync).
-	sqlite.pragma('journal_mode = WAL');
-	sqlite.pragma('synchronous = NORMAL');
-	sqlite.pragma('busy_timeout = 5000');
-	sqlite.pragma('wal_autocheckpoint = 4000');
-	sqlite.pragma('temp_store = MEMORY');
-	sqlite.pragma('foreign_keys = ON');
-	// 32MB page cache: reduces re-reads of hot tables (episodes, storage_items, episode_files)
-	// during reconcile and scan passes on large libraries.
-	sqlite.pragma('cache_size = -32000');
-} catch (error) {
-	logger.warn(
-		{
-			err: error
-		},
-		'Failed to apply SQLite pragmas'
-	);
-}
+// Single shared connection (see connection.ts) — Better Auth and Drizzle
+// both use this handle.
+const sqlite = getSharedSqliteConnection();
 
 export const db = drizzle(sqlite, { schema });
 

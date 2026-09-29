@@ -1,9 +1,6 @@
-import { existsSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import Database from 'better-sqlite3';
 import { env } from '$env/dynamic/private';
+import { resolveDatabasePath, getSharedSqliteConnection } from '$lib/server/db/connection.js';
 
-const DATA_DIR = process.env.DATA_DIR || 'data';
 const DEFAULT_BASE_URL = 'http://localhost:5173';
 const BUILD_TIME_PLACEHOLDER = 'build-time-placeholder-do-not-use-in-production';
 
@@ -11,34 +8,20 @@ function normalizeUrl(url: string): string {
 	return url.trim().replace(/\/+$/, '');
 }
 
+/**
+ * Database path for the auth layer — same file, same resolution chain as the
+ * application connection (see db/connection.ts). Kept as an export because
+ * scripts and tests reason about "the auth database path".
+ */
 export function getAuthDatabasePath(): string {
-	return (
-		process.env.AUTH_DATABASE_URL || process.env.DATABASE_URL || join(DATA_DIR, 'cinephage.db')
-	);
-}
-
-export function ensureAuthDatabaseDirectory(): void {
-	const dbPath = getAuthDatabasePath();
-
-	// Skip URI-style and in-memory database targets.
-	if (dbPath === ':memory:' || dbPath.startsWith('file:')) {
-		return;
-	}
-
-	mkdirSync(dirname(dbPath), { recursive: true });
+	return resolveDatabasePath();
 }
 
 function getConfiguredExternalUrl(): string | null {
-	const dbPath = getAuthDatabasePath();
-
-	if (!existsSync(dbPath)) {
-		return null;
-	}
-
-	let sqlite: Database.Database | null = null;
-
+	// Runs during auth module init, before schema-sync may have created the
+	// settings table — guard with sqlite_master and tolerate a missing table.
 	try {
-		sqlite = new Database(dbPath, { readonly: true });
+		const sqlite = getSharedSqliteConnection();
 		const settingsTable = sqlite
 			.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'settings'`)
 			.get();
@@ -58,8 +41,6 @@ function getConfiguredExternalUrl(): string | null {
 		return normalizeUrl(row.value);
 	} catch {
 		return null;
-	} finally {
-		sqlite?.close();
 	}
 }
 

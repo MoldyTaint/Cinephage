@@ -4,13 +4,8 @@ import { apiKey } from '@better-auth/api-key';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { getRequestEvent } from '$app/server';
 import { APIError } from 'better-auth/api';
-import Database from 'better-sqlite3';
-import {
-	ensureAuthDatabaseDirectory,
-	getAuthDatabasePath,
-	getAuthSecret,
-	getBaseURL
-} from './secret.js';
+import { getAuthSecret, getBaseURL } from './secret.js';
+import { getSharedSqliteConnection } from '$lib/server/db/connection.js';
 import {
 	createBetterAuthTables,
 	createBetterAuthIndexes,
@@ -78,12 +73,6 @@ function generateDisplayUsername(username: string): string {
 		.join(' ');
 }
 
-// Initialize Better Auth's native SQLite database connection
-// Use the shared auth database path so Docker and local runtime stay aligned.
-const DB_PATH = getAuthDatabasePath();
-ensureAuthDatabaseDirectory();
-const authDb = new Database(DB_PATH);
-
 // Better Auth 1.7 validates the database schema on first access and caches a
 // mismatch permanently (only its own migrate clears the cache). The tables
 // normally come from schema-sync at startup, but a request can reach auth
@@ -91,6 +80,7 @@ const authDb = new Database(DB_PATH);
 // before betterAuth() is ever constructed. Databases created before apikey
 // v1.5 additionally need their legacy userId column converged here, or the
 // same first-access validation would latch a mismatch before migrations run.
+const authDb = getSharedSqliteConnection();
 createBetterAuthTables(authDb);
 convergeApikeySchemaToV15(authDb);
 createBetterAuthIndexes(authDb);
