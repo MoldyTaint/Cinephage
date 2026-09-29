@@ -112,6 +112,12 @@ describe('hooks chain — setup via the auth route', () => {
 		// NOTE: the sveltekitCookies plugin never fires for handler-driven
 		// requests (better-auth returns cookies on the Response itself), so the
 		// event cookie jar is intentionally not asserted here.
+
+		// Auth responses now flow through the shared response tail: correlation
+		// IDs and security headers apply to /api/auth like every other route.
+		expect(response.headers.get('x-correlation-id')).toBeTruthy();
+		expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+
 		sessionCookies = responseCookies;
 	});
 });

@@ -106,9 +106,17 @@ export async function createAuthTestHarness(options: {
 	syncSchema(dbModule.sqlite);
 
 	let handle: AuthTestHarness['handle'] = null;
+	let authRouteModule: Record<string, (ctx: { request: Request }) => Promise<Response>> | null =
+		null;
 	if (options.withHooks) {
 		const hooksModule = await import('../hooks.server.js');
 		handle = hooksModule.handle as HandleLike;
+		// The catch-all route module, so /api/auth requests dispatched through
+		// handle() reach the real endpoint instead of the endpoint stub.
+		authRouteModule = (await import('../routes/api/auth/[...all]/+server.js')) as unknown as Record<
+			string,
+			(ctx: { request: Request }) => Promise<Response>
+		>;
 	}
 
 	const internal = await import('@sveltejs/kit/internal/server');
@@ -178,8 +186,18 @@ export async function createAuthTestHarness(options: {
 		return withStore(event, () =>
 			handle!({
 				event,
-				resolve: () =>
-					Promise.resolve(endpointResponse ?? new Response('endpoint-ok', { status: 200 }))
+				resolve: (resolvedEvent) => {
+					// Dispatch auth paths to the real catch-all route the way
+					// SvelteKit routing would; everything else gets the stub.
+					const pathname = resolvedEvent.url.pathname;
+					if (authRouteModule && pathname.startsWith('/api/auth')) {
+						const method = resolvedEvent.request.method.toUpperCase();
+						const routeHandler =
+							authRouteModule[method] ?? authRouteModule.POST ?? authRouteModule.GET;
+						return routeHandler({ request: resolvedEvent.request });
+					}
+					return Promise.resolve(endpointResponse ?? new Response('endpoint-ok', { status: 200 }));
+				}
 			})
 		);
 	}

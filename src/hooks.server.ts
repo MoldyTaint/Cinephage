@@ -2,7 +2,6 @@ import type { Handle } from '@sveltejs/kit';
 import { json, redirect } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
 import { randomUUID } from 'node:crypto';
-import { building } from '$app/environment';
 
 import { AUTH_BASE_PATH } from '$lib/auth/config.js';
 import { createRequestLogger, runWithLogContext } from '$lib/logging';
@@ -68,28 +67,9 @@ const localeHandler: Handle = async ({ event, resolve }) => {
 	});
 };
 
-const authHandler: Handle = async ({ event, resolve }) => {
+const customHandler: Handle = async ({ event, resolve }) => {
 	ensureServicesInitialized();
 
-	if (building) {
-		return resolve(event);
-	}
-
-	const normalizedBasePath = AUTH_BASE_PATH.endsWith('/')
-		? AUTH_BASE_PATH.slice(0, -1)
-		: AUTH_BASE_PATH;
-	const isAuthRoute =
-		event.url.pathname === normalizedBasePath ||
-		event.url.pathname.startsWith(`${normalizedBasePath}/`);
-
-	if (isAuthRoute) {
-		return auth.handler(event.request);
-	}
-
-	return resolve(event);
-};
-
-const customHandler: Handle = async ({ event, resolve }) => {
 	const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 	const clientId = event.request.headers.get('x-correlation-id');
 	const correlationId = clientId && UUID_REGEX.test(clientId) ? clientId : randomUUID();
@@ -160,153 +140,109 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				return false;
 			}
 
-			let session = null;
-			let apiKey = null;
+			// /api/auth is served by the catch-all route (api/auth/[[...all]]).
+			// Auth requests flow through to the shared response tail — security
+			// headers, correlation IDs, logging — but skip session resolution,
+			// setup/login redirects, and rate limiting here: Better Auth owns its
+			// own origin checks and database-backed rate limiter for those paths.
+			const isAuthRoute = pathname === AUTH_BASE_PATH || pathname.startsWith(`${AUTH_BASE_PATH}/`);
 
-			if (!isStreamingApiRoute) {
-				// Real Radarr/Sonarr accept the API key as either the X-Api-Key
-				// header or an `apikey` query parameter (see the real openapi.json
-				// securitySchemes) - arr clients like Jellyseerr/Overseerr (Seerr) use the
-				// query parameter for their Radarr/Sonarr connections, so the
-				// arr-compat routes need it accepted here too, not just the header.
-				const apiKeyHeader =
-					event.request.headers.get('x-api-key') ||
-					event.url.searchParams.get('apikey') ||
-					event.url.searchParams.get('api_key');
-				if (apiKeyHeader) {
-					try {
-						session = await auth.api.getSession({
-							headers: new Headers({ 'x-api-key': apiKeyHeader })
-						});
-						apiKey = apiKeyHeader;
-					} catch {
-						// Invalid API key, continue to cookie auth
-					}
-				}
+			/**
+			 * Session resolution, API-key gates, setup/login redirects, rate
+			 * limiting, and legacy URL redirects for everything EXCEPT /api/auth.
+			 * Returns a Response when the request must not reach the endpoint,
+			 * null to continue to the shared response tail.
+			 */
+			const applyRequestGates = async (): Promise<Response | null> => {
+				let session = null;
+				let apiKey = null;
 
-				if (!session) {
-					try {
-						session = await auth.api.getSession({
-							headers: event.request.headers
-						});
-					} catch {
-						// getSession throws (instead of returning null) when the request
-						// carries an invalid x-api-key header — treat it as anonymous so the
-						// request 401s instead of erroring.
-					}
-				}
-
-				if (session) {
-					if (
-						session.user?.id &&
-						session.user.role !== 'admin' &&
-						(await repairCurrentUserAdminRole(session.user.id))
-					) {
-						session = {
-							...session,
-							user: {
-								...session.user,
-								role: 'admin'
-							}
-						};
+				if (!isStreamingApiRoute) {
+					// Real Radarr/Sonarr accept the API key as either the X-Api-Key
+					// header or an `apikey` query parameter (see the real openapi.json
+					// securitySchemes) - arr clients like Jellyseerr/Overseerr (Seerr) use the
+					// query parameter for their Radarr/Sonarr connections, so the
+					// arr-compat routes need it accepted here too, not just the header.
+					const apiKeyHeader =
+						event.request.headers.get('x-api-key') ||
+						event.url.searchParams.get('apikey') ||
+						event.url.searchParams.get('api_key');
+					if (apiKeyHeader) {
+						try {
+							session = await auth.api.getSession({
+								headers: new Headers({ 'x-api-key': apiKeyHeader })
+							});
+							apiKey = apiKeyHeader;
+						} catch {
+							// Invalid API key, continue to cookie auth
+						}
 					}
 
-					setAuthenticatedLocals(event, session, apiKey);
+					if (!session) {
+						try {
+							session = await auth.api.getSession({
+								headers: event.request.headers
+							});
+						} catch {
+							// getSession throws (instead of returning null) when the request
+							// carries an invalid x-api-key header — treat it as anonymous so the
+							// request 401s instead of erroring.
+						}
+					}
+
+					if (session) {
+						if (
+							session.user?.id &&
+							session.user.role !== 'admin' &&
+							(await repairCurrentUserAdminRole(session.user.id))
+						) {
+							session = {
+								...session,
+								user: {
+									...session.user,
+									role: 'admin'
+								}
+							};
+						}
+
+						setAuthenticatedLocals(event, session, apiKey);
+					} else {
+						clearAuthenticatedLocals(event);
+					}
 				} else {
 					clearAuthenticatedLocals(event);
 				}
-			} else {
-				clearAuthenticatedLocals(event);
-			}
 
-			const setupComplete = await isSetupComplete();
+				const setupComplete = await isSetupComplete();
 
-			if (pathname.startsWith(AUTH_BASE_PATH)) {
-				return resolve(event);
-			}
-
-			function isPublicRoute(path: string): boolean {
-				if (path === '/login' || path.startsWith('/login/')) {
-					return true;
-				}
-				if (path.startsWith(AUTH_BASE_PATH)) {
-					return true;
-				}
-				if (isHealthRoute(path)) {
-					return true;
-				}
-				// Client error reports must be receivable pre-auth — crashes on
-				// /login happen before a session exists. The endpoint itself
-				// enforces same-origin + payload validation.
-				if (path === '/api/settings/logs/client-report') {
-					return true;
-				}
-				return false;
-			}
-
-			if (isStreamingApiRoute) {
-				const url = new URL(event.request.url);
-				const apiKeyFromQuery = url.searchParams.get('api_key');
-				const apiKeyFromHeader = event.request.headers.get('x-api-key');
-				const apiKey = apiKeyFromQuery || apiKeyFromHeader;
-
-				if (!apiKey) {
-					return json(
-						{
-							success: false,
-							error: 'API key required',
-							code: 'API_KEY_REQUIRED'
-						},
-						{
-							status: 401,
-							headers: {
-								'x-correlation-id': correlationId,
-								'x-support-id': supportId,
-								...BASE_SECURITY_HEADERS
-							}
-						}
-					);
-				}
-
-				try {
-					// Accept either a streaming-scoped key or a full-access (main) key
-					let verifyResult = await auth.api.verifyApiKey({
-						body: {
-							key: apiKey,
-							permissions: {
-								streaming: ['*']
-							}
-						}
-					});
-
-					if (!verifyResult.valid) {
-						// Fall back to main API key check. Main keys are created with
-						// { default: ['*'] }.
-						verifyResult = await auth.api.verifyApiKey({
-							body: {
-								key: apiKey,
-								permissions: {
-									default: ['*']
-								}
-							}
-						});
+				function isPublicRoute(path: string): boolean {
+					if (path === '/login' || path.startsWith('/login/')) {
+						return true;
 					}
+					if (isHealthRoute(path)) {
+						return true;
+					}
+					// Client error reports must be receivable pre-auth — crashes on
+					// /login happen before a session exists. The endpoint itself
+					// enforces same-origin + payload validation.
+					if (path === '/api/settings/logs/client-report') {
+						return true;
+					}
+					return false;
+				}
 
-					if (!verifyResult.valid) {
-						requestLogger.warn(
-							{
-								logDomain: 'auth',
-								endpoint: pathname,
-								error: verifyResult.error?.message || 'Invalid permissions'
-							},
-							'[Auth] API key does not have streaming or full-access permissions'
-						);
+				if (isStreamingApiRoute) {
+					const url = new URL(event.request.url);
+					const apiKeyFromQuery = url.searchParams.get('api_key');
+					const apiKeyFromHeader = event.request.headers.get('x-api-key');
+					const apiKey = apiKeyFromQuery || apiKeyFromHeader;
 
+					if (!apiKey) {
 						return json(
 							{
 								success: false,
-								error: 'Unauthorized',
-								code: 'UNAUTHORIZED'
+								error: 'API key required',
+								code: 'API_KEY_REQUIRED'
 							},
 							{
 								status: 401,
@@ -319,44 +255,40 @@ const customHandler: Handle = async ({ event, resolve }) => {
 						);
 					}
 
-					event.locals.apiKey = apiKey;
-					event.locals.apiKeyPermissions = verifyResult.key?.permissions || null;
-				} catch (error) {
-					requestLogger.error(
-						{
-							err: error,
-							logDomain: 'auth',
-							endpoint: pathname
-						},
-						'[Auth] API key validation error'
-					);
-
-					return json(
-						{
-							success: false,
-							error: 'API key validation failed',
-							code: 'INVALID_API_KEY'
-						},
-						{
-							status: 401,
-							headers: {
-								'x-correlation-id': correlationId,
-								...BASE_SECURITY_HEADERS
+					try {
+						// Accept either a streaming-scoped key or a full-access (main) key
+						let verifyResult = await auth.api.verifyApiKey({
+							body: {
+								key: apiKey,
+								permissions: {
+									streaming: ['*']
+								}
 							}
+						});
+
+						if (!verifyResult.valid) {
+							// Fall back to main API key check. Main keys are created with
+							// { default: ['*'] }.
+							verifyResult = await auth.api.verifyApiKey({
+								body: {
+									key: apiKey,
+									permissions: {
+										default: ['*']
+									}
+								}
+							});
 						}
-					);
-				}
-			} else {
-				if (!setupComplete) {
-					if (isHealthRoute(pathname)) {
-						return resolve(event);
-					}
-					if (!pathname.startsWith('/setup')) {
-						throw redirect(302, '/setup');
-					}
-				} else {
-					if (!event.locals.user && !isPublicRoute(pathname)) {
-						if (pathname.startsWith('/api/')) {
+
+						if (!verifyResult.valid) {
+							requestLogger.warn(
+								{
+									logDomain: 'auth',
+									endpoint: pathname,
+									error: verifyResult.error?.message || 'Invalid permissions'
+								},
+								'[Auth] API key does not have streaming or full-access permissions'
+							);
+
 							return json(
 								{
 									success: false,
@@ -368,62 +300,127 @@ const customHandler: Handle = async ({ event, resolve }) => {
 									headers: {
 										'x-correlation-id': correlationId,
 										'x-support-id': supportId,
-										...SECURITY_HEADERS
+										...BASE_SECURITY_HEADERS
 									}
 								}
 							);
 						}
-						throw redirect(302, '/login');
+
+						event.locals.apiKey = apiKey;
+						event.locals.apiKeyPermissions = verifyResult.key?.permissions || null;
+					} catch (error) {
+						requestLogger.error(
+							{
+								err: error,
+								logDomain: 'auth',
+								endpoint: pathname
+							},
+							'[Auth] API key validation error'
+						);
+
+						return json(
+							{
+								success: false,
+								error: 'API key validation failed',
+								code: 'INVALID_API_KEY'
+							},
+							{
+								status: 401,
+								headers: {
+									'x-correlation-id': correlationId,
+									...BASE_SECURITY_HEADERS
+								}
+							}
+						);
+					}
+				} else {
+					if (!setupComplete) {
+						if (isHealthRoute(pathname)) {
+							return resolve(event);
+						}
+						if (!pathname.startsWith('/setup')) {
+							throw redirect(302, '/setup');
+						}
+					} else {
+						if (!event.locals.user && !isPublicRoute(pathname)) {
+							if (pathname.startsWith('/api/')) {
+								return json(
+									{
+										success: false,
+										error: 'Unauthorized',
+										code: 'UNAUTHORIZED'
+									},
+									{
+										status: 401,
+										headers: {
+											'x-correlation-id': correlationId,
+											'x-support-id': supportId,
+											...SECURITY_HEADERS
+										}
+									}
+								);
+							}
+							throw redirect(302, '/login');
+						}
 					}
 				}
-			}
 
-			if (pathname.startsWith('/api/')) {
-				const rateLimitResponse = checkApiRateLimit(event);
-				if (rateLimitResponse) {
-					return rateLimitResponse;
+				if (pathname.startsWith('/api/')) {
+					const rateLimitResponse = checkApiRateLimit(event);
+					if (rateLimitResponse) {
+						return rateLimitResponse;
+					}
 				}
-			}
 
-			if (setupComplete && event.locals.user) {
-				if (pathname === '/setup' || pathname === '/login' || pathname.startsWith('/login/')) {
-					throw redirect(302, '/');
+				if (setupComplete && event.locals.user) {
+					if (pathname === '/setup' || pathname === '/login' || pathname.startsWith('/login/')) {
+						throw redirect(302, '/');
+					}
 				}
-			}
 
-			if (
-				pathname === '/movies' ||
-				pathname === '/movies/' ||
-				pathname === '/library/movie' ||
-				pathname === '/library/movie/'
-			) {
-				throw redirect(308, '/library/movies');
-			}
-			if (pathname === '/tv' || pathname === '/tv/') {
-				throw redirect(308, '/library/tv');
-			}
-			if (
-				pathname === '/movie' ||
-				pathname === '/movie/' ||
-				pathname === '/discover/movie' ||
-				pathname === '/discover/movie/' ||
-				pathname === '/discover/tv' ||
-				pathname === '/discover/tv/' ||
-				pathname === '/discover/person' ||
-				pathname === '/discover/person/' ||
-				pathname === '/person' ||
-				pathname === '/person/'
-			) {
-				throw redirect(308, '/discover');
-			}
-			if (pathname.startsWith('/movie/')) {
-				throw redirect(308, `/discover/movie/${pathname.slice('/movie/'.length)}`);
-			}
-			if (pathname.startsWith('/tv/')) {
-				throw redirect(308, `/discover/tv/${pathname.slice('/tv/'.length)}`);
-			}
-			if (pathname.startsWith('/person/')) {
-				throw redirect(308, `/discover/person/${pathname.slice('/person/'.length)}`);
+				if (
+					pathname === '/movies' ||
+					pathname === '/movies/' ||
+					pathname === '/library/movie' ||
+					pathname === '/library/movie/'
+				) {
+					throw redirect(308, '/library/movies');
+				}
+				if (pathname === '/tv' || pathname === '/tv/') {
+					throw redirect(308, '/library/tv');
+				}
+				if (
+					pathname === '/movie' ||
+					pathname === '/movie/' ||
+					pathname === '/discover/movie' ||
+					pathname === '/discover/movie/' ||
+					pathname === '/discover/tv' ||
+					pathname === '/discover/tv/' ||
+					pathname === '/discover/person' ||
+					pathname === '/discover/person/' ||
+					pathname === '/person' ||
+					pathname === '/person/'
+				) {
+					throw redirect(308, '/discover');
+				}
+				if (pathname.startsWith('/movie/')) {
+					throw redirect(308, `/discover/movie/${pathname.slice('/movie/'.length)}`);
+				}
+				if (pathname.startsWith('/tv/')) {
+					throw redirect(308, `/discover/tv/${pathname.slice('/tv/'.length)}`);
+				}
+				if (pathname.startsWith('/person/')) {
+					throw redirect(308, `/discover/person/${pathname.slice('/person/'.length)}`);
+				}
+
+				return null;
+			};
+
+			if (!isAuthRoute) {
+				const gateResponse = await applyRequestGates();
+				if (gateResponse) {
+					return gateResponse;
+				}
 			}
 
 			const isStreamingRoute = event.url.pathname.startsWith('/api/streaming/');
@@ -521,4 +518,4 @@ const customHandler: Handle = async ({ event, resolve }) => {
 	);
 };
 
-export const handle = sequence(csrfGuard, localeHandler, authHandler, customHandler);
+export const handle = sequence(csrfGuard, localeHandler, customHandler);
