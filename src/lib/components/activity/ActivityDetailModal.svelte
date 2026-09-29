@@ -9,6 +9,7 @@
 	import { X, Clapperboard, Tv, Pause, Play, RotateCcw, Trash2, Info, Folder } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { createFocusTrap, lockBodyScroll } from '$lib/utils/focus';
+	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import {
 		statusConfig,
 		getStatusLabel,
@@ -34,6 +35,7 @@
 
 	let activeTab = $state<'overview'>('overview');
 	let actionLoading = $state(false);
+	let removeConfirmOpen = $state(false);
 	let modalRef = $state<HTMLElement | null>(null);
 	let contentRef = $state<HTMLElement | null>(null);
 	let cleanupFocusTrap: (() => void) | null = null;
@@ -67,12 +69,23 @@
 		}
 	}
 
+	function requestRemove() {
+		if (!activity?.queueItemId || !onRemove || actionLoading) return;
+		removeConfirmOpen = true;
+	}
+
+	function cancelRemove() {
+		if (actionLoading) return;
+		removeConfirmOpen = false;
+	}
+
 	async function handleRemove() {
 		if (!activity?.queueItemId || !onRemove) return;
 		actionLoading = true;
 		try {
-			await onRemove(activity.queueItemId);
+			await onRemove(activity.queueItemId, { deleteFiles: true });
 			toasts.success(m.activity_detail_downloadRemoved());
+			removeConfirmOpen = false;
 			onClose();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : m.activity_detail_failedToRemove();
@@ -160,7 +173,7 @@
 	}
 
 	$effect(() => {
-		if (open && activity && modalRef) {
+		if (open && activity && modalRef && !removeConfirmOpen) {
 			cleanupScrollLock = lockBodyScroll();
 			cleanupFocusTrap = createFocusTrap(modalRef);
 		}
@@ -292,7 +305,7 @@
 						{/if}
 						<button
 							class="btn btn-ghost btn-error btn-sm"
-							onclick={handleRemove}
+							onclick={requestRemove}
 							disabled={actionLoading}
 						>
 							<Trash2 class="h-4 w-4" />
@@ -428,3 +441,14 @@
 		</div>
 	</div>
 {/if}
+
+<ConfirmationModal
+	open={removeConfirmOpen}
+	title={m.activity_detail_removeConfirmTitle()}
+	message={m.activity_detail_removeFromClientWarning()}
+	confirmLabel={m.activity_detail_removeAndDeleteFiles()}
+	confirmVariant="error"
+	loading={actionLoading}
+	onConfirm={handleRemove}
+	onCancel={cancelRemove}
+/>
