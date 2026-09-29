@@ -554,7 +554,10 @@
 								{@const scoreClass =
 									cat.score > 0 ? 'bg-success/10 text-success' : 'bg-error/10 text-error'}
 								{@const prefix = cat.score > 0 ? '+' : ''}
-								<span class="rounded-full px-2 py-1 text-xs {scoreClass}">
+								<span
+									class="rounded-full px-2 py-1 text-xs {scoreClass}"
+									title={cat.formats?.length ? cat.formats.join(', ') : undefined}
+								>
 									{prefix}{cat.score}
 									{label}
 								</span>
