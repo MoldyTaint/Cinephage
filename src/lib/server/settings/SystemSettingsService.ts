@@ -4,6 +4,11 @@ import { eq } from 'drizzle-orm';
 
 const SETTINGS_KEY_EXTERNAL_URL = 'external_url';
 
+// Short TTL cache: getExternalUrl() is read on every mutating auth request
+// (trustedOrigins resolution) and does not need to be real-time fresh.
+const EXTERNAL_URL_CACHE_TTL_MS = 60 * 1000;
+let externalUrlCache: { value: string | null; expiresAt: number } | null = null;
+
 /**
  * System-wide settings service
  * Manages application-level configuration stored in the settings table
@@ -15,13 +20,19 @@ export class SystemSettingsService {
 	 * @returns The external URL or null if not set
 	 */
 	async getExternalUrl(): Promise<string | null> {
+		if (externalUrlCache && Date.now() < externalUrlCache.expiresAt) {
+			return externalUrlCache.value;
+		}
+
 		const result = await db
 			.select({ value: settings.value })
 			.from(settings)
 			.where(eq(settings.key, SETTINGS_KEY_EXTERNAL_URL))
 			.get();
 
-		return result?.value ?? null;
+		const value = result?.value ?? null;
+		externalUrlCache = { value, expiresAt: Date.now() + EXTERNAL_URL_CACHE_TTL_MS };
+		return value;
 	}
 
 	/**
@@ -42,6 +53,8 @@ export class SystemSettingsService {
 					set: { value: url }
 				});
 		}
+
+		externalUrlCache = { value: url, expiresAt: Date.now() + EXTERNAL_URL_CACHE_TTL_MS };
 	}
 }
 

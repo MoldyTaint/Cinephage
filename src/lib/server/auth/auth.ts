@@ -15,7 +15,7 @@ import { getSystemSettingsService } from '$lib/server/settings/SystemSettingsSer
 import { ac, admin as adminRole, user as userRole } from '$lib/auth/access-control.js';
 import { isHardReservedUsername, isValidUsernameFormat } from '$lib/auth/username-policy.js';
 import { ensureSoleUserIsAdminRecord } from './admin-bootstrap.js';
-import { isSetupComplete } from './setup.js';
+import { isSetupComplete, resetSetupCompleteCache } from './setup.js';
 import { isLocalNetworkOrigin } from '$lib/server/utils/origin.js';
 
 function getFirstForwardedHeaderValue(value: string | null): string | null {
@@ -218,7 +218,11 @@ export const auth = betterAuth({
 		storeSessionInDatabase: true,
 		cookieCache: {
 			enabled: true,
-			maxAge: 60 * 60 * 24 * 7 // 7 days
+			// Short cache window: while a cached cookie is trusted, revocation
+			// (sign-out, password change) cannot take effect for a replayed
+			// cookie value. Five minutes bounds that window at negligible cost
+			// — one DB read per active session per interval.
+			maxAge: 60 * 5
 		}
 	},
 
@@ -240,6 +244,10 @@ export const auth = betterAuth({
 							message: 'User registration is disabled. Only one admin account is allowed.'
 						});
 					}
+
+					// The insert hasn't happened yet — invalidate rather than
+					// assume, so a failed insert can still be retried.
+					resetSetupCompleteCache();
 
 					return {
 						data: {
@@ -264,7 +272,12 @@ export const auth = betterAuth({
 	},
 
 	advanced: {
-		cookiePrefix: useSecureCookies ? '__Secure' : 'cinephage',
+		// Constant prefix: deriving it from the resolved base URL scheme meant a
+		// scheme change (or saving an https external URL + restart) renamed the
+		// cookies and silently logged everyone out. The Secure ATTRIBUTE below
+		// still adapts per scheme; only the name is now stable. Existing https
+		// deployments are logged out once by this rename.
+		cookiePrefix: 'cinephage',
 
 		useSecureCookies: useSecureCookies,
 
