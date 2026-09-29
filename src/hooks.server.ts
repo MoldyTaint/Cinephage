@@ -185,9 +185,15 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				}
 
 				if (!session) {
-					session = await auth.api.getSession({
-						headers: event.request.headers
-					});
+					try {
+						session = await auth.api.getSession({
+							headers: event.request.headers
+						});
+					} catch {
+						// getSession throws (instead of returning null) when the request
+						// carries an invalid x-api-key header — treat it as anonymous so the
+						// request 401s instead of erroring.
+					}
 				}
 
 				if (session) {
