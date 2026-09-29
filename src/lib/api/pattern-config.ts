@@ -4,6 +4,10 @@
 
 import { apiGet, apiPut } from './client.js';
 
+/**
+ * A library_pattern_config row as serialized by the pattern-config endpoints
+ * (JSON columns already parsed, timestamps as ISO strings).
+ */
 export interface PatternConfigRow {
 	id: string;
 	libraryId: string | null;
@@ -26,11 +30,19 @@ export interface PatternConfigUpdate {
 	structureConfig?: Record<string, unknown> | null;
 }
 
-export async function getPatternConfig(libraryId?: string): Promise<PatternConfigRow> {
+/**
+ * The GET endpoint returns the bare config row, not the success/error envelope.
+ * When a libraryId is supplied and that library has no row yet, the endpoint
+ * serializes null.
+ */
+export async function getPatternConfig(libraryId?: string): Promise<PatternConfigRow | null> {
 	const params = libraryId ? { libraryId } : undefined;
-	return apiGet<PatternConfigRow>('/api/settings/library/pattern-config', params);
+	const response = await apiGet('/api/settings/library/pattern-config', params);
+	return response as unknown as PatternConfigRow | null;
 }
 
+/** The PUT endpoint returns the bare saved config row, not the success envelope. */
 export async function savePatternConfig(input: PatternConfigUpdate): Promise<PatternConfigRow> {
-	return apiPut<PatternConfigRow>('/api/settings/library/pattern-config', input);
+	const response = await apiPut('/api/settings/library/pattern-config', input);
+	return response as unknown as PatternConfigRow;
 }

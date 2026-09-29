@@ -1,5 +1,9 @@
-import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
+import { apiGet, apiPost, apiPut, apiDelete, type ApiResponse } from './client.js';
 
+/**
+ * A resolution_categories row as serialized by the resolution-categories
+ * endpoints (JSON column already parsed, timestamp as ISO string).
+ */
 export interface ResolutionCategory {
 	id: string;
 	label: string;
@@ -10,26 +14,33 @@ export interface ResolutionCategory {
 	createdAt: string | null;
 }
 
+/** The list endpoint returns the bare categories array, not the success envelope. */
 export async function getResolutionCategories(): Promise<ResolutionCategory[]> {
-	return apiGet<ResolutionCategory[]>('/api/settings/library/resolution-categories');
+	const response = await apiGet('/api/settings/library/resolution-categories');
+	return response as unknown as ResolutionCategory[];
 }
 
+/** The create endpoint returns the bare created row (201), not the success envelope. */
 export async function createResolutionCategory(input: {
 	label: string;
 	minWidth?: number;
 	minHeight?: number;
 	searchTerms?: string[];
 }): Promise<ResolutionCategory> {
-	return apiPost<ResolutionCategory>('/api/settings/library/resolution-categories', input);
+	const response = await apiPost('/api/settings/library/resolution-categories', input);
+	return response as unknown as ResolutionCategory;
 }
 
+/** The update endpoint returns the bare updated row, not the success envelope. */
 export async function updateResolutionCategory(
 	id: string,
 	input: { label?: string; minWidth?: number; minHeight?: number; searchTerms?: string[] }
 ): Promise<ResolutionCategory> {
-	return apiPut<ResolutionCategory>(`/api/settings/library/resolution-categories/${id}`, input);
+	const response = await apiPut(`/api/settings/library/resolution-categories/${id}`, input);
+	return response as unknown as ResolutionCategory;
 }
 
-export async function deleteResolutionCategory(id: string): Promise<void> {
+/** The delete endpoint returns only the success envelope; there is no other payload. */
+export async function deleteResolutionCategory(id: string): Promise<ApiResponse> {
 	return apiDelete(`/api/settings/library/resolution-categories/${id}`);
 }
