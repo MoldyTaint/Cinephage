@@ -10,7 +10,7 @@
 
 import { EventEmitter } from 'events';
 import { stat } from 'fs/promises';
-import { join, basename, dirname, extname } from 'path';
+import { join, basename, dirname, extname, resolve } from 'path';
 import { randomUUID } from 'node:crypto';
 import { db } from '$lib/server/db';
 import { eventBuffer } from '$lib/server/sse/EventBuffer.js';
@@ -49,6 +49,7 @@ import {
 	ImportMode
 } from './FileTransfer';
 import { getDownloadClientManager } from '../DownloadClientManager';
+import { joinCategoryPath } from '../core/client-utils.js';
 import { unlink, rm, writeFile } from 'fs/promises';
 import { unlinkSync } from 'node:fs';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
@@ -654,6 +655,15 @@ export class ImportService extends EventEmitter {
 			}
 		}
 
+		// Defence in depth for #532: the download and temp roots and their
+		// per-category staging roots are never a single download's import
+		// source. Importing from one would scan (and move) every other
+		// download under it.
+		if (client && this.isRootLevelImportPath(queueItem.outputPath, client.client)) {
+			this.trackPendingImport(queueItemId, 'Invalid path - waiting for download client');
+			return { status: 'pending_retry', reason: 'Path not ready yet' };
+		}
+
 		// Path is valid, clear from pending and queue the import
 		this.pendingImports.delete(queueItemId);
 
@@ -668,6 +678,34 @@ export class ImportService extends EventEmitter {
 
 		this.queueImport(queueItemId);
 		return { status: 'queued' };
+	}
+
+	/**
+	 * True when the import path is a download-client root or one of its
+	 * per-category staging roots - directories shared by many downloads that
+	 * must never be treated as one download's import source (#532).
+	 */
+	private isRootLevelImportPath(
+		outputPath: string,
+		clientConfig: {
+			downloadPathLocal?: string | null;
+			tempPathLocal?: string | null;
+			movieCategory?: string | null;
+			tvCategory?: string | null;
+		}
+	): boolean {
+		const roots: string[] = [];
+		for (const base of [clientConfig.downloadPathLocal, clientConfig.tempPathLocal]) {
+			if (!base) continue;
+			roots.push(base);
+			for (const category of [clientConfig.movieCategory, clientConfig.tvCategory]) {
+				if (!category) continue;
+				const joined = joinCategoryPath(base, category);
+				if (joined) roots.push(joined);
+			}
+		}
+		const target = resolve(outputPath.replace(/\/+$/, ''));
+		return roots.some((root) => resolve(root.replace(/\/+$/, '')) === target);
 	}
 
 	/**
@@ -1197,6 +1235,19 @@ export class ImportService extends EventEmitter {
 		const movieFolder = join(rootFolder.path, movie.path);
 		const allowStrmProbe = movie.scoringProfileId !== 'streamer';
 		const mediaInfo = await mediaInfoService.extractMediaInfo(mainFile.path, { allowStrmProbe });
+		// A file ffprobe cannot read is not importable: it is still
+		// downloading, corrupt, or a fragment adopted by mistake (#532).
+		// STRM placeholders never reach here - they get synthetic info.
+		const probeFailure = this.getMediaProbeFailure(mainFile.path, mediaInfo);
+		if (probeFailure) {
+			result.failedFiles.push(probeFailure);
+			result.error = probeFailure.error;
+			result.failureStage = 'path_resolution';
+			result.failureReason = 'path_unavailable';
+			worker.fileProcessed(basename(mainFile.path), false, probeFailure.error);
+			await downloadMonitor.markFailed(queueItem.id, probeFailure.error!);
+			return result;
+		}
 		const destFileName = await this.buildMovieFileName(movie, mainFile.path, queueItem, mediaInfo);
 		const destPath = join(movieFolder, destFileName);
 
@@ -2009,6 +2060,9 @@ export class ImportService extends EventEmitter {
 
 		const allowStrmProbe = seriesData.scoringProfileId !== 'streamer';
 		const mediaInfo = await mediaInfoService.extractMediaInfo(videoFile.path, { allowStrmProbe });
+		// See importMovie: an unreadable file is a failed file, never an import.
+		const probeFailure = this.getMediaProbeFailure(videoFile.path, mediaInfo);
+		if (probeFailure) return probeFailure;
 		const destFileName = await this.buildEpisodeFileName(
 			seriesData,
 			seasonNum,
@@ -2878,6 +2932,25 @@ export class ImportService extends EventEmitter {
 		if (!channels) return undefined;
 		const map: Record<number, string> = { 1: '1.0', 2: '2.0', 6: '5.1', 8: '7.1' };
 		return map[channels] ?? `${channels}.0`;
+	}
+
+	/**
+	 * A file ffprobe cannot read is not importable. Without this check a
+	 * corrupt fragment or a still-downloading file adopted by mistake would
+	 * be renamed into the library as a successful import (#532). STRM
+	 * placeholders never produce null - extractMediaInfo returns synthetic
+	 * info for those.
+	 */
+	private getMediaProbeFailure(
+		sourcePath: string,
+		mediaInfo: Awaited<ReturnType<typeof mediaInfoService.extractMediaInfo>>
+	): ImportResult | null {
+		if (mediaInfo) return null;
+		return {
+			success: false,
+			sourcePath,
+			error: 'Media validation failed: ffprobe could not read the file'
+		};
 	}
 
 	private async buildMovieFileName(

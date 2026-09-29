@@ -141,6 +141,49 @@ beforeEach(async () => {
 });
 
 describe('updateQueueItem stalled clock across failed recovery', () => {
+	it('does not persist the client save-path root when torrent metadata is unavailable', async () => {
+		// #532: a metadata-less magnet reports an empty contentPath and the
+		// save root as savePath. Storing that root as outputPath let recovery
+		// adopt every other torrent under it, so it must stay null until the
+		// client reports a real per-torrent content path.
+		const row = await insertQueueRow({ outputPath: null, clientDownloadPath: null });
+
+		await callUpdateQueueItem(row, makeDownload({ contentPath: '', savePath: '/downloads' }));
+
+		const updated = await getRow(row.id);
+		expect(updated?.outputPath).toBeNull();
+		expect(updated?.clientDownloadPath).toBeNull();
+	});
+
+	it('stores the content path once torrent metadata resolves', async () => {
+		const row = await insertQueueRow({ outputPath: null, clientDownloadPath: null });
+
+		await callUpdateQueueItem(
+			row,
+			makeDownload({
+				contentPath: '/downloads/tv/Show.S01E01',
+				savePath: '/downloads/tv',
+				status: 'downloading',
+				progress: 0.2
+			})
+		);
+
+		const updated = await getRow(row.id);
+		expect(updated?.outputPath).toBe('/downloads/tv/Show.S01E01');
+		expect(updated?.clientDownloadPath).toBe('/downloads/tv/Show.S01E01');
+	});
+
+	it('keeps the savePath fallback for usenet downloads', async () => {
+		const row = await insertQueueRow({ protocol: 'usenet', outputPath: null });
+
+		await callUpdateQueueItem(
+			row,
+			makeDownload({ contentPath: '', savePath: '/downloads/movies/Release' })
+		);
+
+		const updated = await getRow(row.id);
+		expect(updated?.outputPath).toBe('/downloads/movies/Release');
+	});
 	it('clears stale stalledSince when a failed row recovers to stalled (re-grab of same torrent)', async () => {
 		const staleTimestamp = new Date(Date.now() - 4 * 24 * 60 * 60_000).toISOString();
 		const row = await insertQueueRow({
