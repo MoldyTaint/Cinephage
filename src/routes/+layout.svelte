@@ -2,7 +2,7 @@
 	import './layout.css';
 	import { browser } from '$app/environment';
 	import { goto, invalidateAll } from '$app/navigation';
-	import { ThemeSelector, LanguageSelector } from '$lib/components/ui';
+	import { ThemeSelector, LanguageSelector, UserAvatar } from '$lib/components/ui';
 	import Toasts from '$lib/components/ui/Toasts.svelte';
 	import { layoutState, type ScanProgressPayload } from '$lib/layout.svelte';
 	import * as m from '$lib/paraglide/messages.js';
@@ -831,13 +831,12 @@
 										class="mb-1 flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-base-200"
 										title={m.nav_profile()}
 									>
-										<span
-											class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary"
-										>
-											{(data.user.displayUsername || data.user.username || '?')
-												.charAt(0)
-												.toUpperCase()}
-										</span>
+										<UserAvatar
+											name={data.user.displayUsername || data.user.username || '?'}
+											src={data.user.mediaServerId
+												? `/api/user/media-server/avatar/${data.user.mediaServerId}`
+												: null}
+										/>
 										<span class="min-w-0 flex-1">
 											<span class="block truncate text-sm font-medium">
 												{data.user.displayUsername || data.user.username}

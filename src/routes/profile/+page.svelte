@@ -25,7 +25,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { formatDisplayDate } from '$lib/utils/format.js';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
-	import { LanguageSelector } from '$lib/components/ui';
+	import { LanguageSelector, UserAvatar } from '$lib/components/ui';
 
 	type OwnSession = {
 		id: string;
@@ -315,11 +315,13 @@
 	<!-- Identity -->
 	<SettingsSection title={m.profile_accountSecurity()}>
 		<div class="flex flex-col gap-4 sm:flex-row sm:items-center">
-			<div
-				class="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary/15 text-2xl font-semibold text-primary"
-			>
-				{(displayName || '?').charAt(0).toUpperCase()}
-			</div>
+			<UserAvatar
+				name={displayName || '?'}
+				src={data.user?.mediaServerId
+					? `/api/user/media-server/avatar/${data.user.mediaServerId}`
+					: null}
+				size="lg"
+			/>
 			<div class="min-w-0 flex-1">
 				{#if editingName}
 					<div class="flex max-w-md items-center gap-2">

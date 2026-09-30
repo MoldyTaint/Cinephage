@@ -7,6 +7,7 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { formatDisplayDate } from '$lib/utils/format.js';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
+	import { UserAvatar } from '$lib/components/ui';
 	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
 	import {
 		isHardReservedUsername,
@@ -139,11 +140,13 @@
 						>
 							<td>
 								<div class="flex items-center gap-3">
-									<div
-										class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary"
-									>
-										{(userRow.displayUsername || userRow.username || '?').charAt(0).toUpperCase()}
-									</div>
+									<UserAvatar
+										name={userRow.displayUsername || userRow.username || '?'}
+										src={userRow.mediaServerId
+											? `/api/settings/users/${userRow.id}/media-server/avatar/${userRow.mediaServerId}`
+											: null}
+										size="md"
+									/>
 									<div class="min-w-0">
 										<div class="font-medium">{userRow.username ?? userRow.email}</div>
 										{#if userRow.displayUsername && userRow.displayUsername !== userRow.username}
@@ -172,7 +175,14 @@
 								{#if userRow.banned}
 									<span
 										class="badge badge-sm badge-error"
-										title={userRow.banReason ?? m.users_defaultBanReason()}
+										title={[
+											userRow.banReason ?? m.users_defaultBanReason(),
+											userRow.banExpires
+												? m.users_bannedUntil({ date: formatDisplayDate(userRow.banExpires) })
+												: null
+										]
+											.filter(Boolean)
+											.join(' — ')}
 									>
 										{m.users_bannedStatus()}
 									</span>

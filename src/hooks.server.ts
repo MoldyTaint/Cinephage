@@ -164,6 +164,14 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				if (path === '/api/user/media-server/link') {
 					return method === 'GET' || method === 'POST' || method === 'PUT' || method === 'DELETE';
 				}
+				// Self-scoped per-account preferences (registry-validated keys).
+				if (path === '/api/user/preferences' || path.startsWith('/api/user/preferences/')) {
+					return method === 'GET' || method === 'PUT';
+				}
+				// Own linked media-server avatar (image proxy, self only).
+				if (path.startsWith('/api/user/media-server/avatar/')) {
+					return method === 'GET';
+				}
 				if (method !== 'GET' && method !== 'HEAD') {
 					return false;
 				}

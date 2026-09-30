@@ -1237,6 +1237,14 @@ const TABLE_DEFINITIONS: string[] = [
 		"created_at" text
 	)`,
 
+	`CREATE TABLE IF NOT EXISTS "user_preferences" (
+		"user_id" text NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+		"key" text NOT NULL,
+		"value" text NOT NULL,
+		"updated_at" text,
+		PRIMARY KEY ("user_id", "key")
+	)`,
+
 	`CREATE TABLE IF NOT EXISTS "media_server_synced_items" (
 		"id" text PRIMARY KEY NOT NULL,
 		"server_id" text NOT NULL REFERENCES "media_browser_servers"("id") ON DELETE CASCADE,
@@ -1755,6 +1763,7 @@ const INDEX_DEFINITIONS: string[] = [
 	// User media server link indexes
 	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_media_server_links_server_user" ON "user_media_server_links" ("server_id", "server_user_id")`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_media_server_links_user_server" ON "user_media_server_links" ("user_id", "server_id")`,
+	// User preferences (composite PK covers lookups; no extra index needed)
 	// Rename history audit indexes
 	`CREATE INDEX IF NOT EXISTS "idx_rename_history_file" ON "rename_history" ("file_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_rename_history_created" ON "rename_history" ("created_at")`,

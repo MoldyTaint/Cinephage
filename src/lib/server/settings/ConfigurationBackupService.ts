@@ -9,6 +9,7 @@ import {
 	type EncryptedBackupPayload
 } from '$lib/server/crypto/backupCrypto.js';
 import { decryptDebridToken, encryptDebridToken } from '$lib/server/crypto/debridTokenCrypto.js';
+import { decryptApiKey, encryptApiKey } from '$lib/server/crypto/apiKeyCrypto.js';
 import { db } from '$lib/server/db';
 import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 import { getCookieStore } from '$lib/server/indexers/auth/CookieStore.js';
@@ -668,6 +669,27 @@ export class ConfigurationBackupService {
 					existingSecret.apiTokenPlaintext = true;
 					tableSecrets[recordKey] = existingSecret;
 				}
+
+				// Media-browser key portable transform: same contract as the debrid
+				// token — the backup secrets payload carries plaintext (fail-closed
+				// on decrypt error) and restore re-encrypts with the destination
+				// secret.
+				if (config.name === 'mediaBrowserServers' && row.apiKey) {
+					const parts = (row.apiKey as string).split(':');
+					const looksEncrypted = parts.length === 3 && parts.every((p) => /^[0-9a-f]+$/i.test(p));
+					const plaintext = looksEncrypted
+						? decryptApiKey(row.apiKey as string)
+						: (row.apiKey as string);
+					if (plaintext === null) {
+						throw new ValidationError(
+							`Failed to decrypt media browser API key for server ${recordKey}; backup aborted`
+						);
+					}
+					const existingSecret = (tableSecrets[recordKey] as Record<string, unknown>) ?? {};
+					existingSecret.apiKey = plaintext;
+					existingSecret.apiKeyPlaintext = true;
+					tableSecrets[recordKey] = existingSecret;
+				}
 			}
 
 			data[config.name] = sanitizedRows;
@@ -811,6 +833,24 @@ export class ConfigurationBackupService {
 								parts.length === 3 && parts.every((p) => /^[0-9a-f]+$/i.test(p));
 							if (!looksEncrypted) {
 								restoredRecord.apiToken = encryptDebridToken(restoredRecord.apiToken);
+							}
+						}
+					}
+				}
+
+				if (config.name === 'mediaBrowserServers') {
+					const restoredRecord = restored as Record<string, unknown>;
+					const secretEntry = tableSecrets[recordKey] as Record<string, unknown> | undefined;
+					if (typeof restoredRecord.apiKey === 'string' && restoredRecord.apiKey.length > 0) {
+						const isPlaintextFromSecrets = secretEntry?.apiKeyPlaintext === true;
+						if (isPlaintextFromSecrets) {
+							restoredRecord.apiKey = encryptApiKey(restoredRecord.apiKey);
+						} else {
+							const parts = restoredRecord.apiKey.split(':');
+							const looksEncrypted =
+								parts.length === 3 && parts.every((p) => /^[0-9a-f]+$/i.test(p));
+							if (!looksEncrypted) {
+								restoredRecord.apiKey = encryptApiKey(restoredRecord.apiKey);
 							}
 						}
 					}

@@ -23,6 +23,7 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { formatDisplayDate } from '$lib/utils/format.js';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
+	import { UserAvatar } from '$lib/components/ui';
 	import {
 		ConfirmationModal,
 		ModalWrapper,
@@ -105,6 +106,20 @@
 
 	let banModalOpen = $state(false);
 	let banReason = $state('');
+	// Duration presets in seconds; 0 = permanent.
+	let banDuration = $state(0);
+	const BAN_DURATIONS: Array<{ value: number; labelKey: () => string }> = [
+		{ value: 0, labelKey: () => m.users_banPermanent() },
+		{ value: 24 * 60 * 60, labelKey: () => m.users_ban1Day() },
+		{ value: 3 * 24 * 60 * 60, labelKey: () => m.users_ban3Days() },
+		{ value: 7 * 24 * 60 * 60, labelKey: () => m.users_ban1Week() },
+		{ value: 30 * 24 * 60 * 60, labelKey: () => m.users_ban30Days() }
+	];
+
+	function isBanExpired(expiresAt: string | null): boolean {
+		if (!expiresAt) return false;
+		return new Date(expiresAt).getTime() < Date.now();
+	}
 	let banningUser = $state(false);
 
 	async function handleBanToggle() {
@@ -114,6 +129,7 @@
 			return;
 		}
 		banReason = '';
+		banDuration = 0;
 		banModalOpen = true;
 	}
 
@@ -123,7 +139,8 @@
 			const ok = await runAction(() =>
 				authClient.admin.banUser({
 					userId: data.profile.id,
-					banReason: banReason.trim() || m.users_defaultBanReason()
+					banReason: banReason.trim() || m.users_defaultBanReason(),
+					...(banDuration > 0 ? { banExpiresIn: banDuration } : {})
 				})
 			);
 			if (ok) {
@@ -333,11 +350,13 @@
 	<SettingsSection title={m.users_accountsTitle()}>
 		<div class="flex flex-col gap-4">
 			<div class="flex flex-col gap-4 sm:flex-row sm:items-center">
-				<div
-					class="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary/15 text-2xl font-semibold text-primary"
-				>
-					{displayName.charAt(0).toUpperCase()}
-				</div>
+				<UserAvatar
+					name={displayName}
+					src={data.mediaLinks?.[0]
+						? `/api/settings/users/${data.profile.id}/media-server/avatar/${data.mediaLinks[0].serverId}`
+						: null}
+					size="lg"
+				/>
 				<div class="min-w-0 flex-1">
 					<div class="flex flex-wrap items-center gap-2">
 						{#if data.profile.role === 'admin'}
@@ -352,7 +371,15 @@
 							</span>
 						{/if}
 						{#if data.profile.banned}
-							<span class="badge badge-sm badge-error">{m.users_bannedStatus()}</span>
+							<span class="badge badge-sm badge-error">
+								{#if data.profile.banExpires && !isBanExpired(data.profile.banExpires)}
+									{m.users_bannedUntil({ date: formatDisplayDate(data.profile.banExpires) })}
+								{:else if data.profile.banExpires && isBanExpired(data.profile.banExpires)}
+									{m.users_banExpired()}
+								{:else}
+									{m.users_bannedStatus()}
+								{/if}
+							</span>
 						{:else}
 							<span class="badge badge-outline badge-sm badge-success">
 								{m.users_activeStatus()}
@@ -602,6 +629,16 @@
 		onClose={() => (banModalOpen = false)}
 	/>
 	<div class="space-y-4">
+		<div>
+			<label class="label" for="ban-duration">
+				<span class="label-text">{m.users_banDurationLabel()}</span>
+			</label>
+			<select id="ban-duration" class="select-bordered select w-full" bind:value={banDuration}>
+				{#each BAN_DURATIONS as duration (duration.value)}
+					<option value={duration.value}>{duration.labelKey()}</option>
+				{/each}
+			</select>
+		</div>
 		<div>
 			<label class="label" for="ban-reason">
 				<span class="label-text">{m.users_banReasonLabel()}</span>

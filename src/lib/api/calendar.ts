@@ -72,9 +72,9 @@ export async function getUpcoming(): Promise<UpcomingItem[]> {
 }
 
 export async function getCalendarPreferences() {
-	return apiGet<CalendarPreferences>('/api/settings/calendar-preferences');
+	return apiGet<{ value: CalendarPreferences }>('/api/user/preferences/calendar');
 }
 
 export async function updateCalendarPreferences(prefs: CalendarPreferences) {
-	return apiPut<CalendarPreferences>('/api/settings/calendar-preferences', prefs);
+	return apiPut<{ value: CalendarPreferences }>('/api/user/preferences/calendar', { value: prefs });
 }

@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
-import { asc, count } from 'drizzle-orm';
+import { asc, count, eq } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.js';
-import { session, user } from '$lib/server/db/schema.js';
+import { session, user, userMediaServerLinks } from '$lib/server/db/schema.js';
 import { requireAdminPage } from '$lib/server/auth/authorization.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -17,9 +17,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 			banned: user.banned,
 			banReason: user.banReason,
 			banExpires: user.banExpires,
-			createdAt: user.createdAt
+			createdAt: user.createdAt,
+			mediaServerId: userMediaServerLinks.serverId
 		})
 		.from(user)
+		.leftJoin(userMediaServerLinks, eq(userMediaServerLinks.userId, user.id))
 		.orderBy(asc(user.createdAt));
 
 	const sessionCounts = await db

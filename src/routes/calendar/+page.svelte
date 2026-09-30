@@ -26,9 +26,7 @@
 
 	let { data } = $props();
 
-	// Calendar preferences are a shared instance setting (admin-only);
-	// viewers can still switch the view mode locally.
-	const isAdminUser = data.user?.role === 'admin';
+	// Preferences are per-account; every signed-in user owns their own.
 
 	let currentMonth = $state('');
 	let days = $state<CalendarDay[]>([]);
@@ -214,7 +212,7 @@
 	async function toggleViewMode() {
 		prefs.viewMode = prefs.viewMode === 'grid' ? 'list' : 'grid';
 		try {
-			await apiPut('/api/settings/calendar-preferences', { ...prefs });
+			await apiPut('/api/user/preferences/calendar', { value: { ...prefs } });
 		} catch {
 			// non-critical — view still works locally
 		}
@@ -223,7 +221,7 @@
 	async function savePreferences() {
 		savingPrefs = true;
 		try {
-			await apiPut('/api/settings/calendar-preferences', { ...prefs });
+			await apiPut('/api/user/preferences/calendar', { value: { ...prefs } });
 			fetchCalendar(currentMonth);
 			toasts.success('Calendar preferences saved');
 		} catch {
@@ -301,15 +299,13 @@
 							<LayoutGrid class="h-4 w-4" />
 						{/if}
 					</button>
-					{#if isAdminUser}
-						<button
-							class="btn btn-circle btn-ghost btn-xs {showPreferences ? 'bg-base-300' : ''}"
-							onclick={() => (showPreferences = !showPreferences)}
-							aria-label="Calendar preferences"
-						>
-							<SlidersHorizontal class="h-4 w-4" />
-						</button>
-					{/if}
+					<button
+						class="btn btn-circle btn-ghost btn-xs {showPreferences ? 'bg-base-300' : ''}"
+						onclick={() => (showPreferences = !showPreferences)}
+						aria-label="Calendar preferences"
+					>
+						<SlidersHorizontal class="h-4 w-4" />
+					</button>
 				</div>
 			</div>
 
@@ -346,15 +342,13 @@
 							<LayoutGrid class="h-5 w-5" />
 						{/if}
 					</button>
-					{#if isAdminUser}
-						<button
-							class="btn btn-circle btn-ghost btn-sm {showPreferences ? 'bg-base-300' : ''}"
-							onclick={() => (showPreferences = !showPreferences)}
-							aria-label="Calendar preferences"
-						>
-							<SlidersHorizontal class="h-5 w-5" />
-						</button>
-					{/if}
+					<button
+						class="btn btn-circle btn-ghost btn-sm {showPreferences ? 'bg-base-300' : ''}"
+						onclick={() => (showPreferences = !showPreferences)}
+						aria-label="Calendar preferences"
+					>
+						<SlidersHorizontal class="h-5 w-5" />
+					</button>
 				</div>
 			</div>
 		</div>

@@ -4,6 +4,7 @@
  */
 
 import { db } from '$lib/server/db';
+import { decryptApiKey, encryptApiKey } from '$lib/server/crypto/apiKeyCrypto.js';
 import {
 	mediaBrowserServers,
 	mediaServerSyncedItems,
@@ -72,6 +73,27 @@ class MediaBrowserManager {
 	}
 
 	/**
+	 * Values at rest are AES-256-GCM ciphertext (iv:tag:hex). The heuristic
+	 * also tolerates legacy plaintext rows written by anything that raced
+	 * the encrypting migration.
+	 */
+	private static looksEncrypted(value: string): boolean {
+		const parts = value.split(':');
+		return parts.length === 3 && parts.every((p) => /^[0-9a-f]+$/i.test(p));
+	}
+
+	private static decryptStoredKey(value: string): string {
+		if (!MediaBrowserManager.looksEncrypted(value)) {
+			return value;
+		}
+		return decryptApiKey(value) ?? value;
+	}
+
+	private static encryptStoredKey(value: string): string {
+		return MediaBrowserManager.looksEncrypted(value) ? value : encryptApiKey(value);
+	}
+
+	/**
 	 * Create and cache a client for a server record
 	 */
 	private createClient(record: MediaBrowserServerRecord): MediaBrowserClient {
@@ -103,11 +125,15 @@ class MediaBrowserManager {
 	 * Get all enabled servers (with full record for internal use)
 	 */
 	async getEnabledServers(): Promise<MediaBrowserServerRecord[]> {
-		return db
+		const records = await db
 			.select()
 			.from(mediaBrowserServers)
 			.where(eq(mediaBrowserServers.enabled, true))
 			.orderBy(asc(mediaBrowserServers.name));
+		return records.map((record) => ({
+			...record,
+			apiKey: MediaBrowserManager.decryptStoredKey(record.apiKey)
+		}));
 	}
 
 	/**
@@ -133,7 +159,8 @@ class MediaBrowserManager {
 			.where(eq(mediaBrowserServers.id, id))
 			.limit(1);
 
-		return record ?? null;
+		if (!record) return null;
+		return { ...record, apiKey: MediaBrowserManager.decryptStoredKey(record.apiKey) };
 	}
 
 	/**
@@ -147,7 +174,7 @@ class MediaBrowserManager {
 			name: input.name,
 			serverType: input.serverType,
 			host: input.host.replace(/\/+$/, ''), // Normalize URL
-			apiKey: input.apiKey,
+			apiKey: MediaBrowserManager.encryptStoredKey(input.apiKey),
 			enabled: input.enabled ?? true,
 			onImport: input.onImport ?? true,
 			onUpgrade: input.onUpgrade ?? true,
@@ -182,7 +209,8 @@ class MediaBrowserManager {
 		if (input.name !== undefined) updates.name = input.name;
 		if (input.serverType !== undefined) updates.serverType = input.serverType;
 		if (input.host !== undefined) updates.host = input.host.replace(/\/+$/, '');
-		if (input.apiKey !== undefined) updates.apiKey = input.apiKey;
+		if (input.apiKey !== undefined)
+			updates.apiKey = MediaBrowserManager.encryptStoredKey(input.apiKey);
 		if (input.enabled !== undefined) updates.enabled = input.enabled;
 		if (input.onImport !== undefined) updates.onImport = input.onImport;
 		if (input.onUpgrade !== undefined) updates.onUpgrade = input.onUpgrade;

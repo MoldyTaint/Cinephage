@@ -3310,6 +3310,23 @@ export const mediaBrowserServers = sqliteTable('media_browser_servers', {
 
 export type MediaBrowserServerRecord = typeof mediaBrowserServers.$inferSelect;
 export type NewMediaBrowserServerRecord = typeof mediaBrowserServers.$inferInsert;
+/**
+ * Per-account preference storage (JSON values keyed by a namespaced key,
+ * e.g. 'calendar', 'theme'). Personal by definition — nothing here falls
+ * back to a global row.
+ */
+export const userPreferences = sqliteTable(
+	'user_preferences',
+	{
+		userId: text('user_id')
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		key: text('key').notNull(),
+		value: text('value').notNull(),
+		updatedAt: text('updated_at').$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [primaryKey({ columns: [table.userId, table.key] })]
+);
 
 /**
  * A Cinephage account linked to its media-server account (Jellyfin first).

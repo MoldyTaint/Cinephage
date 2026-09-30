@@ -154,6 +154,8 @@ import { migration_v154 } from './154-library-jobs-acknowledged.js';
 import { migration_v155 } from './155-indexer-rate-limit-override.js';
 import { migration_v156 } from './156-indexer-status-disabled-reason.js';
 import { migration_v157 } from './157-user-media-server-links.js';
+import { migration_v158 } from './158-user-preferences.js';
+import { migration_v159 } from './159-encrypt-media-browser-api-keys.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -310,5 +312,7 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v154,
 	migration_v155,
 	migration_v156,
-	migration_v157
+	migration_v157,
+	migration_v158,
+	migration_v159
 ];

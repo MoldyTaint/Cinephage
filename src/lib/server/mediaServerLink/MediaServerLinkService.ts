@@ -437,6 +437,44 @@ class MediaServerLinkService {
 		}
 		return deleted.length > 0;
 	}
+
+	/**
+	 * Fetch a linked account's avatar image from its media server. Returns
+	 * the raw body plus content type, or null when the user has no link on
+	 * that server or the server has no image for the account.
+	 */
+	async fetchAvatar(
+		userId: string,
+		serverId: string
+	): Promise<{ body: ArrayBuffer; contentType: string } | null> {
+		const links = await this.getLinks(userId);
+		const link = links.find((entry) => entry.serverId === serverId);
+		if (!link || link.serverType !== 'jellyfin') {
+			return null;
+		}
+
+		const server = await this.getJellyfinServer(serverId);
+		if (!server) {
+			return null;
+		}
+
+		try {
+			const response = await this.jellyfinRequest(
+				server,
+				`/Users/${encodeURIComponent(link.serverUserId)}/Images/Primary`
+			);
+			if (!response.ok) {
+				return null;
+			}
+			return {
+				body: await response.arrayBuffer(),
+				contentType: response.headers.get('content-type') ?? 'image/png'
+			};
+		} catch (error) {
+			logger.debug({ err: error, serverId }, '[MediaServerLink] Avatar fetch failed');
+			return null;
+		}
+	}
 }
 
 export const mediaServerLinkService = new MediaServerLinkService();

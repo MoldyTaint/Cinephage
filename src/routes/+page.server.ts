@@ -9,7 +9,7 @@ import {
 	getMissingEpisodes
 } from '$lib/server/dashboard/queries';
 import { getUpcomingItems } from '$lib/server/calendar/queries.js';
-import { getCalendarPreferences } from '$lib/server/settings/calendar-preferences.js';
+import { getUserPreference } from '$lib/server/preferences/user-preferences.js';
 import type { DashboardStats } from '$lib/types/dashboard.js';
 
 const logger = createChildLogger({ module: 'HomePage', logDomain: 'system' });
@@ -57,7 +57,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 				return [];
 			});
 
-		const upcomingPromise = getCalendarPreferences()
+		const upcomingPromise = getUserPreference(locals.user!.id, 'calendar')
 			.catch(() => ({
 				upcomingShowNonLibrary: true,
 				excludeAdult: false,

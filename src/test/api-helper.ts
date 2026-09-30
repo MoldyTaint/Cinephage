@@ -132,14 +132,14 @@ export function createRequestEvent(
 }
 
 /**
- * Helper to call an API handler and get parsed response
+ * Call an API handler and get the raw Response (for binary bodies/headers).
  */
-export async function callHandler<T = unknown>(
+export async function callHandlerRaw(
 	handler: AnyRequestHandler,
 	method: string,
 	body?: unknown,
 	options?: HandlerOptions
-): Promise<{ status: number; data: T }> {
+): Promise<{ status: number; response: Response }> {
 	const request = createRequest(method, body, options);
 	const event = createRequestEvent(request, options?.params, options);
 
@@ -153,9 +153,23 @@ export async function callHandler<T = unknown>(
 			throw error;
 		}
 	}
+
+	return { status: response.status, response };
+}
+
+/**
+ * Helper to call an API handler and get parsed response
+ */
+export async function callHandler<T = unknown>(
+	handler: AnyRequestHandler,
+	method: string,
+	body?: unknown,
+	options?: HandlerOptions
+): Promise<{ status: number; data: T }> {
+	const { status, response } = await callHandlerRaw(handler, method, body, options);
 	const data = (await response.json()) as T;
 
-	return { status: response.status, data };
+	return { status, data };
 }
 
 /**
