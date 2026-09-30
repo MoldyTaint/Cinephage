@@ -10,6 +10,7 @@ export {
 	ensureDefaultApiKeysForUser,
 	ensureStreamingApiKeyRateLimit,
 	getManagedApiKeysForRequest,
+	getOwnerStreamingApiKey,
 	getRecoverableApiKeyByType,
 	regenerateRecoverableApiKey,
 	type RecoverableApiKey,
@@ -28,6 +29,7 @@ export { isSetupComplete, resetSetupCompleteCache, requireSetup } from './setup.
 export {
 	isAdmin,
 	requireAdmin,
+	requireAdminPage,
 	getUserRole,
 	hasPermission,
 	isAuthenticated,

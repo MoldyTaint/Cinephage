@@ -43,7 +43,8 @@
 		libraryId?: string;
 	};
 
-	let { item }: { item: MediaDetailsWithLibraryStatus } = $props();
+	let { item, readOnly = false }: { item: MediaDetailsWithLibraryStatus; readOnly?: boolean } =
+		$props();
 
 	// Library status state (defaults only, effect syncs from props)
 	let inLibrary = $state(false);
@@ -594,7 +595,7 @@
 								</a>
 							{/if}
 						{/if}
-					{:else}
+					{:else if !readOnly}
 						<button class="btn gap-1 btn-primary btn-sm" onclick={() => (showAddModal = true)}>
 							<Plus class="h-4 w-4" />
 							{m.hero_addToLibrary()}

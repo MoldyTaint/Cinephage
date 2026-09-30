@@ -14,6 +14,7 @@ import { getLibraryEntityService } from '$lib/server/library/LibraryEntityServic
 import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
 import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService.js';
+import { requireAdminPage } from '$lib/server/auth/authorization.js';
 import { createChildLogger } from '$lib/logging';
 
 const logger = createChildLogger({ module: 'LibraryMoviesListPage', logDomain: 'scans' });
@@ -404,7 +405,10 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-	toggleAllMonitored: async ({ request }) => {
+	toggleAllMonitored: async ({ locals, request }) => {
+		// Bulk monitoring is an admin operation; viewer sessions can browse
+		// the list page but never submit its form actions.
+		requireAdminPage(locals);
 		const formData = await request.formData();
 		const monitored = formData.get('monitored') === 'true';
 

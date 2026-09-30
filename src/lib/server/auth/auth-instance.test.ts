@@ -90,7 +90,7 @@ describe('real Better Auth instance — setup and single-admin policy', () => {
 
 		expect(response.status).toBe(403);
 		const body = (await response.json()) as { message?: string };
-		expect(body.message).toContain('Only one admin');
+		expect(body.message).toContain('Only admins can create');
 	});
 });
 
@@ -204,10 +204,9 @@ describe('real Better Auth instance — managed API keys', () => {
 		});
 		expect(signOut.ok).toBe(true);
 
-		// Sign-out deletes the session row and clears the cookie. Note: with
-		// cookieCache.maxAge equal to the session lifetime, a REPLAYED old
-		// cookie value still resolves via the cached JWT — a known tradeoff of
-		// the current config, not something sign-out can prevent.
+		// Sign-out deletes the session row and clears the cookie. With the
+		// cookie cache disabled, a replayed old cookie value resolves to
+		// nothing — revocation is immediate.
 		const rows = db.select().from(session).where(eq(session.token, token)).all();
 		expect(rows).toHaveLength(0);
 
@@ -275,3 +274,334 @@ describe('real Better Auth instance — multi-user readiness', () => {
 		expect(response.status).toBe(403);
 	});
 });
+
+describe('real Better Auth instance — last-admin guards', () => {
+	// The admin plugin's user endpoints read the request event internally.
+	function adminCall() {
+		return harness.makeEvent('POST', '/api/auth/admin/set-role').event;
+	}
+
+	async function adminSessionHeaders(): Promise<Headers> {
+		const signIn = await harness.authRequest('/sign-in/username', {
+			method: 'POST',
+			body: JSON.stringify({ username: USERNAME, password: PASSWORD })
+		});
+		expect(signIn.status).toBe(200);
+		return new Headers({ cookie: harness.cookieHeader(harness.extractCookies(signIn)) });
+	}
+
+	function userIdByUsername(username: string): string {
+		const row = db
+			.select()
+			.from(user)
+			.all()
+			.find((row) => row.username === username);
+		expect(row).toBeDefined();
+		return row!.id;
+	}
+
+	it('blocks demoting the last admin even when viewer accounts exist', async () => {
+		const headers = await adminSessionHeaders();
+		// One admin (testcurator) + one viewer (testviewer) at this point.
+		await expect(
+			harness.withStore(adminCall(), () =>
+				harness.auth.api.setRole({
+					body: { userId: userIdByUsername(USERNAME), role: 'user' },
+					headers
+				})
+			)
+		).rejects.toThrow(/only admin/);
+	});
+
+	it('blocks an admin from removing themselves (plugin guard; the delete.before hook is defense-in-depth)', async () => {
+		const headers = await adminSessionHeaders();
+		// Self-removal is refused by the admin plugin itself. Deleting the
+		// last admin through another session is unreachable by construction
+		// (the caller would need admin permission, so the target would not be
+		// the last admin); auth.ts additionally guards the delete.before hook.
+		await expect(
+			harness.withStore(adminCall(), () =>
+				harness.auth.api.removeUser({
+					body: { userId: userIdByUsername(USERNAME) },
+					headers
+				})
+			)
+		).rejects.toThrow(/remove yourself/i);
+	});
+
+	it('allows demoting an admin while another admin remains', async () => {
+		const headers = await adminSessionHeaders();
+		const created = await harness.withStore(adminCall(), () =>
+			harness.auth.api.createUser({
+				body: {
+					email: 'second-admin@test.local',
+					password: 'second-admin-password',
+					name: 'Second Admin',
+					role: 'admin',
+					data: { username: 'secondadmin' }
+				},
+				headers
+			})
+		);
+		expect(created.user?.id).toBeDefined();
+
+		await harness.withStore(adminCall(), () =>
+			harness.auth.api.setRole({
+				body: { userId: userIdByUsername(USERNAME), role: 'user' },
+				headers
+			})
+		);
+		expect(roleOf(USERNAME)).toBe('user');
+	});
+
+	it('allows deleting an admin while another admin remains, and promotion is unrestricted', async () => {
+		// Sign in as the remaining admin (secondadmin) to drive the calls.
+		const signIn = await harness.authRequest('/sign-in/username', {
+			method: 'POST',
+			body: JSON.stringify({ username: 'secondadmin', password: 'second-admin-password' })
+		});
+		expect(signIn.status).toBe(200);
+		const headers = new Headers({ cookie: harness.cookieHeader(harness.extractCookies(signIn)) });
+
+		// Promote the original account back; promotion has no last-admin guard.
+		await harness.withStore(adminCall(), () =>
+			harness.auth.api.setRole({
+				body: { userId: userIdByUsername(USERNAME), role: 'admin' },
+				headers
+			})
+		);
+		expect(roleOf(USERNAME)).toBe('admin');
+
+		// Deleting it is fine: secondadmin still holds the admin role.
+		await harness.withStore(adminCall(), () =>
+			harness.auth.api.removeUser({
+				body: { userId: userIdByUsername(USERNAME) },
+				headers
+			})
+		);
+		expect(
+			db
+				.select()
+				.from(user)
+				.all()
+				.find((row) => row.username === USERNAME)
+		).toBeUndefined();
+	});
+});
+
+describe('real Better Auth instance — ban lifecycle', () => {
+	it('a banned viewer cannot sign in until unbanned', async () => {
+		const signIn = await harness.authRequest('/sign-in/username', {
+			method: 'POST',
+			body: JSON.stringify({ username: 'secondadmin', password: 'second-admin-password' })
+		});
+		expect(signIn.status).toBe(200);
+		const headers = new Headers({ cookie: harness.cookieHeader(harness.extractCookies(signIn)) });
+
+		const viewerId = db
+			.select()
+			.from(user)
+			.all()
+			.find((row) => row.username === 'testviewer')!.id;
+
+		await harness.withStore(harness.makeEvent('POST', '/api/auth/admin/ban-user').event, () =>
+			harness.auth.api.banUser({
+				body: { userId: viewerId, banReason: 'banned by test' },
+				headers
+			})
+		);
+
+		const bannedSignIn = await harness.authRequest('/sign-in/username', {
+			method: 'POST',
+			body: JSON.stringify({ username: 'testviewer', password: 'viewer-password-123' })
+		});
+		expect(bannedSignIn.status).toBe(403);
+
+		await harness.withStore(harness.makeEvent('POST', '/api/auth/admin/unban-user').event, () =>
+			harness.auth.api.unbanUser({
+				body: { userId: viewerId },
+				headers
+			})
+		);
+
+		const unbannedSignIn = await harness.authRequest('/sign-in/username', {
+			method: 'POST',
+			body: JSON.stringify({ username: 'testviewer', password: 'viewer-password-123' })
+		});
+		expect(unbannedSignIn.status).toBe(200);
+	});
+});
+
+describe('real Better Auth instance — adversarial escalation matrix', () => {
+	// Every test here signs in as the viewer and tries to become someone or
+	// something they are not. State: secondadmin (admin) + testviewer (viewer).
+	let viewerHeaders: Headers;
+
+	async function viewerSignIn(): Promise<Headers> {
+		const signIn = await harness.authRequest('/sign-in/username', {
+			method: 'POST',
+			body: JSON.stringify({ username: 'testviewer', password: 'viewer-password-123' })
+		});
+		expect(signIn.status).toBe(200);
+		return new Headers({ cookie: harness.cookieHeader(harness.extractCookies(signIn)) });
+	}
+
+	it('rejects self-promotion through the generic update-user route', async () => {
+		viewerHeaders = await viewerSignIn();
+		const response = await harness.authRequest('/update-user', {
+			method: 'POST',
+			headers: viewerHeaders,
+			body: JSON.stringify({ name: 'Harmless', role: 'admin', banned: true })
+		});
+		// The admin plugin marks role/banned input:false; parseUserInput
+		// rejects truthy attempts outright.
+		expect([400, 422]).toContain(response.status);
+		expect(roleOf('testviewer')).toBe('user');
+		const row = db
+			.select()
+			.from(user)
+			.all()
+			.find((row) => row.username === 'testviewer');
+		expect(row?.banned ?? 0).toBe(0);
+	});
+
+	it('rejects reserved or malformed usernames through update-user', async () => {
+		for (const username of ['root', 'has space!']) {
+			const response = await harness.authRequest('/update-user', {
+				method: 'POST',
+				headers: viewerHeaders,
+				body: JSON.stringify({ username })
+			});
+			// 400 from the username plugin's own validation, 422 from the
+			// backstop hook in auth.ts — both must leave the row unchanged.
+			expect([400, 422], username).toContain(response.status);
+		}
+		// The viewer's username is unchanged.
+		expect(
+			db
+				.select()
+				.from(user)
+				.all()
+				.find((row) => row.username === 'testviewer')
+		).toBeDefined();
+	});
+
+	it('rejects every admin plugin operation from a viewer session', async () => {
+		const adminId = db
+			.select()
+			.from(user)
+			.all()
+			.find((row) => row.username === 'secondadmin')!.id;
+		const viewerId = db
+			.select()
+			.from(user)
+			.all()
+			.find((row) => row.username === 'testviewer')!.id;
+
+		const attempts: Array<[string, () => Promise<unknown>]> = [
+			[
+				'setRole',
+				() =>
+					harness.auth.api.setRole({
+						body: { userId: viewerId, role: 'admin' },
+						headers: viewerHeaders
+					})
+			],
+			[
+				'banUser',
+				() =>
+					harness.auth.api.banUser({
+						body: { userId: adminId, banReason: 'hostile takeover' },
+						headers: viewerHeaders
+					})
+			],
+			[
+				'impersonateUser',
+				() =>
+					harness.auth.api.impersonateUser({
+						body: { userId: adminId },
+						headers: viewerHeaders
+					})
+			],
+			[
+				'removeUser',
+				() => harness.auth.api.removeUser({ body: { userId: adminId }, headers: viewerHeaders })
+			],
+			[
+				'setUserPassword',
+				() =>
+					harness.auth.api.setUserPassword({
+						body: { userId: adminId, newPassword: 'stolen-password' },
+						headers: viewerHeaders
+					})
+			],
+			[
+				'createUser',
+				() =>
+					harness.auth.api.createUser({
+						body: {
+							email: 'cloned@test.local',
+							password: 'cloned-password',
+							name: 'Clone',
+							role: 'admin'
+						},
+						headers: viewerHeaders
+					})
+			],
+			['listUsers', () => harness.auth.api.listUsers({ headers: viewerHeaders })]
+		];
+
+		for (const [name, attempt] of attempts) {
+			await expect(
+				harness.withStore(harness.makeEvent('POST', '/api/auth').event, attempt),
+				name
+			).rejects.toThrow();
+		}
+		// Nothing changed: admin still admin, viewer still viewer, no clone.
+		expect(roleOf('secondadmin')).toBe('admin');
+		expect(roleOf('testviewer')).toBe('user');
+		expect(
+			db
+				.select()
+				.from(user)
+				.all()
+				.find((row) => row.email === 'cloned@test.local')
+		).toBeUndefined();
+	});
+
+	it('does not let a viewer change the admin password without the current one', async () => {
+		const response = await harness.authRequest('/change-password', {
+			method: 'POST',
+			headers: viewerHeaders,
+			body: JSON.stringify({ currentPassword: 'wrong-password', newPassword: 'new-password-123' })
+		});
+		expect(response.status).toBe(400);
+	});
+
+	it('keeps self-service email change and account deletion disabled', async () => {
+		const emailChange = await harness.authRequest('/change-email', {
+			method: 'POST',
+			headers: viewerHeaders,
+			body: JSON.stringify({ newEmail: 'hijacked@test.local' })
+		});
+		expect(emailChange.status).toBe(400);
+
+		const selfDelete = await harness.authRequest('/delete-user', {
+			method: 'POST',
+			headers: viewerHeaders,
+			body: JSON.stringify({})
+		});
+		expect(selfDelete.status).toBe(404);
+	});
+});
+
+/** Role of a user row by username, straight from the database. */
+function roleOf(username: string): string | null {
+	return (
+		db
+			.select()
+			.from(user)
+			.all()
+			.find((row) => row.username === username)?.role ?? null
+	);
+}

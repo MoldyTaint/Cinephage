@@ -152,10 +152,12 @@
 				{downloadingIds}
 				hasStreamerProfile={hasStreamerProfile(item)}
 				onSelectChange={handleSelectChange}
-				onMonitorToggle={(id) => handleMonitorToggle(id, item.monitored ?? false)}
+				onMonitorToggle={onMonitorToggle
+					? (id) => handleMonitorToggle(id, item.monitored ?? false)
+					: undefined}
 				onAutoGrab={onAutoGrab ? handleAutoGrab : undefined}
 				onManualGrab={onManualGrab ? handleManualGrab : undefined}
-				onDelete={handleDelete}
+				onDelete={onDelete ? handleDelete : undefined}
 				onNavigate={() => navigateToItem(item.id)}
 				{preferOriginalTitleDefault}
 			/>
@@ -191,10 +193,12 @@
 						profileName={getProfileName(item)}
 						{isTv}
 						onSelectChange={handleSelectChange}
-						onMonitorToggle={(id) => handleMonitorToggle(id, item.monitored ?? false)}
+						onMonitorToggle={onMonitorToggle
+							? (id) => handleMonitorToggle(id, item.monitored ?? false)
+							: undefined}
 						onAutoGrab={onAutoGrab ? handleAutoGrab : undefined}
 						onManualGrab={onManualGrab ? handleManualGrab : undefined}
-						onDelete={handleDelete}
+						onDelete={onDelete ? handleDelete : undefined}
 						onNavigate={() => navigateToItem(item.id)}
 						{preferOriginalTitleDefault}
 					/>

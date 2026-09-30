@@ -1,4 +1,5 @@
 import type { PageServerLoad } from './$types';
+import { redirect } from '@sveltejs/kit';
 import { createChildLogger } from '$lib/logging';
 
 import { activityService } from '$lib/server/activity';
@@ -13,7 +14,12 @@ import type { DashboardStats } from '$lib/types/dashboard.js';
 
 const logger = createChildLogger({ module: 'HomePage', logDomain: 'system' });
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ locals }) => {
+	// The dashboard is an operations view (queue, activity, missing episodes);
+	// viewer accounts land on the shared library instead.
+	if (locals.user?.role !== 'admin') {
+		throw redirect(302, '/library/movies');
+	}
 	try {
 		// Fetch critical stats immediately (blocks SSR)
 		const stats = await getDashboardStats();

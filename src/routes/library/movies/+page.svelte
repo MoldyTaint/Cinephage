@@ -48,6 +48,9 @@
 
 	let { data } = $props();
 
+	// Viewer accounts browse a read-only library; admin controls stay hidden.
+	const isAdminUser = data.user?.role === 'admin';
+
 	const SCROLL_KEY = 'cinephage:library:movies:scrollY';
 
 	beforeNavigate(({ to }) => {
@@ -700,49 +703,53 @@
 				{/if}
 
 				<div class="dropdown dropdown-end">
-					<div
-						tabindex="0"
-						role="button"
-						class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm"
-						aria-label="Monitoring actions"
-					>
-						<Eye class="h-4 w-4" />
-						<span class="hidden xl:inline">Monitoring</span>
-						<ChevronDown class="hidden h-3 w-3 sm:block" />
-					</div>
-					<ul
-						class="menu dropdown-content z-50 mt-2 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl"
-					>
-						<li>
-							<button onclick={handleMonitorAll}>
-								<Eye class="h-4 w-4" />
-								{m.library_movies_monitorAll()}
-							</button>
-						</li>
-						<li>
-							<button onclick={handleUnmonitorAll}>
-								<EyeOff class="h-4 w-4" />
-								{m.library_movies_unmonitorAll()}
-							</button>
-						</li>
-					</ul>
+					{#if isAdminUser}
+						<div
+							tabindex="0"
+							role="button"
+							class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm"
+							aria-label="Monitoring actions"
+						>
+							<Eye class="h-4 w-4" />
+							<span class="hidden xl:inline">Monitoring</span>
+							<ChevronDown class="hidden h-3 w-3 sm:block" />
+						</div>
+						<ul
+							class="menu dropdown-content z-50 mt-2 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl"
+						>
+							<li>
+								<button onclick={handleMonitorAll}>
+									<Eye class="h-4 w-4" />
+									{m.library_movies_monitorAll()}
+								</button>
+							</li>
+							<li>
+								<button onclick={handleUnmonitorAll}>
+									<EyeOff class="h-4 w-4" />
+									{m.library_movies_unmonitorAll()}
+								</button>
+							</li>
+						</ul>
+					{/if}
 				</div>
 
-				<button
-					class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm {showCheckboxes ? 'btn-primary' : ''}"
-					onclick={handleSelectToggle}
-				>
-					{#if !showCheckboxes}
-						<CheckSquare class="h-4 w-4" />
-						<span class="hidden sm:inline">{m.library_movies_select()}</span>
-					{:else if !allSelected}
-						<CheckSquare class="h-4 w-4" />
-						<span class="hidden sm:inline">{m.library_movies_selectAll()}</span>
-					{:else}
-						<XSquare class="h-4 w-4" />
-						<span class="hidden sm:inline">{m.library_movies_done()}</span>
-					{/if}
-				</button>
+				{#if isAdminUser}
+					<button
+						class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm {showCheckboxes ? 'btn-primary' : ''}"
+						onclick={handleSelectToggle}
+					>
+						{#if !showCheckboxes}
+							<CheckSquare class="h-4 w-4" />
+							<span class="hidden sm:inline">{m.library_movies_select()}</span>
+						{:else if !allSelected}
+							<CheckSquare class="h-4 w-4" />
+							<span class="hidden sm:inline">{m.library_movies_selectAll()}</span>
+						{:else}
+							<XSquare class="h-4 w-4" />
+							<span class="hidden sm:inline">{m.library_movies_done()}</span>
+						{/if}
+					</button>
+				{/if}
 
 				<!-- View Toggle -->
 				<button
@@ -914,7 +921,7 @@
 											</span>
 										</span>
 									</button>
-									{#if group.collectionId}
+									{#if isAdminUser && group.collectionId}
 										<button
 											class="btn shrink-0 btn-ghost btn-sm"
 											onclick={() =>
@@ -956,10 +963,10 @@
 												downloadingIds={downloadingMovieIdSet}
 												{autoSearchingIds}
 												onSelectChange={handleItemSelectChange}
-												onMonitorToggle={handleMonitorToggle}
-												onDelete={handleDeleteMovie}
-												onAutoGrab={handleAutoGrab}
-												onManualGrab={handleManualGrab}
+												onMonitorToggle={isAdminUser ? handleMonitorToggle : undefined}
+												onDelete={isAdminUser ? handleDeleteMovie : undefined}
+												onAutoGrab={isAdminUser ? handleAutoGrab : undefined}
+												onManualGrab={isAdminUser ? handleManualGrab : undefined}
 												preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 											/>
 										</div>
@@ -992,10 +999,10 @@
 								downloadingIds={downloadingMovieIdSet}
 								{autoSearchingIds}
 								onSelectChange={handleItemSelectChange}
-								onMonitorToggle={handleMonitorToggle}
-								onDelete={handleDeleteMovie}
-								onAutoGrab={handleAutoGrab}
-								onManualGrab={handleManualGrab}
+								onMonitorToggle={isAdminUser ? handleMonitorToggle : undefined}
+								onDelete={isAdminUser ? handleDeleteMovie : undefined}
+								onAutoGrab={isAdminUser ? handleAutoGrab : undefined}
+								onManualGrab={isAdminUser ? handleManualGrab : undefined}
 								preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 							/>
 						{/if}
@@ -1050,19 +1057,21 @@
 	/>
 </div>
 
-<!-- Bulk Action Bar -->
-<LibraryBulkActionBar
-	{selectedCount}
-	loading={bulkLoading}
-	currentAction={currentBulkAction}
-	mediaType="movie"
-	onMonitor={() => handleBulkMonitor(true)}
-	onUnmonitor={() => handleBulkMonitor(false)}
-	onChangeQuality={() => (isQualityModalOpen = true)}
-	onLanguage={() => (isLanguageModalOpen = true)}
-	onDelete={() => (isDeleteModalOpen = true)}
-	onClear={clearSelection}
-/>
+<!-- Bulk Action Bar (admin only) -->
+{#if isAdminUser}
+	<LibraryBulkActionBar
+		{selectedCount}
+		loading={bulkLoading}
+		currentAction={currentBulkAction}
+		mediaType="movie"
+		onMonitor={() => handleBulkMonitor(true)}
+		onUnmonitor={() => handleBulkMonitor(false)}
+		onChangeQuality={() => (isQualityModalOpen = true)}
+		onLanguage={() => (isLanguageModalOpen = true)}
+		onDelete={() => (isDeleteModalOpen = true)}
+		onClear={clearSelection}
+	/>
+{/if}
 
 <!-- Bulk Quality Profile Modal -->
 <BulkQualityProfileModal

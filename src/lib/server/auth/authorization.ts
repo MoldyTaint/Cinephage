@@ -2,9 +2,10 @@
  * Authorization helpers for RBAC
  *
  * Provides utility functions for checking admin status and permissions.
- * Single admin system - only one admin account is allowed.
+ * Multi-user: accounts hold role 'admin' or 'user'; viewer accounts are
+ * additionally constrained by the non-admin API allowlist in hooks.server.ts.
  */
-import { json } from '@sveltejs/kit';
+import { json, error } from '@sveltejs/kit';
 import type { RequestEvent } from '@sveltejs/kit';
 
 /**
@@ -17,6 +18,25 @@ export type UserRole = 'admin' | 'user';
  */
 export function isAdmin(event: RequestEvent): boolean {
 	return event.locals.user?.role === 'admin';
+}
+
+/**
+ * Require admin access in page/layout server loads.
+ * Throws a 403 SvelteKit error for unauthenticated or non-admin visitors;
+ * the hooks chain guarantees locals.user exists by the time loads run.
+ *
+ * Usage in +page.server.ts / +layout.server.ts:
+ * ```typescript
+ * export const load: PageServerLoad = async ({ locals }) => {
+ *   requireAdminPage(locals);
+ *   // ... load data
+ * };
+ * ```
+ */
+export function requireAdminPage(locals: App.Locals): void {
+	if (locals.user?.role !== 'admin') {
+		throw error(403, 'Admin access required');
+	}
 }
 
 /**

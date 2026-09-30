@@ -45,7 +45,7 @@ vi.mock('$lib/server/db/index.js', () => ({
 }));
 
 vi.mock('$lib/server/auth/index.js', () => ({
-	getRecoverableApiKeyByType: vi.fn().mockResolvedValue({ id: 'streaming-key' })
+	getOwnerStreamingApiKey: vi.fn().mockResolvedValue({ id: 'streaming-key' })
 }));
 
 vi.mock('$lib/server/subtitles/services/SubtitleImportService.js', () => ({

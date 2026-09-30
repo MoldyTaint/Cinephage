@@ -26,6 +26,10 @@
 
 	let { data } = $props();
 
+	// Calendar preferences are a shared instance setting (admin-only);
+	// viewers can still switch the view mode locally.
+	const isAdminUser = data.user?.role === 'admin';
+
 	let currentMonth = $state('');
 	let days = $state<CalendarDay[]>([]);
 	let loading = $state(false);
@@ -297,13 +301,15 @@
 							<LayoutGrid class="h-4 w-4" />
 						{/if}
 					</button>
-					<button
-						class="btn btn-circle btn-ghost btn-xs {showPreferences ? 'bg-base-300' : ''}"
-						onclick={() => (showPreferences = !showPreferences)}
-						aria-label="Calendar preferences"
-					>
-						<SlidersHorizontal class="h-4 w-4" />
-					</button>
+					{#if isAdminUser}
+						<button
+							class="btn btn-circle btn-ghost btn-xs {showPreferences ? 'bg-base-300' : ''}"
+							onclick={() => (showPreferences = !showPreferences)}
+							aria-label="Calendar preferences"
+						>
+							<SlidersHorizontal class="h-4 w-4" />
+						</button>
+					{/if}
 				</div>
 			</div>
 
@@ -340,13 +346,15 @@
 							<LayoutGrid class="h-5 w-5" />
 						{/if}
 					</button>
-					<button
-						class="btn btn-circle btn-ghost btn-sm {showPreferences ? 'bg-base-300' : ''}"
-						onclick={() => (showPreferences = !showPreferences)}
-						aria-label="Calendar preferences"
-					>
-						<SlidersHorizontal class="h-5 w-5" />
-					</button>
+					{#if isAdminUser}
+						<button
+							class="btn btn-circle btn-ghost btn-sm {showPreferences ? 'bg-base-300' : ''}"
+							onclick={() => (showPreferences = !showPreferences)}
+							aria-label="Calendar preferences"
+						>
+							<SlidersHorizontal class="h-5 w-5" />
+						</button>
+					{/if}
 				</div>
 			</div>
 		</div>

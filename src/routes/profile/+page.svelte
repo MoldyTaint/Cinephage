@@ -74,9 +74,18 @@
 						</p>
 						<p class="truncate text-sm text-base-content/60">@{data.user.username}</p>
 					</div>
+					<span class="ml-auto badge shrink-0 badge-ghost badge-sm">
+						{data.user.role === 'admin' ? m.users_roleAdmin() : m.users_roleUser()}
+					</span>
 				</div>
 				<div class="divider"></div>
-				<p class="text-sm text-base-content/60">{m.profile_singleAdminNote()}</p>
+				<p class="text-sm text-base-content/60">
+					{#if data.user.role === 'admin'}
+						{m.profile_adminNote()}
+					{:else}
+						{m.profile_viewerNote()}
+					{/if}
+				</p>
 			</div>
 		</div>
 	{/if}

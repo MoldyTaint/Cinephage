@@ -37,6 +37,8 @@
 		/** Requirement-aware progress from the movie loader (null when no effective profile). */
 		subtitleProgress?: SubtitleRequirementProgress | null;
 		isStreamerProfile?: boolean;
+		/** Viewer mode: hide delete and subtitle acquisition controls. */
+		readOnly?: boolean;
 		onDelete?: (fileId: string) => void;
 		onSubtitleSearch?: () => void;
 		onSubtitleAutoSearch?: () => void;
@@ -48,6 +50,7 @@
 		subtitles = [],
 		subtitleProgress = null,
 		isStreamerProfile = false,
+		readOnly = false,
 		onDelete,
 		onSubtitleSearch,
 		onSubtitleAutoSearch,
@@ -109,7 +112,7 @@
 			{#if file.mediaInfo}
 				<MediaInfoPopover mediaInfo={file.mediaInfo} />
 			{/if}
-			{#if onDelete}
+			{#if !readOnly && onDelete}
 				<button
 					class="btn btn-ghost text-error btn-xs"
 					onclick={() => onDelete(file.id)}
@@ -223,7 +226,7 @@
 				<SubtitleRequirementBadge progress={subtitleProgress} size="sm" showCutoff={true} />
 			{/if}
 		</div>
-		{#if onSubtitleSearch || onSubtitleAutoSearch}
+		{#if !readOnly && (onSubtitleSearch || onSubtitleAutoSearch)}
 			<div class="flex flex-wrap items-center gap-1">
 				{#if onSubtitleSearch}
 					<button

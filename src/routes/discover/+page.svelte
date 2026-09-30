@@ -26,6 +26,10 @@
 
 	let { data } = $props();
 
+	// Only admins add content; viewers browse Discover without the add actions.
+	const isAdminUser = data.user?.role === 'admin';
+	const addHandler = isAdminUser ? handleAddToLibrary : undefined;
+
 	// Add to Library Modal state
 	let addModalOpen = $state(false);
 	let selectedItem = $state<{
@@ -725,10 +729,7 @@
 
 				<div class="grid grid-cols-3 gap-2 sm:gap-4 lg:grid-cols-9">
 					{#each searchResults as item (item.id + (item.media_type || ''))}
-						<MediaCard
-							item={item as unknown as TmdbMediaItem}
-							onAddToLibrary={handleAddToLibrary}
-						/>
+						<MediaCard item={item as unknown as TmdbMediaItem} onAddToLibrary={addHandler} />
 					{/each}
 				</div>
 
@@ -759,7 +760,7 @@
 					items={data.sections.nowPlaying}
 					link="/discover?now_playing=true{excludeInLibrary ? '&exclude_in_library=true' : ''}"
 					endpoint="movie/now_playing"
-					onAddToLibrary={handleAddToLibrary}
+					onAddToLibrary={addHandler}
 					{excludeInLibrary}
 				/>
 				<SectionRow
@@ -767,7 +768,7 @@
 					items={data.sections.trendingWeek}
 					link="/discover?trending=week{excludeInLibrary ? '&exclude_in_library=true' : ''}"
 					endpoint="trending/all/week"
-					onAddToLibrary={handleAddToLibrary}
+					onAddToLibrary={addHandler}
 					{excludeInLibrary}
 				/>
 				<SectionRow
@@ -777,7 +778,7 @@
 						? '&exclude_in_library=true'
 						: ''}"
 					endpoint="movie/popular"
-					onAddToLibrary={handleAddToLibrary}
+					onAddToLibrary={addHandler}
 					{excludeInLibrary}
 				/>
 				<SectionRow
@@ -787,7 +788,7 @@
 						? '&exclude_in_library=true'
 						: ''}"
 					endpoint="tv/popular"
-					onAddToLibrary={handleAddToLibrary}
+					onAddToLibrary={addHandler}
 					{excludeInLibrary}
 				/>
 				<SectionRow
@@ -797,7 +798,7 @@
 						? '&exclude_in_library=true'
 						: ''}"
 					endpoint="movie/top_rated"
-					onAddToLibrary={handleAddToLibrary}
+					onAddToLibrary={addHandler}
 					{excludeInLibrary}
 				/>
 				<SectionRow
@@ -807,7 +808,7 @@
 						? '&exclude_in_library=true'
 						: ''}"
 					endpoint="tv/top_rated"
-					onAddToLibrary={handleAddToLibrary}
+					onAddToLibrary={addHandler}
 					{excludeInLibrary}
 				/>
 			</div>
@@ -833,7 +834,7 @@
 
 				<div class="grid grid-cols-3 gap-2 sm:gap-4 lg:grid-cols-9">
 					{#each allResults as item (`${item.id}-${item.media_type ?? ''}`)}
-						<MediaCard {item} onAddToLibrary={handleAddToLibrary} />
+						<MediaCard {item} onAddToLibrary={addHandler} />
 					{/each}
 				</div>
 
@@ -888,10 +889,7 @@
 				{#if filteredOutResults.length > 0}
 					<div class="grid grid-cols-3 gap-2 opacity-60 sm:gap-3 lg:grid-cols-6">
 						{#each filteredOutResults as item (item.id + (item.media_type || ''))}
-							<MediaCard
-								item={item as unknown as TmdbMediaItem}
-								onAddToLibrary={handleAddToLibrary}
-							/>
+							<MediaCard item={item as unknown as TmdbMediaItem} onAddToLibrary={addHandler} />
 						{/each}
 					</div>
 				{:else if !debugLoading}

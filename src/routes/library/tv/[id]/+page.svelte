@@ -48,6 +48,9 @@
 
 	let { data }: { data: PageData } = $props();
 
+	// Viewer accounts browse a read-only library; admin controls stay hidden.
+	const isAdminUser = data.user?.role === 'admin';
+
 	const activeStatusSet: Set<string> = new Set(ACTIVE_DOWNLOAD_STATUSES);
 
 	// Reactive data that will be updated via SSE
@@ -1789,6 +1792,7 @@
 		onEdit={handleEdit}
 		onDelete={handleDelete}
 		onRefresh={handleRefresh}
+		readOnly={!isAdminUser}
 	/>
 
 	<!-- Subtitle requirements (series-level fallback for all episodes) -->
@@ -1797,7 +1801,7 @@
 		source={data.effectiveSubtitleRequirements?.source ?? null}
 		profileName={data.effectiveLanguageProfile?.profile.name ?? null}
 		audioShortfall={data.series.languageShortfall ?? false}
-		editable
+		editable={isAdminUser}
 		saving={savingRequirements || searchingRequirements}
 		onSave={handleRequirementsSave}
 		onSearch={handleRequirementSearch}
@@ -1812,30 +1816,34 @@
 					<h2 class="text-lg font-semibold">{m.library_tvDetail_seasonsHeading()}</h2>
 				</div>
 				<div class="flex gap-1">
-					{#if !isStreamerProfile && syncableSubtitles.length > 0}
+					{#if isAdminUser && !isStreamerProfile && syncableSubtitles.length > 0}
 						<button class="btn gap-1 btn-ghost btn-sm" onclick={handleSubtitleSync}>
 							<RefreshCw class="h-4 w-4" />
 							{m.library_tvDetail_syncSubtitles()}
 						</button>
 					{/if}
-					<button
-						class="btn gap-1 btn-ghost btn-sm"
-						onclick={() => (isRenameModalOpen = true)}
-						title={m.library_tvDetail_renameFilesTitle()}
-					>
-						<FileEdit class="h-4 w-4" />
-						{m.library_tvDetail_rename()}
-					</button>
-					<button
-						class="btn gap-2 btn-ghost btn-sm"
-						onclick={toggleSelectionMode}
-						title={showCheckboxes
-							? m.library_tvDetail_exitSelectionMode()
-							: m.library_tvDetail_selectEpisodes()}
-					>
-						<CheckSquare size={16} />
-						{showCheckboxes ? m.library_tvDetail_done() : m.library_tvDetail_select()}
-					</button>
+					{#if isAdminUser}
+						<button
+							class="btn gap-1 btn-ghost btn-sm"
+							onclick={() => (isRenameModalOpen = true)}
+							title={m.library_tvDetail_renameFilesTitle()}
+						>
+							<FileEdit class="h-4 w-4" />
+							{m.library_tvDetail_rename()}
+						</button>
+					{/if}
+					{#if isAdminUser}
+						<button
+							class="btn gap-2 btn-ghost btn-sm"
+							onclick={toggleSelectionMode}
+							title={showCheckboxes
+								? m.library_tvDetail_exitSelectionMode()
+								: m.library_tvDetail_selectEpisodes()}
+						>
+							<CheckSquare size={16} />
+							{showCheckboxes ? m.library_tvDetail_done() : m.library_tvDetail_select()}
+						</button>
+					{/if}
 				</div>
 			</div>
 
@@ -1850,6 +1858,7 @@
 						seriesMonitored={series.monitored ?? false}
 						{isStreamerProfile}
 						wantsSubtitles={series.wantsSubtitles ?? false}
+						readOnly={!isAdminUser}
 						defaultOpen={openSeasonId === season.id}
 						{selectedEpisodes}
 						{showCheckboxes}
@@ -1895,17 +1904,19 @@
 	</div>
 </div>
 
-<!-- Bulk Action Bar -->
-<BulkActionBar
-	{selectedCount}
-	searching={autoSearchingEpisodes.size > 0}
-	subtitleAutoSearching={bulkSubtitleAutoSearching}
-	subtitleSyncing={bulkSubtitleSyncing}
-	onSearch={handleBulkAutoSearch}
-	onClear={clearSelection}
-	onSubtitleAutoSearch={handleBulkSubtitleAutoSearch}
-	onSubtitleSync={isStreamerProfile ? undefined : handleBulkSubtitleSyncSelected}
-/>
+<!-- Bulk Action Bar (admin only) -->
+{#if isAdminUser}
+	<BulkActionBar
+		{selectedCount}
+		searching={autoSearchingEpisodes.size > 0}
+		subtitleAutoSearching={bulkSubtitleAutoSearching}
+		subtitleSyncing={bulkSubtitleSyncing}
+		onSearch={handleBulkAutoSearch}
+		onClear={clearSelection}
+		onSubtitleAutoSearch={handleBulkSubtitleAutoSearch}
+		onSubtitleSync={isStreamerProfile ? undefined : handleBulkSubtitleSyncSelected}
+	/>
+{/if}
 
 <!-- Edit Modal -->
 <SeriesEditModal

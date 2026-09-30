@@ -88,6 +88,10 @@ const customHandler: Handle = async ({ event, resolve }) => {
 	event.locals.supportId = supportId;
 	event.locals.logger = requestLogger;
 	const pathname = event.url.pathname;
+	// Route checks run on a normalized path: duplicate slashes collapsed and
+	// the trailing slash dropped, so "//api/..." or "/api/x/" variants cannot
+	// sidestep a prefix check. Raw pathname stays in the logs.
+	const routePath = pathname.replace(/\/{2,}/g, '/').replace(/\/+$/, '') || '/';
 
 	return runWithLogContext(
 		{
@@ -121,7 +125,7 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				return false;
 			}
 
-			const isStreamingApiRoute = requiresStreamingApiKey(pathname);
+			const isStreamingApiRoute = requiresStreamingApiKey(routePath);
 
 			function isHealthRoute(path: string): boolean {
 				if (path === '/health' || path.startsWith('/health/')) {
@@ -140,12 +144,49 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				return false;
 			}
 
+			/**
+			 * Viewer (non-admin) API allowlist. Most routes carry no local role
+			 * check, so this central gate is the enforcement layer: a viewer
+			 * session may read the shared library/discover/calendar surfaces and
+			 * manage its own language; everything else under /api/ is admin
+			 * territory. GET-only by design — the write paths those pages offer
+			 * (auto-search, subtitles, edits) are admin operations.
+			 */
+			function isViewerAllowedApiPath(path: string, method: string): boolean {
+				if (path === '/api/user/language') {
+					return method === 'POST' || method === 'PUT';
+				}
+				if (method !== 'GET' && method !== 'HEAD') {
+					return false;
+				}
+				if (path === '/api/discover' || path.startsWith('/api/discover/')) {
+					return true;
+				}
+				if (path === '/api/tmdb' || path.startsWith('/api/tmdb/')) {
+					return true;
+				}
+				if (path === '/api/calendar' || path.startsWith('/api/calendar/')) {
+					return true;
+				}
+				if (path === '/api/library/movies' || path.startsWith('/api/library/movies/')) {
+					return true;
+				}
+				if (path === '/api/library/series' || path.startsWith('/api/library/series/')) {
+					return true;
+				}
+				if (path === '/api/system/status') {
+					return true;
+				}
+				return false;
+			}
+
 			// /api/auth is served by the catch-all route (api/auth/[[...all]]).
 			// Auth requests flow through to the shared response tail — security
 			// headers, correlation IDs, logging — but skip session resolution,
 			// setup/login redirects, and rate limiting here: Better Auth owns its
 			// own origin checks and database-backed rate limiter for those paths.
-			const isAuthRoute = pathname === AUTH_BASE_PATH || pathname.startsWith(`${AUTH_BASE_PATH}/`);
+			const isAuthRoute =
+				routePath === AUTH_BASE_PATH || routePath.startsWith(`${AUTH_BASE_PATH}/`);
 
 			/**
 			 * Session resolution, API-key gates, setup/login redirects, rate
@@ -338,15 +379,15 @@ const customHandler: Handle = async ({ event, resolve }) => {
 					}
 				} else {
 					if (!setupComplete) {
-						if (isHealthRoute(pathname)) {
+						if (isHealthRoute(routePath)) {
 							return resolve(event);
 						}
-						if (!pathname.startsWith('/setup')) {
+						if (!routePath.startsWith('/setup')) {
 							throw redirect(302, '/setup');
 						}
 					} else {
-						if (!event.locals.user && !isPublicRoute(pathname)) {
-							if (pathname.startsWith('/api/')) {
+						if (!event.locals.user && !isPublicRoute(routePath)) {
+							if (routePath.startsWith('/api/')) {
 								return json(
 									{
 										success: false,
@@ -368,7 +409,43 @@ const customHandler: Handle = async ({ event, resolve }) => {
 					}
 				}
 
-				if (pathname.startsWith('/api/')) {
+				// Viewer API gate: once authenticated, non-admin sessions are
+				// confined to the read-only surfaces. Streaming routes never
+				// resolve a session here (locals.user stays null), so they are
+				// unaffected; admins and admin-owned API keys pass through.
+				// A banned flag also fails closed for every role — banning
+				// deletes sessions, so this only catches races and replays.
+				// Percent-encoded slashes fail closed: no allowlisted prefix
+				// legitimately contains %2f, and a router that decoded one into
+				// a separator would turn "/api/library/movies%2f..%2f" into an
+				// arbitrary path.
+				if (
+					routePath.startsWith('/api/') &&
+					event.locals.user &&
+					(event.locals.user.role !== 'admin' || event.locals.user.banned)
+				) {
+					const method = event.request.method.toUpperCase();
+					const hasEncodedSlash = /%2f/i.test(routePath);
+					if (hasEncodedSlash || !isViewerAllowedApiPath(routePath, method)) {
+						return json(
+							{
+								success: false,
+								error: 'Forbidden. Admin access required.',
+								code: 'FORBIDDEN'
+							},
+							{
+								status: 403,
+								headers: {
+									'x-correlation-id': correlationId,
+									'x-support-id': supportId,
+									...SECURITY_HEADERS
+								}
+							}
+						);
+					}
+				}
+
+				if (routePath.startsWith('/api/')) {
 					const rateLimitResponse = checkApiRateLimit(event);
 					if (rateLimitResponse) {
 						return rateLimitResponse;
@@ -376,44 +453,34 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				}
 
 				if (setupComplete && event.locals.user) {
-					if (pathname === '/setup' || pathname === '/login' || pathname.startsWith('/login/')) {
+					if (routePath === '/setup' || routePath === '/login' || routePath.startsWith('/login/')) {
 						throw redirect(302, '/');
 					}
 				}
 
-				if (
-					pathname === '/movies' ||
-					pathname === '/movies/' ||
-					pathname === '/library/movie' ||
-					pathname === '/library/movie/'
-				) {
+				if (routePath === '/movies' || routePath === '/library/movie') {
 					throw redirect(308, '/library/movies');
 				}
-				if (pathname === '/tv' || pathname === '/tv/') {
+				if (routePath === '/tv') {
 					throw redirect(308, '/library/tv');
 				}
 				if (
-					pathname === '/movie' ||
-					pathname === '/movie/' ||
-					pathname === '/discover/movie' ||
-					pathname === '/discover/movie/' ||
-					pathname === '/discover/tv' ||
-					pathname === '/discover/tv/' ||
-					pathname === '/discover/person' ||
-					pathname === '/discover/person/' ||
-					pathname === '/person' ||
-					pathname === '/person/'
+					routePath === '/movie' ||
+					routePath === '/discover/movie' ||
+					routePath === '/discover/tv' ||
+					routePath === '/discover/person' ||
+					routePath === '/person'
 				) {
 					throw redirect(308, '/discover');
 				}
-				if (pathname.startsWith('/movie/')) {
-					throw redirect(308, `/discover/movie/${pathname.slice('/movie/'.length)}`);
+				if (routePath.startsWith('/movie/')) {
+					throw redirect(308, `/discover/movie/${routePath.slice('/movie/'.length)}`);
 				}
-				if (pathname.startsWith('/tv/')) {
-					throw redirect(308, `/discover/tv/${pathname.slice('/tv/'.length)}`);
+				if (routePath.startsWith('/tv/')) {
+					throw redirect(308, `/discover/tv/${routePath.slice('/tv/'.length)}`);
 				}
-				if (pathname.startsWith('/person/')) {
-					throw redirect(308, `/discover/person/${pathname.slice('/person/'.length)}`);
+				if (routePath.startsWith('/person/')) {
+					throw redirect(308, `/discover/person/${routePath.slice('/person/'.length)}`);
 				}
 
 				return null;
@@ -426,7 +493,7 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				}
 			}
 
-			const isStreamingRoute = event.url.pathname.startsWith('/api/streaming/');
+			const isStreamingRoute = routePath.startsWith('/api/streaming/');
 
 			requestLogger.debug('Incoming request');
 

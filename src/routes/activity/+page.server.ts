@@ -5,6 +5,7 @@ import { downloadClients, indexers } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { activityService } from '$lib/server/activity';
 import { libraryJobService } from '$lib/server/library/jobs/LibraryJobService.js';
+import { requireAdminPage } from '$lib/server/auth/authorization.js';
 import { z } from 'zod';
 
 type ActivityTab = 'active' | 'history';
@@ -34,7 +35,8 @@ function normalizeStatusForTab(
 		: 'all';
 }
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
+	requireAdminPage(locals);
 	const tabParam = url.searchParams.get('tab');
 	const explicitTab: ActivityTab | null =
 		tabParam === 'active' || tabParam === 'history' ? tabParam : null;

@@ -49,6 +49,7 @@ const EMAIL = 'curator@test.local';
 const PASSWORD = 'correct-horse-battery';
 
 let sessionCookies: Record<string, string> = {};
+let viewerCookies: Record<string, string> = {};
 let adminUserId = '';
 // Created once by the arr-compat block (ensureDefaultApiKeysForUser is
 // idempotent) and reused by the streaming gate block.
@@ -270,7 +271,7 @@ describe('hooks chain — multi-user readiness', () => {
 					headers: sessionHeaders
 				})
 			)
-		).rejects.toThrow(/only account/);
+		).rejects.toThrow(/only admin/);
 	});
 
 	it('admin-created second account gets a session that is NOT force-promoted', async () => {
@@ -300,15 +301,184 @@ describe('hooks chain — multi-user readiness', () => {
 		});
 		const signInResponse = await harness.callHandle(signIn.event);
 		expect(signInResponse.status).toBe(200);
-		const viewerCookies = harness.extractCookies(signInResponse);
+		viewerCookies = harness.extractCookies(signInResponse);
 
-		// With two accounts, the bootstrap repair must leave the role alone.
-		const apiRequest = harness.makeEvent('GET', '/api/activity', {
+		// With two accounts, the bootstrap repair must leave the role alone —
+		// checked on a viewer-allowlisted path (see the viewer gate describe).
+		const apiRequest = harness.makeEvent('GET', '/api/system/status', {
 			headers: { cookie: harness.cookieHeader(viewerCookies) }
 		});
 		const response = await harness.callHandle(apiRequest.event);
 		expect(response.status).toBe(200);
 		expect(apiRequest.event.locals.user?.username).toBe('hookviewer');
 		expect(apiRequest.event.locals.user?.role).toBe('user');
+	});
+});
+
+describe('hooks chain — viewer API gate', () => {
+	it('lets a viewer session read allowlisted surfaces', async () => {
+		for (const path of ['/api/system/status', '/api/discover', '/api/library/movies']) {
+			const { event } = harness.makeEvent('GET', path, {
+				headers: { cookie: harness.cookieHeader(viewerCookies) }
+			});
+			const response = await harness.callHandle(event);
+			expect(response.status, path).toBe(200);
+		}
+	});
+
+	it('lets a viewer set their own language', async () => {
+		const { event } = harness.makeEvent('POST', '/api/user/language', {
+			headers: {
+				cookie: harness.cookieHeader(viewerCookies),
+				'content-type': 'application/json',
+				origin: 'http://localhost:5173'
+			},
+			body: JSON.stringify({ language: 'en' })
+		});
+		const response = await harness.callHandle(event);
+		expect(response.status).toBe(200);
+	});
+
+	it('blocks viewer sessions from admin API routes regardless of local guards', async () => {
+		// Routes like /api/indexers (GET) and /api/subtitles/auto-search (POST)
+		// carry no local role check of their own — the central gate is what
+		// keeps them admin-only.
+		const cases = [
+			['GET', '/api/activity'],
+			['GET', '/api/indexers'],
+			['POST', '/api/subtitles/auto-search'],
+			['POST', '/api/library/movies'],
+			['POST', '/api/library/movies/abc/auto-search'],
+			['PUT', '/api/settings/calendar-preferences']
+		] as const;
+
+		for (const [method, path] of cases) {
+			const { event } = harness.makeEvent(method, path, {
+				headers: {
+					cookie: harness.cookieHeader(viewerCookies),
+					'content-type': 'application/json',
+					origin: 'http://localhost:5173'
+				},
+				body: method === 'GET' ? undefined : JSON.stringify({})
+			});
+			const response = await harness.callHandle(event);
+			expect(response.status, `${method} ${path}`).toBe(403);
+			const body = (await response.json()) as { code?: string };
+			expect(body.code, `${method} ${path}`).toBe('FORBIDDEN');
+		}
+	});
+
+	it('leaves admin sessions unaffected', async () => {
+		const { event } = harness.makeEvent('GET', '/api/activity', {
+			headers: { cookie: harness.cookieHeader(sessionCookies) }
+		});
+		const response = await harness.callHandle(event);
+		expect(response.status).toBe(200);
+	});
+});
+
+describe('hooks chain — viewer gate hardening', () => {
+	it('normalizes path tricks before matching the allowlist', async () => {
+		const cases = [
+			['GET', '//api/activity'],
+			['GET', '/api/activity/'],
+			['GET', '/api/library/movies%2f..%2f..%2factivity'],
+			['GET', '/api/library%2Fmovies/../activity'],
+			['POST', '/api/discover'],
+			['DELETE', '/api/library/movies/abc'],
+			['PUT', '/api/system/status']
+		] as const;
+
+		for (const [method, path] of cases) {
+			const { event } = harness.makeEvent(method, path, {
+				headers: { cookie: harness.cookieHeader(viewerCookies) }
+			});
+			const response = await harness.callHandle(event);
+			expect(response.status, `${method} ${path}`).toBe(403);
+		}
+	});
+
+	it('allows the trailing-slash form of allowlisted paths', async () => {
+		const { event } = harness.makeEvent('GET', '/api/library/movies/', {
+			headers: { cookie: harness.cookieHeader(viewerCookies) }
+		});
+		const response = await harness.callHandle(event);
+		expect(response.status).toBe(200);
+	});
+
+	it('rejects viewer calls to the admin plugin endpoints through the real auth route', async () => {
+		const { event } = harness.makeEvent('POST', '/api/auth/admin/create-user', {
+			headers: {
+				cookie: harness.cookieHeader(viewerCookies),
+				'content-type': 'application/json',
+				origin: 'http://localhost:5173'
+			},
+			body: JSON.stringify({
+				email: 'escalation@test.local',
+				password: 'escalation-password',
+				name: 'Escalation Attempt'
+			})
+		});
+		const response = await harness.callHandle(event);
+		expect(response.status).toBe(403);
+	});
+
+	it('confines viewer-owned API keys to the viewer allowlist', async () => {
+		// Even a viewer's full-access "main" key resolves to the viewer role,
+		// so the central gate — not the key's permissions — decides access.
+		const viewerId = db
+			.select()
+			.from(user)
+			.all()
+			.find((row) => row.username === 'hookviewer')!.id;
+		const sessionHeaders = new Headers({ cookie: harness.cookieHeader(viewerCookies) });
+		const keys = await ensureDefaultApiKeysForUser(viewerId, sessionHeaders);
+		expect(keys.mainKey?.key).toMatch(/^cinephage_/);
+
+		const blocked = harness.makeEvent('GET', '/api/indexers', {
+			headers: { 'x-api-key': keys.mainKey!.key }
+		});
+		const blockedResponse = await harness.callHandle(blocked.event);
+		expect(blockedResponse.status).toBe(403);
+
+		const allowed = harness.makeEvent('GET', '/api/system/status', {
+			headers: { 'x-api-key': keys.mainKey!.key }
+		});
+		const allowedResponse = await harness.callHandle(allowed.event);
+		expect(allowedResponse.status).toBe(200);
+	});
+
+	it('a banned viewer loses their live session immediately', async () => {
+		// Runs last: it invalidates the shared viewerCookies jar.
+		const adminHeaders = new Headers({ cookie: harness.cookieHeader(sessionCookies) });
+		const viewerRow = db
+			.select()
+			.from(user)
+			.all()
+			.find((row) => row.username === 'hookviewer')!;
+		await harness.withStore(harness.makeEvent('POST', '/api/auth/admin/ban-user').event, () =>
+			harness.auth.api.banUser({
+				body: { userId: viewerRow.id, banReason: 'hooks ban test' },
+				headers: adminHeaders
+			})
+		);
+
+		// The replayed cookie no longer resolves to a session.
+		const replay = harness.makeEvent('GET', '/api/system/status', {
+			headers: { cookie: harness.cookieHeader(viewerCookies) }
+		});
+		const replayResponse = await harness.callHandle(replay.event);
+		expect(replayResponse.status).toBe(401);
+
+		// And the banned viewer cannot sign back in.
+		const resigned = harness.makeEvent('POST', '/api/auth/sign-in/username', {
+			headers: {
+				'content-type': 'application/json',
+				origin: 'http://localhost:5173'
+			},
+			body: JSON.stringify({ username: 'hookviewer', password: 'viewer-password-123' })
+		});
+		const resignedResponse = await harness.callHandle(resigned.event);
+		expect(resignedResponse.status).toBe(403);
 	});
 });

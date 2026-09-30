@@ -14,7 +14,7 @@ import {
 import { getSystemSettingsService } from '$lib/server/settings/SystemSettingsService.js';
 import { ac, admin as adminRole, user as userRole } from '$lib/auth/access-control.js';
 import { isHardReservedUsername, isValidUsernameFormat } from '$lib/auth/username-policy.js';
-import { ensureSoleUserIsAdminRecord, getUserCount } from './admin-bootstrap.js';
+import { ensureSoleUserIsAdminRecord, getAdminCount, getUserRoleById } from './admin-bootstrap.js';
 import { isSetupComplete, resetSetupCompleteCache } from './setup.js';
 import { isLocalNetworkOrigin } from '$lib/server/utils/origin.js';
 
@@ -135,8 +135,14 @@ export const auth = betterAuth({
 		// Request-specific origins — only available on per-request calls, not at init time
 		if (request) {
 			addOrigin(request.url);
-			const forwardedOrigin = getForwardedOrigin(request);
-			if (forwardedOrigin) addOrigin(forwardedOrigin);
+			// X-Forwarded-Host is a browser-settable header, so a directly
+			// exposed instance would let any web page nominate its own origin
+			// as trusted. Deployments NOT behind a reverse proxy should set
+			// BETTER_AUTH_TRUST_FORWARDED_ORIGINS=false.
+			if (process.env.BETTER_AUTH_TRUST_FORWARDED_ORIGINS !== 'false') {
+				const forwardedOrigin = getForwardedOrigin(request);
+				if (forwardedOrigin) addOrigin(forwardedOrigin);
+			}
 		}
 
 		// External URL from settings UI
@@ -228,13 +234,12 @@ export const auth = betterAuth({
 		expiresIn: 60 * 60 * 24 * 7, // 7 days in seconds
 		updateAge: 60 * 60 * 24, // Refresh every day
 		storeSessionInDatabase: true,
+		// No cookie cache: every request revalidates against the database
+		// so bans, demotions, sign-outs, and password resets take effect
+		// immediately. One indexed SQLite read per request is negligible
+		// here; a cached cookie would leave a revocation replay window.
 		cookieCache: {
-			enabled: true,
-			// Short cache window: while a cached cookie is trusted, revocation
-			// (sign-out, password change) cannot take effect for a replayed
-			// cookie value. Five minutes bounds that window at negligible cost
-			// — one DB read per active session per interval.
-			maxAge: 60 * 5
+			enabled: false
 		}
 	},
 
@@ -254,6 +259,18 @@ export const auth = betterAuth({
 		user: {
 			create: {
 				before: async (user, ctx) => {
+					// Username policy on every creation path — the setup
+					// wizard validates client-side, but the raw endpoints
+					// (sign-up, admin createUser) don't run the plugin's
+					// validator, so the invariant lives here.
+					if (user.username !== undefined) {
+						if (typeof user.username !== 'string' || !validateUsername(user.username)) {
+							throw new APIError('UNPROCESSABLE_ENTITY', {
+								message: 'Username does not meet the policy.'
+							});
+						}
+					}
+
 					// Bootstrap: the very first account is always the admin.
 					if (!(await isSetupComplete())) {
 						// The insert hasn't happened yet — invalidate rather than
@@ -270,12 +287,12 @@ export const auth = betterAuth({
 
 					// After bootstrap, public self-registration stays closed.
 					// An admin session may still create accounts through the
-					// admin plugin (auth.api.createUser) — that is the path a
-					// future multi-user surface uses.
+					// admin plugin (auth.api.createUser) — that is the path the
+					// user management surface uses.
 					const creatorIsAdmin = ctx?.context?.session?.user?.role === 'admin';
 					if (!creatorIsAdmin) {
 						throw new APIError('FORBIDDEN', {
-							message: 'User registration is disabled. Only one admin account is allowed.'
+							message: 'User registration is disabled. Only admins can create accounts.'
 						});
 					}
 
@@ -289,18 +306,52 @@ export const auth = betterAuth({
 			},
 			update: {
 				before: async (data, ctx) => {
-					// Role demotion is blocked only while this is the sole
-					// account — demoting it would lock the instance out. Once
-					// multiple accounts exist, role management flows through
-					// the admin plugin.
-					if (data.role === 'user' && ctx?.context?.session?.user?.role === 'admin') {
-						if ((await getUserCount()) === 1) {
-							throw new APIError('FORBIDDEN', {
-								message: 'Cannot demote the only account.'
+					// Usernames changed through the generic self-service
+					// /update-user route bypass the username plugin's
+					// validator (it only runs at sign-in and availability
+					// checks). Enforce the shared policy here so no
+					// authenticated account can claim a reserved or malformed
+					// username.
+					if (data.username !== undefined) {
+						if (typeof data.username !== 'string' || !validateUsername(data.username)) {
+							throw new APIError('UNPROCESSABLE_ENTITY', {
+								message: 'Username does not meet the policy.'
 							});
 						}
 					}
+
+					// The instance must always keep at least one admin. When a
+					// role change demotes an admin to user, count the remaining
+					// admins and refuse if this is the last one.
+					if (data.role === 'user' && ctx?.context?.session?.user?.role === 'admin') {
+						// The admin-plugin routes carry the target in the body;
+						// a self-update targets the session user.
+						const targetId =
+							(ctx?.context?.body as { userId?: string } | undefined)?.userId ??
+							ctx?.context?.session?.user?.id;
+						if (targetId && (await getUserRoleById(targetId)) === 'admin') {
+							if ((await getAdminCount()) <= 1) {
+								throw new APIError('FORBIDDEN', {
+									message: 'Cannot demote the only admin account.'
+								});
+							}
+						}
+					}
 					return { data };
+				}
+			},
+			delete: {
+				before: async (deletedUser) => {
+					// Same invariant on deletion: the admin plugin's removeUser
+					// flows through here before the row goes away.
+					if (deletedUser.role === 'admin') {
+						if ((await getAdminCount()) <= 1) {
+							throw new APIError('FORBIDDEN', {
+								message: 'Cannot delete the only admin account.'
+							});
+						}
+					}
+					return true;
 				}
 			}
 		}

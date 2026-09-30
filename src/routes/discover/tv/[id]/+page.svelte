@@ -9,6 +9,9 @@
 
 	let { data }: { data: PageData } = $props();
 
+	// Only admins add content from Discover.
+	const isAdminUser = data.user?.role === 'admin';
+
 	function goBack(e: MouseEvent) {
 		e.preventDefault();
 		if (window.history.length > 1) window.history.back();
@@ -48,7 +51,7 @@
 				<ArrowLeft class="h-4 w-4" />
 				{m.action_back()}
 			</a>
-			<MediaHero item={data.tv} />
+			<MediaHero item={data.tv} readOnly={!isAdminUser} />
 		</div>
 
 		<!-- Cast Section -->

@@ -58,6 +58,9 @@
 
 	let { data }: { data: PageData } = $props();
 
+	// Viewer accounts browse a read-only library; admin controls stay hidden.
+	const isAdminUser = data.user?.role === 'admin';
+
 	const activeStatusSet: Set<string> = new Set(ACTIVE_DOWNLOAD_STATUSES);
 
 	// Reactive data that will be updated via SSE
@@ -924,6 +927,7 @@
 		{scoreLoading}
 		subtitleProgress={subtitleRequirementProgress}
 		preferOriginalTitleDefault={data.preferOriginalTitleDefault}
+		readOnly={!isAdminUser}
 	/>
 
 	<!-- Subtitle requirements (per-item override editing) -->
@@ -933,7 +937,7 @@
 		source={data.effectiveSubtitleRequirements?.source ?? null}
 		profileName={data.effectiveLanguageProfile?.profile.name ?? null}
 		audioShortfall={data.movie.languageShortfall ?? false}
-		editable
+		editable={isAdminUser}
 		saving={savingRequirements}
 		onSave={handleRequirementsSave}
 		onSearch={handleRequirementSearch}
@@ -947,13 +951,13 @@
 				<div class="mb-4 flex items-center justify-between">
 					<h2 class="text-lg font-semibold">{m.library_movieDetail_filesHeading()}</h2>
 					<div class="flex flex-wrap items-center gap-2">
-						{#if !isStreamerProfile && (movie.subtitles?.length ?? 0) > 0}
+						{#if isAdminUser && !isStreamerProfile && (movie.subtitles?.length ?? 0) > 0}
 							<button class="btn gap-1 btn-ghost btn-sm" onclick={handleSubtitleSync}>
 								<RefreshCw class="h-4 w-4" />
 								{m.library_movieDetail_syncSubtitles()}
 							</button>
 						{/if}
-						{#if movie.files.length > 0}
+						{#if isAdminUser && movie.files.length > 0}
 							<button class="btn gap-1 btn-ghost btn-sm" onclick={() => (isRenameModalOpen = true)}>
 								<FileEdit class="h-4 w-4" />
 								{m.library_movieDetail_rename()}
@@ -966,6 +970,7 @@
 					subtitles={movie.subtitles}
 					subtitleProgress={subtitleRequirementProgress}
 					{isStreamerProfile}
+					readOnly={!isAdminUser}
 					onDeleteFile={handleDeleteFile}
 					onSearch={handleSearch}
 					onSubtitleSearch={handleSubtitleSearch}
@@ -986,7 +991,7 @@
 							</h2>
 						</div>
 						<div class="flex items-center gap-1">
-							{#if trackedMissingFile.length > 0}
+							{#if isAdminUser && trackedMissingFile.length > 0}
 								<button
 									class="btn gap-2 btn-ghost btn-sm"
 									onclick={handleCollectionSearch}
@@ -1000,7 +1005,7 @@
 									{/if}
 								</button>
 							{/if}
-							{#if trackedMissingSubtitles.length > 0}
+							{#if isAdminUser && trackedMissingSubtitles.length > 0}
 								<button
 									class="btn gap-2 btn-ghost btn-sm"
 									onclick={handleCollectionSubtitleAutoSearch}
@@ -1341,7 +1346,7 @@
 							</h2>
 						</div>
 						<div class="flex shrink-0 items-center gap-1">
-							{#if trackedMissingFile.length > 0}
+							{#if isAdminUser && trackedMissingFile.length > 0}
 								<button
 									class="btn gap-2 btn-ghost btn-sm"
 									onclick={handleCollectionSearch}
@@ -1355,7 +1360,7 @@
 									{/if}
 								</button>
 							{/if}
-							{#if trackedMissingSubtitles.length > 0}
+							{#if isAdminUser && trackedMissingSubtitles.length > 0}
 								<button
 									class="btn gap-2 btn-ghost btn-sm"
 									onclick={handleCollectionSubtitleAutoSearch}

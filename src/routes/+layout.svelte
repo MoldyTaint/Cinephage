@@ -40,6 +40,7 @@
 		Puzzle,
 		FolderCog,
 		Ban,
+		Users,
 		Globe,
 		Palette,
 		Pin
@@ -209,7 +210,9 @@
 		}
 	}
 
-	// Menu items using translation functions
+	// Menu items using translation functions. Viewer accounts see the shared
+	// browsing surfaces only (Discover, Library, Calendar); everything
+	// operational (dashboard, import, activity, Live TV, settings) is admin.
 	const menuItems = $derived.by<MenuItem[]>(() => {
 		const movieLibraries = data.libraryNav?.movieLibraries ?? [];
 		const tvLibraries = data.libraryNav?.tvLibraries ?? [];
@@ -221,6 +224,7 @@
 			(library: LibraryNavItem) => !library.isDefault
 		);
 		const tvSubLibraries = tvLibraries.filter((library: LibraryNavItem) => !library.isDefault);
+		const isAdmin = data.user?.role === 'admin';
 
 		const libraryChildren: MenuChildItem[] = [
 			{
@@ -263,20 +267,32 @@
 					url.pathname === '/library/tv' &&
 					(url.searchParams.get('library')?.trim() ?? '') === library.slug
 			})),
-			{ href: '/library/import', label: m.nav_import, icon: Download },
-			{ href: '/library/unmatched', label: m.nav_unmatchedFiles, icon: FileQuestion }
+			...(isAdmin
+				? [
+						{ href: '/library/import', label: m.nav_import, icon: Download },
+						{ href: '/library/unmatched', label: m.nav_unmatchedFiles, icon: FileQuestion }
+					]
+				: [])
 		];
+
+		const discoverItem: MenuItem = { href: '/discover', label: m.nav_discover, icon: Compass };
+		const libraryItem: MenuItem = {
+			label: m.nav_library,
+			icon: Library,
+			children: libraryChildren
+		};
+		const calendarItem: MenuItem = { href: '/calendar', label: m.nav_calendar, icon: Calendar };
+
+		if (!isAdmin) {
+			return [discoverItem, libraryItem, calendarItem];
+		}
 
 		return [
 			{ href: '/', label: m.nav_home, icon: Home },
-			{ href: '/discover', label: m.nav_discover, icon: Compass },
-			{
-				label: m.nav_library,
-				icon: Library,
-				children: libraryChildren
-			},
+			discoverItem,
+			libraryItem,
 			{ href: '/activity', label: m.nav_activity, icon: Activity },
-			{ href: '/calendar', label: m.nav_calendar, icon: Calendar },
+			calendarItem,
 			{
 				label: m.nav_liveTv,
 				icon: Radio,
@@ -302,6 +318,12 @@
 						label: m.nav_integrations,
 						icon: Puzzle,
 						match: (url: URL) => url.pathname.startsWith('/settings/integrations')
+					},
+					{
+						href: '/settings/users',
+						label: m.nav_users,
+						icon: Users,
+						match: (url: URL) => url.pathname.startsWith('/settings/users')
 					},
 					{
 						href: '/settings/system/general',
@@ -422,54 +444,60 @@
 	// Global scan SSE - lives in the root layout so toast notifications fire
 	// regardless of which page the user is on when a scan completes.
 	// The monitoring/status sub-layout keeps its own SSE for the progress bar.
-	const _scanSse = createSSE<{
-		status: { scanning?: boolean };
-		progress: ScanProgressPayload;
-		scanStart: Record<string, unknown>;
-		scanComplete: { type?: string; results?: unknown[] };
-		scanError: { error?: { message?: string } };
-	}>('/api/library/scan/status', {
-		status: (payload) => {
-			const inProgress = Boolean(payload.scanning ?? false);
-			layoutState.setScanState(inProgress, inProgress ? layoutState.scanProgress : null);
-		},
-		progress: (payload) => {
-			layoutState.setScanState(true, payload);
-		},
-		scanStart: () => {
-			layoutState.setScanState(true, layoutState.scanProgress);
-		},
-		scanComplete: (payload) => {
-			layoutState.setScanState(false, null);
-			const count = payload.results?.length ?? 0;
-			toasts.success(m.settings_general_scanCompleteFoldersScanned({ count }));
-			void invalidateAll();
-		},
-		scanError: () => {
-			layoutState.setScanState(false, null);
-			toasts.error(m.settings_general_scanFailed());
-		}
-	});
+	// Operational streams are admin-only; viewer accounts never connect.
+	const isAdminUser = data.user?.role === 'admin';
+	const _scanSse =
+		isAdminUser &&
+		createSSE<{
+			status: { scanning?: boolean };
+			progress: ScanProgressPayload;
+			scanStart: Record<string, unknown>;
+			scanComplete: { type?: string; results?: unknown[] };
+			scanError: { error?: { message?: string } };
+		}>('/api/library/scan/status', {
+			status: (payload) => {
+				const inProgress = Boolean(payload.scanning ?? false);
+				layoutState.setScanState(inProgress, inProgress ? layoutState.scanProgress : null);
+			},
+			progress: (payload) => {
+				layoutState.setScanState(true, payload);
+			},
+			scanStart: () => {
+				layoutState.setScanState(true, layoutState.scanProgress);
+			},
+			scanComplete: (payload) => {
+				layoutState.setScanState(false, null);
+				const count = payload.results?.length ?? 0;
+				toasts.success(m.settings_general_scanCompleteFoldersScanned({ count }));
+				void invalidateAll();
+			},
+			scanError: () => {
+				layoutState.setScanState(false, null);
+				toasts.error(m.settings_general_scanFailed());
+			}
+		});
 
 	// Global sync SSE — shows start/complete toasts from any page.
-	const _syncSse = createSSE<{
-		status: { inProgress?: boolean };
-		syncStart: { timestamp?: string };
-		syncStop: { timestamp?: string };
-	}>('/api/media-server-stats/sync/status', {
-		status: (payload) => {
-			layoutState.setMediaServerSyncing(Boolean(payload.inProgress ?? false));
-		},
-		syncStart: () => {
-			layoutState.setMediaServerSyncing(true);
-			toasts.info(m.settings_monitoring_mediaServerSyncStarted());
-		},
-		syncStop: () => {
-			layoutState.setMediaServerSyncing(false);
-			toasts.success(m.settings_monitoring_mediaServerSyncComplete());
-			void invalidateAll();
-		}
-	});
+	const _syncSse =
+		isAdminUser &&
+		createSSE<{
+			status: { inProgress?: boolean };
+			syncStart: { timestamp?: string };
+			syncStop: { timestamp?: string };
+		}>('/api/media-server-stats/sync/status', {
+			status: (payload) => {
+				layoutState.setMediaServerSyncing(Boolean(payload.inProgress ?? false));
+			},
+			syncStart: () => {
+				layoutState.setMediaServerSyncing(true);
+				toasts.info(m.settings_monitoring_mediaServerSyncStarted());
+			},
+			syncStop: () => {
+				layoutState.setMediaServerSyncing(false);
+				toasts.success(m.settings_monitoring_mediaServerSyncComplete());
+				void invalidateAll();
+			}
+		});
 </script>
 
 <svelte:head>

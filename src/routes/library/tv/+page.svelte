@@ -44,6 +44,9 @@
 
 	let { data } = $props();
 
+	// Viewer accounts browse a read-only library; admin controls stay hidden.
+	const isAdminUser = data.user?.role === 'admin';
+
 	const SCROLL_KEY = 'cinephage:library:tv:scrollY';
 
 	beforeNavigate(({ to }) => {
@@ -622,50 +625,52 @@
 
 			<!-- Right: Quick Actions -->
 			<div class="flex shrink-0 items-center gap-1.5">
-				<div class="dropdown dropdown-end">
-					<div
-						tabindex="0"
-						role="button"
-						class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm"
-						aria-label="Monitoring actions"
-					>
-						<Eye class="h-4 w-4" />
-						<span class="hidden xl:inline">Monitoring</span>
-						<ChevronDown class="hidden h-3 w-3 sm:block" />
+				{#if isAdminUser}
+					<div class="dropdown dropdown-end">
+						<div
+							tabindex="0"
+							role="button"
+							class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm"
+							aria-label="Monitoring actions"
+						>
+							<Eye class="h-4 w-4" />
+							<span class="hidden xl:inline">Monitoring</span>
+							<ChevronDown class="hidden h-3 w-3 sm:block" />
+						</div>
+						<ul
+							class="menu dropdown-content z-50 mt-2 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl"
+						>
+							<li>
+								<button onclick={handleMonitorAll}>
+									<Eye class="h-4 w-4" />
+									{m.library_tv_monitorAll()}
+								</button>
+							</li>
+							<li>
+								<button onclick={handleUnmonitorAll}>
+									<EyeOff class="h-4 w-4" />
+									{m.library_tv_unmonitorAll()}
+								</button>
+							</li>
+						</ul>
 					</div>
-					<ul
-						class="menu dropdown-content z-50 mt-2 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl"
-					>
-						<li>
-							<button onclick={handleMonitorAll}>
-								<Eye class="h-4 w-4" />
-								{m.library_tv_monitorAll()}
-							</button>
-						</li>
-						<li>
-							<button onclick={handleUnmonitorAll}>
-								<EyeOff class="h-4 w-4" />
-								{m.library_tv_unmonitorAll()}
-							</button>
-						</li>
-					</ul>
-				</div>
 
-				<button
-					class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm {showCheckboxes ? 'btn-primary' : ''}"
-					onclick={handleSelectToggle}
-				>
-					{#if !showCheckboxes}
-						<CheckSquare class="h-4 w-4" />
-						<span class="hidden sm:inline">{m.library_tv_select()}</span>
-					{:else if !allSelected}
-						<CheckSquare class="h-4 w-4" />
-						<span class="hidden sm:inline">{m.library_tv_selectAll()}</span>
-					{:else}
-						<XSquare class="h-4 w-4" />
-						<span class="hidden sm:inline">{m.library_tv_done()}</span>
-					{/if}
-				</button>
+					<button
+						class="btn gap-1.5 btn-ghost btn-xs sm:btn-sm {showCheckboxes ? 'btn-primary' : ''}"
+						onclick={handleSelectToggle}
+					>
+						{#if !showCheckboxes}
+							<CheckSquare class="h-4 w-4" />
+							<span class="hidden sm:inline">{m.library_tv_select()}</span>
+						{:else if !allSelected}
+							<CheckSquare class="h-4 w-4" />
+							<span class="hidden sm:inline">{m.library_tv_selectAll()}</span>
+						{:else}
+							<XSquare class="h-4 w-4" />
+							<span class="hidden sm:inline">{m.library_tv_done()}</span>
+						{/if}
+					</button>
+				{/if}
 
 				<!-- View Toggle -->
 				<button
@@ -813,10 +818,10 @@
 							downloadingIds={downloadingSeriesIdSet}
 							{autoSearchingIds}
 							onSelectChange={handleItemSelectChange}
-							onMonitorToggle={handleMonitorToggle}
-							onDelete={handleDeleteSeries}
-							onAutoGrab={handleAutoGrab}
-							onManualGrab={handleManualGrab}
+							onMonitorToggle={isAdminUser ? handleMonitorToggle : undefined}
+							onDelete={isAdminUser ? handleDeleteSeries : undefined}
+							onAutoGrab={isAdminUser ? handleAutoGrab : undefined}
+							onManualGrab={isAdminUser ? handleManualGrab : undefined}
 							preferOriginalTitleDefault={data.preferOriginalTitleDefault}
 						/>
 					{/if}
@@ -870,19 +875,21 @@
 	/>
 </div>
 
-<!-- Bulk Action Bar -->
-<LibraryBulkActionBar
-	{selectedCount}
-	loading={bulkLoading}
-	currentAction={currentBulkAction}
-	mediaType="tv"
-	onMonitor={() => handleBulkMonitor(true)}
-	onUnmonitor={() => handleBulkMonitor(false)}
-	onChangeQuality={() => (isQualityModalOpen = true)}
-	onLanguage={() => (isLanguageModalOpen = true)}
-	onDelete={() => (isDeleteModalOpen = true)}
-	onClear={clearSelection}
-/>
+<!-- Bulk Action Bar (admin only) -->
+{#if isAdminUser}
+	<LibraryBulkActionBar
+		{selectedCount}
+		loading={bulkLoading}
+		currentAction={currentBulkAction}
+		mediaType="tv"
+		onMonitor={() => handleBulkMonitor(true)}
+		onUnmonitor={() => handleBulkMonitor(false)}
+		onChangeQuality={() => (isQualityModalOpen = true)}
+		onLanguage={() => (isLanguageModalOpen = true)}
+		onDelete={() => (isDeleteModalOpen = true)}
+		onClear={clearSelection}
+	/>
+{/if}
 
 <!-- Bulk Language Profile Modal -->
 <BulkLanguageProfileModal

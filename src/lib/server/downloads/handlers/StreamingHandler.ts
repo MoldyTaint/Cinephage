@@ -1,5 +1,5 @@
 import { strmService, StrmService, getStreamingBaseUrl } from '$lib/server/streaming/index.js';
-import { getRecoverableApiKeyByType } from '$lib/server/auth/index.js';
+import { getOwnerStreamingApiKey } from '$lib/server/auth/index.js';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
 import { mediaInfoService } from '$lib/server/library/media-info.js';
 import { getLibraryRelativePath } from '$lib/server/library/media-paths.js';
@@ -80,7 +80,7 @@ export class StreamingHandler {
 		}
 
 		try {
-			const key = await getRecoverableApiKeyByType('streaming');
+			const key = await getOwnerStreamingApiKey();
 			const available = !!key;
 			this.streamingKeyCache = { available, checkedAt: now };
 			if (available) {

@@ -1,6 +1,6 @@
-import { and, eq, like, desc, notInArray } from 'drizzle-orm';
+import { and, eq, like, desc, asc, notInArray } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.js';
-import { authApiKeys, userApiKeySecrets } from '$lib/server/db/schema.js';
+import { authApiKeys, user, userApiKeySecrets } from '$lib/server/db/schema.js';
 import { decryptApiKey, encryptApiKey } from '$lib/server/crypto/apiKeyCrypto.js';
 import { auth } from './auth.js';
 
@@ -291,10 +291,9 @@ export async function getManagedApiKeysForRequest(headers: Headers): Promise<{
 }
 
 /**
- * Recover a managed key's plaintext. Without userId this picks the most
- * recent matching key of ANY account — an instance-level pickup that is only
- * correct while a single admin exists (STRM generation, streaming handlers).
- * Multi-user surfaces must pass the owning userId.
+ * Recover a managed key's plaintext. With userId this returns that account's
+ * most recent matching key. Without userId it falls back to the most recent
+ * matching key of ANY account — only correct while a single admin exists.
  */
 export async function getRecoverableApiKeyByType(
 	type: ManagedApiKeyType,
@@ -317,4 +316,24 @@ export async function getRecoverableApiKeyByType(
 		.limit(1);
 
 	return result ? decryptApiKey(result.encryptedKey) : null;
+}
+
+/**
+ * The instance-level streaming key for background jobs with no user session
+ * (STRM generation, streaming availability checks). Deterministically the
+ * oldest admin's key — the owner account — so multi-user instances always
+ * stamp .strm files and stream checks with the same, stable credential.
+ */
+export async function getOwnerStreamingApiKey(): Promise<string | null> {
+	const [owner] = await db
+		.select({ id: user.id })
+		.from(user)
+		.where(eq(user.role, 'admin'))
+		.orderBy(asc(user.createdAt))
+		.limit(1);
+
+	if (!owner) {
+		return getRecoverableApiKeyByType('streaming');
+	}
+	return getRecoverableApiKeyByType('streaming', owner.id);
 }

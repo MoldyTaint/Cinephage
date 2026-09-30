@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { join, dirname, resolve, relative } from 'path';
 import { createChildLogger } from '$lib/logging';
 import { todayDateString } from '$lib/utils/format.js';
-import { getRecoverableApiKeyByType } from '$lib/server/auth/index.js';
+import { getOwnerStreamingApiKey } from '$lib/server/auth/index.js';
 import { db } from '$lib/server/db';
 import {
 	movies,
@@ -196,11 +196,12 @@ export class StrmService {
 	/**
 	 * Fetch the Media Streaming API Key from the database
 	 * This key is used for authenticating streaming requests from media servers
-	 * Queries directly from database to work in background contexts without user session
+	 * Queries directly from database to work in background contexts without user session;
+	 * always resolves to the owner admin's key so multi-user instances stay deterministic.
 	 */
 	private async getMediaStreamingApiKey(): Promise<string | null> {
 		try {
-			const key = await getRecoverableApiKeyByType('streaming');
+			const key = await getOwnerStreamingApiKey();
 
 			if (!key) {
 				logger.debug('[StrmService] No Media Streaming API Key found in database');
