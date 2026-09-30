@@ -1227,6 +1227,16 @@ const TABLE_DEFINITIONS: string[] = [
 		"updated_at" text
 	)`,
 
+	`CREATE TABLE IF NOT EXISTS "user_media_server_links" (
+		"id" text PRIMARY KEY NOT NULL,
+		"user_id" text NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+		"server_id" text NOT NULL REFERENCES "media_browser_servers"("id") ON DELETE CASCADE,
+		"server_user_id" text NOT NULL,
+		"server_username" text NOT NULL,
+		"linked_at" text,
+		"created_at" text
+	)`,
+
 	`CREATE TABLE IF NOT EXISTS "media_server_synced_items" (
 		"id" text PRIMARY KEY NOT NULL,
 		"server_id" text NOT NULL REFERENCES "media_browser_servers"("id") ON DELETE CASCADE,
@@ -1742,6 +1752,9 @@ const INDEX_DEFINITIONS: string[] = [
 	`CREATE INDEX IF NOT EXISTS "idx_synced_items_tmdb_id" ON "media_server_synced_items" ("tmdb_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_synced_items_tvdb_id" ON "media_server_synced_items" ("tvdb_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_synced_items_item_type" ON "media_server_synced_items" ("item_type")`,
+	// User media server link indexes
+	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_media_server_links_server_user" ON "user_media_server_links" ("server_id", "server_user_id")`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_media_server_links_user_server" ON "user_media_server_links" ("user_id", "server_id")`,
 	// Rename history audit indexes
 	`CREATE INDEX IF NOT EXISTS "idx_rename_history_file" ON "rename_history" ("file_id")`,
 	`CREATE INDEX IF NOT EXISTS "idx_rename_history_created" ON "rename_history" ("created_at")`,

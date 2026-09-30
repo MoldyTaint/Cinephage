@@ -14,9 +14,12 @@
 		Smartphone,
 		Tablet,
 		Loader2,
-		LogOut
+		LogOut,
+		Tv,
+		Unlink
 	} from 'lucide-svelte';
 	import { authClient } from '$lib/auth/client.js';
+	import { ApiError, apiGet, apiPost, apiDelete } from '$lib/api/client.js';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { formatDisplayDate } from '$lib/utils/format.js';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
@@ -208,8 +211,91 @@
 	}
 
 	// =====================
+	// Media server link (admin-mediated)
+	// =====================
+	type MediaServerLink = {
+		serverId: string;
+		serverName: string;
+		serverType: string;
+		serverUserId: string;
+		serverUsername: string;
+		linkedAt: string | null;
+	};
+
+	type LinkableServerInfo = { id: string; name: string; quickConnectEnabled: boolean };
+	type ServerUserOption = { id: string; name: string; isAdministrator: boolean };
+
+	let mediaLinks = $state<MediaServerLink[]>(data.mediaLinks ?? []);
+	let linkableServers = $state<LinkableServerInfo[]>(data.linkableServers ?? []);
+	let linkServerId = $state('');
+	let serverUsers = $state<ServerUserOption[] | null>(null);
+	let loadingUsers = $state(false);
+	let linkingUser = $state(false);
+	let unlinkingServerId = $state<string | null>(null);
+	let linkServerUserId = $state('');
+
+	async function loadServerUsers() {
+		if (!linkServerId) {
+			serverUsers = null;
+			return;
+		}
+		loadingUsers = true;
+		try {
+			const response = await apiGet<{ users: ServerUserOption[] | null }>(
+				`/api/settings/users/${data.profile.id}/media-server-link?serverId=${encodeURIComponent(linkServerId)}`
+			);
+			serverUsers = response.users ?? [];
+			linkServerUserId = '';
+		} catch {
+			serverUsers = null;
+			toasts.error(m.link_failed());
+		} finally {
+			loadingUsers = false;
+		}
+	}
+
+	async function handleAdminLink() {
+		if (!linkServerId || !linkServerUserId || linkingUser) return;
+		linkingUser = true;
+		try {
+			const result = await apiPost<{ link?: MediaServerLink }>(
+				`/api/settings/users/${data.profile.id}/media-server-link`,
+				{ serverId: linkServerId, serverUserId: linkServerUserId }
+			);
+			toasts.success(m.link_linkedSuccess({ username: result.link?.serverUsername ?? '' }));
+			mediaLinks = [...mediaLinks, result.link!];
+			serverUsers = null;
+			linkServerUserId = '';
+		} catch (error) {
+			if (error instanceof ApiError && error.response?.error) {
+				toasts.error(error.response.error);
+			} else {
+				toasts.error(m.link_failed());
+			}
+		} finally {
+			linkingUser = false;
+		}
+	}
+
+	async function handleAdminUnlink(serverId: string) {
+		unlinkingServerId = serverId;
+		try {
+			await apiDelete(
+				`/api/settings/users/${data.profile.id}/media-server-link?serverId=${encodeURIComponent(serverId)}`
+			);
+			mediaLinks = mediaLinks.filter((link) => link.serverId !== serverId);
+			toasts.success(m.link_unlinked());
+		} catch {
+			toasts.error(m.link_failed());
+		} finally {
+			unlinkingServerId = null;
+		}
+	}
+
+	// =====================
 	// Delete
 	// =====================
+
 	let deleteModalOpen = $state(false);
 	let deletingUser = $state(false);
 
@@ -414,6 +500,77 @@
 					</li>
 				{/each}
 			</ul>
+		{/if}
+	</SettingsSection>
+
+	<!-- Media server link -->
+	<SettingsSection title={m.link_sectionTitle()} description={m.link_sectionDescription()}>
+		{#if mediaLinks.length > 0}
+			<ul class="divide-y divide-base-content/10">
+				{#each mediaLinks as mediaLink (mediaLink.serverId)}
+					<li class="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+						<Tv class="h-5 w-5 shrink-0 text-base-content/40" />
+						<div class="min-w-0 flex-1">
+							<div class="flex flex-wrap items-center gap-2">
+								<span class="text-sm font-medium">{mediaLink.serverUsername}</span>
+								<span class="badge badge-ghost badge-xs">{mediaLink.serverName}</span>
+							</div>
+						</div>
+						<button
+							class="btn btn-ghost text-error btn-xs"
+							disabled={unlinkingServerId === mediaLink.serverId}
+							onclick={() => handleAdminUnlink(mediaLink.serverId)}
+						>
+							{#if unlinkingServerId === mediaLink.serverId}
+								<Loader2 class="h-3.5 w-3.5 animate-spin" />
+							{:else}
+								<Unlink class="h-3.5 w-3.5" />
+								{m.link_unlinkAction()}
+							{/if}
+						</button>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+
+		{#if linkableServers.length === 0}
+			<p class="text-sm text-base-content/60">{m.link_noServers()}</p>
+		{:else if mediaLinks.length === 0}
+			<div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+				<select
+					class="select-bordered select select-sm sm:w-56"
+					bind:value={linkServerId}
+					onchange={loadServerUsers}
+				>
+					<option value="">{m.link_pickServer()}</option>
+					{#each linkableServers as server (server.id)}
+						<option value={server.id}>{server.name}</option>
+					{/each}
+				</select>
+				{#if loadingUsers}
+					<span class="loading loading-sm loading-spinner"></span>
+				{:else if serverUsers && serverUsers.length > 0}
+					<select class="select-bordered select select-sm sm:w-56" bind:value={linkServerUserId}>
+						<option value="">{m.link_pickUser()}</option>
+						{#each serverUsers as serverUser (serverUser.id)}
+							<option value={serverUser.id}>{serverUser.name}</option>
+						{/each}
+					</select>
+					<button
+						class="btn btn-outline btn-sm"
+						disabled={!linkServerUserId || linkingUser}
+						onclick={handleAdminLink}
+					>
+						{#if linkingUser}
+							<Loader2 class="h-4 w-4 animate-spin" />
+						{/if}
+						{m.link_connectAction()}
+					</button>
+				{:else if serverUsers && serverUsers.length === 0}
+					<span class="text-sm text-base-content/60">{m.link_noServerUsers()}</span>
+				{/if}
+			</div>
+			<p class="mt-2 text-xs text-base-content/50">{m.link_adminHint()}</p>
 		{/if}
 	</SettingsSection>
 

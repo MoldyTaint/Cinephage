@@ -5,6 +5,7 @@ import { db } from '$lib/server/db/index.js';
 import { user } from '$lib/server/db/schema.js';
 import { requireAdminPage } from '$lib/server/auth/authorization.js';
 import { auth } from '$lib/server/auth/index.js';
+import { mediaServerLinkService } from '$lib/server/mediaServerLink/MediaServerLinkService.js';
 
 export const load: PageServerLoad = async ({ locals, params, request }) => {
 	requireAdminPage(locals);
@@ -60,6 +61,8 @@ export const load: PageServerLoad = async ({ locals, params, request }) => {
 	return {
 		profile,
 		sessions,
-		adminCount
+		adminCount,
+		mediaLinks: await mediaServerLinkService.getLinks(profile.id),
+		linkableServers: await mediaServerLinkService.getLinkableServers()
 	};
 };

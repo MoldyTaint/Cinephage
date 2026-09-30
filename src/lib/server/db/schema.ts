@@ -3311,6 +3311,37 @@ export const mediaBrowserServers = sqliteTable('media_browser_servers', {
 export type MediaBrowserServerRecord = typeof mediaBrowserServers.$inferSelect;
 export type NewMediaBrowserServerRecord = typeof mediaBrowserServers.$inferInsert;
 
+/**
+ * A Cinephage account linked to its media-server account (Jellyfin first).
+ * Identity mapping only: serverUserId + a username snapshot. No per-user
+ * tokens are ever stored — pairing proves identity and the server-side
+ * admin key handles data access internally.
+ */
+export const userMediaServerLinks = sqliteTable(
+	'user_media_server_links',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => randomUUID()),
+		userId: text('user_id')
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		serverId: text('server_id')
+			.notNull()
+			.references(() => mediaBrowserServers.id, { onDelete: 'cascade' }),
+		serverUserId: text('server_user_id').notNull(),
+		serverUsername: text('server_username').notNull(),
+		linkedAt: text('linked_at').$defaultFn(() => new Date().toISOString()),
+		createdAt: text('created_at').$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [
+		// One media-server account maps to exactly one Cinephage account,
+		// and each Cinephage account holds at most one link per server.
+		uniqueIndex('idx_user_media_server_links_server_user').on(table.serverId, table.serverUserId),
+		uniqueIndex('idx_user_media_server_links_user_server').on(table.userId, table.serverId)
+	]
+);
+
 export const mediaServerSyncedItems = sqliteTable(
 	'media_server_synced_items',
 	{

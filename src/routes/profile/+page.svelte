@@ -4,6 +4,8 @@
 	import {
 		User,
 		Lock,
+		Tv,
+		Unlink,
 		KeyRound,
 		Check,
 		Eye,
@@ -19,7 +21,7 @@
 	} from 'lucide-svelte';
 	import { authClient } from '$lib/auth/client.js';
 	import { toasts } from '$lib/stores/toast.svelte';
-	import { apiGet, apiDelete } from '$lib/api/client.js';
+	import { ApiError, apiGet, apiPost, apiPut, apiDelete } from '$lib/api/client.js';
 	import { invalidateAll } from '$app/navigation';
 	import { formatDisplayDate } from '$lib/utils/format.js';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
@@ -170,6 +172,127 @@
 		}
 	}
 
+	// =====================
+	// Media server linking
+	// =====================
+	type MediaServerLink = {
+		serverId: string;
+		serverName: string;
+		serverType: string;
+		serverUserId: string;
+		serverUsername: string;
+		linkedAt: string | null;
+	};
+
+	type LinkableServerInfo = {
+		id: string;
+		name: string;
+		quickConnectEnabled: boolean;
+	};
+
+	let mediaLinks = $state<MediaServerLink[]>([]);
+	let linkableServers = $state<LinkableServerInfo[]>([]);
+	let linkServerId = $state('');
+	let pairingCode = $state('');
+	let pairingActive = $state(false);
+	let pairingExpired = $state(false);
+	let pairingTimer: ReturnType<typeof setInterval> | null = null;
+
+	async function refreshMediaLinks() {
+		if (!browser) return;
+		try {
+			const response = await apiGet<{
+				links: MediaServerLink[];
+				servers: LinkableServerInfo[];
+			}>('/api/user/media-server/link');
+			mediaLinks = response.links ?? [];
+			linkableServers = response.servers ?? [];
+			if (!linkServerId && linkableServers.length > 0) {
+				linkServerId = linkableServers[0]!.id;
+			}
+		} catch {
+			mediaLinks = [];
+			linkableServers = [];
+		}
+	}
+
+	$effect(() => {
+		void refreshMediaLinks();
+		return () => {
+			if (pairingTimer) clearInterval(pairingTimer);
+		};
+	});
+
+	function stopPolling() {
+		if (pairingTimer) {
+			clearInterval(pairingTimer);
+			pairingTimer = null;
+		}
+	}
+
+	async function startPairing() {
+		if (!linkServerId || pairingActive) return;
+		try {
+			const response = await apiPost<{ code?: string }>('/api/user/media-server/link', {
+				serverId: linkServerId
+			});
+			pairingCode = response.code ?? '';
+			pairingActive = true;
+			pairingExpired = false;
+			stopPolling();
+			pairingTimer = setInterval(() => void pollPairing(), 2500);
+		} catch (error) {
+			if (error instanceof ApiError && error.response?.outcome === 'quick-connect-disabled') {
+				toasts.error(m.link_quickConnectDisabled());
+				return;
+			}
+			toasts.error(error instanceof Error ? error.message : m.link_failed());
+		}
+	}
+
+	async function pollPairing() {
+		if (!pairingActive) return;
+		try {
+			const response = await apiPut<{
+				outcome: string;
+				link?: MediaServerLink;
+			}>('/api/user/media-server/link', { serverId: linkServerId });
+			if (response.outcome === 'linked') {
+				stopPolling();
+				pairingActive = false;
+				pairingCode = '';
+				toasts.success(m.link_linkedSuccess({ username: response.link?.serverUsername ?? '' }));
+				await refreshMediaLinks();
+			} else if (response.outcome === 'expired' || response.outcome === 'no-pairing') {
+				stopPolling();
+				pairingActive = false;
+				pairingCode = '';
+				pairingExpired = true;
+			}
+		} catch {
+			stopPolling();
+			pairingActive = false;
+			pairingCode = '';
+		}
+	}
+
+	function cancelPairing() {
+		stopPolling();
+		pairingActive = false;
+		pairingCode = '';
+		pairingExpired = false;
+	}
+
+	async function unlinkServer(serverId: string) {
+		try {
+			await apiDelete(`/api/user/media-server/link?serverId=${encodeURIComponent(serverId)}`);
+			toasts.success(m.link_unlinked());
+			await refreshMediaLinks();
+		} catch {
+			toasts.error(m.link_failed());
+		}
+	}
+
 	async function revokeOtherSessions() {
 		revokingAll = true;
 		try {
@@ -278,6 +401,74 @@
 			</div>
 			<LanguageSelector showLabel={false} />
 		</div>
+	</SettingsSection>
+
+	<!-- Media server -->
+	<SettingsSection title={m.link_sectionTitle()} description={m.link_sectionDescription()}>
+		{#if mediaLinks.length > 0}
+			<ul class="divide-y divide-base-content/10">
+				{#each mediaLinks as mediaLink (mediaLink.serverId)}
+					<li class="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+						<Tv class="h-5 w-5 shrink-0 text-base-content/40" />
+						<div class="min-w-0 flex-1">
+							<div class="flex flex-wrap items-center gap-2">
+								<span class="text-sm font-medium">{mediaLink.serverUsername}</span>
+								<span class="badge badge-ghost badge-xs">{mediaLink.serverName}</span>
+							</div>
+							{#if mediaLink.linkedAt}
+								<div class="mt-0.5 text-xs text-base-content/50">
+									{m.link_linkedSince({ date: formatDisplayDate(mediaLink.linkedAt) })}
+								</div>
+							{/if}
+						</div>
+						<button
+							class="btn btn-ghost text-error btn-xs"
+							onclick={() => unlinkServer(mediaLink.serverId)}
+						>
+							<Unlink class="h-3.5 w-3.5" />
+							{m.link_unlinkAction()}
+						</button>
+					</li>
+				{/each}
+			</ul>
+		{:else if linkableServers.length === 0}
+			<p class="text-sm text-base-content/60">{m.link_noServers()}</p>
+		{:else if pairingActive}
+			<div class="flex flex-col items-center gap-3 py-4">
+				<div class="font-mono text-4xl font-bold tracking-[0.3em]">{pairingCode}</div>
+				<p class="max-w-md text-center text-sm text-base-content/70">
+					{m.link_pairingInstructions()}
+				</p>
+				<div class="flex items-center gap-2 text-xs text-base-content/50">
+					<Loader2 class="h-3.5 w-3.5 animate-spin" />
+					{m.link_pairingWaiting()}
+				</div>
+				<button class="btn btn-ghost btn-sm" onclick={cancelPairing}>
+					{m.action_cancel()}
+				</button>
+			</div>
+		{:else}
+			<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+				{#if pairingExpired}
+					<p class="text-sm text-warning">{m.link_pairingExpired()}</p>
+				{:else}
+					<p class="text-sm text-base-content/60">{m.link_notLinked()}</p>
+				{/if}
+				<div class="flex items-center gap-2">
+					{#if linkableServers.length > 1}
+						<select class="select-bordered select select-sm" bind:value={linkServerId}>
+							{#each linkableServers as server (server.id)}
+								<option value={server.id}>{server.name}</option>
+							{/each}
+						</select>
+					{/if}
+					<button class="btn btn-outline btn-sm" onclick={startPairing}>
+						<Tv class="h-4 w-4" />
+						{m.link_connectAction()}
+					</button>
+				</div>
+			</div>
+		{/if}
 	</SettingsSection>
 
 	<!-- Password -->

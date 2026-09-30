@@ -160,6 +160,10 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				if (path === '/api/user/sessions') {
 					return method === 'GET' || method === 'DELETE';
 				}
+				// Self-scoped media-server account linking (Quick Connect).
+				if (path === '/api/user/media-server/link') {
+					return method === 'GET' || method === 'POST' || method === 'PUT' || method === 'DELETE';
+				}
 				if (method !== 'GET' && method !== 'HEAD') {
 					return false;
 				}

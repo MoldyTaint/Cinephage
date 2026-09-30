@@ -339,6 +339,19 @@ describe('hooks chain — viewer API gate', () => {
 		expect(response.status).toBe(200);
 	});
 
+	it('lets a viewer use self-service media-server linking', async () => {
+		const read = harness.makeEvent('GET', '/api/user/media-server/link', {
+			headers: { cookie: harness.cookieHeader(viewerCookies) }
+		});
+		expect((await harness.callHandle(read.event)).status).toBe(200);
+
+		// But the admin per-user endpoint stays admin-only.
+		const adminRoute = harness.makeEvent('GET', '/api/settings/users/someone/media-server-link', {
+			headers: { cookie: harness.cookieHeader(viewerCookies) }
+		});
+		expect((await harness.callHandle(adminRoute.event)).status).toBe(403);
+	});
+
 	it('lets a viewer manage their own sessions', async () => {
 		for (const method of ['GET', 'DELETE'] as const) {
 			const { event } = harness.makeEvent(method, '/api/user/sessions', {
