@@ -17,6 +17,11 @@ interface RequestOptions {
 	url?: string;
 	headers?: Record<string, string>;
 	auth?: TestAuthMode;
+	/**
+	 * When set alongside auth, locals.session carries this token for the same
+	 * synthetic user — for endpoints that reason about the current session.
+	 */
+	sessionToken?: string;
 }
 
 interface HandlerOptions extends RequestOptions {
@@ -44,14 +49,32 @@ function createTestUser(role: 'admin' | 'user'): App.Locals['user'] {
 	};
 }
 
-function createTestLocals(auth: TestAuthMode): App.Locals {
+function createTestSession(user: NonNullable<App.Locals['user']>, token: string) {
+	const now = new Date();
+
+	return {
+		id: `test-session-${user.role}`,
+		userId: user.id,
+		token,
+		expiresAt: new Date(now.getTime() + 60 * 60 * 1000),
+		ipAddress: null,
+		userAgent: null,
+		impersonatedBy: null,
+		createdAt: now,
+		updatedAt: now
+	};
+}
+
+function createTestLocals(options: RequestOptions): App.Locals {
+	const user = options.auth ? createTestUser(options.auth) : null;
+
 	return {
 		correlationId: 'test-correlation-id',
 		requestId: 'test-correlation-id',
 		supportId: 'test-support-id',
 		logger,
-		user: auth ? createTestUser(auth) : null,
-		session: null,
+		user,
+		session: user && options.sessionToken ? createTestSession(user, options.sessionToken) : null,
 		apiKey: null,
 		apiKeyPermissions: null
 	};
@@ -91,7 +114,7 @@ export function createRequestEvent(
 		request,
 		params,
 		url: new URL(request.url),
-		locals: createTestLocals(options?.auth ?? false),
+		locals: createTestLocals(options ?? {}),
 		platform: undefined,
 		cookies: {
 			get: () => undefined,

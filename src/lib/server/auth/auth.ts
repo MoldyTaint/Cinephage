@@ -262,13 +262,14 @@ export const auth = betterAuth({
 					// Username policy on every creation path — the setup
 					// wizard validates client-side, but the raw endpoints
 					// (sign-up, admin createUser) don't run the plugin's
-					// validator, so the invariant lives here.
-					if (user.username !== undefined) {
-						if (typeof user.username !== 'string' || !validateUsername(user.username)) {
-							throw new APIError('UNPROCESSABLE_ENTITY', {
-								message: 'Username does not meet the policy.'
-							});
-						}
+					// validator, so the invariant lives here. Cinephage signs
+					// in by username, so an account without one could never
+					// log in — require it outright (e.g. a createUser call
+					// that forgot the `data: { username }` wrapper).
+					if (typeof user.username !== 'string' || !validateUsername(user.username)) {
+						throw new APIError('UNPROCESSABLE_ENTITY', {
+							message: 'A valid username is required.'
+						});
 					}
 
 					// Bootstrap: the very first account is always the admin.

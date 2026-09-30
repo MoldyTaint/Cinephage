@@ -339,6 +339,31 @@ describe('hooks chain — viewer API gate', () => {
 		expect(response.status).toBe(200);
 	});
 
+	it('lets a viewer manage their own sessions', async () => {
+		for (const method of ['GET', 'DELETE'] as const) {
+			const { event } = harness.makeEvent(method, '/api/user/sessions', {
+				headers: {
+					cookie: harness.cookieHeader(viewerCookies),
+					'content-type': 'application/json'
+				},
+				body: method === 'GET' ? undefined : JSON.stringify({})
+			});
+			const response = await harness.callHandle(event);
+			expect(response.status, method).toBe(200);
+		}
+		// But session writes outside the self-service path stay admin-only.
+		const adminPath = harness.makeEvent('POST', '/api/auth/admin/list-user-sessions', {
+			headers: {
+				cookie: harness.cookieHeader(viewerCookies),
+				'content-type': 'application/json',
+				origin: 'http://localhost:5173'
+			},
+			body: JSON.stringify({ userId: 'someone-else' })
+		});
+		const adminResponse = await harness.callHandle(adminPath.event);
+		expect(adminResponse.status).toBe(403);
+	});
+
 	it('blocks viewer sessions from admin API routes regardless of local guards', async () => {
 		// Routes like /api/indexers (GET) and /api/subtitles/auto-search (POST)
 		// carry no local role check of their own — the central gate is what

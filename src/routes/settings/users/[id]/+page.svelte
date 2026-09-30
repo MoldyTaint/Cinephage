@@ -1,0 +1,513 @@
+<script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
+	import { invalidateAll } from '$app/navigation';
+	import { resolvePath } from '$lib/utils/routing';
+	import { page } from '$app/state';
+	import {
+		ArrowLeft,
+		ShieldCheck,
+		User,
+		Ban,
+		KeyRound,
+		Trash2,
+		Monitor,
+		Smartphone,
+		Tablet,
+		Loader2,
+		LogOut
+	} from 'lucide-svelte';
+	import { authClient } from '$lib/auth/client.js';
+	import { toasts } from '$lib/stores/toast.svelte';
+	import { formatDisplayDate } from '$lib/utils/format.js';
+	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
+	import {
+		ConfirmationModal,
+		ModalWrapper,
+		ModalHeader,
+		ModalFooter
+	} from '$lib/components/ui/modal';
+
+	type ManagedSession = {
+		id: string;
+		token: string;
+		userAgent: string | null;
+		ipAddress: string | null;
+		createdAt: string;
+		expiresAt: string;
+		current: boolean;
+	};
+
+	let { data } = $props();
+
+	const currentUserId = $derived(page.data.user?.id ?? '');
+	const isSelf = $derived(data.profile.id === currentUserId);
+	const isLastAdmin = $derived(data.profile.role === 'admin' && data.adminCount <= 1);
+	const displayName = $derived(
+		data.profile.displayUsername || data.profile.name || data.profile.username || data.profile.email
+	);
+
+	function describeDevice(userAgent: string | null): { icon: typeof Monitor; label: string } {
+		const ua = (userAgent ?? '').toLowerCase();
+		if (ua.includes('mobile') || ua.includes('android')) {
+			return { icon: Smartphone, label: m.users_sessionDevicePhone() };
+		}
+		if (ua.includes('ipad') || ua.includes('tablet')) {
+			return { icon: Tablet, label: m.users_sessionDeviceTablet() };
+		}
+		return { icon: Monitor, label: m.users_sessionDeviceDesktop() };
+	}
+
+	function describeBrowser(userAgent: string | null): string {
+		const ua = userAgent ?? '';
+		if (ua.includes('Firefox/')) return 'Firefox';
+		if (ua.includes('Edg/')) return 'Edge';
+		if (ua.includes('Chrome/')) return 'Chrome';
+		if (ua.includes('Safari/') && !ua.includes('Chrome')) return 'Safari';
+		return ua.slice(0, 40) || m.users_sessionUnknownClient();
+	}
+
+	async function runAction(
+		action: () => Promise<{ error?: { message?: string } | null }>
+	): Promise<boolean> {
+		const result = await action();
+		if (result.error) {
+			toasts.error(result.error.message || m.users_actionFailed());
+			return false;
+		}
+		await invalidateAll();
+		return true;
+	}
+
+	// =====================
+	// Role and ban
+	// =====================
+	async function handleSetRole(role: 'user' | 'admin') {
+		if (isSelf && role === 'user') {
+			toasts.error(m.users_cannotDemoteSelf());
+			return;
+		}
+		let ok = await runAction(() => authClient.admin.setRole({ userId: data.profile.id, role }));
+		if (ok && role === 'user') {
+			// Sign the demoted admin out so no elevated session survives.
+			ok = await runAction(() => authClient.admin.revokeUserSessions({ userId: data.profile.id }));
+		}
+		if (ok) {
+			toasts.success(
+				role === 'admin'
+					? m.users_promoted({ username: data.profile.username ?? '' })
+					: m.users_demoted({ username: data.profile.username ?? '' })
+			);
+		}
+	}
+
+	let banModalOpen = $state(false);
+	let banReason = $state('');
+	let banningUser = $state(false);
+
+	async function handleBanToggle() {
+		if (data.profile.banned) {
+			const ok = await runAction(() => authClient.admin.unbanUser({ userId: data.profile.id }));
+			if (ok) toasts.success(m.users_unbanned({ username: data.profile.username ?? '' }));
+			return;
+		}
+		banReason = '';
+		banModalOpen = true;
+	}
+
+	async function handleBan() {
+		banningUser = true;
+		try {
+			const ok = await runAction(() =>
+				authClient.admin.banUser({
+					userId: data.profile.id,
+					banReason: banReason.trim() || m.users_defaultBanReason()
+				})
+			);
+			if (ok) {
+				toasts.success(m.users_banned({ username: data.profile.username ?? '' }));
+				banModalOpen = false;
+			}
+		} finally {
+			banningUser = false;
+		}
+	}
+
+	// =====================
+	// Password reset
+	// =====================
+	let passwordModalOpen = $state(false);
+	let newPassword = $state('');
+	let resettingPassword = $state(false);
+
+	function generatePassword(): void {
+		const alphabet = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+		const bytes = new Uint32Array(20);
+		crypto.getRandomValues(bytes);
+		newPassword = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+	}
+
+	async function handleSetPassword() {
+		if (newPassword.length < 8) {
+			toasts.error(m.users_passwordTooShort());
+			return;
+		}
+		resettingPassword = true;
+		try {
+			const ok = await runAction(() =>
+				authClient.admin.setUserPassword({ userId: data.profile.id, newPassword })
+			);
+			if (!ok) return;
+			// A password reset must invalidate existing sessions; the plugin
+			// endpoint does not revoke them on its own.
+			const revoked = await runAction(() =>
+				authClient.admin.revokeUserSessions({ userId: data.profile.id })
+			);
+			if (revoked) {
+				toasts.success(m.users_passwordSet({ username: data.profile.username ?? '' }));
+				passwordModalOpen = false;
+			} else {
+				toasts.error(m.users_passwordSetNoRevoke({ username: data.profile.username ?? '' }));
+			}
+		} finally {
+			resettingPassword = false;
+		}
+	}
+
+	// =====================
+	// Sessions
+	// =====================
+	let revokingSessionId = $state<string | null>(null);
+
+	async function handleRevokeSession(target: ManagedSession) {
+		revokingSessionId = target.id;
+		try {
+			const ok = await runAction(() =>
+				authClient.admin.revokeUserSession({
+					userId: data.profile.id,
+					token: target.token
+				})
+			);
+			if (ok) toasts.success(m.users_sessionRevoked());
+		} finally {
+			revokingSessionId = null;
+		}
+	}
+
+	let revokingAllSessions = $state(false);
+
+	async function handleRevokeAllSessions() {
+		revokingAllSessions = true;
+		try {
+			const ok = await runAction(() =>
+				authClient.admin.revokeUserSessions({ userId: data.profile.id })
+			);
+			if (ok) toasts.success(m.users_sessionsRevoked({ username: data.profile.username ?? '' }));
+		} finally {
+			revokingAllSessions = false;
+		}
+	}
+
+	// =====================
+	// Delete
+	// =====================
+	let deleteModalOpen = $state(false);
+	let deletingUser = $state(false);
+
+	async function handleDelete() {
+		deletingUser = true;
+		try {
+			const result = await authClient.admin.removeUser({ userId: data.profile.id });
+			if (result.error) {
+				toasts.error(result.error.message || m.users_actionFailed());
+				return;
+			}
+			toasts.success(m.users_deleted({ username: data.profile.username ?? '' }));
+			deleteModalOpen = false;
+			await invalidateAll();
+			window.location.href = resolvePath('/settings/users');
+		} finally {
+			deletingUser = false;
+		}
+	}
+</script>
+
+<svelte:head>
+	<title>{displayName} — {m.nav_users()} — Cinephage</title>
+</svelte:head>
+
+<SettingsPage title={displayName} subtitle={m.users_detailSubtitle()}>
+	{#snippet actions()}
+		<a href={resolvePath('/settings/users')} class="btn gap-1.5 btn-ghost btn-sm">
+			<ArrowLeft class="h-4 w-4" />
+			{m.users_backToList()}
+		</a>
+	{/snippet}
+
+	<!-- Account -->
+	<SettingsSection title={m.users_accountsTitle()}>
+		<div class="flex flex-col gap-4">
+			<div class="flex flex-col gap-4 sm:flex-row sm:items-center">
+				<div
+					class="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary/15 text-2xl font-semibold text-primary"
+				>
+					{displayName.charAt(0).toUpperCase()}
+				</div>
+				<div class="min-w-0 flex-1">
+					<div class="flex flex-wrap items-center gap-2">
+						{#if data.profile.role === 'admin'}
+							<span class="badge gap-1 badge-sm badge-primary">
+								<ShieldCheck class="h-3 w-3" />
+								{m.users_roleAdmin()}
+							</span>
+						{:else}
+							<span class="badge gap-1 badge-ghost badge-sm">
+								<User class="h-3 w-3" />
+								{m.users_roleUser()}
+							</span>
+						{/if}
+						{#if data.profile.banned}
+							<span class="badge badge-sm badge-error">{m.users_bannedStatus()}</span>
+						{:else}
+							<span class="badge badge-outline badge-sm badge-success">
+								{m.users_activeStatus()}
+							</span>
+						{/if}
+						{#if isSelf}
+							<span class="badge badge-ghost badge-xs">{m.users_youBadge()}</span>
+						{/if}
+					</div>
+					<dl class="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+						<div class="flex items-center gap-2">
+							<dt class="w-28 shrink-0 text-base-content/50">{m.users_columnEmail()}</dt>
+							<dd class="min-w-0 truncate">{data.profile.email}</dd>
+						</div>
+						<div class="flex items-center gap-2">
+							<dt class="w-28 shrink-0 text-base-content/50">{m.users_columnCreated()}</dt>
+							<dd>{data.profile.createdAt ? formatDisplayDate(data.profile.createdAt) : '—'}</dd>
+						</div>
+						{#if data.profile.username}
+							<div class="flex items-center gap-2">
+								<dt class="w-28 shrink-0 text-base-content/50">{m.users_formUsername()}</dt>
+								<dd class="min-w-0 truncate">@{data.profile.username}</dd>
+							</div>
+						{/if}
+						{#if data.profile.banned && data.profile.banReason}
+							<div class="flex items-center gap-2">
+								<dt class="w-28 shrink-0 text-base-content/50">{m.users_banReasonLabel()}</dt>
+								<dd class="min-w-0 truncate">{data.profile.banReason}</dd>
+							</div>
+						{/if}
+					</dl>
+				</div>
+			</div>
+
+			<div class="divider my-0"></div>
+
+			<div class="flex flex-wrap gap-2">
+				{#if data.profile.role === 'admin'}
+					<button
+						class="btn btn-outline btn-sm"
+						disabled={isSelf || isLastAdmin}
+						title={isLastAdmin ? m.users_lastAdminHint() : ''}
+						onclick={() => handleSetRole('user')}
+					>
+						<User class="h-4 w-4" />
+						{m.users_demoteAction()}
+					</button>
+				{:else}
+					<button class="btn btn-outline btn-sm" onclick={() => handleSetRole('admin')}>
+						<ShieldCheck class="h-4 w-4" />
+						{m.users_promoteAction()}
+					</button>
+				{/if}
+				{#if data.profile.banned}
+					<button class="btn btn-outline btn-sm" onclick={handleBanToggle}>
+						<Ban class="h-4 w-4" />
+						{m.users_unbanAction()}
+					</button>
+				{:else}
+					<button
+						class="btn btn-outline btn-sm"
+						disabled={isSelf}
+						title={isSelf ? m.users_cannotBanSelf() : ''}
+						onclick={handleBanToggle}
+					>
+						<Ban class="h-4 w-4" />
+						{m.users_banAction()}
+					</button>
+				{/if}
+				<button
+					class="btn btn-outline btn-sm"
+					onclick={() => {
+						newPassword = '';
+						generatePassword();
+						passwordModalOpen = true;
+					}}
+				>
+					<KeyRound class="h-4 w-4" />
+					{m.users_setPasswordAction()}
+				</button>
+			</div>
+		</div>
+	</SettingsSection>
+
+	<!-- Sessions -->
+	<SettingsSection
+		title={m.users_sessionsTitle()}
+		description={m.users_sessionsDescription({ count: data.sessions.length })}
+	>
+		{#snippet actions()}
+			{#if data.sessions.length > 0}
+				<button
+					class="btn gap-1.5 btn-ghost btn-sm"
+					disabled={revokingAllSessions}
+					onclick={handleRevokeAllSessions}
+				>
+					{#if revokingAllSessions}
+						<Loader2 class="h-4 w-4 animate-spin" />
+					{:else}
+						<LogOut class="h-4 w-4" />
+					{/if}
+					{m.users_revokeSessionsAction()}
+				</button>
+			{/if}
+		{/snippet}
+
+		{#if data.sessions.length === 0}
+			<p class="text-sm text-base-content/60">{m.users_noSessions()}</p>
+		{:else}
+			<ul class="divide-y divide-base-content/10">
+				{#each data.sessions as userSession (userSession.id)}
+					{@const device = describeDevice(userSession.userAgent)}
+					<li class="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+						<device.icon class="h-5 w-5 shrink-0 text-base-content/40" />
+						<div class="min-w-0 flex-1">
+							<div class="flex flex-wrap items-center gap-2">
+								<span class="text-sm font-medium">{device.label}</span>
+								<span class="text-sm text-base-content/50">
+									{describeBrowser(userSession.userAgent)}
+								</span>
+								{#if userSession.current}
+									<span class="badge badge-xs badge-primary">{m.users_sessionCurrent()}</span>
+								{/if}
+							</div>
+							<div class="mt-0.5 text-xs text-base-content/50">
+								{#if userSession.ipAddress}
+									{userSession.ipAddress} ·
+								{/if}
+								{userSession.createdAt ? formatDisplayDate(userSession.createdAt) : ''}
+							</div>
+						</div>
+						{#if !userSession.current}
+							<button
+								class="btn btn-ghost text-error btn-xs"
+								disabled={revokingSessionId === userSession.id}
+								onclick={() => handleRevokeSession(userSession)}
+							>
+								{#if revokingSessionId === userSession.id}
+									<Loader2 class="h-3.5 w-3.5 animate-spin" />
+								{:else}
+									{m.users_sessionRevoke()}
+								{/if}
+							</button>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</SettingsSection>
+
+	<!-- Danger zone -->
+	<SettingsSection
+		title={m.users_dangerZoneTitle()}
+		description={m.users_dangerZoneDescription()}
+		class="border border-error/20"
+	>
+		<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+			<p class="text-sm text-base-content/70">{m.users_deleteAction()}</p>
+			<button
+				class="btn shrink-0 btn-error btn-sm"
+				disabled={isSelf || isLastAdmin}
+				title={isSelf ? m.users_cannotDeleteSelf() : isLastAdmin ? m.users_lastAdminHint() : ''}
+				onclick={() => (deleteModalOpen = true)}
+			>
+				<Trash2 class="h-4 w-4" />
+				{m.users_deleteAction()}
+			</button>
+		</div>
+	</SettingsSection>
+</SettingsPage>
+
+<!-- Ban modal -->
+<ModalWrapper open={banModalOpen} onClose={() => (banModalOpen = false)}>
+	<ModalHeader
+		title={m.users_banTitle({ username: data.profile.username ?? '' })}
+		onClose={() => (banModalOpen = false)}
+	/>
+	<div class="space-y-4">
+		<div>
+			<label class="label" for="ban-reason">
+				<span class="label-text">{m.users_banReasonLabel()}</span>
+			</label>
+			<input
+				id="ban-reason"
+				type="text"
+				class="input-bordered input w-full"
+				bind:value={banReason}
+				placeholder={m.users_defaultBanReason()}
+			/>
+			<p class="mt-1 text-xs text-base-content/50">{m.users_banHint()}</p>
+		</div>
+	</div>
+	<ModalFooter
+		onCancel={() => (banModalOpen = false)}
+		onSave={handleBan}
+		saving={banningUser}
+		saveLabel={m.users_banAction()}
+	/>
+</ModalWrapper>
+
+<!-- Set password modal -->
+<ModalWrapper open={passwordModalOpen} onClose={() => (passwordModalOpen = false)}>
+	<ModalHeader
+		title={m.users_setPasswordTitle({ username: data.profile.username ?? '' })}
+		onClose={() => (passwordModalOpen = false)}
+	/>
+	<div class="space-y-4">
+		<div>
+			<label class="label" for="detail-new-password">
+				<span class="label-text">{m.users_formPassword()}</span>
+			</label>
+			<div class="join w-full">
+				<input
+					id="detail-new-password"
+					type="text"
+					class="input-bordered input join-item w-full font-mono text-sm"
+					bind:value={newPassword}
+				/>
+				<button type="button" class="btn join-item" onclick={generatePassword}>
+					{m.users_generatePassword()}
+				</button>
+			</div>
+			<p class="mt-1 text-xs text-base-content/50">{m.users_setPasswordHint()}</p>
+		</div>
+	</div>
+	<ModalFooter
+		onCancel={() => (passwordModalOpen = false)}
+		onSave={handleSetPassword}
+		saving={resettingPassword}
+		saveLabel={m.users_setPasswordConfirm()}
+	/>
+</ModalWrapper>
+
+<!-- Delete confirmation -->
+<ConfirmationModal
+	open={deleteModalOpen}
+	onCancel={() => (deleteModalOpen = false)}
+	onConfirm={handleDelete}
+	loading={deletingUser}
+	title={m.users_deleteTitle({ username: data.profile.username ?? '' })}
+	message={m.users_deleteMessage({ username: data.profile.username ?? '' })}
+	confirmLabel={m.action_delete()}
+	confirmVariant="error"
+/>

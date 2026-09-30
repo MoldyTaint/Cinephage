@@ -148,13 +148,17 @@ const customHandler: Handle = async ({ event, resolve }) => {
 			 * Viewer (non-admin) API allowlist. Most routes carry no local role
 			 * check, so this central gate is the enforcement layer: a viewer
 			 * session may read the shared library/discover/calendar surfaces and
-			 * manage its own language; everything else under /api/ is admin
-			 * territory. GET-only by design — the write paths those pages offer
-			 * (auto-search, subtitles, edits) are admin operations.
+			 * manage its own language and sessions; everything else under /api/
+			 * is admin territory. GET-only by design — the write paths those
+			 * pages offer (auto-search, subtitles, edits) are admin operations.
 			 */
 			function isViewerAllowedApiPath(path: string, method: string): boolean {
 				if (path === '/api/user/language') {
 					return method === 'POST' || method === 'PUT';
+				}
+				// Self-scoped session management (own rows only, server-side).
+				if (path === '/api/user/sessions') {
+					return method === 'GET' || method === 'DELETE';
 				}
 				if (method !== 'GET' && method !== 'HEAD') {
 					return false;

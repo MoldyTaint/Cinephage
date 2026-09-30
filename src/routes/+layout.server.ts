@@ -5,14 +5,17 @@ import { tmdb } from '$lib/server/tmdb.js';
 export const load: LayoutServerLoad = async ({ locals }) => {
 	const defaultRegion = await tmdb.getRegion();
 
-	// Minimal identity for the shell (avatar/name/role); populated by the
-	// auth hook for every authenticated request.
+	// Minimal identity for the shell (avatar/name/role) and the profile
+	// page; populated by the auth hook for every authenticated request.
 	const user = locals.user
 		? {
 				id: locals.user.id,
 				username: locals.user.username ?? null,
 				displayUsername: locals.user.displayUsername ?? locals.user.name,
-				role: locals.user.role ?? 'user'
+				name: locals.user.name ?? null,
+				email: locals.user.email,
+				role: locals.user.role ?? 'user',
+				createdAt: locals.user.createdAt ?? null
 			}
 		: null;
 

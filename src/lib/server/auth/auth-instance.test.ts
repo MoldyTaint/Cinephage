@@ -248,6 +248,40 @@ describe('real Better Auth instance — multi-user readiness', () => {
 		expect(viewer?.role).toBe('user');
 	});
 
+	it('rejects account creation without a username (un-loginable account guard)', async () => {
+		const signIn = await harness.authRequest('/sign-in/username', {
+			method: 'POST',
+			body: JSON.stringify({ username: USERNAME, password: PASSWORD })
+		});
+		const sessionHeaders = new Headers({
+			cookie: harness.cookieHeader(harness.extractCookies(signIn))
+		});
+
+		// A createUser call that drops the `data: { username }` wrapper must
+		// not silently produce an account that can never sign in.
+		await expect(
+			harness.withStore(harness.makeEvent('POST', '/api/auth/admin/create-user').event, () =>
+				harness.auth.api.createUser({
+					body: {
+						email: 'nameless@test.local',
+						password: 'nameless-password',
+						name: 'Nameless',
+						role: 'user'
+					},
+					headers: sessionHeaders
+				})
+			)
+		).rejects.toThrow(/valid username/i);
+
+		expect(
+			db
+				.select()
+				.from(user)
+				.all()
+				.find((row) => row.email === 'nameless@test.local')
+		).toBeUndefined();
+	});
+
 	it('the user-role account signs in and is not silently promoted', async () => {
 		const response = await harness.authRequest('/sign-in/username', {
 			method: 'POST',

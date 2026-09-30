@@ -1,11 +1,79 @@
 <script lang="ts">
-	import { User, Lock, KeyRound, Check, Eye, EyeOff } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages.js';
+	import { browser } from '$app/environment';
+	import {
+		User,
+		Lock,
+		KeyRound,
+		Check,
+		Eye,
+		EyeOff,
+		Monitor,
+		Smartphone,
+		Tablet,
+		Loader2,
+		LogOut,
+		Pencil,
+		ShieldCheck,
+		Globe
+	} from 'lucide-svelte';
 	import { authClient } from '$lib/auth/client.js';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { apiGet, apiDelete } from '$lib/api/client.js';
+	import { invalidateAll } from '$app/navigation';
+	import { formatDisplayDate } from '$lib/utils/format.js';
+	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
+	import { LanguageSelector } from '$lib/components/ui';
+
+	type OwnSession = {
+		id: string;
+		userAgent: string | null;
+		ipAddress: string | null;
+		createdAt: string | null;
+		expiresAt: string | null;
+		current: boolean;
+	};
 
 	let { data } = $props();
 
+	const displayName = $derived(
+		data.user?.displayUsername || data.user?.name || data.user?.username
+	);
+	const memberSince = $derived(
+		data.user?.createdAt ? formatDisplayDate(data.user.createdAt) : null
+	);
+
+	// =====================
+	// Display name
+	// =====================
+	let editingName = $state(false);
+	let nameDraft = $state('');
+	let savingName = $state(false);
+
+	function startEditName() {
+		nameDraft = data.user?.name ?? '';
+		editingName = true;
+	}
+
+	async function saveName() {
+		savingName = true;
+		try {
+			const result = await authClient.updateUser({ name: nameDraft.trim() });
+			if (result.error) {
+				toasts.error(result.error.message || m.profile_nameSaveFailed());
+				return;
+			}
+			editingName = false;
+			toasts.success(m.profile_nameSaved());
+			await invalidateAll();
+		} finally {
+			savingName = false;
+		}
+	}
+
+	// =====================
+	// Change password
+	// =====================
 	let currentPassword = $state('');
 	let newPassword = $state('');
 	let confirmPassword = $state('');
@@ -35,10 +103,83 @@
 			confirmPassword = '';
 			saved = true;
 			toasts.success(m.profile_passwordUpdated());
+			await refreshSessions();
 		} catch (error) {
 			toasts.error(error instanceof Error ? error.message : m.common_failedToSave());
 		} finally {
 			saving = false;
+		}
+	}
+
+	// =====================
+	// Sessions
+	// =====================
+	let sessions = $state<OwnSession[]>([]);
+	let sessionsLoading = $state(false);
+	let revokingSessionId = $state<string | null>(null);
+	let revokingAll = $state(false);
+
+	async function refreshSessions() {
+		if (!browser) return;
+		sessionsLoading = true;
+		try {
+			const response = await apiGet<{ sessions: OwnSession[] }>('/api/user/sessions');
+			sessions = response.sessions ?? [];
+		} catch {
+			// The section simply stays empty; nothing here is critical.
+			sessions = [];
+		} finally {
+			sessionsLoading = false;
+		}
+	}
+
+	$effect(() => {
+		void refreshSessions();
+	});
+
+	function describeDevice(userAgent: string | null): { icon: typeof Monitor; label: string } {
+		const ua = (userAgent ?? '').toLowerCase();
+		if (ua.includes('mobile') || ua.includes('android')) {
+			return { icon: Smartphone, label: m.users_sessionDevicePhone() };
+		}
+		if (ua.includes('ipad') || ua.includes('tablet')) {
+			return { icon: Tablet, label: m.users_sessionDeviceTablet() };
+		}
+		return { icon: Monitor, label: m.users_sessionDeviceDesktop() };
+	}
+
+	function describeBrowser(userAgent: string | null): string {
+		const ua = userAgent ?? '';
+		if (ua.includes('Firefox/')) return 'Firefox';
+		if (ua.includes('Edg/')) return 'Edge';
+		if (ua.includes('Chrome/')) return 'Chrome';
+		if (ua.includes('Safari/') && !ua.includes('Chrome')) return 'Safari';
+		return ua.slice(0, 40) || m.users_sessionUnknownClient();
+	}
+
+	async function revokeSession(sessionId: string) {
+		revokingSessionId = sessionId;
+		try {
+			await apiDelete('/api/user/sessions', { sessionId });
+			toasts.success(m.profile_sessionRevoked());
+			await refreshSessions();
+		} catch {
+			toasts.error(m.users_actionFailed());
+		} finally {
+			revokingSessionId = null;
+		}
+	}
+
+	async function revokeOtherSessions() {
+		revokingAll = true;
+		try {
+			await apiDelete('/api/user/sessions', {});
+			toasts.success(m.profile_otherSessionsRevoked());
+			await refreshSessions();
+		} catch {
+			toasts.error(m.users_actionFailed());
+		} finally {
+			revokingAll = false;
 		}
 	}
 </script>
@@ -47,144 +188,257 @@
 	<title>{m.profile_pageTitle()}</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-2xl p-4">
-	<!-- Header -->
-	<div class="mb-8">
-		<h1 class="text-3xl font-bold">{m.profile_title()}</h1>
-		<p class="text-base-content/70">{m.profile_subtitle()}</p>
-	</div>
-
-	<!-- Account identity -->
-	{#if data.user}
-		<div class="card bg-base-200">
-			<div class="card-body">
-				<div class="mb-2 flex items-center gap-2">
-					<User class="h-5 w-5 text-base-content/50" />
-					<h2 class="font-semibold">{m.profile_accountSecurity()}</h2>
-				</div>
-				<div class="flex items-center gap-4">
-					<span
-						class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xl font-semibold text-primary"
-					>
-						{(data.user.displayUsername || data.user.username || '?').charAt(0).toUpperCase()}
-					</span>
-					<div class="min-w-0">
-						<p class="truncate text-lg font-medium">
-							{data.user.displayUsername || data.user.username}
-						</p>
-						<p class="truncate text-sm text-base-content/60">@{data.user.username}</p>
-					</div>
-					<span class="ml-auto badge shrink-0 badge-ghost badge-sm">
-						{data.user.role === 'admin' ? m.users_roleAdmin() : m.users_roleUser()}
-					</span>
-				</div>
-				<div class="divider"></div>
-				<p class="text-sm text-base-content/60">
-					{#if data.user.role === 'admin'}
-						{m.profile_adminNote()}
-					{:else}
-						{m.profile_viewerNote()}
-					{/if}
-				</p>
-			</div>
-		</div>
-	{/if}
-
-	<!-- Change password -->
-	<div class="card mt-4 bg-base-200">
-		<div class="card-body">
-			<div class="mb-2 flex items-center gap-2">
-				<Lock class="h-5 w-5 text-base-content/50" />
-				<h2 class="font-semibold">{m.profile_changePassword()}</h2>
-			</div>
-			<p class="mb-4 text-sm text-base-content/70">{m.profile_changePasswordDescription()}</p>
-
-			<form
-				class="space-y-4"
-				onsubmit={(e) => {
-					e.preventDefault();
-					changePassword();
-				}}
+<SettingsPage title={m.profile_title()} subtitle={m.profile_subtitle()}>
+	<!-- Identity -->
+	<SettingsSection title={m.profile_accountSecurity()}>
+		<div class="flex flex-col gap-4 sm:flex-row sm:items-center">
+			<div
+				class="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary/15 text-2xl font-semibold text-primary"
 			>
-				<div class="form-control">
-					<label class="label" for="current-password">
-						<span class="label-text">{m.profile_currentPassword()}</span>
-					</label>
-					<div class="relative">
+				{(displayName || '?').charAt(0).toUpperCase()}
+			</div>
+			<div class="min-w-0 flex-1">
+				{#if editingName}
+					<div class="flex max-w-md items-center gap-2">
 						<input
-							id="current-password"
-							type={showPasswords ? 'text' : 'password'}
-							class="input-bordered input w-full pr-12"
-							bind:value={currentPassword}
-							required
-							autocomplete="current-password"
+							type="text"
+							class="input-bordered input w-full input-sm"
+							bind:value={nameDraft}
+							maxlength={64}
 						/>
 						<button
-							type="button"
-							class="btn absolute top-1/2 right-2 -translate-y-1/2 btn-ghost btn-sm"
-							aria-label={showPasswords ? 'Hide password' : 'Show password'}
-							aria-pressed={showPasswords}
-							onclick={() => (showPasswords = !showPasswords)}
+							class="btn btn-primary btn-sm"
+							disabled={savingName || nameDraft.trim().length === 0}
+							onclick={saveName}
 						>
-							{#if showPasswords}
-								<EyeOff class="h-4 w-4" />
+							{#if savingName}
+								<Loader2 class="h-4 w-4 animate-spin" />
 							{:else}
-								<Eye class="h-4 w-4" />
+								<Check class="h-4 w-4" />
 							{/if}
+							{m.action_save()}
+						</button>
+						<button class="btn btn-ghost btn-sm" onclick={() => (editingName = false)}>
+							{m.action_cancel()}
 						</button>
 					</div>
-				</div>
-
-				<div class="form-control">
-					<label class="label" for="new-password">
-						<span class="label-text">{m.profile_newPassword()}</span>
-					</label>
-					<input
-						id="new-password"
-						type={showPasswords ? 'text' : 'password'}
-						class="input-bordered input w-full"
-						bind:value={newPassword}
-						required
-						minlength="8"
-						autocomplete="new-password"
-					/>
-				</div>
-
-				<div class="form-control">
-					<label class="label" for="confirm-password">
-						<span class="label-text">{m.profile_confirmPassword()}</span>
-					</label>
-					<input
-						id="confirm-password"
-						type={showPasswords ? 'text' : 'password'}
-						class="input-bordered input w-full"
-						bind:value={confirmPassword}
-						required
-						minlength="8"
-						autocomplete="new-password"
-					/>
-					{#if confirmPassword && !passwordsMatch}
-						<p class="mt-1 text-xs text-error">{m.profile_passwordMismatch()}</p>
+				{:else}
+					<div class="flex items-center gap-2">
+						<h3 class="truncate text-lg font-medium">{displayName}</h3>
+						<button
+							class="btn btn-ghost btn-xs"
+							aria-label={m.profile_editName()}
+							onclick={startEditName}
+						>
+							<Pencil class="h-3.5 w-3.5" />
+						</button>
+					</div>
+				{/if}
+				<div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-base-content/60">
+					{#if data.user?.username}
+						<span>@{data.user.username}</span>
 					{/if}
-				</div>
-
-				<button
-					type="submit"
-					class="btn btn-primary"
-					disabled={saving || !passwordsValid || !passwordsMatch}
-				>
-					{#if saving}
-						<span class="loading loading-spinner">&#8203;</span>
-						{m.common_saving()}
-					{:else if saved}
-						<Check class="h-4 w-4" />
-						{m.profile_passwordUpdated()}
+					{#if data.user?.role === 'admin'}
+						<span class="badge gap-1 badge-xs badge-primary">
+							<ShieldCheck class="h-3 w-3" />
+							{m.users_roleAdmin()}
+						</span>
 					{:else}
-						<KeyRound class="h-4 w-4" />
-						{m.profile_changePassword()}
+						<span class="badge gap-1 badge-ghost badge-xs">
+							<User class="h-3 w-3" />
+							{m.users_roleUser()}
+						</span>
 					{/if}
-				</button>
-			</form>
+				</div>
+			</div>
+			<dl class="grid w-full grid-cols-1 gap-x-6 gap-y-2 text-sm sm:w-auto sm:min-w-72">
+				<div class="flex items-center gap-2">
+					<dt class="w-28 shrink-0 text-base-content/50">{m.users_columnEmail()}</dt>
+					<dd class="min-w-0 truncate">{data.user?.email}</dd>
+				</div>
+				{#if memberSince}
+					<div class="flex items-center gap-2">
+						<dt class="w-28 shrink-0 text-base-content/50">{m.profile_memberSince()}</dt>
+						<dd>{memberSince}</dd>
+					</div>
+				{/if}
+			</dl>
 		</div>
-	</div>
-</div>
+	</SettingsSection>
+
+	<!-- Preferences -->
+	<SettingsSection
+		title={m.profile_preferencesTitle()}
+		description={m.profile_preferencesDescription()}
+	>
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<div class="flex items-center gap-2 text-sm">
+				<Globe class="h-4 w-4 text-base-content/50" />
+				{m.profile_interfaceLanguage()}
+			</div>
+			<LanguageSelector showLabel={false} />
+		</div>
+	</SettingsSection>
+
+	<!-- Password -->
+	<SettingsSection
+		title={m.profile_changePassword()}
+		description={m.profile_changePasswordDescription()}
+	>
+		<form
+			class="max-w-md space-y-4"
+			onsubmit={(e) => {
+				e.preventDefault();
+				changePassword();
+			}}
+		>
+			<div class="form-control">
+				<label class="label" for="current-password">
+					<span class="label-text">{m.profile_currentPassword()}</span>
+				</label>
+				<div class="relative">
+					<input
+						id="current-password"
+						type={showPasswords ? 'text' : 'password'}
+						class="input-bordered input w-full pr-12"
+						bind:value={currentPassword}
+						required
+						autocomplete="current-password"
+					/>
+					<button
+						type="button"
+						class="btn absolute top-1/2 right-2 -translate-y-1/2 btn-ghost btn-sm"
+						aria-label={showPasswords ? 'Hide password' : 'Show password'}
+						aria-pressed={showPasswords}
+						onclick={() => (showPasswords = !showPasswords)}
+					>
+						{#if showPasswords}
+							<EyeOff class="h-4 w-4" />
+						{:else}
+							<Eye class="h-4 w-4" />
+						{/if}
+					</button>
+				</div>
+			</div>
+
+			<div class="form-control">
+				<label class="label" for="new-password">
+					<span class="label-text">{m.profile_newPassword()}</span>
+				</label>
+				<input
+					id="new-password"
+					type={showPasswords ? 'text' : 'password'}
+					class="input-bordered input w-full"
+					bind:value={newPassword}
+					required
+					minlength="8"
+					autocomplete="new-password"
+				/>
+			</div>
+
+			<div class="form-control">
+				<label class="label" for="confirm-password">
+					<span class="label-text">{m.profile_confirmPassword()}</span>
+				</label>
+				<input
+					id="confirm-password"
+					type={showPasswords ? 'text' : 'password'}
+					class="input-bordered input w-full"
+					bind:value={confirmPassword}
+					required
+					minlength="8"
+					autocomplete="new-password"
+				/>
+				{#if confirmPassword && !passwordsMatch}
+					<p class="mt-1 text-xs text-error">{m.profile_passwordMismatch()}</p>
+				{/if}
+			</div>
+
+			<button
+				type="submit"
+				class="btn btn-primary"
+				disabled={saving || !passwordsValid || !passwordsMatch}
+			>
+				{#if saving}
+					<span class="loading loading-spinner">&#8203;</span>
+					{m.common_saving()}
+				{:else if saved}
+					<Check class="h-4 w-4" />
+					{m.profile_passwordUpdated()}
+				{:else}
+					<KeyRound class="h-4 w-4" />
+					{m.profile_changePassword()}
+				{/if}
+			</button>
+		</form>
+	</SettingsSection>
+
+	<!-- Sessions -->
+	<SettingsSection title={m.profile_sessionsTitle()} description={m.profile_sessionsDescription()}>
+		{#snippet actions()}
+			{#if sessions.filter((s) => !s.current).length > 0}
+				<button
+					class="btn gap-1.5 btn-ghost btn-sm"
+					disabled={revokingAll}
+					onclick={revokeOtherSessions}
+				>
+					{#if revokingAll}
+						<Loader2 class="h-4 w-4 animate-spin" />
+					{:else}
+						<LogOut class="h-4 w-4" />
+					{/if}
+					{m.users_revokeSessionsAction()}
+				</button>
+			{/if}
+		{/snippet}
+
+		{#if sessionsLoading}
+			<div class="flex items-center gap-2 text-sm text-base-content/60">
+				<Loader2 class="h-4 w-4 animate-spin" />
+				{m.common_loading()}
+			</div>
+		{:else if sessions.length === 0}
+			<p class="text-sm text-base-content/60">{m.users_noSessions()}</p>
+		{:else}
+			<ul class="divide-y divide-base-content/10">
+				{#each sessions as ownSession (ownSession.id)}
+					{@const device = describeDevice(ownSession.userAgent)}
+					<li class="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+						<device.icon class="h-5 w-5 shrink-0 text-base-content/40" />
+						<div class="min-w-0 flex-1">
+							<div class="flex flex-wrap items-center gap-2">
+								<span class="text-sm font-medium">{device.label}</span>
+								<span class="text-sm text-base-content/50">
+									{describeBrowser(ownSession.userAgent)}
+								</span>
+								{#if ownSession.current}
+									<span class="badge badge-xs badge-primary">{m.users_sessionCurrent()}</span>
+								{/if}
+							</div>
+							<div class="mt-0.5 text-xs text-base-content/50">
+								{#if ownSession.ipAddress}
+									{ownSession.ipAddress} ·
+								{/if}
+								{ownSession.createdAt ? formatDisplayDate(ownSession.createdAt) : ''}
+							</div>
+						</div>
+						{#if !ownSession.current}
+							<button
+								class="btn btn-ghost text-error btn-xs"
+								disabled={revokingSessionId === ownSession.id}
+								onclick={() => revokeSession(ownSession.id)}
+							>
+								{#if revokingSessionId === ownSession.id}
+									<Loader2 class="h-3.5 w-3.5 animate-spin" />
+								{:else}
+									<Lock class="h-3.5 w-3.5" />
+									{m.users_sessionRevoke()}
+								{/if}
+							</button>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</SettingsSection>
+</SettingsPage>
