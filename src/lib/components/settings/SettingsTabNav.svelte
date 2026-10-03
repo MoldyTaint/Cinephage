@@ -72,7 +72,7 @@
 	});
 </script>
 
-<div class="sticky top-16 z-40 -mx-4 border-b border-base-300 bg-base-100 sm:mx-0 lg:top-0">
+<div class="sticky top-16 z-40 -mx-4 border-b border-base-300 bg-base-100 sm:mx-0 lg:top-12">
 	<div class="relative">
 		<div
 			bind:this={navScroller}

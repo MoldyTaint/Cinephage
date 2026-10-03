@@ -217,7 +217,8 @@ export class LibraryJobWorker extends EventEmitter implements BackgroundService 
 				// library views) key off this event.
 				libraryMediaEvents.emitLibraryDataChanged({
 					source: request.mediaType === 'movie' ? 'movie' : 'series',
-					reason: 'manual-import'
+					reason: 'manual-import',
+					tmdbId: result.tmdbId ?? undefined
 				});
 			} else if (queuedJob.type === 'scan_all_root_folders') {
 				const results = await this.scanAll();

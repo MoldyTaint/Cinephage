@@ -4420,3 +4420,118 @@ export const arrNotificationConfigs = sqliteTable('arr_notification_configs', {
 
 export type ArrNotificationConfig = typeof arrNotificationConfigs.$inferSelect;
 export type NewArrNotificationConfig = typeof arrNotificationConfigs.$inferInsert;
+
+/**
+ * A user-submitted media request (Seerr-style). No movies/series row exists
+ * until approval — the request carries the TMDB identity plus display
+ * snapshots; approval creates/links the library row through the add path.
+ * TV scope is stored as season numbers plus optional episode entries; the
+ * episode-level truth lives on episodes.hasFile, never here.
+ */
+export const requests = sqliteTable(
+	'requests',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => randomUUID()),
+		mediaType: text('media_type').notNull(),
+		tmdbId: integer('tmdb_id').notNull(),
+		title: text('title').notNull(),
+		posterPath: text('poster_path'),
+		year: integer('year'),
+		// Linked once approval creates (or re-monitors) the library row.
+		movieId: text('movie_id').references(() => movies.id, { onDelete: 'set null' }),
+		seriesId: text('series_id').references(() => series.id, { onDelete: 'set null' }),
+		status: text('status').notNull().default('pending'),
+		// JSON: number[] of whole-season scope entries (series only).
+		seasons: text('seasons', { mode: 'json' }).$type<number[]>(),
+		// JSON: {seasonNumber, episodeNumber}[] episode-scope entries (series only).
+		episodes: text('episodes', { mode: 'json' }).$type<
+			{ seasonNumber: number; episodeNumber: number }[]
+		>(),
+		// Quota snapshot per season entry at approval time ({season, count}[]).
+		episodeCountSnapshot: text('episode_count_snapshot', { mode: 'json' }).$type<
+			{ season: number; count: number }[]
+		>(),
+		requestedBy: text('requested_by')
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		// Set when an admin created this while impersonating the requester.
+		actingUserId: text('acting_user_id').references(() => user.id, {
+			onDelete: 'set null'
+		}),
+		decidedBy: text('decided_by').references(() => user.id, { onDelete: 'set null' }),
+		autoApproved: integer('auto_approved', { mode: 'boolean' }).notNull().default(false),
+		declineReason: text('decline_reason'),
+		failureReason: text('failure_reason'),
+		ignoreQuota: integer('ignore_quota', { mode: 'boolean' }).notNull().default(false),
+		expiresAt: text('expires_at'),
+		decidedAt: text('decided_at'),
+		fulfilledAt: text('fulfilled_at'),
+		createdAt: text('created_at')
+			.notNull()
+			.$defaultFn(() => new Date().toISOString()),
+		updatedAt: text('updated_at')
+			.notNull()
+			.$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [
+		index('idx_requests_media_status').on(table.mediaType, table.tmdbId, table.status),
+		index('idx_requests_requester_created').on(table.requestedBy, table.createdAt),
+		index('idx_requests_pending').on(table.status)
+	]
+);
+
+/**
+ * Admin-managed per-user request settings. Deliberately NOT in
+ * user_preferences — that table is self-writable by the account owner, and
+ * these values (disable, auto-approve grant, quota overrides) must only
+ * change through admin endpoints. Null quota/auto-approve values inherit
+ * the global request_settings defaults.
+ */
+export const userRequestSettings = sqliteTable('user_request_settings', {
+	userId: text('user_id')
+		.primaryKey()
+		.references(() => user.id, { onDelete: 'cascade' }),
+	requestsDisabled: integer('requests_disabled', { mode: 'boolean' }).notNull().default(false),
+	autoApprove: integer('auto_approve', { mode: 'boolean' }),
+	movieQuotaLimit: integer('movie_quota_limit'),
+	movieQuotaDays: integer('movie_quota_days'),
+	tvQuotaLimit: integer('tv_quota_limit'),
+	tvQuotaDays: integer('tv_quota_days'),
+	updatedAt: text('updated_at')
+		.notNull()
+		.$defaultFn(() => new Date().toISOString())
+});
+
+/**
+ * In-app request notifications (one row per user per event). Feed rows only
+ * — live delivery rides the requests SSE stream; this table is the durable
+ * inbox behind the bell.
+ */
+export const requestNotifications = sqliteTable(
+	'request_notifications',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => randomUUID()),
+		userId: text('user_id')
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		requestId: text('request_id').references(() => requests.id, { onDelete: 'cascade' }),
+		event: text('event').notNull(),
+		payload: text('payload', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+		readAt: text('read_at'),
+		createdAt: text('created_at')
+			.notNull()
+			.$defaultFn(() => new Date().toISOString())
+	},
+	(table) => [index('idx_request_notifications_user_read').on(table.userId, table.readAt)]
+);
+
+export type RequestRecord = typeof requests.$inferSelect;
+export type NewRequestRecord = typeof requests.$inferInsert;
+export type UserRequestSettingsRecord = typeof userRequestSettings.$inferSelect;
+export type NewUserRequestSettingsRecord = typeof userRequestSettings.$inferInsert;
+export type RequestNotificationRecord = typeof requestNotifications.$inferSelect;
+export type NewRequestNotificationRecord = typeof requestNotifications.$inferInsert;

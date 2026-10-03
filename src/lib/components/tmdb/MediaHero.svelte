@@ -5,6 +5,10 @@
 	import WatchProviders from './WatchProviders.svelte';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import AddToLibraryModal from '$lib/components/library/AddToLibraryModal.svelte';
+	import RequestButton from '$lib/components/requests/RequestButton.svelte';
+	import RequestStatusBadge from '$lib/components/requests/RequestStatusBadge.svelte';
+	import { approveRequest, declineRequest } from '$lib/api/requests.js';
+	import { invalidateAll } from '$app/navigation';
 	import {
 		Plus,
 		CircleCheckBig,
@@ -43,8 +47,58 @@
 		libraryId?: string;
 	};
 
-	let { item, readOnly = false }: { item: MediaDetailsWithLibraryStatus; readOnly?: boolean } =
-		$props();
+	interface HeroRequestState {
+		requested: 'none' | 'pending' | 'approved' | 'fulfilled';
+		requestId: string | null;
+		ownRequestId: string | null;
+	}
+
+	let {
+		item,
+		readOnly = false,
+		requestState = null
+	}: {
+		item: MediaDetailsWithLibraryStatus;
+		readOnly?: boolean;
+		/** Server-annotated request state for this title (detail loaders). */
+		requestState?: HeroRequestState | null;
+	} = $props();
+
+	let adminDeclining = $state(false);
+	let adminReason = $state('');
+	let adminActing = $state(false);
+
+	async function adminApprove() {
+		if (!requestState?.requestId || adminActing) return;
+		adminActing = true;
+		try {
+			await approveRequest(requestState.requestId);
+			toasts.success(m.requests_approved());
+			await invalidateAll();
+		} catch (e) {
+			toasts.error(e instanceof Error ? e.message : m.requests_errorGeneric());
+		} finally {
+			adminActing = false;
+		}
+	}
+
+	async function adminDecline() {
+		if (!requestState?.requestId || adminActing) return;
+		const reason = adminReason.trim();
+		if (!reason) return;
+		adminActing = true;
+		try {
+			await declineRequest(requestState.requestId, reason);
+			toasts.info(m.requests_declined());
+			adminDeclining = false;
+			adminReason = '';
+			await invalidateAll();
+		} catch (e) {
+			toasts.error(e instanceof Error ? e.message : m.requests_errorGeneric());
+		} finally {
+			adminActing = false;
+		}
+	}
 
 	// Library status state (defaults only, effect syncs from props)
 	let inLibrary = $state(false);
@@ -600,6 +654,16 @@
 							<Plus class="h-4 w-4" />
 							{m.hero_addToLibrary()}
 						</button>
+					{:else if !inLibrary}
+						<!-- Viewers request; admins add. The request server decides
+						     in-library/availability cases with explicit errors. -->
+						<RequestButton
+							{mediaType}
+							tmdbId={item.id}
+							title={getTitle(item)}
+							year={parseInt(getDate(item)?.slice(0, 4)) || null}
+							posterPath={item.poster_path ?? null}
+						/>
 					{/if}
 
 					{#if youtubeVideos.length === 0 && backdropImages.length === 0}
@@ -617,6 +681,56 @@
 						<!-- eslint-enable svelte/no-navigation-without-resolve -->
 					{/if}
 				</div>
+
+				<!-- Admin request actions: an open request for this title can be
+				     approved or declined right from the detail page. -->
+				{#if !readOnly && requestState?.requestId && requestState?.requested === 'pending'}
+					<div
+						class="mt-3 w-full rounded-xl border border-base-content/10 bg-base-content/[0.03] px-3.5 py-2.5 text-sm"
+					>
+						<div class="flex flex-wrap items-center gap-2">
+							<RequestStatusBadge status="pending" size="xs" />
+							<span class="text-base-content/70">{m.requests_adminPendingHint()}</span>
+							<div class="ml-auto flex items-center gap-2">
+								<button
+									type="button"
+									class="btn btn-primary btn-xs"
+									disabled={adminActing}
+									onclick={adminApprove}
+								>
+									{m.requests_approve()}
+								</button>
+								<button
+									type="button"
+									class="btn btn-ghost text-error btn-xs"
+									disabled={adminActing}
+									onclick={() => (adminDeclining = !adminDeclining)}
+								>
+									{m.requests_decline()}
+								</button>
+							</div>
+						</div>
+						{#if adminDeclining}
+							<div class="mt-2 flex flex-wrap items-center gap-2">
+								<input
+									type="text"
+									class="input min-w-48 flex-1 input-sm"
+									placeholder={m.requests_declineReasonHint()}
+									bind:value={adminReason}
+									maxlength={500}
+								/>
+								<button
+									type="button"
+									class="btn btn-error btn-xs"
+									disabled={adminActing || adminReason.trim().length === 0}
+									onclick={adminDecline}
+								>
+									{m.requests_declineTitle()}
+								</button>
+							</div>
+						{/if}
+					</div>
+				{/if}
 
 				<!-- External links -->
 				<div

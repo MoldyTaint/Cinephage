@@ -57,6 +57,24 @@ class BlockedMediaService {
 
 		await this.removeFromLibrary(tmdbId, mediaType);
 
+		// Blocking must also kill demand: active requests for this media are
+		// declined (leaf module — deny.ts must never import this service).
+		try {
+			const { declinePendingRequestsForBlockedMedia } = await import('../requests/deny.js');
+			const declined = await declinePendingRequestsForBlockedMedia(
+				tmdbId,
+				mediaType === 'tv' ? 'series' : 'movie'
+			);
+			if (declined > 0) {
+				logger.info({ tmdbId, mediaType, declined }, 'Declined active requests for blocked media');
+			}
+		} catch (err) {
+			logger.warn(
+				{ tmdbId, error: err instanceof Error ? err.message : String(err) },
+				'Failed to decline requests for blocked media'
+			);
+		}
+
 		const [entry] = await db
 			.insert(blockedMedia)
 			.values({

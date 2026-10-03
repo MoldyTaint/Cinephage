@@ -172,6 +172,21 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				if (path.startsWith('/api/user/media-server/avatar/')) {
 					return method === 'GET';
 				}
+				// Media requests: creation + own-pending cancellation + reads.
+				// Self-scope is enforced server-side in the routes; admin
+				// mutations (approve/decline/retry/fulfill/bulk under
+				// /api/requests/...) only allow GET/DELETE here, so their POSTs
+				// fall through to the admin gate below.
+				if (path === '/api/requests') {
+					return method === 'GET' || method === 'POST';
+				}
+				if (path.startsWith('/api/requests/')) {
+					return method === 'GET' || method === 'DELETE';
+				}
+				// Own in-app notification feed + mark-read.
+				if (path === '/api/user/notifications' || path === '/api/user/notifications/read') {
+					return method === 'GET' || method === 'POST';
+				}
 				if (method !== 'GET' && method !== 'HEAD') {
 					return false;
 				}

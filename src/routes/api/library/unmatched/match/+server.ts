@@ -29,7 +29,8 @@ export const POST: RequestHandler = async ({ request }: { request: Request }) =>
 		if (result.matched > 0) {
 			libraryMediaEvents.emitLibraryDataChanged({
 				source: mediaType === 'tv' ? 'series' : 'movie',
-				reason: 'unmatched-matched'
+				reason: 'unmatched-matched',
+				tmdbId
 			});
 		}
 

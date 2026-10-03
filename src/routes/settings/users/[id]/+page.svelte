@@ -24,6 +24,12 @@
 	import { formatDisplayDate } from '$lib/utils/format.js';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
 	import { UserAvatar } from '$lib/components/ui';
+	import { ToggleSetting } from '$lib/components/ui/modal';
+	import {
+		getUserRequestSettings,
+		saveUserRequestSettings,
+		type UserRequestSettings
+	} from '$lib/api/requests.js';
 	import {
 		ConfirmationModal,
 		ModalWrapper,
@@ -43,12 +49,47 @@
 
 	let { data } = $props();
 
+	// Per-user request settings (admin-managed overrides).
+	let requestSettings = $state<UserRequestSettings | null>(null);
+	let requestSettingsLoaded = $state(false);
+	let savingRequestSettings = $state(false);
+
 	const currentUserId = $derived(page.data.user?.id ?? '');
 	const isSelf = $derived(data.profile.id === currentUserId);
 	const isLastAdmin = $derived(data.profile.role === 'admin' && data.adminCount <= 1);
 	const displayName = $derived(
 		data.profile.displayUsername || data.profile.name || data.profile.username || data.profile.email
 	);
+
+	async function loadRequestSettings() {
+		try {
+			const response = await getUserRequestSettings(data.profile.id);
+			requestSettings = response.settings;
+		} catch {
+			// Section renders only once loaded.
+		} finally {
+			requestSettingsLoaded = true;
+		}
+	}
+
+	$effect(() => {
+		void data.profile.id;
+		requestSettingsLoaded = false;
+		void loadRequestSettings();
+	});
+
+	async function updateRequestSettings(update: Partial<UserRequestSettings>) {
+		if (!requestSettings) return;
+		savingRequestSettings = true;
+		try {
+			const response = await saveUserRequestSettings(data.profile.id, update);
+			requestSettings = response.settings;
+		} catch (error) {
+			toasts.error(error instanceof Error ? error.message : m.requests_errorGeneric());
+		} finally {
+			savingRequestSettings = false;
+		}
+	}
 
 	function describeDevice(userAgent: string | null): { icon: typeof Monitor; label: string } {
 		const ua = (userAgent ?? '').toLowerCase();
@@ -600,6 +641,132 @@
 			<p class="mt-2 text-xs text-base-content/50">{m.link_adminHint()}</p>
 		{/if}
 	</SettingsSection>
+
+	<!-- Request settings (admin overrides) -->
+	{#if requestSettingsLoaded && requestSettings}
+		<SettingsSection
+			title={m.requestsSettings_title()}
+			description={m.requestsSettings_userDisableHint()}
+		>
+			<div class="space-y-4">
+				<ToggleSetting
+					checked={requestSettings.requestsDisabled}
+					label={m.requestsSettings_userDisable()}
+					description={m.requestsSettings_userDisableHint()}
+					disabled={savingRequestSettings}
+					onchange={() => {
+						void updateRequestSettings({ requestsDisabled: !requestSettings!.requestsDisabled });
+					}}
+				/>
+				<div>
+					<p class="mb-2 text-sm font-medium">{m.requestsSettings_userAutoApprove()}</p>
+					<select
+						class="select-bordered select w-56 select-sm"
+						disabled={savingRequestSettings}
+						value={requestSettings.autoApprove === null
+							? 'inherit'
+							: requestSettings.autoApprove
+								? 'on'
+								: 'off'}
+						onchange={(e) => {
+							const v = e.currentTarget.value;
+							void updateRequestSettings({
+								autoApprove: v === 'inherit' ? null : v === 'on'
+							});
+						}}
+					>
+						<option value="inherit">{m.requestsSettings_userAutoApproveInherit()}</option>
+						<option value="on">{m.requests_filterApproved()}</option>
+						<option value="off">{m.requests_filterDeclined()}</option>
+					</select>
+				</div>
+
+				<div>
+					<div class="mb-2 flex items-center justify-between gap-2">
+						<p class="text-sm font-medium">{m.requestsSettings_userQuotaOverride()}</p>
+						<button
+							type="button"
+							class="btn gap-1 btn-ghost text-base-content/50 btn-xs"
+							disabled={savingRequestSettings}
+							onclick={() => {
+								void updateRequestSettings({
+									movieQuotaLimit: null,
+									movieQuotaDays: null,
+									tvQuotaLimit: null,
+									tvQuotaDays: null
+								});
+							}}
+						>
+							<RotateCcw class="h-3 w-3" />
+							{m.requestsSettings_userQuotaOverrideReset()}
+						</button>
+					</div>
+					<div class="grid gap-3 sm:grid-cols-2">
+						<div>
+							<p class="mb-1 text-xs text-base-content/60">{m.requestsSettings_movieQuota()}</p>
+							<div class="flex items-center gap-1.5">
+								<input
+									type="number"
+									min="0"
+									class="input-bordered input w-20 input-sm"
+									placeholder="∞"
+									value={requestSettings.movieQuotaLimit ?? ''}
+									onchange={(e) =>
+										updateRequestSettings({
+											movieQuotaLimit:
+												e.currentTarget.value === '' ? null : Number(e.currentTarget.value)
+										})}
+								/>
+								<span class="text-xs text-base-content/45">{m.requestsSettings_quotaPer()}</span>
+								<input
+									type="number"
+									min="1"
+									class="input-bordered input w-16 input-sm"
+									placeholder={m.requestsSettings_quotaDays()}
+									value={requestSettings.movieQuotaDays ?? ''}
+									onchange={(e) =>
+										updateRequestSettings({
+											movieQuotaDays:
+												e.currentTarget.value === '' ? null : Number(e.currentTarget.value)
+										})}
+								/>
+							</div>
+						</div>
+						<div>
+							<p class="mb-1 text-xs text-base-content/60">{m.requestsSettings_tvQuota()}</p>
+							<div class="flex items-center gap-1.5">
+								<input
+									type="number"
+									min="0"
+									class="input-bordered input w-20 input-sm"
+									placeholder="∞"
+									value={requestSettings.tvQuotaLimit ?? ''}
+									onchange={(e) =>
+										updateRequestSettings({
+											tvQuotaLimit:
+												e.currentTarget.value === '' ? null : Number(e.currentTarget.value)
+										})}
+								/>
+								<span class="text-xs text-base-content/45">{m.requestsSettings_quotaPer()}</span>
+								<input
+									type="number"
+									min="1"
+									class="input-bordered input w-16 input-sm"
+									placeholder={m.requestsSettings_quotaDays()}
+									value={requestSettings.tvQuotaDays ?? ''}
+									onchange={(e) =>
+										updateRequestSettings({
+											tvQuotaDays:
+												e.currentTarget.value === '' ? null : Number(e.currentTarget.value)
+										})}
+								/>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div></SettingsSection
+		>
+	{/if}
 
 	<!-- Danger zone -->
 	<SettingsSection

@@ -22,6 +22,8 @@
 	import { authClient } from '$lib/auth/client.js';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { ApiError, apiGet, apiPost, apiPut, apiDelete } from '$lib/api/client.js';
+	import { getRequestCounts, type RequestCountResponse } from '$lib/api/requests.js';
+	import QuotaSummary from '$lib/components/requests/QuotaSummary.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { formatDisplayDate } from '$lib/utils/format.js';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
@@ -37,6 +39,15 @@
 	};
 
 	let { data } = $props();
+
+	// Request quota cards (viewers; admins are exempt and see no cards).
+	let requestCounts = $state<RequestCountResponse | null>(null);
+	$effect(() => {
+		if (!browser || data.user?.role === 'admin') return;
+		void getRequestCounts()
+			.then((counts) => (requestCounts = counts))
+			.catch(() => undefined);
+	});
 
 	const displayName = $derived(
 		data.user?.displayUsername || data.user?.name || data.user?.username
@@ -312,6 +323,19 @@
 </svelte:head>
 
 <SettingsPage title={m.profile_title()} subtitle={m.profile_subtitle()}>
+	<!-- Request quota -->
+	{#if requestCounts}
+		<SettingsSection
+			title={m.requests_profileQuotaTitle()}
+			description={m.requests_profileQuotaDescription()}
+		>
+			<div class="grid gap-2 sm:grid-cols-2">
+				<QuotaSummary quota={requestCounts.quota.movie} type="movie" />
+				<QuotaSummary quota={requestCounts.quota.tv} type="tv" />
+			</div>
+		</SettingsSection>
+	{/if}
+
 	<!-- Identity -->
 	<SettingsSection title={m.profile_accountSecurity()}>
 		<div class="flex flex-col gap-4 sm:flex-row sm:items-center">

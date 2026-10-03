@@ -6,14 +6,15 @@ import { createChildLogger } from '$lib/logging';
 import {
 	enrichWithLibraryStatus,
 	getLibraryStatus,
-	filterBlockedMedia
+	filterBlockedMedia,
+	getRequestStateMap
 } from '$lib/server/library/status';
 import { keywordBlocklistService } from '$lib/server/settings/KeywordBlocklistService.js';
 import { enrichWithReleaseDates } from '$lib/server/release-enrichment.js';
 
 const logger = createChildLogger({ module: 'DiscoverMoviePage', logDomain: 'system' });
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
 	const id = parseInt(params.id);
 	if (isNaN(id)) {
 		throw error(400, 'Invalid movie ID');
@@ -64,6 +65,8 @@ export const load: PageServerLoad = async ({ params }) => {
 
 		// Get library status for the movie itself
 		const movieStatus = await getLibraryStatus([id], 'movie');
+		const requestState =
+			(await getRequestStateMap([id], 'movie', locals.user?.id ?? null))[id] ?? null;
 		const movieWithStatus = {
 			...movie,
 			inLibrary: movieStatus[id]?.inLibrary ?? false,
@@ -121,6 +124,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		return {
 			movie: movieWithStatus,
 			collection: enrichedCollectionData,
+			requestState,
 			hasBlockedKeywords,
 			blockedKeywords: blockedMatches.map((k) => k.name)
 		};

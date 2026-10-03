@@ -9,12 +9,13 @@
 	} from '$lib/types/tmdb-guards';
 	import { resolvePath } from '$lib/utils/routing';
 	import TmdbImage from './TmdbImage.svelte';
-	import { Check, Clock, Plus } from 'lucide-svelte';
+	import { Check, Clock, Plus, Clapperboard } from 'lucide-svelte';
 	import * as m from '$lib/paraglide/messages.js';
 	import { getSmartReleaseLine } from '$lib/utils/smartReleaseLine.js';
 	import { formatReleaseLine } from '$lib/utils/releaseLineText.js';
 
 	// Extended type that includes library status (added by enrichWithLibraryStatus)
+	// and request state (added by annotateRequestState).
 	type MediaItemWithLibraryStatus = TmdbMediaItem & {
 		inLibrary?: boolean;
 		hasFile?: boolean;
@@ -23,6 +24,7 @@
 		digitalReleaseDate?: string | null;
 		physicalReleaseDate?: string | null;
 		tvReleaseDate?: string | null;
+		requested?: 'none' | 'pending' | 'approved' | 'fulfilled';
 	};
 
 	interface Props {
@@ -56,6 +58,8 @@
 	// Library status
 	const inLibrary = $derived(item.inLibrary ?? false);
 	const hasFile = $derived(item.hasFile ?? false);
+	// Open request (pending or approved) — server-annotated badge state.
+	const requestedOpen = $derived(item.requested === 'pending' || item.requested === 'approved');
 
 	const releaseLine = $derived.by(() => {
 		const enriched = item as MediaItemWithLibraryStatus;
@@ -109,6 +113,18 @@
 					<Clock class="h-4 w-4" strokeWidth={2.5} />
 				</div>
 			{/if}
+		</div>
+	{/if}
+
+	<!-- Request Badge (below the library badge): an open request exists -->
+	{#if requestedOpen}
+		<div class="absolute left-2 z-10 {inLibrary ? 'top-10' : 'top-2'}">
+			<div
+				class="flex h-6 w-6 items-center justify-center rounded-full bg-secondary/90 text-secondary-content shadow-md backdrop-blur-sm"
+				title={m.requests_requested()}
+			>
+				<Clapperboard class="h-3.5 w-3.5" strokeWidth={2.5} />
+			</div>
 		</div>
 	{/if}
 

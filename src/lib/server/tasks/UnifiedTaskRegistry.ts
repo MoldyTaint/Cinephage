@@ -143,6 +143,18 @@ const SCHEDULED_TASKS: UnifiedTaskDefinition[] = [
 		intervalEditable: true
 	},
 	{
+		id: 'request-sweep',
+		name: 'Request Sweep',
+		description:
+			'Expire stale pending requests (TTL), re-drive approvals waiting for a writable target, re-check active requests against library availability, and prune read request notifications',
+		category: 'scheduled',
+		runEndpoint: '/api/monitoring/search/request-sweep',
+		intervalKey: 'request_sweep_interval_hours',
+		defaultIntervalHours: 1,
+		minIntervalHours: 1,
+		intervalEditable: true
+	},
+	{
 		id: 'historyCleanup',
 		name: 'History Cleanup',
 		description: 'Automatically purge old history entries based on the retention period setting',

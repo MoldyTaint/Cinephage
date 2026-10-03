@@ -4,7 +4,11 @@ import type { RequestHandler } from './$types';
 import { createChildLogger } from '$lib/logging';
 import { isAppError, getErrorMessage } from '$lib/errors';
 import { checkRateLimit, rateLimitHeaders } from '$lib/server/rateLimit';
-import { enrichWithLibraryStatus, filterBlockedMedia } from '$lib/server/library/status';
+import {
+	enrichWithLibraryStatus,
+	filterBlockedMedia,
+	annotateRequestState
+} from '$lib/server/library/status';
 import { enrichWithReleaseDates } from '$lib/server/release-enrichment.js';
 
 /**
@@ -62,7 +66,14 @@ const handler: RequestHandler = async ({ params, url, locals, getClientAddress }
 			const enrichedResults = await enrichWithLibraryStatus(data.results, mediaType);
 			const filteredResults = await filterBlockedMedia(enrichedResults, mediaType);
 			const withReleaseDates = await enrichWithReleaseDates(filteredResults);
-			return json({ ...data, results: withReleaseDates });
+			// Request-state badges ride the same response (server truth, no
+			// client-side request-list filtering).
+			const withRequestState = await annotateRequestState(
+				withReleaseDates,
+				mediaType,
+				locals.user?.id ?? null
+			);
+			return json({ ...data, results: withRequestState });
 		}
 
 		return json(data);

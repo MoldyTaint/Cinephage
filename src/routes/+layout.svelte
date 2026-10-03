@@ -3,6 +3,7 @@
 	import { browser } from '$app/environment';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { ThemeSelector, LanguageSelector, UserAvatar } from '$lib/components/ui';
+	import { NotificationBell } from '$lib/components/requests';
 	import Toasts from '$lib/components/ui/Toasts.svelte';
 	import { layoutState, type ScanProgressPayload } from '$lib/layout.svelte';
 	import * as m from '$lib/paraglide/messages.js';
@@ -43,7 +44,8 @@
 		Users,
 		Globe,
 		Palette,
-		Pin
+		Pin,
+		Inbox
 	} from 'lucide-svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 
@@ -86,6 +88,18 @@
 	let isLoggingOut = $state(false);
 	let expandedMenuSection = $state<string | null>(null);
 	let pinnedMenuSections = $state<Set<string>>(new Set());
+
+	// Which header's notification bell keeps its SSE stream open. The
+	// headers themselves swap via CSS (no SSR flash); this state only picks
+	// the active bell so a single stream exists per tab.
+	let isDesktopLayout = $state(false);
+	$effect(() => {
+		const mq = window.matchMedia('(min-width: 1024px)');
+		isDesktopLayout = mq.matches;
+		const onChange = (e: MediaQueryListEvent) => (isDesktopLayout = e.matches);
+		mq.addEventListener('change', onChange);
+		return () => mq.removeEventListener('change', onChange);
+	});
 	const SIDEBAR_EXPANDED_STORAGE_KEY = 'cinephage.sidebar.expanded';
 	const PINNED_SECTIONS_STORAGE_KEY = 'cinephage.sidebar.pinned';
 
@@ -282,9 +296,14 @@
 			children: libraryChildren
 		};
 		const calendarItem: MenuItem = { href: '/calendar', label: m.nav_calendar, icon: Calendar };
+		const requestsItem: MenuItem = {
+			href: '/requests',
+			label: m.nav_requests,
+			icon: Inbox
+		};
 
 		if (!isAdmin) {
-			return [discoverItem, libraryItem, calendarItem];
+			return [discoverItem, libraryItem, calendarItem, requestsItem];
 		}
 
 		return [
@@ -293,6 +312,7 @@
 			libraryItem,
 			{ href: '/activity', label: m.nav_activity, icon: Activity },
 			calendarItem,
+			requestsItem,
 			{
 				label: m.nav_liveTv,
 				icon: Radio,
@@ -515,6 +535,9 @@
 			bind:checked={isMobileDrawerOpen}
 		/>
 		<div class="drawer-content flex min-h-screen flex-col bg-base-100 text-base-content">
+			<!-- Both headers render and swap via CSS (SSR ships the right one
+			     with no hydration flash); the notification bell mounts in each
+			     but only the breakpoint-active instance opens its SSE stream. -->
 			<!-- Mobile Header -->
 			<header class="navbar sticky top-0 z-50 bg-base-200 shadow-sm lg:hidden">
 				<div class="flex-none">
@@ -540,6 +563,7 @@
 					</div>
 				</div>
 				<div class="flex flex-none items-center gap-2 pr-2">
+					<NotificationBell enabled={!isDesktopLayout} />
 					{#if layoutState.mobileSseStatus === 'connected'}
 						<span class="badge shrink-0 gap-1 badge-success">
 							<Wifi class="h-3 w-3" />
@@ -557,6 +581,12 @@
 						</span>
 					{/if}
 				</div>
+			</header>
+			<!-- Desktop top bar -->
+			<header
+				class="sticky top-0 z-30 hidden h-12 items-center justify-end border-b border-base-300/60 bg-base-100/90 px-4 backdrop-blur lg:flex"
+			>
+				<NotificationBell enabled={isDesktopLayout} />
 			</header>
 
 			<!-- Page Content -->

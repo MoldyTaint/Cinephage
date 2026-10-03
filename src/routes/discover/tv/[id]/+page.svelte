@@ -51,7 +51,7 @@
 				<ArrowLeft class="h-4 w-4" />
 				{m.action_back()}
 			</a>
-			<MediaHero item={data.tv} readOnly={!isAdminUser} />
+			<MediaHero item={data.tv} readOnly={!isAdminUser} requestState={data.requestState} />
 		</div>
 
 		<!-- Cast Section -->

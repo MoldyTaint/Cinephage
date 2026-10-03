@@ -6,13 +6,14 @@ import { createChildLogger } from '$lib/logging';
 import {
 	enrichWithLibraryStatus,
 	getLibraryStatus,
-	filterBlockedMedia
+	filterBlockedMedia,
+	getRequestStateMap
 } from '$lib/server/library/status';
 import { keywordBlocklistService } from '$lib/server/settings/KeywordBlocklistService.js';
 
 const logger = createChildLogger({ module: 'DiscoverTvPage', logDomain: 'system' });
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
 	const id = parseInt(params.id);
 	if (isNaN(id)) {
 		throw error(400, 'Invalid TV Show ID');
@@ -45,6 +46,8 @@ export const load: PageServerLoad = async ({ params }) => {
 
 		// Get library status for the TV show itself
 		const tvStatus = await getLibraryStatus([id], 'tv');
+		const requestState =
+			(await getRequestStateMap([id], 'tv', locals.user?.id ?? null))[id] ?? null;
 		const tvWithStatus = {
 			...tv,
 			inLibrary: tvStatus[id]?.inLibrary ?? false,
@@ -81,6 +84,7 @@ export const load: PageServerLoad = async ({ params }) => {
 
 		return {
 			tv: tvWithStatus,
+			requestState,
 			hasBlockedKeywords,
 			blockedKeywords: blockedMatches.map((k) => k.name)
 		};

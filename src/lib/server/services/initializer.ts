@@ -31,6 +31,7 @@ import { logCaptureStore } from '$lib/server/logging/log-capture-store.js';
 import { logHistoryService } from '$lib/server/logging/log-history.js';
 import { getCinephageApiService } from '$lib/server/cinephage/CinephageApiService.js';
 import { getDebridPollService } from '$lib/server/downloadClients/debrid/DebridPollService.js';
+import { getRequestAvailabilityProjector } from '$lib/server/requests/RequestAvailabilityProjector.js';
 
 const logger = createChildLogger({ module: 'Initializer', logDomain: 'system' });
 
@@ -101,6 +102,12 @@ async function initializeServices(): Promise<void> {
 
 			await getLibraryScheduler().initialize();
 			logger.info('Library scheduler initialized');
+
+			// Event-driven request fulfillment (media appearing flips active
+			// requests to fulfilled). The hourly sweep task registers with the
+			// monitoring scheduler separately.
+			getRequestAvailabilityProjector().start();
+			logger.info('Request availability projector started');
 
 			await initializeProviderFactory();
 			logger.info('Provider registry initialized with 13 providers');

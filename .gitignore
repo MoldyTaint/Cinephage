@@ -114,6 +114,7 @@ cine-local.yaml
 data/indexers/definitions/custom/
 data/external-lists/presets/custom/
 data/reports/
+data/test/
 
 # Local notes
 docs/
