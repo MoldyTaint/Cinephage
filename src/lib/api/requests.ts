@@ -152,6 +152,20 @@ export async function cancelRequest(id: string): Promise<MediaRequest> {
 	return response.request;
 }
 
+/**
+ * DELETE verb: cancels a pending request, removes a decided one outright.
+ * The response shape says which happened.
+ */
+export async function deleteRequest(
+	id: string
+): Promise<{ cancelled: boolean; request?: MediaRequest }> {
+	const response = await apiDelete<{
+		request?: MediaRequest;
+		deleted?: boolean;
+	}>(`/api/requests/${id}`);
+	return { cancelled: !response.deleted, request: response.request };
+}
+
 export async function approveRequest(id: string): Promise<MediaRequest> {
 	const response = await apiPost<{ request: MediaRequest }>(`/api/requests/${id}/approve`, {});
 	return response.request;

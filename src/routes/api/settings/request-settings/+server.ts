@@ -11,6 +11,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { parseBody } from '$lib/server/api/validate.js';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { isAppError } from '$lib/errors';
 import {
 	getRequestSettingsService,
 	requestSettingsSchema
@@ -28,7 +29,15 @@ export const PUT: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);
 	if (authError) return authError;
 
-	const next = await parseBody(event.request, requestSettingsSchema);
-	const settings = await getRequestSettingsService().saveRequestSettings(next);
-	return json({ success: true, settings });
+	try {
+		const next = await parseBody(event.request, requestSettingsSchema);
+		const settings = await getRequestSettingsService().saveRequestSettings(next);
+		return json({ success: true, settings });
+	} catch (error) {
+		// Invalid bodies are client errors, not unhandled 500s.
+		if (isAppError(error)) {
+			return json({ success: false, error: error.message }, { status: error.statusCode });
+		}
+		throw error;
+	}
 };

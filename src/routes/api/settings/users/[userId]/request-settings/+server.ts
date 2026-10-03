@@ -15,6 +15,7 @@ import { user } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { parseBody } from '$lib/server/api/validate.js';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { isAppError } from '$lib/errors';
 import {
 	getUserRequestSettingsService,
 	userRequestSettingsUpdateSchema
@@ -47,10 +48,18 @@ export const PUT: RequestHandler = async (event) => {
 		return json({ success: false, error: 'Unknown user' }, { status: 404 });
 	}
 
-	const update = await parseBody(event.request, userRequestSettingsUpdateSchema);
-	const settings = await getUserRequestSettingsService().updateUserRequestSettings(
-		event.params.userId,
-		update
-	);
-	return json({ success: true, settings });
+	try {
+		const update = await parseBody(event.request, userRequestSettingsUpdateSchema);
+		const settings = await getUserRequestSettingsService().updateUserRequestSettings(
+			event.params.userId,
+			update
+		);
+		return json({ success: true, settings });
+	} catch (error) {
+		// Invalid bodies are client errors, not unhandled 500s.
+		if (isAppError(error)) {
+			return json({ success: false, error: error.message }, { status: error.statusCode });
+		}
+		throw error;
+	}
 };

@@ -415,6 +415,78 @@ describe('hooks chain — viewer API gate', () => {
 	});
 });
 
+describe('hooks chain — viewer gate: requests and notifications', () => {
+	it('lets a viewer reach the request list and their notification feed', async () => {
+		for (const path of ['/api/requests', '/api/user/notifications']) {
+			const { event } = harness.makeEvent('GET', path, {
+				headers: { cookie: harness.cookieHeader(viewerCookies) }
+			});
+			const response = await harness.callHandle(event);
+			expect(response.status, path).toBe(200);
+		}
+
+		// Mark-read is the one notification write viewers own.
+		const markRead = harness.makeEvent('POST', '/api/user/notifications/read', {
+			headers: {
+				cookie: harness.cookieHeader(viewerCookies),
+				'content-type': 'application/json',
+				origin: 'http://localhost:5173'
+			},
+			body: JSON.stringify({ ids: [] })
+		});
+		expect((await harness.callHandle(markRead.event)).status).toBe(200);
+	});
+
+	it('admits viewer request creation and deletion past the gate', async () => {
+		// Any non-403 status proves the gate admitted the call; the route
+		// contract itself is covered by the request route tests.
+		const create = harness.makeEvent('POST', '/api/requests', {
+			headers: {
+				cookie: harness.cookieHeader(viewerCookies),
+				'content-type': 'application/json',
+				origin: 'http://localhost:5173'
+			},
+			body: JSON.stringify({ mediaType: 'movie', tmdbId: 99 })
+		});
+		const createResponse = await harness.callHandle(create.event);
+		expect(createResponse.status).toBe(200);
+
+		const remove = harness.makeEvent('DELETE', '/api/requests/does-not-exist', {
+			headers: { cookie: harness.cookieHeader(viewerCookies) }
+		});
+		expect((await harness.callHandle(remove.event)).status).toBe(200);
+	});
+
+	it('keeps admin request mutations and the notifications write path admin-only', async () => {
+		// POST under /api/requests/[id]/... falls through the allowlist to the
+		// admin gate; the route's own requireAdmin never sees the call.
+		const approve = harness.makeEvent('POST', '/api/requests/whatever/approve', {
+			headers: {
+				cookie: harness.cookieHeader(viewerCookies),
+				'content-type': 'application/json',
+				origin: 'http://localhost:5173'
+			},
+			body: JSON.stringify({})
+		});
+		const approveResponse = await harness.callHandle(approve.event);
+		expect(approveResponse.status).toBe(403);
+		const approveBody = (await approveResponse.json()) as { code?: string };
+		expect(approveBody.code).toBe('FORBIDDEN');
+
+		// POST on the notifications base is not part of the API (mark-read
+		// carries the POST) — viewers 403 at the gate.
+		const notifyPost = harness.makeEvent('POST', '/api/user/notifications', {
+			headers: {
+				cookie: harness.cookieHeader(viewerCookies),
+				'content-type': 'application/json',
+				origin: 'http://localhost:5173'
+			},
+			body: JSON.stringify({})
+		});
+		expect((await harness.callHandle(notifyPost.event)).status).toBe(403);
+	});
+});
+
 describe('hooks chain — viewer gate hardening', () => {
 	it('normalizes path tricks before matching the allowlist', async () => {
 		const cases = [

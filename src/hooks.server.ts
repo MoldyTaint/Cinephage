@@ -183,9 +183,12 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				if (path.startsWith('/api/requests/')) {
 					return method === 'GET' || method === 'DELETE';
 				}
-				// Own in-app notification feed + mark-read.
-				if (path === '/api/user/notifications' || path === '/api/user/notifications/read') {
-					return method === 'GET' || method === 'POST';
+				// Own in-app notification feed (GET) + mark-read (POST on /read).
+				if (path === '/api/user/notifications') {
+					return method === 'GET';
+				}
+				if (path === '/api/user/notifications/read') {
+					return method === 'POST';
 				}
 				if (method !== 'GET' && method !== 'HEAD') {
 					return false;

@@ -1,17 +1,17 @@
 /**
- * Cancel a request.
+ * Delete a request.
  *
- * DELETE /api/requests/[id] — the requester may cancel their own PENDING
- * request; admins may also cancel a pending one (decline is the admin
- * verb for decided outcomes; there is no delete endpoint in v1).
- * Cancellation is not decline: no reason, no cooldown.
+ * DELETE /api/requests/[id] — a PENDING request is cancelled by its owner
+ * (or an admin): no reason, no cooldown, the row stays as the decision
+ * record. A decided request (declined/expired/cancelled/fulfilled) is
+ * removed outright by its owner or an admin. Active non-pending statuses
+ * 409 — decline/retry are the verbs there.
  */
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { getRequestService } from '$lib/server/requests/RequestService.js';
-import { toRequestErrorResponse } from '$lib/server/requests/http.js';
-import { requesterFromLocals } from '$lib/server/requests/http.js';
+import { toRequestErrorResponse, requesterFromLocals } from '$lib/server/requests/http.js';
 
 export const DELETE: RequestHandler = async (event) => {
 	const requester = requesterFromLocals(event.locals);
@@ -20,8 +20,11 @@ export const DELETE: RequestHandler = async (event) => {
 	}
 
 	try {
-		const cancelled = await getRequestService().cancel(event.params.id, requester);
-		return json({ success: true, request: cancelled });
+		const result = await getRequestService().cancelOrRemove(event.params.id, requester);
+		if (result.kind === 'cancelled') {
+			return json({ success: true, request: result.request });
+		}
+		return json({ success: true, deleted: true });
 	} catch (error) {
 		return toRequestErrorResponse(error);
 	}

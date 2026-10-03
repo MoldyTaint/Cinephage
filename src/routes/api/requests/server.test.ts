@@ -12,7 +12,17 @@ import {
 	clearTestDb,
 	type TestDatabase
 } from '../../../test/db-helper';
-import { requests, userRequestSettings, settings, user, rootFolders } from '$lib/server/db/schema';
+import {
+	requests,
+	userRequestSettings,
+	settings,
+	user,
+	rootFolders,
+	libraries,
+	movies,
+	series,
+	episodes
+} from '$lib/server/db/schema';
 import { createTestUser } from '../../../test/fixtures/auth.js';
 
 const testDb: TestDatabase = createTestDb();
@@ -76,9 +86,11 @@ vi.mock('$lib/server/blocked-media/service.js', () => ({
 
 const { GET, POST } = await import('./+server.js');
 const { GET: GET_COUNT } = await import('./count/+server.js');
+const { GET: GET_MEDIA_STATUS } = await import('./media-status/+server.js');
 const { DELETE } = await import('./[id]/+server.js');
 const { POST: POST_APPROVE } = await import('./[id]/approve/+server.js');
 const { POST: POST_DECLINE } = await import('./[id]/decline/+server.js');
+const { POST: POST_FULFILL } = await import('./[id]/fulfill/+server.js');
 const { POST: POST_BULK } = await import('./bulk/+server.js');
 const { getRequestSettingsService } =
 	await import('$lib/server/requests/RequestSettingsService.js');
@@ -95,6 +107,9 @@ beforeEach(() => {
 	testDb.db.delete(userRequestSettings).run();
 	testDb.db.delete(settings).run();
 	testDb.db.delete(user).run();
+	testDb.db.delete(libraries).run();
+	testDb.db.delete(movies).run();
+	testDb.db.delete(series).run();
 	getRequestSettingsService().invalidateCache();
 	testDb.db
 		.insert(user)
@@ -107,10 +122,15 @@ beforeEach(() => {
 		.insert(rootFolders)
 		.values({ id: 'rf', name: 'M', path: '/m', mediaType: 'movie' })
 		.run();
+	testDb.db
+		.insert(libraries)
+		.values({ id: 'lib', name: 'Movies', slug: 'movies', mediaType: 'movie' })
+		.run();
 });
 
 async function callJson(
-	handler: (event: unknown) => Promise<Response>,
+	// never contravariance: any concrete RequestHandler is assignable here.
+	handler: (event: never) => Response | Promise<Response>,
 	method: string,
 	body: unknown,
 	options: { url?: string; auth?: 'admin' | 'user' | false; params?: Record<string, string> }
@@ -313,5 +333,221 @@ describe('admin mutations', () => {
 		const failedIds = bulk.data.results.filter((r: { ok: boolean }) => !r.ok);
 		expect(okIds).toHaveLength(2);
 		expect(failedIds).toHaveLength(1);
+	});
+});
+
+describe('DELETE /api/requests/[id] — decided requests', () => {
+	it('lets the owner remove their own declined request outright', async () => {
+		const created = await callJson(
+			POST,
+			'POST',
+			{ mediaType: 'movie', tmdbId: 99 },
+			{ auth: 'user' }
+		);
+		await callJson(
+			POST_DECLINE,
+			'POST',
+			{ reason: 'not available' },
+			{ auth: 'admin', params: { id: created.data.request.id } }
+		);
+
+		const removed = await callJson(DELETE, 'DELETE', undefined, {
+			auth: 'user',
+			params: { id: created.data.request.id }
+		});
+		expect(removed.status).toBe(200);
+		expect(removed.data.deleted).toBe(true);
+
+		const rows = testDb.db.select().from(requests).all();
+		expect(rows).toHaveLength(0);
+	});
+
+	it("lets an admin remove a viewer's cancelled request", async () => {
+		const created = await callJson(
+			POST,
+			'POST',
+			{ mediaType: 'movie', tmdbId: 99 },
+			{ auth: 'user' }
+		);
+		await callJson(DELETE, 'DELETE', undefined, {
+			auth: 'user',
+			params: { id: created.data.request.id }
+		});
+
+		const removed = await callJson(DELETE, 'DELETE', undefined, {
+			auth: 'admin',
+			params: { id: created.data.request.id }
+		});
+		expect(removed.status).toBe(200);
+		expect(removed.data.deleted).toBe(true);
+	});
+
+	it('removes a fulfilled request and keeps active ones behind invalid_status', async () => {
+		const created = await callJson(
+			POST,
+			'POST',
+			{ mediaType: 'movie', tmdbId: 99 },
+			{ auth: 'user' }
+		);
+		const id = created.data.request.id;
+		await callJson(POST_FULFILL, 'POST', undefined, { auth: 'admin', params: { id } });
+
+		const removed = await callJson(DELETE, 'DELETE', undefined, { auth: 'user', params: { id } });
+		expect(removed.status).toBe(200);
+		expect(removed.data.deleted).toBe(true);
+
+		// An approved (active, non-pending) request cannot be removed —
+		// decline/retry are the verbs there.
+		const active = await callJson(
+			POST,
+			'POST',
+			{ mediaType: 'movie', tmdbId: 100 },
+			{ auth: 'user' }
+		);
+		await callJson(POST_APPROVE, 'POST', undefined, {
+			auth: 'admin',
+			params: { id: active.data.request.id }
+		});
+		const conflict = await callJson(DELETE, 'DELETE', undefined, {
+			auth: 'user',
+			params: { id: active.data.request.id }
+		});
+		expect(conflict.status).toBe(409);
+		expect(conflict.data.code).toBe('invalid_status');
+	});
+
+	it("404s a viewer removing someone else's decided request", async () => {
+		const created = await callJson(
+			POST,
+			'POST',
+			{ mediaType: 'movie', tmdbId: 99 },
+			{ auth: 'admin' }
+		);
+		await callJson(
+			POST_DECLINE,
+			'POST',
+			{ reason: 'nope' },
+			{ auth: 'admin', params: { id: created.data.request.id } }
+		);
+
+		const removed = await callJson(DELETE, 'DELETE', undefined, {
+			auth: 'user',
+			params: { id: created.data.request.id }
+		});
+		expect(removed.status).toBe(404);
+	});
+});
+
+describe('GET /api/requests/media-status', () => {
+	it('401s unauthenticated and 400s on bad params', async () => {
+		const unauth = await callJson(GET_MEDIA_STATUS, 'GET', undefined, {
+			auth: false,
+			url: 'http://localhost/api/requests/media-status?mediaType=movie&tmdbId=99'
+		});
+		expect(unauth.status).toBe(401);
+
+		const bad = await callJson(GET_MEDIA_STATUS, 'GET', undefined, {
+			auth: 'user',
+			url: 'http://localhost/api/requests/media-status?mediaType=book&tmdbId=99'
+		});
+		expect(bad.status).toBe(400);
+	});
+
+	it('reports movie library state and active requests', async () => {
+		const created = await callJson(
+			POST,
+			'POST',
+			{ mediaType: 'movie', tmdbId: 99 },
+			{ auth: 'user' }
+		);
+		expect(created.status).toBe(201);
+
+		const empty = await callJson(GET_MEDIA_STATUS, 'GET', undefined, {
+			auth: 'user',
+			url: 'http://localhost/api/requests/media-status?mediaType=movie&tmdbId=42'
+		});
+		expect(empty.data).toMatchObject({
+			success: true,
+			active: false,
+			inLibrary: false,
+			hasFile: false
+		});
+
+		const status = await callJson(GET_MEDIA_STATUS, 'GET', undefined, {
+			auth: 'user',
+			url: 'http://localhost/api/requests/media-status?mediaType=movie&tmdbId=99'
+		});
+		expect(status.data).toMatchObject({ success: true, active: true, inLibrary: false });
+
+		testDb.db
+			.insert(movies)
+			.values({
+				tmdbId: 42,
+				title: 'Owned',
+				path: 'Owned (2020)',
+				libraryId: 'lib',
+				rootFolderId: 'rf',
+				hasFile: true
+			})
+			.run();
+		const owned = await callJson(GET_MEDIA_STATUS, 'GET', undefined, {
+			auth: 'user',
+			url: 'http://localhost/api/requests/media-status?mediaType=movie&tmdbId=42'
+		});
+		expect(owned.data).toMatchObject({ active: false, inLibrary: true, hasFile: true });
+	});
+
+	it('reports series active scopes and on-disk episodes', async () => {
+		const created = await callJson(
+			POST,
+			'POST',
+			{ mediaType: 'series', tmdbId: 77, seasons: [1] },
+			{ auth: 'user' }
+		);
+		expect(created.status).toBe(201);
+
+		const scoped = await callJson(GET_MEDIA_STATUS, 'GET', undefined, {
+			auth: 'user',
+			url: 'http://localhost/api/requests/media-status?mediaType=series&tmdbId=77'
+		});
+		expect(scoped.data.activeScopes).toEqual([{ seasons: [1], episodes: [] }]);
+		expect(scoped.data.inLibrary).toBe(false);
+
+		testDb.db
+			.insert(series)
+			.values({ tmdbId: 77, title: 'Show', path: 'Show', libraryId: 'lib', rootFolderId: 'rf' })
+			.run();
+		const show = testDb.db
+			.select()
+			.from(series)
+			.all()
+			.find((s) => s.tmdbId === 77)!;
+		testDb.db
+			.insert(episodes)
+			.values([
+				{
+					seriesId: show.id,
+					tmdbId: 1,
+					seasonNumber: 1,
+					episodeNumber: 1,
+					title: 'Pilot',
+					hasFile: true
+				},
+				{
+					seriesId: show.id,
+					tmdbId: 2,
+					seasonNumber: 1,
+					episodeNumber: 2,
+					title: 'Two',
+					hasFile: false
+				}
+			])
+			.run();
+
+		const onDisk = await callJson(GET_MEDIA_STATUS, 'GET', undefined, {
+			auth: 'user',
+			url: 'http://localhost/api/requests/media-status?mediaType=series&tmdbId=77'
+		});
+		expect(onDisk.data.availableEpisodes).toEqual(['1x1']);
 	});
 });

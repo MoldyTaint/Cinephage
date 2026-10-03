@@ -17,6 +17,14 @@ export const ACTIVE_REQUEST_STATUSES: readonly RequestStatus[] = [
 	'failed'
 ] as const;
 
+/** Decided statuses: the row may be removed outright (DELETE verb). */
+export const TERMINAL_REQUEST_STATUSES: readonly RequestStatus[] = [
+	'declined',
+	'expired',
+	'cancelled',
+	'fulfilled'
+] as const;
+
 /** Statuses that do NOT consume quota (everything else counts). */
 export const QUOTA_EXCLUDED_STATUSES: readonly RequestStatus[] = [
 	'declined',

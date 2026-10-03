@@ -2,7 +2,7 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import type { PageData } from './$types';
 	import { onMount } from 'svelte';
-	import { Loader2, Check, X, RotateCcw, BadgeCheck, Inbox, Clock } from 'lucide-svelte';
+	import { Loader2, Check, X, RotateCcw, BadgeCheck, Inbox, Clock, Trash2 } from 'lucide-svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { formatDisplayDateShort } from '$lib/utils/format.js';
@@ -10,6 +10,7 @@
 		listRequests,
 		getRequestCounts,
 		cancelRequest,
+		deleteRequest,
 		approveRequest,
 		declineRequest,
 		retryRequest,
@@ -21,7 +22,7 @@
 	import RequestStatusBadge from '$lib/components/requests/RequestStatusBadge.svelte';
 	import QuotaSummary from '$lib/components/requests/QuotaSummary.svelte';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
-	import { ModalHeader, ModalFooter } from '$lib/components/ui/modal';
+	import { ModalHeader, ModalFooter, ConfirmationModal } from '$lib/components/ui/modal';
 
 	let { data }: { data: PageData } = $props();
 	const isAdmin = $derived(data.role === 'admin');
@@ -39,6 +40,7 @@
 	let declineTarget = $state<string | 'bulk' | null>(null);
 	let declineReason = $state('');
 	let acting = $state(false);
+	let removeTarget = $state<MediaRequest | null>(null);
 
 	const filters = $derived([
 		{ key: 'all', label: m.requests_filterAll() },
@@ -183,6 +185,22 @@
 		return row.mediaType === 'movie'
 			? `/discover/movie/${row.tmdbId}`
 			: `/discover/tv/${row.tmdbId}`;
+	}
+
+	/** Decided requests can be cleared from the list outright. */
+	const isRemovable = (status: MediaRequest['status']): boolean =>
+		status === 'declined' ||
+		status === 'expired' ||
+		status === 'cancelled' ||
+		status === 'fulfilled';
+
+	async function confirmRemove() {
+		if (!removeTarget) return;
+		const target = removeTarget;
+		await act(async () => {
+			await deleteRequest(target.id);
+			removeTarget = null;
+		}, m.requests_removed());
 	}
 </script>
 
@@ -424,6 +442,18 @@
 												<BadgeCheck class="h-4 w-4" />
 											</button>
 										{/if}
+										{#if isRemovable(row.status)}
+											<button
+												type="button"
+												class="btn btn-ghost text-error btn-xs"
+												disabled={acting}
+												title={m.requests_remove()}
+												aria-label={m.requests_remove()}
+												onclick={() => (removeTarget = row)}
+											>
+												<Trash2 class="h-3.5 w-3.5" />
+											</button>
+										{/if}
 									{:else if row.status === 'pending'}
 										<button
 											type="button"
@@ -438,6 +468,17 @@
 												)}
 										>
 											<X class="h-4 w-4" />
+										</button>
+									{:else if isRemovable(row.status)}
+										<button
+											type="button"
+											class="btn btn-ghost text-error btn-xs"
+											disabled={acting}
+											title={m.requests_remove()}
+											aria-label={m.requests_remove()}
+											onclick={() => (removeTarget = row)}
+										>
+											<Trash2 class="h-3.5 w-3.5" />
 										</button>
 									{/if}
 								</div>
@@ -469,3 +510,15 @@
 		onCancel={() => (showDeclineModal = false)}
 	/>
 </ModalWrapper>
+
+<!-- Remove confirmation -->
+<ConfirmationModal
+	open={removeTarget !== null}
+	title={m.requests_removeTitle()}
+	message={removeTarget ? m.requests_removeBody({ title: removeTarget.title }) : ''}
+	confirmLabel={m.requests_remove()}
+	confirmVariant="error"
+	loading={acting}
+	onConfirm={confirmRemove}
+	onCancel={() => (removeTarget = null)}
+/>

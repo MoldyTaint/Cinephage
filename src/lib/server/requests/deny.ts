@@ -32,7 +32,10 @@ export async function declinePendingRequestsForBlockedMedia(
 	const notifications = getRequestNotificationService();
 
 	for (const request of active) {
-		await db
+		// Conditional update: a request fulfilled or declined between the
+		// select and here must not be overwritten (same CAS discipline as
+		// the service transitions).
+		const claimed = await db
 			.update(requests)
 			.set({
 				status: 'declined',
@@ -40,7 +43,11 @@ export async function declinePendingRequestsForBlockedMedia(
 				decidedAt: now,
 				updatedAt: now
 			})
-			.where(eq(requests.id, request.id));
+			.where(
+				and(eq(requests.id, request.id), inArray(requests.status, [...ACTIVE_REQUEST_STATUSES]))
+			)
+			.returning({ id: requests.id });
+		if (claimed.length === 0) continue;
 
 		await notifications.notifyUser(
 			request.requestedBy,

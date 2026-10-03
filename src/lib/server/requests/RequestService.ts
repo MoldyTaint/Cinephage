@@ -27,6 +27,7 @@ import { requestStreamEvents } from './RequestStreamEvents.js';
 import {
 	ACTIVE_REQUEST_STATUSES,
 	QUOTA_EXCLUDED_STATUSES,
+	TERMINAL_REQUEST_STATUSES,
 	RequestError,
 	type QuotaStatus,
 	type RequestEpisodeEntry,
@@ -321,7 +322,7 @@ export class RequestService {
 								(sum, s) => sum + (snapshot.seasonEpisodeCounts.get(s) ?? 0),
 								0
 							);
-				if (quota.tv.limit !== null && needed > quota.tv.remaining) {
+				if (quota.tv.remaining !== null && needed > quota.tv.remaining) {
 					throw new RequestError('tv_quota', 'TV request quota exceeded', 403, {
 						quota: quota.tv,
 						needed
@@ -657,7 +658,10 @@ export class RequestService {
 		}
 
 		try {
-			const targetFolderId = await this.resolveTargetRootFolder(request.mediaType, request.tmdbId);
+			const targetFolderId = await this.resolveTargetRootFolder(
+				request.mediaType as 'movie' | 'series',
+				request.tmdbId
+			);
 			if (!targetFolderId) {
 				await this.setStatus(request, 'awaiting_target', {
 					failureReason: 'No writable root folder is configured for this media type'
@@ -736,7 +740,7 @@ export class RequestService {
 			await triggerMovieSearch({
 				movieId: existing.id,
 				tmdbId: existing.tmdbId,
-				imdbId: existing.imdbId ?? undefined,
+				imdbId: existing.imdbId ?? null,
 				title: existing.title,
 				year: existing.year ?? undefined,
 				scoringProfileId: existing.scoringProfileId ?? undefined
@@ -1008,6 +1012,48 @@ export class RequestService {
 			throw new RequestError('invalid_status', 'Only failed requests can be retried', 409);
 		}
 		return this.approveInternal(requestId, admin, false);
+	}
+
+	/**
+	 * DELETE verb: a pending request is cancelled (the row stays as the
+	 * decision record); a decided one is removed outright. Active non-pending
+	 * statuses fall into cancel's invalid_status 409 — approve/decline/retry
+	 * are the verbs there.
+	 */
+	async cancelOrRemove(
+		requestId: string,
+		requester: RequesterContext
+	): Promise<{ kind: 'cancelled'; request: typeof requests.$inferSelect } | { kind: 'removed' }> {
+		const request = await this.getRequest(requestId);
+		if ((ACTIVE_REQUEST_STATUSES as readonly string[]).includes(request.status)) {
+			return { kind: 'cancelled', request: await this.cancel(requestId, requester) };
+		}
+		// Terminal: owner or admin may clear the row; the conditional delete
+		// keeps a racing decline/expiry from being silently resurrected.
+		const isOwner = request.requestedBy === requester.id;
+		if (!isOwner && requester.role !== 'admin') {
+			throw new RequestError('not_found', 'Request not found', 404);
+		}
+		const claimed = await db
+			.delete(requests)
+			.where(
+				and(eq(requests.id, request.id), inArray(requests.status, [...TERMINAL_REQUEST_STATUSES]))
+			)
+			.returning({ id: requests.id });
+		if (claimed.length === 0) {
+			const current = await this.getRequest(requestId);
+			throw new RequestError(
+				'invalid_status',
+				`Cannot remove a request in status ${current.status}`,
+				409
+			);
+		}
+		requestStreamEvents.emitRefresh({
+			requesterId: request.requestedBy,
+			requestId: request.id,
+			timestamp: new Date().toISOString()
+		});
+		return { kind: 'removed' };
 	}
 
 	async markFulfilledAdmin(requestId: string) {
