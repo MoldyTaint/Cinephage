@@ -2155,7 +2155,18 @@ export const addSeriesSchema = z.object({
 	wantsSubtitles: z.boolean().default(true),
 	/** Optional per-item language profile + subtitle requirement override at add time. */
 	languageProfileId: z.string().uuid().nullable().optional(),
-	subtitleRequirementsOverride: subtitleRequirementsOverrideSchema.nullable().optional()
+	subtitleRequirementsOverride: subtitleRequirementsOverrideSchema.nullable().optional(),
+	/**
+	 * Explicit episode selection: when present, exactly these episodes are
+	 * monitored (seasons containing them become monitored). Takes precedence
+	 * over monitorType/monitoredSeasons for episode-level control — used by
+	 * the request system's episode-granular approvals.
+	 */
+	monitoredEpisodes: z
+		.array(
+			z.object({ seasonNumber: z.number().int().min(0), episodeNumber: z.number().int().min(1) })
+		)
+		.optional()
 });
 
 /**
