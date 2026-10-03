@@ -14,7 +14,7 @@
 		"check": "NODE_OPTIONS=--max-old-space-size=8192 svelte-kit sync && NODE_OPTIONS=--max-old-space-size=8192 svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"format": "prettier --write .",
-		"lint": "prettier --check . && eslint .",
+		"lint": "NODE_OPTIONS=--max-old-space-size=8192 prettier --check . && NODE_OPTIONS=--max-old-space-size=8192 eslint .",
 		"lint:fix": "prettier --write . && eslint . --fix",
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run",

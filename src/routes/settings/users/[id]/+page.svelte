@@ -15,6 +15,7 @@
 		Tablet,
 		Loader2,
 		LogOut,
+		RotateCcw,
 		Tv,
 		Unlink
 	} from 'lucide-svelte';
@@ -36,16 +37,6 @@
 		ModalHeader,
 		ModalFooter
 	} from '$lib/components/ui/modal';
-
-	type ManagedSession = {
-		id: string;
-		token: string;
-		userAgent: string | null;
-		ipAddress: string | null;
-		createdAt: string;
-		expiresAt: string;
-		current: boolean;
-	};
 
 	let { data } = $props();
 
@@ -239,14 +230,13 @@
 	// =====================
 	let revokingSessionId = $state<string | null>(null);
 
-	async function handleRevokeSession(target: ManagedSession) {
+	async function handleRevokeSession(target: { id: string; token: string }) {
 		revokingSessionId = target.id;
 		try {
+			// better-auth 1.7's revoke-user-session takes the session token; it
+			// resolves the owning user server-side.
 			const ok = await runAction(() =>
-				authClient.admin.revokeUserSession({
-					userId: data.profile.id,
-					token: target.token
-				})
+				authClient.admin.revokeUserSession({ sessionToken: target.token })
 			);
 			if (ok) toasts.success(m.users_sessionRevoked());
 		} finally {
@@ -532,14 +522,14 @@
 		{:else}
 			<ul class="divide-y divide-base-content/10">
 				{#each data.sessions as userSession (userSession.id)}
-					{@const device = describeDevice(userSession.userAgent)}
+					{@const device = describeDevice(userSession.userAgent ?? null)}
 					<li class="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
 						<device.icon class="h-5 w-5 shrink-0 text-base-content/40" />
 						<div class="min-w-0 flex-1">
 							<div class="flex flex-wrap items-center gap-2">
 								<span class="text-sm font-medium">{device.label}</span>
 								<span class="text-sm text-base-content/50">
-									{describeBrowser(userSession.userAgent)}
+									{describeBrowser(userSession.userAgent ?? null)}
 								</span>
 								{#if userSession.current}
 									<span class="badge badge-xs badge-primary">{m.users_sessionCurrent()}</span>

@@ -42,7 +42,9 @@ export const PUT: RequestHandler = async ({ request, locals, params }) => {
 
 	const body = await parseBody(request, putSchema);
 	try {
-		await setUserPreference(locals.user.id, params.key, body.value);
+		// The service validates the value against the registry schema and
+		// throws; its typed signature is narrower than this passthrough.
+		await setUserPreference(locals.user.id, params.key, body.value as never);
 	} catch {
 		return json({ success: false, error: 'Invalid preference value' }, { status: 400 });
 	}

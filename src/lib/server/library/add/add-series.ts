@@ -417,7 +417,7 @@ export async function addSeriesToLibrary(input: AddSeriesInput): Promise<AddSeri
 		title: newSeries.title,
 		year: newSeries.year ?? null,
 		path: newSeries.path,
-		monitored: newSeries.monitored,
+		monitored: newSeries.monitored ?? true,
 		episodeCount: newSeries.episodeCount ?? 0,
 		searchTriggered,
 		searchWarning

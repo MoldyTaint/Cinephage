@@ -20,6 +20,7 @@ import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { fetchAndStoreMovieAlternateTitles } from '$lib/server/services/AlternateTitleService.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { ValidationError } from '$lib/errors';
 import type { AddMovieRequest } from '$lib/validation/schemas.js';
 import { createChildLogger } from '$lib/logging';
 
@@ -199,7 +200,7 @@ export async function addMovieToLibrary(input: AddMovieInput): Promise<AddMovieR
 		title: newMovie.title,
 		year: newMovie.year ?? null,
 		path: newMovie.path,
-		monitored: newMovie.monitored,
+		monitored: newMovie.monitored ?? true,
 		searchTriggered,
 		searchWarning
 	};

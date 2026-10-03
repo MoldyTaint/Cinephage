@@ -51,7 +51,7 @@ vi.mock('$lib/logging', () => ({
 // Manager used by getLinkableServers via the service; stubbed at the service
 // boundary instead so these tests focus on the HTTP contract.
 const serviceMock = vi.hoisted(() => ({
-	getLinks: vi.fn(async () => []),
+	getLinks: vi.fn(async () => [] as unknown[]),
 	getLinkableServers: vi.fn(async () => []),
 	initiatePairing: vi.fn(),
 	checkPairing: vi.fn(),
@@ -95,7 +95,12 @@ describe('GET /api/user/media-server/link', () => {
 				linkedAt: null
 			}
 		]);
-		const { status, data } = await callHandler(GET, 'GET', undefined, OPTIONS);
+		const { status, data } = await callHandler<{ links: unknown[] }>(
+			GET,
+			'GET',
+			undefined,
+			OPTIONS
+		);
 		expect(status).toBe(200);
 		expect(data.links).toHaveLength(1);
 		expect(serviceMock.getLinks).toHaveBeenCalledWith('test-user-user');
@@ -114,7 +119,12 @@ describe('POST/PUT /api/user/media-server/link', () => {
 			code: '123456',
 			expiresAt: Date.now() + 60000
 		});
-		const { status, data } = await callHandler(POST, 'POST', { serverId: 's1' }, OPTIONS);
+		const { status, data } = await callHandler<{ code?: string }>(
+			POST,
+			'POST',
+			{ serverId: 's1' },
+			OPTIONS
+		);
 		expect(status).toBe(200);
 		expect(data.code).toBe('123456');
 		expect(serviceMock.initiatePairing).toHaveBeenCalledWith('test-user-user', 's1');

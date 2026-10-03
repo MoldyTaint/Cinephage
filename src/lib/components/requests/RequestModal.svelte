@@ -134,13 +134,12 @@
 			const statusPromise = getRequestMediaStatus(isSeries ? 'series' : 'movie', tmdbId);
 			const countsPromise = getRequestCounts();
 			if (isSeries) {
-				const details = await getTmdb(`tv/${tmdbId}`);
+				const details = (await getTmdb(`tv/${tmdbId}`)) as {
+					seasons?: Array<{ season_number: number; episode_count?: number }>;
+				};
 				seasons = (details.seasons ?? [])
-					.filter(
-						(s: { season_number: number; episode_count?: number }) =>
-							s.season_number > 0 && (s.episode_count ?? 0) > 0
-					)
-					.map((s: { season_number: number; episode_count?: number }): SeasonInfo => ({
+					.filter((s) => s.season_number > 0 && (s.episode_count ?? 0) > 0)
+					.map((s): SeasonInfo => ({
 						seasonNumber: s.season_number,
 						episodeCount: s.episode_count ?? 0,
 						episodes: [],
@@ -164,14 +163,14 @@
 		const season = seasons.find((s) => s.seasonNumber === seasonNumber);
 		if (season && !season.episodesLoaded) {
 			try {
-				const detail = await getTmdb(`tv/${tmdbId}/season/${seasonNumber}`);
-				season.episodes = (detail.episodes ?? []).map(
-					(e: { episode_number: number; name?: string; air_date?: string | null }) => ({
-						episodeNumber: e.episode_number,
-						name: e.name ?? '',
-						airDate: e.air_date ?? null
-					})
-				);
+				const detail = (await getTmdb(`tv/${tmdbId}/season/${seasonNumber}`)) as {
+					episodes?: Array<{ episode_number: number; name?: string; air_date?: string | null }>;
+				};
+				season.episodes = (detail.episodes ?? []).map((e) => ({
+					episodeNumber: e.episode_number,
+					name: e.name ?? '',
+					airDate: e.air_date ?? null
+				}));
 				season.episodesLoaded = true;
 				seasons = [...seasons];
 			} catch {
@@ -283,7 +282,7 @@
 	}
 </script>
 
-<ModalWrapper {open} onClose maxWidth="lg">
+<ModalWrapper {open} {onClose} maxWidth="lg">
 	<div class="mb-4 flex items-start gap-3.5">
 		<div class="w-14 shrink-0 overflow-hidden rounded-lg shadow-md">
 			<TmdbImage path={posterPath ?? null} size="w92" alt={title} class="aspect-2/3 w-full" />

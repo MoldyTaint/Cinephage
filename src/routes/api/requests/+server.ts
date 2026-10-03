@@ -108,7 +108,7 @@ export const GET: RequestHandler = async (event) => {
 			.from(user)
 			.where(inArray(user.id, userIds));
 		for (const row of rows) {
-			usersById.set(row.id, row.displayUsername || row.name);
+			usersById.set(row.id, row.displayUsername || row.name || row.id);
 		}
 	}
 

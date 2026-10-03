@@ -328,7 +328,7 @@ export const auth = betterAuth({
 						// The admin-plugin routes carry the target in the body;
 						// a self-update targets the session user.
 						const targetId =
-							(ctx?.context?.body as { userId?: string } | undefined)?.userId ??
+							(ctx?.context as { body?: { userId?: string } } | undefined)?.body?.userId ??
 							ctx?.context?.session?.user?.id;
 						if (targetId && (await getUserRoleById(targetId)) === 'admin') {
 							if ((await getAdminCount()) <= 1) {

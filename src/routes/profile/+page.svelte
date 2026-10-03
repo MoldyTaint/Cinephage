@@ -253,7 +253,10 @@
 			stopPolling();
 			pairingTimer = setInterval(() => void pollPairing(), 2500);
 		} catch (error) {
-			if (error instanceof ApiError && error.response?.outcome === 'quick-connect-disabled') {
+			if (
+				error instanceof ApiError &&
+				(error.response as { outcome?: string } | undefined)?.outcome === 'quick-connect-disabled'
+			) {
 				toasts.error(m.link_quickConnectDisabled());
 				return;
 			}
