@@ -11,7 +11,7 @@
  *
  * Reads go straight to the database on every call (no cache) so all consumers
  * observe updates immediately. Updates are validated through
- * languageSettingsUpdateSchema ($lib/validation/schemas) and canonicalized
+ * languageSettingsUpdateSchema ($lib/server/validation/schemas) and canonicalized
  * before storage.
  */
 
@@ -22,7 +22,7 @@ import { createChildLogger } from '$lib/logging';
 import {
 	languageSettingsUpdateSchema,
 	type LanguageSettingsUpdateInput
-} from '$lib/validation/schemas';
+} from '$lib/server/validation/schemas';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 

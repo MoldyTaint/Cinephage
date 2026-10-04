@@ -1,6 +1,4 @@
 import { z } from 'zod';
-import { PROVIDER_IMPLEMENTATIONS } from '$lib/server/subtitles/types';
-import { normalizeTmdbLanguage } from '$lib/server/languages/normalize.js';
 import { TMDB } from '$lib/config/constants.js';
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -826,47 +824,6 @@ export type LibraryCreate = z.infer<typeof libraryCreateSchema>;
 export type LibraryUpdate = z.infer<typeof libraryUpdateSchema>;
 
 // ============================================================
-// Subtitle Provider Schemas
-// ============================================================
-
-/**
- * Valid subtitle provider implementations.
- * Uses the single source of truth from types.ts
- */
-export const subtitleProviderImplementationSchema = z.enum(PROVIDER_IMPLEMENTATIONS);
-
-/**
- * Schema for creating a subtitle provider.
- */
-export const subtitleProviderCreateSchema = z.object({
-	name: z.string().min(1, 'Name is required').max(100, 'Name must be 100 characters or less'),
-	implementation: subtitleProviderImplementationSchema,
-	enabled: z.boolean().default(true),
-	priority: z.number().int().min(1).max(100).default(25),
-	apiKey: z.string().optional().nullable(),
-	username: z.string().optional().nullable(),
-	password: z.string().optional().nullable(),
-	settings: z.record(z.string(), z.unknown()).optional().nullable(),
-	requestsPerMinute: z.number().int().min(1).max(1000).default(60)
-});
-
-/**
- * Schema for updating a subtitle provider.
- */
-export const subtitleProviderUpdateSchema = subtitleProviderCreateSchema.required().partial();
-
-/**
- * Schema for testing a subtitle provider.
- */
-export const subtitleProviderTestSchema = z.object({
-	implementation: subtitleProviderImplementationSchema,
-	apiKey: z.string().optional().nullable(),
-	username: z.string().optional().nullable(),
-	password: z.string().optional().nullable(),
-	settings: z.record(z.string(), z.unknown()).optional().nullable()
-});
-
-// ============================================================
 // Language Profile Schemas
 // ============================================================
 
@@ -987,79 +944,6 @@ export const subtitleRequirementsOverrideSchema = z
 
 export type SubtitleRequirementsOverride = z.infer<typeof subtitleRequirementsOverrideSchema>;
 
-/** Canonical BCP-47 metadata locale (canonicalized via Intl). */
-const languageMetadataLocaleSchema = z
-	.string()
-	.refine(
-		(value) => {
-			try {
-				Intl.getCanonicalLocales(value);
-				return true;
-			} catch {
-				return false;
-			}
-		},
-		{ message: 'Invalid metadata locale' }
-	)
-	.transform((value) => Intl.getCanonicalLocales(value)[0] ?? value);
-
-/** Two-letter country code, upper-cased. */
-const languageRegionSchema = z
-	.string()
-	.regex(/^[A-Za-z]{2}$/, 'Region must be a two-letter country code')
-	.transform((value) => value.toUpperCase());
-
-/** Canonical base language tag or null (canonicalized via the TMDB normalizer). */
-const languageDiscoverOriginalFilterSchema = z
-	.string()
-	.nullable()
-	.refine((value) => value === null || normalizeTmdbLanguage(value) !== null, {
-		message: 'Must be a resolvable language tag or null'
-	})
-	.transform((value) => (value === null ? null : normalizeTmdbLanguage(value)));
-
-/**
- * Language settings singleton (camelCase view of the language_settings row).
- * defaultProfileId is the single default-profile authority; metadataLocale
- * must be a valid BCP-47 locale (canonicalized via Intl); region is a
- * two-letter country code (upper-cased); discoverOriginalFilter is null or a
- * canonical base language tag (canonicalized via the server normalizer).
- */
-export const languageSettingsSchema = z.object({
-	defaultProfileId: z.string().uuid().nullable().default(null),
-	metadataLocale: languageMetadataLocaleSchema,
-	region: languageRegionSchema,
-	discoverOriginalFilter: languageDiscoverOriginalFilterSchema,
-	unknownSubtitlePolicy: z.enum(['und', 'assume-language']).default('und'),
-	assumedLanguage: z.string().min(1).nullable().optional(),
-	autoSyncSubtitles: z.boolean().default(true),
-	/** Instance default: display originalTitle when a per-item flag is unset */
-	preferOriginalTitle: z.boolean().default(false)
-});
-
-/**
- * Partial update payload for the language settings singleton.
- *
- * NOTE: this is NOT `languageSettingsSchema.partial()`. In zod v4 `.partial()`
- * still applies field defaults for absent keys, which would silently reset
- * every omitted field (e.g. defaultProfileId) to its default on each partial
- * write. Every field here is genuinely optional so the service only persists
- * the keys the caller actually sent.
- */
-export const languageSettingsUpdateSchema = z.object({
-	defaultProfileId: z.string().uuid().nullable().optional(),
-	metadataLocale: languageMetadataLocaleSchema.optional(),
-	region: languageRegionSchema.optional(),
-	discoverOriginalFilter: languageDiscoverOriginalFilterSchema.optional(),
-	unknownSubtitlePolicy: z.enum(['und', 'assume-language']).optional(),
-	assumedLanguage: z.string().min(1).nullable().optional(),
-	autoSyncSubtitles: z.boolean().optional(),
-	preferOriginalTitle: z.boolean().optional()
-});
-
-export type LanguageSettingsValues = z.infer<typeof languageSettingsSchema>;
-export type LanguageSettingsUpdateInput = z.input<typeof languageSettingsUpdateSchema>;
-
 // ============================================================
 // Subtitle Search Schemas
 // ============================================================
@@ -1177,10 +1061,17 @@ export const subtitleBlacklistSchema = z.object({
 // ============================================================
 
 // Subtitle Type Exports
-export type SubtitleProviderImplementation = z.infer<typeof subtitleProviderImplementationSchema>;
-export type SubtitleProviderCreate = z.infer<typeof subtitleProviderCreateSchema>;
-export type SubtitleProviderUpdate = z.infer<typeof subtitleProviderUpdateSchema>;
-export type SubtitleProviderTest = z.infer<typeof subtitleProviderTestSchema>;
+// The provider schemas live in the server-only module; these re-exports are
+// type-only and erased at compile time, so no server code ships to clients.
+export type {
+	SubtitleProviderImplementation,
+	SubtitleProviderCreate,
+	SubtitleProviderUpdate,
+	SubtitleProviderTest,
+	LanguageSettingsValues,
+	LanguageSettingsUpdateInput,
+	LiveTvAccountCreate
+} from '$lib/server/validation/schemas.js';
 export type SubtitleSearchRequest = z.infer<typeof subtitleSearchSchema>;
 export type SubtitleDownloadRequest = z.infer<typeof subtitleDownloadSchema>;
 export type SubtitleSyncRequest = z.infer<typeof subtitleSyncSchema>;
@@ -1666,68 +1557,6 @@ export const stalkerPortalDetectSchema = z.object({
 export type StalkerPortalCreate = z.infer<typeof stalkerPortalCreateSchema>;
 export type StalkerPortalUpdate = z.infer<typeof stalkerPortalUpdateSchema>;
 export type StalkerPortalDetect = z.infer<typeof stalkerPortalDetectSchema>;
-
-// ============================================================================
-// LiveTV Account Schema (multi-provider)
-// ============================================================================
-
-/**
- * Stalker portal UI language (`stb_lang` cookie / `Accept-Language` header).
- *
- * Accepts any recognizable language tag ('en', 'pt-BR', 'ger', …), reduces it
- * to the 2-letter base code Stalker portals expect, and falls back to English.
- */
-export const stalkerLanguageSchema = z
-	.string()
-	.refine((value) => normalizeTmdbLanguage(value) !== null, {
-		message: 'Must be a valid language code'
-	})
-	.transform((value) => normalizeTmdbLanguage(value) ?? 'en');
-
-export const liveTvAccountCreateSchema = z.object({
-	name: z.string().min(1).max(100),
-	providerType: z.enum(['stalker', 'xstream', 'm3u', 'cinephage-iptv']),
-	enabled: z.boolean().optional(),
-	stalkerConfig: z
-		.object({
-			portalUrl: z.string().url(),
-			macAddress: z.string().min(1),
-			serialNumber: z.string().optional(),
-			deviceId: z.string().optional(),
-			deviceId2: z.string().optional(),
-			model: z.string().optional(),
-			timezone: z.string().optional(),
-			language: stalkerLanguageSchema.default('en'),
-			username: z.string().optional(),
-			password: z.string().optional()
-		})
-		.optional(),
-	xstreamConfig: z
-		.object({
-			baseUrl: z.string().url(),
-			username: z.string().min(1),
-			password: z.string().min(1),
-			epgUrl: z.string().url().optional()
-		})
-		.optional(),
-	m3uConfig: z
-		.object({
-			url: z.string().url().optional(),
-			fileContent: z.string().optional(),
-			epgUrl: z.string().url().optional(),
-			refreshIntervalHours: z.number().min(1).max(168).optional(),
-			autoRefresh: z.boolean().optional()
-		})
-		.optional(),
-	cinephageIptvConfig: z
-		.object({
-			countries: z.array(z.string()).optional(),
-			categories: z.array(z.string()).optional(),
-			languages: z.array(z.string()).optional()
-		})
-		.optional(),
-	testFirst: z.boolean().optional().default(true)
-});
 
 // ============================================================
 // Log Filter Schemas
@@ -2828,9 +2657,6 @@ export type CaptchaSolverTestRequest = z.infer<typeof captchaSolverTestSchema>;
 
 // Custom Format Test Type Export
 export type CustomFormatTestRequest = z.infer<typeof customFormatTestSchema>;
-
-// LiveTV Account Type Export
-export type LiveTvAccountCreate = z.infer<typeof liveTvAccountCreateSchema>;
 
 // ============================================================
 // Calendar Preferences Schema

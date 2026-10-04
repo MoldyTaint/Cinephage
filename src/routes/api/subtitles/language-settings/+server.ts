@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService';
-import { languageSettingsUpdateSchema } from '$lib/validation/schemas';
+import { languageSettingsUpdateSchema } from '$lib/server/validation/schemas';
 import { parseBody } from '$lib/server/api/validate.js';
 import { tmdb } from '$lib/server/tmdb.js';
 

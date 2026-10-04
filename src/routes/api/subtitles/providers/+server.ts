@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { getSubtitleProviderManager } from '$lib/server/subtitles/services/SubtitleProviderManager';
 import { getSubtitleProviderFactory } from '$lib/server/subtitles/providers/SubtitleProviderFactory';
 import { ensureProvidersRegistered } from '$lib/server/subtitles/providers/registry';
-import { subtitleProviderCreateSchema } from '$lib/validation/schemas';
+import { subtitleProviderCreateSchema } from '$lib/server/validation/schemas';
 import { parseBody } from '$lib/server/api/validate.js';
 
 /**

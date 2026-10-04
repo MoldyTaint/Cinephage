@@ -18,7 +18,7 @@ import { createChildLogger } from '$lib/logging';
 import { z } from 'zod';
 import { ValidationError } from '$lib/errors';
 import { REDACTED_VALUE } from '$lib/shared/sensitiveSettings';
-import { stalkerLanguageSchema } from '$lib/validation/schemas.js';
+import { stalkerLanguageSchema } from '$lib/server/validation/schemas.js';
 
 const logger = createChildLogger({ module: 'LiveTvAccountById', logDomain: 'livetv' });
 

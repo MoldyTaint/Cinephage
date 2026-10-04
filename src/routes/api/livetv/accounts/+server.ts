@@ -11,7 +11,7 @@ import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager
 import { redactAccountSecrets } from '$lib/server/livetv/accountRedaction';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { createChildLogger } from '$lib/logging';
-import { liveTvAccountCreateSchema } from '$lib/validation/schemas.js';
+import { liveTvAccountCreateSchema } from '$lib/server/validation/schemas.js';
 import { isAppError } from '$lib/errors';
 
 const logger = createChildLogger({ module: 'LiveTvAccounts', logDomain: 'livetv' });
