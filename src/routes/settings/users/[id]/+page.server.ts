@@ -38,23 +38,24 @@ export const load: PageServerLoad = async ({ locals, params, request }) => {
 		.where(eq(user.role, 'admin'));
 
 	// Sessions through the admin plugin so per-session revocation uses the
-	// same tokens the plugin issued. The plugin checks the admin permission
-	// against the requesting session.
+	// same rows the plugin issued. The plugin checks the admin permission
+	// against the requesting session. Raw session tokens never leave the
+	// server: they are live bearer credentials, so the page only gets the
+	// opaque row id (revocation resolves the token server-side).
 	const sessionsResult = await auth.api.listUserSessions({
 		body: { userId: profile.id },
 		headers: request.headers
 	});
 
-	const currentToken = locals.session?.token ?? null;
+	const currentSessionId = locals.session?.id ?? null;
 	const sessions = (sessionsResult.sessions ?? [])
 		.map((row) => ({
 			id: row.id,
-			token: row.token,
 			userAgent: row.userAgent,
 			ipAddress: row.ipAddress,
 			createdAt: row.createdAt,
 			expiresAt: row.expiresAt,
-			current: row.token === currentToken
+			current: row.id === currentSessionId
 		}))
 		.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 

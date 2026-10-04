@@ -3,11 +3,16 @@ import type { RequestHandler } from './$types';
 import { createChildLogger } from '$lib/logging';
 
 import { regenerateRecoverableApiKey } from '$lib/server/auth/index.js';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'ApiKeysRegenerateApi', logDomain: 'auth' });
 
 // POST /api/settings/system/api-keys/[id]/regenerate - Regenerate an API key
-export const POST: RequestHandler = async ({ params, request, locals }) => {
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { params, request, locals } = event;
 	// Require authentication
 	if (!locals.user) {
 		return json({ error: 'Unauthorized' }, { status: 401 });

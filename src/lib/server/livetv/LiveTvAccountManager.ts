@@ -10,7 +10,7 @@ import { db } from '$lib/server/db';
 import { epgPrograms, livetvAccounts, type LivetvAccountRecord } from '$lib/server/db/schema';
 import { createChildLogger } from '$lib/logging';
 import { toFriendlyLiveTvTestError } from '$lib/livetv/errorMessages';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { getProvider, getProviderForAccount } from './providers';
 import { probeStalkerEndpoint } from './stalker/StalkerPortalClient';
 import { normalizeTmdbLanguage } from '$lib/server/languages/normalize.js';
@@ -32,27 +32,25 @@ import type {
 const logger = createChildLogger({ module: 'LiveTvAccountManager' });
 
 /**
- * Generate a random serial number (like MAG devices use)
+ * Generate a random serial number (like MAG devices use).
+ * Stalker portals treat these as device identity — use the CSPRNG, not
+ * Math.random, so one account's device identity is not guessable from
+ * another's.
  */
 function generateSerialNumber(): string {
 	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 	let sn = '';
 	for (let i = 0; i < 12; i++) {
-		sn += chars[Math.floor(Math.random() * chars.length)];
+		sn += chars[randomInt(chars.length)];
 	}
 	return sn;
 }
 
 /**
- * Generate a random device ID (like MAG devices use)
+ * Generate a random device ID (like MAG devices use).
  */
 function generateDeviceId(): string {
-	const chars = 'ABCDEF0123456789';
-	let id = '';
-	for (let i = 0; i < 32; i++) {
-		id += chars[Math.floor(Math.random() * chars.length)];
-	}
-	return id;
+	return randomBytes(16).toString('hex').toUpperCase();
 }
 
 /**

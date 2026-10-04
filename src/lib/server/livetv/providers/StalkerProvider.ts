@@ -9,7 +9,7 @@ import { db } from '$lib/server/db';
 import { livetvAccounts, livetvChannels, livetvCategories } from '$lib/server/db/schema';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 
 const logger = createChildLogger({ logDomain: 'livetv' as const });
 import type {
@@ -652,18 +652,13 @@ export class StalkerProvider implements LiveTvProvider {
 		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 		let sn = '';
 		for (let i = 0; i < 12; i++) {
-			sn += chars[Math.floor(Math.random() * chars.length)];
+			sn += chars[randomInt(chars.length)];
 		}
 		return sn;
 	}
 
 	private generateDeviceId(): string {
-		const chars = 'ABCDEF0123456789';
-		let id = '';
-		for (let i = 0; i < 32; i++) {
-			id += chars[Math.floor(Math.random() * chars.length)];
-		}
-		return id;
+		return randomBytes(16).toString('hex').toUpperCase();
 	}
 
 	private detectStreamType(url: string): 'hls' | 'direct' | 'unknown' {

@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Newly created runtime files (database, WAL/SHM, logs, caches) hold secrets;
+# without this they inherit the image default (022) and land world-readable.
+umask 077
+
 cd /app
 
 APP_VERSION_FILE="/app/version.txt"

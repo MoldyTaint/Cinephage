@@ -230,13 +230,18 @@
 	// =====================
 	let revokingSessionId = $state<string | null>(null);
 
-	async function handleRevokeSession(target: { id: string; token: string }) {
+	async function handleRevokeSession(target: { id: string }) {
 		revokingSessionId = target.id;
 		try {
-			// better-auth 1.7's revoke-user-session takes the session token; it
-			// resolves the owning user server-side.
+			// Revocation resolves the session token server-side by id — the
+			// raw token is a live bearer credential and never ships to the
+			// browser.
 			const ok = await runAction(() =>
-				authClient.admin.revokeUserSession({ sessionToken: target.token })
+				fetch(`/api/settings/users/${data.profile.id}/sessions/${target.id}/revoke`, {
+					method: 'POST'
+				}).then((response): { error?: { message?: string } | null } =>
+					response.ok ? {} : { error: { message: `HTTP ${response.status}` } }
+				)
 			);
 			if (ok) toasts.success(m.users_sessionRevoked());
 		} finally {

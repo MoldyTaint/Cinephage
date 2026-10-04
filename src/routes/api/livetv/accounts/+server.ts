@@ -8,6 +8,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
+import { redactAccountSecrets } from '$lib/server/livetv/accountRedaction';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { createChildLogger } from '$lib/logging';
 import { liveTvAccountCreateSchema } from '$lib/validation/schemas.js';
 import { isAppError } from '$lib/errors';
@@ -17,21 +19,27 @@ const logger = createChildLogger({ module: 'LiveTvAccounts', logDomain: 'livetv'
 /**
  * List all Live TV accounts
  */
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
 	const manager = getLiveTvAccountManager();
 	const accounts = await manager.getAccounts();
 
 	return json({
 		success: true,
-		accounts
+		accounts: accounts.map(redactAccountSecrets)
 	});
 };
 
 /**
  * Create a new Live TV account
  */
-export const POST: RequestHandler = async ({ request }) => {
-	const body = await request.json();
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const body = await event.request.json();
 
 	// Validate input
 	const parsed = liveTvAccountCreateSchema.safeParse(body);
@@ -50,7 +58,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json(
 			{
 				success: true,
-				account
+				account: redactAccountSecrets(account)
 			},
 			{ status: 201 }
 		);

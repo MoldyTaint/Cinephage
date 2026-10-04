@@ -897,7 +897,11 @@ export class ResponseParser {
 	}
 
 	/**
-	 * Make URL absolute using base URL.
+	 * Make URL absolute using base URL. Only http(s) and magnet survive
+	 * verbatim; everything else is resolved against the indexer base, and the
+	 * result is scheme-checked — scraped content is untrusted, and a
+	 * `javascript:`/`data:` value that survives parsing would be rendered as a
+	 * clickable link in the search UI.
 	 */
 	private makeAbsoluteUrl(url: string, baseUrl: string): string {
 		if (!url) return url;
@@ -906,9 +910,13 @@ export class ResponseParser {
 		}
 
 		try {
-			return new URL(url, baseUrl).toString();
+			const resolved = new URL(url, baseUrl);
+			if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') {
+				return '';
+			}
+			return resolved.toString();
 		} catch {
-			return url;
+			return '';
 		}
 	}
 }

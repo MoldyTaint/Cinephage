@@ -53,7 +53,11 @@ export function getAuthSecret(): string {
 
 	// During SSR build and vitest runs there is no runtime auth flow.
 	// Use a deterministic placeholder to keep imports from crashing in CI/tests.
-	if (process.env.VITE_SSR_BUILD || process.env.VITEST || process.env.NODE_ENV === 'test') {
+	// Production must never inherit build flags from the build environment:
+	// NODE_ENV=production always fails closed, whatever else is set.
+	const isBuildOrTestContext =
+		process.env.VITE_SSR_BUILD || process.env.VITEST || process.env.NODE_ENV === 'test';
+	if (isBuildOrTestContext && process.env.NODE_ENV !== 'production') {
 		return BUILD_TIME_PLACEHOLDER;
 	}
 

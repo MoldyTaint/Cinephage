@@ -758,4 +758,41 @@ describe('NamingService', () => {
 			expect(info.audioLanguages).toEqual(['multi']);
 		});
 	});
+
+	describe('Path-segment safety', () => {
+		it('strips path separators from scraped titles', () => {
+			const service = new NamingService({ movieFolderFormat: '{Title} ({Year})' });
+			const info: MediaNamingInfo = {
+				title: 'Face/Off',
+				year: 1997,
+				tmdbId: 432
+			};
+			const result = service.generateMovieFolderName(info);
+			expect(result).not.toContain('/');
+			expect(result).toBe('FaceOff (1997)');
+		});
+
+		it('drops dot-segments that would escape the library root', () => {
+			const service = new NamingService({ movieFolderFormat: '{Title}/Files' });
+			const info: MediaNamingInfo = {
+				title: '..',
+				year: 0,
+				tmdbId: 0
+			};
+			const result = service.generateMovieFolderName(info);
+			// The '..' segment must be filtered, never joined into the path.
+			expect(result.split('/')).not.toContain('..');
+			expect(result).toBe('Files');
+		});
+
+		it('keeps intended format separators working', () => {
+			const service = new NamingService({ movieFolderFormat: 'Movies/{CleanTitle} ({Year})' });
+			const info: MediaNamingInfo = {
+				title: 'The Dark Knight',
+				year: 2008,
+				tmdbId: 155
+			};
+			expect(service.generateMovieFolderName(info)).toBe('Movies/The Dark Knight (2008)');
+		});
+	});
 });

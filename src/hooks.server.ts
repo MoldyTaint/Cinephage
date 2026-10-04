@@ -2,12 +2,15 @@ import type { Handle } from '@sveltejs/kit';
 import { json, redirect } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
 import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 
 import { AUTH_BASE_PATH } from '$lib/auth/config.js';
 import { createRequestLogger, runWithLogContext } from '$lib/logging';
 import { isAppError } from '$lib/errors';
 import { paraglideMiddleware } from '$lib/paraglide/server.js';
 import { auth, isSetupComplete, repairCurrentUserAdminRole } from '$lib/server/auth/index.js';
+import { db } from '$lib/server/db/index.js';
+import { user } from '$lib/server/db/schema.js';
 import { checkApiRateLimit, applyRateLimitHeaders } from '$lib/server/rate-limit.js';
 import { SECURITY_HEADERS, BASE_SECURITY_HEADERS } from '$lib/server/security/headers.js';
 import {
@@ -190,6 +193,12 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				if (path === '/api/user/notifications/read') {
 					return method === 'POST';
 				}
+				// Client crash reports are public (they fire from /login before a
+				// session exists) and same-origin gated in the endpoint itself, so
+				// a signed-in viewer must be able to file one too.
+				if (path === '/api/settings/logs/client-report') {
+					return method === 'POST';
+				}
 				if (method !== 'GET' && method !== 'HEAD') {
 					return false;
 				}
@@ -237,26 +246,58 @@ const customHandler: Handle = async ({ event, resolve }) => {
 					// header or an `apikey` query parameter (see the real openapi.json
 					// securitySchemes) - arr clients like Jellyseerr/Overseerr (Seerr) use the
 					// query parameter for their Radarr/Sonarr connections, so the
-					// arr-compat routes need it accepted here too, not just the header.
+					// arr-compat routes need it accepted there too, not just the header.
+					// Query-param credentials anywhere else would leak into proxy access
+					// logs, browser history, and Referer headers, so they stay
+					// arr-compat-only; the header works on every route.
+					const isArrCompatRoute =
+						routePath.startsWith('/api/radarr/') || routePath.startsWith('/api/sonarr/');
 					const apiKeyHeader =
 						event.request.headers.get('x-api-key') ||
-						event.url.searchParams.get('apikey') ||
-						event.url.searchParams.get('api_key');
+						(isArrCompatRoute
+							? event.url.searchParams.get('apikey') || event.url.searchParams.get('api_key')
+							: null);
 					if (apiKeyHeader) {
-						try {
-							session = await auth.api.getSession({
-								headers: new Headers({ 'x-api-key': apiKeyHeader })
-							});
-							apiKey = apiKeyHeader;
-						} catch {
-							// Invalid API key, continue to cookie auth
+						// Only full-access (main) keys may bridge to an owner session
+						// here. Streaming-scoped keys are playback-only credentials
+						// designed to live in .m3u/.strm URLs where proxies and media
+						// servers routinely log them — they must never authenticate the
+						// general API surface, not even for their owner.
+						const fullAccessKey = await auth.api
+							.verifyApiKey({
+								body: {
+									key: apiKeyHeader,
+									permissions: {
+										default: ['*']
+									}
+								}
+							})
+							.then((verify) => verify.valid)
+							.catch(() => false);
+						if (fullAccessKey) {
+							try {
+								session = await auth.api.getSession({
+									headers: new Headers({ 'x-api-key': apiKeyHeader })
+								});
+								apiKey = apiKeyHeader;
+							} catch {
+								// Invalid API key, continue to cookie auth
+							}
 						}
 					}
 
 					if (!session) {
 						try {
+							// Cookie-session resolution only. The raw request
+							// headers still carry x-api-key, and the api-key
+							// plugin's enableSessionForAPIKeys before-hook would
+							// bridge ANY valid key — streaming-scoped included —
+							// into a full owner session here, bypassing the
+							// full-access gate above.
+							const cookieOnlyHeaders = new Headers(event.request.headers);
+							cookieOnlyHeaders.delete('x-api-key');
 							session = await auth.api.getSession({
-								headers: event.request.headers
+								headers: cookieOnlyHeaders
 							});
 						} catch {
 							// getSession throws (instead of returning null) when the request
@@ -382,6 +423,43 @@ const customHandler: Handle = async ({ event, resolve }) => {
 									}
 								}
 							);
+						}
+
+						// Bans must reach streaming too: verifyApiKey only inspects
+						// the key row, so a banned owner's key would otherwise keep
+						// playing until the key-disable side of the ban flow lands.
+						// (user.update.after in auth.ts is the durable side of this.)
+						const keyOwnerId =
+							typeof verifyResult.key?.referenceId === 'string'
+								? verifyResult.key.referenceId
+								: null;
+						if (keyOwnerId) {
+							const owner = db
+								.select({ banned: user.banned })
+								.from(user)
+								.where(eq(user.id, keyOwnerId))
+								.get();
+							if (owner?.banned) {
+								requestLogger.warn(
+									{ logDomain: 'auth', endpoint: pathname },
+									'[Auth] Rejected streaming key for banned owner'
+								);
+								return json(
+									{
+										success: false,
+										error: 'Unauthorized',
+										code: 'UNAUTHORIZED'
+									},
+									{
+										status: 401,
+										headers: {
+											'x-correlation-id': correlationId,
+											'x-support-id': supportId,
+											...BASE_SECURITY_HEADERS
+										}
+									}
+								);
+							}
 						}
 
 						event.locals.apiKey = apiKey;
@@ -558,6 +636,13 @@ const customHandler: Handle = async ({ event, resolve }) => {
 					response.headers.set('Access-Control-Allow-Headers', 'Range, Content-Type');
 				} else {
 					for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
+						// SvelteKit's per-page CSP carries the hashes for its inline
+						// bootstrap (kit.csp hash mode); overwriting it with the static
+						// fallback would block client-side JS. API responses never get a
+						// page CSP, so they keep the static header.
+						if (header === 'Content-Security-Policy' && response.headers.has(header)) {
+							continue;
+						}
 						response.headers.set(header, value);
 					}
 				}

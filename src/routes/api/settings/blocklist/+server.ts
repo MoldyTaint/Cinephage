@@ -1,10 +1,15 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { blocklistService } from '$lib/server/monitoring/specifications/BlocklistSpecification.js';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { addToBlocklistSchema, updateBlocklistExpirySchema } from '$lib/validation/schemas.js';
 import { z } from 'zod';
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { url } = event;
 	const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50') || 50, 200);
 	const offset = parseInt(url.searchParams.get('offset') ?? '0') || 0;
 	const reason = url.searchParams.get('reason') ?? undefined;
@@ -34,8 +39,11 @@ const deleteSchema = z.object({
 	action: z.enum(['purgeExpired']).optional()
 });
 
-export const DELETE: RequestHandler = async ({ request }) => {
-	const body = await request.json();
+export const DELETE: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const body = await event.request.json();
 	const parsed = deleteSchema.safeParse(body);
 
 	if (!parsed.success) {

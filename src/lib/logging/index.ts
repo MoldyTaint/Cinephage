@@ -156,6 +156,10 @@ function resolveLogVersion(): string {
 }
 
 function isRedactionBypassed(): boolean {
+	// Escape hatch for local debugging only: a production deployment must not
+	// be able to write every token/password in cleartext to stdout and the
+	// persisted log history with a single env var.
+	if (getRuntimeEnv('NODE_ENV') === 'production') return false;
 	return getRuntimeEnv('LOG_SENSITIVE') === 'true';
 }
 

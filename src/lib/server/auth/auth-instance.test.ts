@@ -34,7 +34,7 @@ const harness = await import('../../../test/auth-test-harness.js').then((m) =>
 	m.createAuthTestHarness({ withHooks: false })
 );
 const { db } = await import('$lib/server/db/index.js');
-const { user, session, authRateLimits } = await import('$lib/server/db/schema.js');
+const { user, session, authApiKeys, authRateLimits } = await import('$lib/server/db/schema.js');
 const { ensureDefaultApiKeysForUser, getRecoverableApiKeyValue } =
 	await import('$lib/server/auth/api-keys.js');
 
@@ -91,6 +91,28 @@ describe('real Better Auth instance — setup and single-admin policy', () => {
 		expect(response.status).toBe(403);
 		const body = (await response.json()) as { message?: string };
 		expect(body.message).toContain('Only admins can create');
+	});
+
+	it('the first-user claim is exclusive until it goes stale', async () => {
+		const { claimFirstUserBootstrap, resetFirstUserClaim } = await import('./setup.js');
+
+		// The sign-up above already claimed the bootstrap; a concurrent
+		// request in the same window must lose the race and be treated as
+		// non-first (admin-creator requirement -> FORBIDDEN), never as a
+		// second admin.
+		await expect(claimFirstUserBootstrap()).resolves.toBe(false);
+
+		await resetFirstUserClaim();
+		await expect(claimFirstUserBootstrap()).resolves.toBe(true);
+		await expect(claimFirstUserBootstrap()).resolves.toBe(false);
+
+		// A claim whose holder died before inserting its user row is
+		// recoverable after the staleness window.
+		const { sql } = await import('drizzle-orm');
+		db.run(
+			sql`UPDATE settings SET value = ${String(Date.now() - 11 * 60 * 1000)} WHERE key = 'bootstrap_first_user_claimed_at'`
+		);
+		await expect(claimFirstUserBootstrap()).resolves.toBe(true);
 	});
 });
 
@@ -463,6 +485,64 @@ describe('real Better Auth instance — ban lifecycle', () => {
 			body: JSON.stringify({ username: 'testviewer', password: 'viewer-password-123' })
 		});
 		expect(unbannedSignIn.status).toBe(200);
+	});
+
+	it('banning disables the account API keys and unbanning restores them', async () => {
+		const signIn = await harness.authRequest('/sign-in/username', {
+			method: 'POST',
+			body: JSON.stringify({ username: 'secondadmin', password: 'second-admin-password' })
+		});
+		expect(signIn.status).toBe(200);
+		const adminHeaders = new Headers({
+			cookie: harness.cookieHeader(harness.extractCookies(signIn))
+		});
+
+		const viewerId = db
+			.select()
+			.from(user)
+			.all()
+			.find((row) => row.username === 'testviewer')!.id;
+
+		const { createRecoverableApiKey } = await import('./api-keys.js');
+		const created = await createRecoverableApiKey({
+			userId: viewerId,
+			name: 'Viewer main key',
+			metadata: { type: 'main' },
+			permissions: { default: ['*'] }
+		});
+
+		const keysFor = () =>
+			db
+				.select()
+				.from(authApiKeys)
+				.all()
+				.filter((key) => key.referenceId === viewerId);
+
+		expect(keysFor().length).toBeGreaterThan(0);
+		expect(keysFor().every((key) => Boolean(key.enabled))).toBe(true);
+
+		await harness.withStore(harness.makeEvent('POST', '/api/auth/admin/ban-user').event, () =>
+			harness.auth.api.banUser({
+				body: { userId: viewerId, banReason: 'key disable test' },
+				headers: adminHeaders
+			})
+		);
+		// The key-disable hook runs post-commit.
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		expect(keysFor().every((key) => !key.enabled)).toBe(true);
+
+		const verifyBanned = await harness.auth.api.verifyApiKey({
+			body: { key: created.key, permissions: { default: ['*'] } }
+		});
+		expect(verifyBanned.valid).toBe(false);
+
+		await harness.withStore(harness.makeEvent('POST', '/api/auth/admin/unban-user').event, () =>
+			harness.auth.api.unbanUser({ body: { userId: viewerId }, headers: adminHeaders })
+		);
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		expect(keysFor().every((key) => Boolean(key.enabled))).toBe(true);
 	});
 });
 

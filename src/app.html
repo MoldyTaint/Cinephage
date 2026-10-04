@@ -3,29 +3,7 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-		<script>
-			(function () {
-				// Storage access throws in browsers that block site data
-				// (e.g. Firefox ETP / blocked cookies) — fall back to system theme.
-				// Precedence: the account-preference cookie (seeded server-side so
-				// a theme follows the account across devices) beats this device's
-				// localStorage, then the system preference.
-				let theme = null;
-				try {
-					var match = document.cookie.match(/(?:^|;\s*)cinephage-theme=([^;]+)/);
-					theme = match ? decodeURIComponent(match[1]) : null;
-				} catch {}
-				if (!theme) {
-					try {
-						theme = localStorage.getItem('theme');
-					} catch {}
-				}
-				const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
-					? 'dark'
-					: 'light';
-				document.documentElement.setAttribute('data-theme', theme || systemTheme);
-			})();
-		</script>
+		<script src="%sveltekit.assets%/theme-init.js"></script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

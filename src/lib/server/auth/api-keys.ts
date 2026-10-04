@@ -169,6 +169,23 @@ export async function ensureStreamingApiKeyRateLimit(userId?: string): Promise<n
 	return result.length;
 }
 
+/**
+ * Enable or disable every API key owned by an account. The ban flow uses this
+ * to neutralize keys (verifyApiKey rejects disabled keys immediately, closing
+ * the streaming surface that sessions-based revocation never covered); unbans
+ * re-enable them. Idempotent by design — managed keys have no other disabled
+ * state in this app, so re-running on unrelated user updates is a no-op.
+ */
+export async function setManagedApiKeysEnabled(userId: string, enabled: boolean): Promise<number> {
+	const result = await db
+		.update(authApiKeys)
+		.set({ enabled: enabled ? 1 : 0 })
+		.where(eq(authApiKeys.referenceId, userId))
+		.returning({ id: authApiKeys.id });
+
+	return result.length;
+}
+
 export async function ensureDefaultApiKeysForUser(
 	userId: string,
 	headers: Headers
@@ -264,6 +281,18 @@ export async function regenerateRecoverableApiKey(options: {
 		metadata: existingKey.metadata || {},
 		permissions: existingKey.permissions || { default: ['*'] }
 	});
+
+	// Regeneration must not resurrect a banned account's credentials: the ban
+	// hook disables every owned key, and a fresh row would otherwise come back
+	// enabled because createApiKey has no ban awareness.
+	const [owner] = await db
+		.select({ banned: user.banned })
+		.from(user)
+		.where(eq(user.id, options.userId))
+		.limit(1);
+	if (owner?.banned) {
+		await db.update(authApiKeys).set({ enabled: 0 }).where(eq(authApiKeys.id, newKey.id));
+	}
 
 	return formatRecoverableApiKey(newKey, newKey.key || null);
 }

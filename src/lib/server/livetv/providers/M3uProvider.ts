@@ -31,6 +31,7 @@ import type {
 	M3uConfig
 } from '$lib/types/livetv';
 import { recordToAccount } from '../LiveTvAccountManager.js';
+import { resolveHttpUrl } from '../urlGuards.js';
 
 const gunzipAsync = promisify(gunzip);
 const inflateAsync = promisify(inflate);
@@ -541,7 +542,15 @@ export class M3uProvider implements LiveTvProvider {
 
 				if (playlistContent) {
 					const parsed = this.parseM3u(playlistContent);
-					epgUrl = parsed.headerEpgUrl ?? undefined;
+					// The header attribute is third-party content — only honor
+					// it when it parses as an ordinary http(s) URL.
+					epgUrl = resolveHttpUrl(parsed.headerEpgUrl)?.toString() ?? undefined;
+					if (parsed.headerEpgUrl && !epgUrl) {
+						logger.warn(
+							{ accountId: account.id, declared: parsed.headerEpgUrl.slice(0, 80) },
+							'[M3uProvider] Playlist-declared EPG URL rejected (invalid scheme/format); ignoring'
+						);
+					}
 				}
 
 				if (epgUrl) {
@@ -572,6 +581,13 @@ export class M3uProvider implements LiveTvProvider {
 			}
 
 			// Fetch XMLTV data
+			if (!resolveHttpUrl(epgUrl)) {
+				logger.warn(
+					{ accountId: account.id },
+					'[M3uProvider] EPG URL is not a valid http(s) URL; skipping EPG sync'
+				);
+				return [];
+			}
 			logger.info({ epgUrl }, '[M3uProvider] Fetching XMLTV EPG');
 			const headers = this.buildRequestHeaders(config);
 			if (!headers['User-Agent']) {
@@ -942,6 +958,14 @@ export class M3uProvider implements LiveTvProvider {
 		if (!epgUrl) {
 			return {
 				status: 'not_configured'
+			};
+		}
+
+		if (!resolveHttpUrl(epgUrl)) {
+			return {
+				status: 'unreachable',
+				source,
+				error: 'EPG URL is not a valid http(s) URL'
 			};
 		}
 

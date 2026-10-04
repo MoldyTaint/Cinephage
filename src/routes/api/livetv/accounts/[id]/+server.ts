@@ -9,12 +9,15 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
+import { redactAccountSecrets } from '$lib/server/livetv/accountRedaction';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { getEpgService, getEpgScheduler } from '$lib/server/livetv/epg';
 import { getEpgSyncState } from '$lib/server/livetv/epg/EpgSyncState';
 import { liveTvEvents } from '$lib/server/livetv/LiveTvEvents';
 import { createChildLogger } from '$lib/logging';
 import { z } from 'zod';
 import { ValidationError } from '$lib/errors';
+import { REDACTED_VALUE } from '$lib/shared/sensitiveSettings';
 import { stalkerLanguageSchema } from '$lib/validation/schemas.js';
 
 const logger = createChildLogger({ module: 'LiveTvAccountById', logDomain: 'livetv' });
@@ -35,7 +38,8 @@ const liveTvAccountUpdateSchema = z.object({
 			timezone: z.string().optional(),
 			language: stalkerLanguageSchema.optional(),
 			username: z.string().optional(),
-			password: z.string().optional()
+			password: z.string().optional(),
+			token: z.string().optional()
 		})
 		.optional(),
 	// XStream-specific config updates
@@ -44,6 +48,7 @@ const liveTvAccountUpdateSchema = z.object({
 			baseUrl: z.string().url().optional(),
 			username: z.string().min(1).optional(),
 			password: z.string().min(1).optional(),
+			authToken: z.string().optional(),
 			epgUrl: z.preprocess(
 				(value) => (typeof value === 'string' ? value.trim() : value),
 				z.union([z.string().url(), z.literal('')]).optional()
@@ -135,10 +140,13 @@ function queueAccountEpgSync(accountId: string): void {
 /**
  * Get a Live TV account by ID
  */
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
 	try {
 		const manager = getLiveTvAccountManager();
-		const account = await manager.getAccount(params.id);
+		const account = await manager.getAccount(event.params.id);
 
 		if (!account) {
 			return json(
@@ -152,7 +160,7 @@ export const GET: RequestHandler = async ({ params }) => {
 
 		return json({
 			success: true,
-			account
+			account: redactAccountSecrets(account)
 		});
 	} catch (error) {
 		logger.error('[API] Failed to get Live TV account', error instanceof Error ? error : undefined);
@@ -170,7 +178,11 @@ export const GET: RequestHandler = async ({ params }) => {
 /**
  * Update a Live TV account
  */
-export const PUT: RequestHandler = async ({ params, request }) => {
+export const PUT: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { params, request } = event;
 	try {
 		const body = await request.json();
 
@@ -225,6 +237,28 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 			updates.xstreamConfig.epgUrl = undefined;
 		}
 
+		// A [REDACTED] secret from the edit form means "unchanged" — drop it so
+		// the merge keeps the stored credential instead of overwriting it with
+		// the marker.
+		if (updates.xstreamConfig?.password === REDACTED_VALUE) {
+			updates.xstreamConfig = { ...updates.xstreamConfig };
+			delete updates.xstreamConfig.password;
+		}
+		if (updates.stalkerConfig?.password === REDACTED_VALUE) {
+			updates.stalkerConfig = { ...updates.stalkerConfig };
+			delete updates.stalkerConfig.password;
+		}
+		// Redaction is symmetric for every secret the API redacts: an echoed
+		// marker means "unchanged", never "overwrite with [REDACTED]".
+		if (updates.xstreamConfig?.authToken === REDACTED_VALUE) {
+			updates.xstreamConfig = { ...updates.xstreamConfig };
+			delete updates.xstreamConfig.authToken;
+		}
+		if (updates.stalkerConfig?.token === REDACTED_VALUE) {
+			updates.stalkerConfig = { ...updates.stalkerConfig };
+			delete updates.stalkerConfig.token;
+		}
+
 		const manager = getLiveTvAccountManager();
 		const existingAccount = await manager.getAccount(params.id);
 		if (!existingAccount) {
@@ -268,7 +302,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 
 		return json({
 			success: true,
-			account
+			account: redactAccountSecrets(account)
 		});
 	} catch (error) {
 		logger.error(
@@ -315,10 +349,13 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 /**
  * Delete a Live TV account
  */
-export const DELETE: RequestHandler = async ({ params }) => {
+export const DELETE: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
 	try {
 		const manager = getLiveTvAccountManager();
-		const deleted = await manager.deleteAccount(params.id);
+		const deleted = await manager.deleteAccount(event.params.id);
 
 		if (!deleted) {
 			return json(

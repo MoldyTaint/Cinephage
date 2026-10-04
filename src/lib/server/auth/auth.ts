@@ -4,6 +4,7 @@ import { apiKey } from '@better-auth/api-key';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { getRequestEvent } from '$app/server';
 import { APIError } from 'better-auth/api';
+import { logger } from '$lib/logging';
 import { getAuthSecret, getBaseURL } from './secret.js';
 import { getSharedSqliteConnection } from '$lib/server/db/connection.js';
 import {
@@ -15,7 +16,7 @@ import { getSystemSettingsService } from '$lib/server/settings/SystemSettingsSer
 import { ac, admin as adminRole, user as userRole } from '$lib/auth/access-control.js';
 import { isHardReservedUsername, isValidUsernameFormat } from '$lib/auth/username-policy.js';
 import { ensureSoleUserIsAdminRecord, getAdminCount, getUserRoleById } from './admin-bootstrap.js';
-import { isSetupComplete, resetSetupCompleteCache } from './setup.js';
+import { isSetupComplete, resetSetupCompleteCache, claimFirstUserBootstrap } from './setup.js';
 import { isLocalNetworkOrigin } from '$lib/server/utils/origin.js';
 
 function getFirstForwardedHeaderValue(value: string | null): string | null {
@@ -273,17 +274,26 @@ export const auth = betterAuth({
 					}
 
 					// Bootstrap: the very first account is always the admin.
+					// The claim row is the mutex — a cached "no users yet" read
+					// alone would let two parallel sign-ups both become admin.
 					if (!(await isSetupComplete())) {
 						// The insert hasn't happened yet — invalidate rather than
 						// assume, so a failed insert can still be retried.
 						resetSetupCompleteCache();
 
-						return {
-							data: {
-								...user,
-								role: 'admin'
-							}
-						};
+						if (await claimFirstUserBootstrap()) {
+							return {
+								data: {
+									...user,
+									role: 'admin'
+								}
+							};
+						}
+
+						// Another request claimed the bootstrap moments ago and
+						// its user row is not visible yet — fall through to the
+						// admin-creator requirement below instead of minting a
+						// second admin.
 					}
 
 					// After bootstrap, public self-registration stays closed.
@@ -339,6 +349,26 @@ export const auth = betterAuth({
 						}
 					}
 					return { data };
+				},
+				after: async (updated) => {
+					// Bans must neutralize the account's API keys too: the
+					// admin plugin revokes sessions, but keys would otherwise
+					// keep authenticating (and streaming) for the banned
+					// account. Unbanning re-enables them. Runs post-commit, so
+					// a failed update never strands keys in the wrong state —
+					// and the check is idempotent for unrelated user updates.
+					const userId = typeof updated?.id === 'string' ? updated.id : null;
+					if (userId) {
+						try {
+							const { setManagedApiKeysEnabled } = await import('./api-keys.js');
+							await setManagedApiKeysEnabled(userId, !updated.banned);
+						} catch (error) {
+							logger.error(
+								{ err: error, userId, logDomain: 'auth' },
+								'[Auth] Failed to sync API key state with ban status'
+							);
+						}
+					}
 				}
 			},
 			delete: {
@@ -359,6 +389,28 @@ export const auth = betterAuth({
 	},
 
 	advanced: {
+		// X-Forwarded-For parsing for the DB-backed rate limiter. Without
+		// trustedProxies, better-auth accepts any single-value XFF at face
+		// value, so a directly-exposed instance lets brute-forcers rotate
+		// their rate-limit bucket by sending a fresh fake XFF per request.
+		// Restricting the walk to private ranges makes a proxy-appended socket
+		// address the authoritative "last untrusted hop" behind a reverse
+		// proxy, while direct spoofs resolve to the spoofed value only when
+		// the request genuinely bypassed a proxy — the best available without
+		// socket access inside better-auth.
+		ipAddress: {
+			trustedProxies: [
+				'127.0.0.1/32',
+				'::1/128',
+				'10.0.0.0/8',
+				'172.16.0.0/12',
+				'192.168.0.0/16',
+				'169.254.0.0/16',
+				'fc00::/7',
+				'fe80::/10'
+			]
+		},
+
 		// Constant prefix: deriving it from the resolved base URL scheme meant a
 		// scheme change (or saving an https external URL + restart) renamed the
 		// cookies and silently logged everyone out. The Secure ATTRIBUTE below

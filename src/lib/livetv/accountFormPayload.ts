@@ -71,6 +71,10 @@ export function buildAccountTestRequestBody(config: TestConfig): Record<string, 
 		providerType: config.providerType
 	};
 
+	if (config.accountId) {
+		body.accountId = config.accountId;
+	}
+
 	switch (config.providerType) {
 		case 'stalker':
 			body.stalkerConfig = {

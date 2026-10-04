@@ -82,11 +82,25 @@ class MediaBrowserManager {
 		return parts.length === 3 && parts.every((p) => /^[0-9a-f]+$/i.test(p));
 	}
 
-	private static decryptStoredKey(value: string): string {
+	/**
+	 * Decrypt the stored key, or null when the row looks like ciphertext but
+	 * will not decrypt (rotated BETTER_AUTH_SECRET, corruption). Never returns
+	 * the ciphertext itself: sending it to the media server would leak
+	 * key material to a third party while masking the misconfiguration.
+	 */
+	private static decryptStoredKey(value: string, context?: string): string | null {
 		if (!MediaBrowserManager.looksEncrypted(value)) {
 			return value;
 		}
-		return decryptApiKey(value) ?? value;
+		const plaintext = decryptApiKey(value);
+		if (plaintext === null && context) {
+			logger.error(
+				{ logDomain: 'notifications', serverId: context },
+				'[MediaBrowser] Stored API key failed to decrypt — the credential is being dropped. ' +
+					'If BETTER_AUTH_SECRET was rotated, re-enter the server API key in settings.'
+			);
+		}
+		return plaintext;
 	}
 
 	private static encryptStoredKey(value: string): string {
@@ -132,7 +146,7 @@ class MediaBrowserManager {
 			.orderBy(asc(mediaBrowserServers.name));
 		return records.map((record) => ({
 			...record,
-			apiKey: MediaBrowserManager.decryptStoredKey(record.apiKey)
+			apiKey: MediaBrowserManager.decryptStoredKey(record.apiKey, record.id) ?? ''
 		}));
 	}
 
@@ -160,7 +174,10 @@ class MediaBrowserManager {
 			.limit(1);
 
 		if (!record) return null;
-		return { ...record, apiKey: MediaBrowserManager.decryptStoredKey(record.apiKey) };
+		return {
+			...record,
+			apiKey: MediaBrowserManager.decryptStoredKey(record.apiKey, record.id) ?? ''
+		};
 	}
 
 	/**

@@ -29,6 +29,7 @@ import type {
 	XstreamChannelData
 } from '$lib/types/livetv';
 import { recordToAccount } from '../LiveTvAccountManager.js';
+import { resolveHttpUrl } from '../urlGuards.js';
 import { buildXstreamPlayerApiUrl, normalizeXstreamBaseUrl } from './xstream-url.js';
 
 // XStream API Response Types
@@ -944,7 +945,17 @@ export class XstreamProvider implements LiveTvProvider {
 		startTime: Date,
 		endTime: Date
 	): Promise<EpgProgram[]> {
+		if (!resolveHttpUrl(epgUrl)) {
+			logger.warn(
+				{ accountId },
+				'[XstreamProvider] Configured EPG URL is not a valid http(s) URL; skipping EPG sync'
+			);
+			return [];
+		}
+
 		try {
+			// Log the URL through the redaction-aware logger: Xtream EPG URLs
+			// commonly embed portal credentials as query params.
 			logger.info({ accountId, epgUrl }, '[XstreamProvider] Fetching configured XMLTV EPG');
 
 			const response = await fetch(epgUrl, {

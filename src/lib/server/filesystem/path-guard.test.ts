@@ -76,4 +76,26 @@ describe('path-guard', () => {
 
 		expect(mockGetFolders).toHaveBeenCalledTimes(2);
 	});
+
+	it('confines browsing to common bases and root folders — system paths are denied', async () => {
+		const { isPathAllowed } = await import('./path-guard.js');
+
+		await expect(isPathAllowed('/mnt/media')).resolves.toBe(true);
+		await expect(isPathAllowed('/etc')).resolves.toBe(false);
+		await expect(isPathAllowed('/proc/self')).resolves.toBe(false);
+		await expect(isPathAllowed('/usr/bin')).resolves.toBe(false);
+	});
+
+	it('still allows the filesystem root listing (ancestor of the mount bases)', async () => {
+		const { isPathAllowed } = await import('./path-guard.js');
+
+		await expect(isPathAllowed('/')).resolves.toBe(true);
+	});
+
+	it('allows paths under a configured root folder outside the common bases', async () => {
+		mockGetFolders.mockResolvedValue([{ id: 'rf-1', path: '/exotic-media' }]);
+
+		const { isPathAllowed } = await import('./path-guard.js');
+		await expect(isPathAllowed('/exotic-media/Movies')).resolves.toBe(true);
+	});
 });

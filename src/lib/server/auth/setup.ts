@@ -1,4 +1,5 @@
 import { redirect, type RequestEvent } from '@sveltejs/kit';
+import { sql } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.js';
 
 /**
@@ -32,6 +33,38 @@ export async function isSetupComplete(): Promise<boolean> {
 /** Force recomputation on the next isSetupComplete() call. */
 export function resetSetupCompleteCache(): void {
 	setupCompleteCache = null;
+}
+
+// The first-user bootstrap must be atomic: two parallel sign-up requests on a
+// fresh instance would otherwise both observe "no users" and both insert with
+// role admin. The claim row is the mutex — INSERT OR IGNORE wins once, and a
+// guarded UPDATE recovers it if the winning request died before its user row
+// landed (fresh-install sign-up failure), so a stuck claim cannot permanently
+// lock the instance out of bootstrap.
+const FIRST_USER_CLAIM_KEY = 'bootstrap_first_user_claimed_at';
+const FIRST_USER_CLAIM_STALE_MS = 10 * 60 * 1000;
+
+export async function claimFirstUserBootstrap(): Promise<boolean> {
+	const now = Date.now();
+	const insert = await db.run(sql`
+		INSERT INTO settings (key, value) VALUES (${FIRST_USER_CLAIM_KEY}, ${String(now)})
+		ON CONFLICT (key) DO NOTHING
+	`);
+	if (insert.changes > 0) {
+		return true;
+	}
+
+	const takeover = await db.run(sql`
+		UPDATE settings SET value = ${String(now)}
+		WHERE key = ${FIRST_USER_CLAIM_KEY}
+		  AND CAST(value AS INTEGER) < ${now - FIRST_USER_CLAIM_STALE_MS}
+	`);
+	return takeover.changes > 0;
+}
+
+/** Test helper: clear the bootstrap claim so a fresh first-user path can rerun. */
+export async function resetFirstUserClaim(): Promise<void> {
+	await db.run(sql`DELETE FROM settings WHERE key = ${FIRST_USER_CLAIM_KEY}`);
 }
 
 /**

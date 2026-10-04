@@ -10,6 +10,9 @@ import { getProvider } from '$lib/server/livetv/providers';
 import { createChildLogger } from '$lib/logging';
 import { toFriendlyLiveTvTestError } from '$lib/livetv/errorMessages';
 import { probeStalkerEndpoint } from '$lib/server/livetv/stalker/StalkerPortalClient';
+import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { REDACTED_VALUE } from '$lib/shared/sensitiveSettings';
 import { stalkerLanguageSchema } from '$lib/validation/schemas.js';
 import { z } from 'zod';
 import { ValidationError } from '$lib/errors';
@@ -20,6 +23,10 @@ const logger = createChildLogger({ module: 'LiveTvAccountsTest', logDomain: 'liv
 // Validation schema for testing Live TV accounts
 const liveTvAccountTestSchema = z.object({
 	providerType: z.enum(['stalker', 'xstream', 'm3u', 'cinephage-iptv']),
+	// When set, [REDACTED]/blank secrets above are resolved from this stored
+	// account server-side so edit-mode tests work without the API ever
+	// shipping the real credential to the client.
+	accountId: z.string().optional(),
 	// Stalker-specific config
 	stalkerConfig: z
 		.object({
@@ -121,11 +128,14 @@ function getFriendlyValidationMessage(error: ValidationError): string {
  * Test a Live TV account configuration without saving
  * Useful for validating credentials before creating an account
  */
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
 	let providerType: LiveTvAccount['providerType'] | undefined;
 
 	try {
-		const body = await request.json();
+		const body = await event.request.json();
 		providerType =
 			typeof body === 'object' && body && 'providerType' in body
 				? ((body as { providerType?: LiveTvAccount['providerType'] }).providerType ?? undefined)
@@ -137,6 +147,30 @@ export const POST: RequestHandler = async ({ request }) => {
 			throw new ValidationError('Validation failed', {
 				details: parsed.error.flatten()
 			});
+		}
+
+		// Resolve [REDACTED] secrets from the stored account: edit-mode tests
+		// arrive with the redaction marker in place of the credential.
+		if (parsed.data.accountId) {
+			const manager = getLiveTvAccountManager();
+			const stored = await manager.getAccount(parsed.data.accountId);
+			if (!stored) {
+				return json({ success: false, error: 'Account not found' }, { status: 404 });
+			}
+			if (
+				parsed.data.xstreamConfig &&
+				(!parsed.data.xstreamConfig.password ||
+					parsed.data.xstreamConfig.password === REDACTED_VALUE)
+			) {
+				parsed.data.xstreamConfig.password = stored.xstreamConfig?.password ?? '';
+			}
+			if (
+				parsed.data.stalkerConfig &&
+				(!parsed.data.stalkerConfig.password ||
+					parsed.data.stalkerConfig.password === REDACTED_VALUE)
+			) {
+				parsed.data.stalkerConfig.password = stored.stalkerConfig?.password;
+			}
 		}
 
 		// Build temporary account for testing

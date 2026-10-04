@@ -31,7 +31,11 @@ COPY server.js svelte.config.js tsconfig.json vite.config.ts ./
 
 ARG APP_VERSION=dev
 
-RUN npm run build
+# Build-only placeholder: SvelteKit's build evaluates server module top-level
+# code (route analysis) with NODE_ENV=production, and the runtime auth secret
+# fails closed without one. The real secret is injected at runtime only, so
+# this value never reaches a running server (multi-stage build).
+RUN BETTER_AUTH_SECRET=build-placeholder-not-used-at-runtime npm run build
 
 # ==========================================
 # Production Dependencies Stage

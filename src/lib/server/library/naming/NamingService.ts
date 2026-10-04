@@ -122,10 +122,13 @@ export const DEFAULT_NAMING_CONFIG: NamingConfig = {
 };
 
 /**
- * Characters that are illegal in file/folder names
+ * Characters that are illegal in file/folder names. Includes '/' so token
+ * values (TMDB titles, release names) can never inject path separators into a
+ * generated name — format strings split on '/' deliberately, token output
+ * must not.
  */
 // eslint-disable-next-line no-control-regex
-const ILLEGAL_CHARS = /[<>"\\|?*\x00-\x1f]/g;
+const ILLEGAL_CHARS = new RegExp('[<>"\\\\|?*/\x00-\x1f]', 'g');
 
 /**
  * Smart colon replacement patterns
@@ -257,7 +260,10 @@ export class NamingService {
 			const result = this.templateEngine.render(segment, info, this.config);
 			return this.cleanName(result);
 		});
-		return segments.filter((s) => s.length > 0).join('/');
+		// A '.'/'..' segment (e.g. a token rendering to exactly "..") would
+		// escape the library root once joined — drop it rather than trust
+		// external metadata.
+		return segments.filter((s) => s.length > 0 && s !== '.' && s !== '..').join('/');
 	}
 
 	/**

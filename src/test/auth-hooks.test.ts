@@ -194,15 +194,26 @@ describe('hooks chain — API key authentication (arr-compatible)', () => {
 		expect(event.locals.apiKey).toBe(mainKey);
 	});
 
-	it('authenticates via the ?apikey= query parameter (Seerr-style arr clients)', async () => {
+	it('authenticates via the ?apikey= query parameter on arr-compat routes (Seerr-style arr clients)', async () => {
+		const { event } = harness.makeEvent(
+			'GET',
+			'/api/radarr/api/v3/system-status?apikey=' + encodeURIComponent(mainKey)
+		);
+
+		const response = await harness.callHandle(event);
+		expect(response.status).toBe(200);
+		expect(event.locals.user?.id).toBe(adminUserId);
+	});
+
+	it('rejects ?apikey= outside the arr-compat routes — query-param credentials leak into proxy logs', async () => {
 		const { event } = harness.makeEvent(
 			'GET',
 			'/api/activity?apikey=' + encodeURIComponent(mainKey)
 		);
 
 		const response = await harness.callHandle(event);
-		expect(response.status).toBe(200);
-		expect(event.locals.user?.id).toBe(adminUserId);
+		expect(response.status).toBe(401);
+		expect(event.locals.user).toBeNull();
 	});
 
 	it('rejects an invalid API key without falling back to a session', async () => {
@@ -212,6 +223,19 @@ describe('hooks chain — API key authentication (arr-compatible)', () => {
 
 		const response = await harness.callHandle(event);
 		expect(response.status).toBe(401);
+	});
+
+	it('never bridges a streaming-scoped key to the general API — not even for its owner', async () => {
+		// Streaming keys live in .m3u/.strm URLs that proxies and media
+		// servers log routinely. If one leaked, it must not grant full API
+		// access to the (admin) owner account.
+		const { event } = harness.makeEvent('GET', '/api/activity', {
+			headers: { 'x-api-key': streamingKey }
+		});
+
+		const response = await harness.callHandle(event);
+		expect(response.status).toBe(401);
+		expect(event.locals.user).toBeNull();
 	});
 });
 
