@@ -278,7 +278,11 @@
 	type LinkableServerInfo = { id: string; name: string; quickConnectEnabled: boolean };
 	type ServerUserOption = { id: string; name: string; isAdministrator: boolean };
 
+	// Local editable copies seeded once from the load data; they diverge as
+	// the admin links/unlinks servers and are refreshed on save.
+	// svelte-ignore state_referenced_locally
 	let mediaLinks = $state<MediaServerLink[]>(data.mediaLinks ?? []);
+	// svelte-ignore state_referenced_locally
 	let linkableServers = $state<LinkableServerInfo[]>(data.linkableServers ?? []);
 	let linkServerId = $state('');
 	let serverUsers = $state<ServerUserOption[] | null>(null);

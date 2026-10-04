@@ -465,7 +465,11 @@
 	// regardless of which page the user is on when a scan completes.
 	// The monitoring/status sub-layout keeps its own SSE for the progress bar.
 	// Operational streams are admin-only; viewer accounts never connect.
-	const isAdminUser = data.user?.role === 'admin';
+	const isAdminUser = $derived(data.user?.role === 'admin');
+	// Connections are opened once per component lifetime; a role change
+	// requires a full re-authentication and page load, so the initial value
+	// is deliberate.
+	// svelte-ignore state_referenced_locally
 	const _scanSse =
 		isAdminUser &&
 		createSSE<{
@@ -498,6 +502,7 @@
 		});
 
 	// Global sync SSE — shows start/complete toasts from any page.
+	// svelte-ignore state_referenced_locally
 	const _syncSse =
 		isAdminUser &&
 		createSSE<{

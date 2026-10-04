@@ -10,7 +10,7 @@
 	let { data }: { data: PageData } = $props();
 
 	// Only admins add content from Discover.
-	const isAdminUser = data.user?.role === 'admin';
+	const isAdminUser = $derived(data.user?.role === 'admin');
 
 	function goBack(e: MouseEvent) {
 		e.preventDefault();

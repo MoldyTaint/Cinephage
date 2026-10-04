@@ -49,7 +49,7 @@
 	let { data }: { data: PageData } = $props();
 
 	// Viewer accounts browse a read-only library; admin controls stay hidden.
-	const isAdminUser = data.user?.role === 'admin';
+	const isAdminUser = $derived(data.user?.role === 'admin');
 
 	const activeStatusSet: Set<string> = new Set(ACTIVE_DOWNLOAD_STATUSES);
 

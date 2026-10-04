@@ -45,7 +45,7 @@
 	let { data } = $props();
 
 	// Viewer accounts browse a read-only library; admin controls stay hidden.
-	const isAdminUser = data.user?.role === 'admin';
+	const isAdminUser = $derived(data.user?.role === 'admin');
 
 	const SCROLL_KEY = 'cinephage:library:tv:scrollY';
 

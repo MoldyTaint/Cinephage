@@ -31,6 +31,8 @@
 	let rows = $state<Array<MediaRequest & { requestedByName?: string | null }>>([]);
 	let counts = $state<RequestCountResponse | null>(null);
 	// Admins land on the pending queue; viewers on everything they filed.
+	// Initial value only — the filter is user-editable afterwards.
+	// svelte-ignore state_referenced_locally
 	let filter = $state<'all' | 'pending' | 'approved' | 'fulfilled' | 'failed' | 'declined'>(
 		data.role === 'admin' ? 'pending' : 'all'
 	);

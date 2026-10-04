@@ -27,8 +27,8 @@
 	let { data } = $props();
 
 	// Only admins add content; viewers browse Discover without the add actions.
-	const isAdminUser = data.user?.role === 'admin';
-	const addHandler = isAdminUser ? handleAddToLibrary : undefined;
+	const isAdminUser = $derived(data.user?.role === 'admin');
+	const addHandler = $derived(isAdminUser ? handleAddToLibrary : undefined);
 
 	// Add to Library Modal state
 	let addModalOpen = $state(false);
