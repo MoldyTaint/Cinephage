@@ -3,7 +3,6 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createChildLogger } from '$lib/logging';
 import { isAppError, getErrorMessage } from '$lib/errors';
-import { checkRateLimit, rateLimitHeaders } from '$lib/server/rateLimit';
 import {
 	enrichWithLibraryStatus,
 	filterBlockedMedia,
@@ -20,28 +19,14 @@ function getMediaTypeFromPath(path: string): 'movie' | 'tv' | 'all' {
 	return 'all';
 }
 
-const handler: RequestHandler = async ({ params, url, locals, getClientAddress }) => {
+const handler: RequestHandler = async ({ params, url, locals }) => {
 	const { correlationId } = locals;
 	const log = createChildLogger({ correlationId, service: 'tmdb-proxy' });
 
-	// Rate limiting - skip in development, generous limits in production
-	const isDev = import.meta.env.DEV;
-	if (!isDev) {
-		const clientIp = getClientAddress();
-		// 1000 requests per minute is generous enough for most use cases
-		const rateLimit = checkRateLimit(`tmdb:${clientIp}`, { windowMs: 60_000, maxRequests: 1000 });
-
-		if (!rateLimit.allowed) {
-			log.warn({ clientIp }, 'Rate limit exceeded');
-			return json(
-				{ error: 'Rate limit exceeded', correlationId },
-				{
-					status: 429,
-					headers: rateLimitHeaders(rateLimit)
-				}
-			);
-		}
-	}
+	// Rate limiting: the central /api gate in hooks.server.ts already caps
+	// unauthenticated clients far below anything this per-route limiter would
+	// have caught, and authenticated sessions are deliberately unthrottled —
+	// the old 1000/min in-memory limit here was unreachable dead weight.
 
 	const path = params.path;
 	if (!path) {

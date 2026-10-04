@@ -435,13 +435,6 @@ export async function runFFprobeExtended(
 // =============================================================================
 
 /**
- * Get video streams from FFprobe output
- */
-export function getVideoStreams(output: FFprobeOutput): FFprobeStream[] {
-	return output.streams.filter((s) => s.codec_type === 'video');
-}
-
-/**
  * Get audio streams from FFprobe output
  */
 export function getAudioStreams(output: FFprobeOutput): FFprobeStream[] {

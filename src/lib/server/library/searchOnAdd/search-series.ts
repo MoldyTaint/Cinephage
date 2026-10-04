@@ -10,11 +10,10 @@ import { episodes } from '$lib/server/db/schema.js';
 import { and, eq, ne } from 'drizzle-orm';
 import type { SearchForSeriesParams, GrabResult, SearchCriteria } from './types.js';
 import type { AltTitleRefresher } from './alt-titles.js';
+import { AUTO_GRAB_MIN_SCORE } from './search-utils.js';
 import { createChildLogger } from '$lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'SearchSeries', logDomain: 'scans' });
-
-export const AUTO_GRAB_MIN_SCORE = 0;
 
 export async function searchForSeries(
 	params: SearchForSeriesParams,

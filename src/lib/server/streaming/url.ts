@@ -197,15 +197,3 @@ export async function getBaseUrlAsync(request: Request): Promise<string> {
 
 	return fallbackUrl;
 }
-
-/**
- * Refresh the cached base URL from database.
- * Call this on startup or when settings change.
- */
-export async function refreshBaseUrlCache(): Promise<void> {
-	const settings = await getStreamingIndexerSettings();
-	if (settings?.baseUrl) {
-		cachedBaseUrl = settings.baseUrl.replace(/\/$/, '');
-		cacheExpiry = Date.now() + CACHE_TTL_MS;
-	}
-}

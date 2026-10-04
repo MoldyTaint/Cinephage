@@ -107,10 +107,4 @@ describe.skipIf(process.env.CI)('TMDB Integration', () => {
 	it('should handle 404 errors gracefully', async () => {
 		await expect(tmdb.fetch('/movie/999999999')).rejects.toThrow();
 	}, 15000);
-
-	it.skip('should return null when API key is not configured', async () => {
-		// Note: This test would need to mock the database to properly test
-		// For now, it's a placeholder to document expected behavior
-		// When API key is missing, tmdb.fetch() returns null instead of throwing
-	});
 });

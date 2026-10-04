@@ -22,6 +22,11 @@ import {
 } from '$lib/server/db/schema.js';
 import { eq, and, lte, gte, inArray, isNotNull } from 'drizzle-orm';
 import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
+import {
+	isRuTrackerHost,
+	isRuTrackerIndexerName
+} from '$lib/server/indexers/search/russian-trackers.js';
+import { AUTO_GRAB_MIN_SCORE } from '$lib/server/library/searchOnAdd/search-utils.js';
 
 import {
 	parseEpisodePointerFromGuid,
@@ -178,7 +183,6 @@ interface MissingSearchOptions {
  * MonitoringSearchService - Coordinate searches for monitoring
  */
 export class MonitoringSearchService {
-	private readonly AUTO_GRAB_MIN_SCORE = 0;
 	private readonly MAX_CONCURRENT_SEARCHES = 10;
 
 	// Ceiling on individual per-episode indexer searches within a single
@@ -786,7 +790,7 @@ export class MonitoringSearchService {
 				enrichment: {
 					scoringProfileId: movie.scoringProfileId ?? undefined,
 					filterRejected: true,
-					minScore: this.AUTO_GRAB_MIN_SCORE
+					minScore: AUTO_GRAB_MIN_SCORE
 				}
 			});
 
@@ -885,7 +889,7 @@ export class MonitoringSearchService {
 			enrichment: {
 				scoringProfileId: movie.scoringProfileId ?? undefined,
 				filterRejected: true,
-				minScore: this.AUTO_GRAB_MIN_SCORE
+				minScore: AUTO_GRAB_MIN_SCORE
 			}
 		});
 
@@ -1422,7 +1426,7 @@ export class MonitoringSearchService {
 				enrichment: {
 					scoringProfileId: seriesData.scoringProfileId ?? undefined,
 					filterRejected: true,
-					minScore: this.AUTO_GRAB_MIN_SCORE,
+					minScore: AUTO_GRAB_MIN_SCORE,
 					seasonEpisodeCount
 				}
 			});
@@ -1484,7 +1488,7 @@ export class MonitoringSearchService {
 				seasonEpisodeCount > 0 && missingEpisodes.length >= seasonEpisodeCount;
 
 			for (const release of seasonPacks) {
-				if (this.isRuTrackerIndexerName(release.indexerName) && !isEntireSeasonMissing) {
+				if (isRuTrackerIndexerName(release.indexerName) && !isEntireSeasonMissing) {
 					logger.debug(
 						{
 							seriesId: seriesData.id,
@@ -2083,7 +2087,7 @@ export class MonitoringSearchService {
 				enrichment: {
 					scoringProfileId: movie.scoringProfileId ?? undefined,
 					filterRejected: true,
-					minScore: this.AUTO_GRAB_MIN_SCORE
+					minScore: AUTO_GRAB_MIN_SCORE
 				}
 			});
 
@@ -2451,7 +2455,7 @@ export class MonitoringSearchService {
 				enrichment: {
 					scoringProfileId: seriesData.scoringProfileId ?? undefined,
 					filterRejected: true,
-					minScore: this.AUTO_GRAB_MIN_SCORE,
+					minScore: AUTO_GRAB_MIN_SCORE,
 					seasonEpisodeCount
 				}
 			});
@@ -2929,7 +2933,7 @@ export class MonitoringSearchService {
 				enrichment: {
 					scoringProfileId: movie.scoringProfileId ?? undefined,
 					filterRejected: true,
-					minScore: this.AUTO_GRAB_MIN_SCORE
+					minScore: AUTO_GRAB_MIN_SCORE
 				}
 			});
 
@@ -3104,7 +3108,7 @@ export class MonitoringSearchService {
 				enrichment: {
 					scoringProfileId: seriesData.scoringProfileId ?? undefined,
 					filterRejected: true,
-					minScore: this.AUTO_GRAB_MIN_SCORE,
+					minScore: AUTO_GRAB_MIN_SCORE,
 					seasonEpisodeCount
 				}
 			});
@@ -3148,7 +3152,7 @@ export class MonitoringSearchService {
 				// Pointer-indexer episode-targeted missing-content search should not grab
 				// full season packs.
 				// Allow virtual episode pointers because they resolve to per-episode file selection.
-				if (this.isRuTrackerIndexerName(release.indexerName) && isSeasonPack && !isEpisodePointer) {
+				if (isRuTrackerIndexerName(release.indexerName) && isSeasonPack && !isEpisodePointer) {
 					logger.debug(
 						{
 							seriesId: seriesData.id,
@@ -3232,27 +3236,6 @@ export class MonitoringSearchService {
 		);
 	}
 
-	private isRuTrackerIndexerName(indexerName: string | undefined): boolean {
-		if (typeof indexerName !== 'string') {
-			return false;
-		}
-		const normalized = indexerName.toLowerCase();
-		return normalized.includes('rutracker') || normalized.includes('kinozal');
-	}
-
-	private isRuTrackerHost(baseUrl: string | undefined): boolean {
-		if (!baseUrl) {
-			return false;
-		}
-		try {
-			const hostname = new URL(baseUrl).hostname.toLowerCase();
-			return hostname.includes('rutracker.') || hostname.includes('kinozal.');
-		} catch {
-			const normalized = baseUrl.toLowerCase();
-			return normalized.includes('rutracker.') || normalized.includes('kinozal.');
-		}
-	}
-
 	private async shouldApplyRuTrackerEpisodePointerPolicy(): Promise<boolean> {
 		try {
 			const indexerManager = await getIndexerManager();
@@ -3282,11 +3265,11 @@ export class MonitoringSearchService {
 
 			const hasRuTracker = automaticTvIndexers.some((indexer) => {
 				const config = indexer as { name?: string; baseUrl?: string };
-				return this.isRuTrackerIndexerName(config.name) || this.isRuTrackerHost(config.baseUrl);
+				return isRuTrackerIndexerName(config.name) || isRuTrackerHost(config.baseUrl);
 			});
 			const hasNonRuTracker = automaticTvIndexers.some((indexer) => {
 				const config = indexer as { name?: string; baseUrl?: string };
-				return !(this.isRuTrackerIndexerName(config.name) || this.isRuTrackerHost(config.baseUrl));
+				return !(isRuTrackerIndexerName(config.name) || isRuTrackerHost(config.baseUrl));
 			});
 
 			return hasRuTracker && !hasNonRuTracker;

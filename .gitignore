@@ -71,6 +71,7 @@ settings.json.orig
 
 # ZCode local session artifacts
 .zcode/
+.zcodeignore
 
 # Backup files
 *.bak
