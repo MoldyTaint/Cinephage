@@ -230,6 +230,8 @@ export class CamoufoxManager {
 		headless: boolean;
 		proxy?: ProxyConfig;
 		acquireTimeoutMs?: number;
+		/** Aborting while queued gives up the slot wait instead of launching. */
+		signal?: AbortSignal;
 		/**
 		 * Load the shadow-unlock addon (default true).
 		 *
@@ -248,8 +250,11 @@ export class CamoufoxManager {
 		}
 
 		// Gate on the global semaphore before launching anything.
-		const acquired = await this.acquireSlot(options.acquireTimeoutMs);
+		const acquired = await this.acquireSlot(options.acquireTimeoutMs, options.signal);
 		if (!acquired) {
+			if (options.signal?.aborted) {
+				throw new Error('Aborted');
+			}
 			throw new Error(
 				`Timed out waiting for a browser slot (max ${this.maxBrowsers} concurrent browsers)`
 			);
@@ -399,6 +404,7 @@ export class CamoufoxManager {
 			headless: boolean;
 			proxy?: ProxyConfig;
 			acquireTimeoutMs?: number;
+			signal?: AbortSignal;
 			shadowUnlockAddon?: boolean;
 		}
 	): Promise<ManagedBrowser> {
@@ -517,12 +523,17 @@ export class CamoufoxManager {
 
 	/**
 	 * Acquire a browser slot. Resolves true once a slot is held, or false if
-	 * timeoutMs elapses first. Without a timeout, waits indefinitely.
+	 * timeoutMs elapses first or the signal aborts while queued. Without a
+	 * timeout, waits indefinitely.
 	 */
-	private async acquireSlot(timeoutMs?: number): Promise<boolean> {
+	private async acquireSlot(timeoutMs?: number, signal?: AbortSignal): Promise<boolean> {
 		if (this.acquiredSlots < this.maxBrowsers) {
 			this.acquiredSlots++;
 			return true;
+		}
+
+		if (signal?.aborted) {
+			return false;
 		}
 
 		return new Promise<boolean>((resolve) => {
@@ -533,10 +544,20 @@ export class CamoufoxManager {
 				if (settled) return;
 				settled = true;
 				if (timer) clearTimeout(timer);
+				if (signal) signal.removeEventListener('abort', onAbort);
 				resolve(acquired);
 			};
 
 			const waiter: SlotWaiter = { grant };
+
+			const onAbort = () => {
+				const idx = this.waiters.indexOf(waiter);
+				if (idx > -1) this.waiters.splice(idx, 1);
+				grant(false);
+			};
+			if (signal) {
+				signal.addEventListener('abort', onAbort, { once: true });
+			}
 
 			if (timeoutMs !== undefined) {
 				timer = setTimeout(() => {

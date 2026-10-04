@@ -350,6 +350,15 @@ export class IndexerHttp {
 						}
 
 						// Browser fetch failed
+						if (options.signal?.aborted) {
+							// The caller's abort (early-exit sibling or search
+							// timeout) closed the browser mid-solve. Classify as a
+							// clean cancellation so it is neither retried, recorded
+							// as a bypass failure, nor logged as a warning.
+							this.log.debug({ host, error: fetchResult.error }, 'Browser fetch cancelled');
+							throw new Error('Aborted');
+						}
+
 						this.log.warn(
 							{
 								host,

@@ -1122,9 +1122,12 @@ export class SearchOrchestrator {
 
 			// Timeouts are caused by slow upstream aggregators (Prowlarr/Jackett gathering
 			// results across many trackers) and don't mean the indexer is broken.
-			// Only record a failure for actual errors, not search timeouts.
-			const isTimeout = message.toLowerCase().includes('timeout');
-			if (!isTimeout) {
+			// Aborts are caller-initiated cancellations (early-exit sibling variants,
+			// search race settled elsewhere), likewise not indexer health signals.
+			// Only record a failure for actual errors.
+			const lowerMessage = message.toLowerCase();
+			const isTimeoutOrAbort = lowerMessage.includes('timeout') || lowerMessage.includes('abort');
+			if (!isTimeoutOrAbort) {
 				await this.statusTracker.recordFailure(indexer.id, message);
 			}
 

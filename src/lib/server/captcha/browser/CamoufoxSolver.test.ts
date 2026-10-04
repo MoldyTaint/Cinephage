@@ -63,6 +63,7 @@ function createMockPage(): Page {
 		route: vi.fn().mockResolvedValue(undefined),
 		frames: vi.fn().mockReturnValue([]),
 		waitForLoadState: vi.fn().mockResolvedValue(undefined),
+		isClosed: vi.fn().mockReturnValue(false),
 		$: vi.fn().mockResolvedValue(null)
 	} as unknown as Page;
 }

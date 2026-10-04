@@ -474,6 +474,12 @@ export class UnifiedIndexer implements IIndexer {
 		const requestErrors: string[] = [];
 
 		for (const request of requests) {
+			if (criteria.signal?.aborted) {
+				// Search was cancelled (race settled elsewhere); skip the remaining
+				// variants instead of burning rate-limit budget on dead requests.
+				this.log.debug('Search cancelled before remaining request variants ran');
+				break;
+			}
 			this.log.debug({ url: request.url, method: request.method }, 'Executing search request');
 			try {
 				// Enforce both indexer and host limits per outbound request
@@ -486,6 +492,14 @@ export class UnifiedIndexer implements IIndexer {
 				successfulRequests += 1;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
+				if (criteria.signal?.aborted) {
+					// The orchestrator aborts sibling variants after one wins the
+					// race (early-exit movie search) and settles the overall race
+					// on success or timeout. Their 'Aborted' rejections are
+					// deliberate cancellations, not indexer failures.
+					this.log.debug({ url: request.url, error: message }, 'Search request cancelled');
+					continue;
+				}
 				this.log.warn({ url: request.url, error: message }, 'Search request failed');
 				requestErrors.push(this.normalizeTestRequestError(message));
 			}
@@ -581,11 +595,13 @@ export class UnifiedIndexer implements IIndexer {
 				request.method === 'POST'
 					? await this.http.post(request.url, request.body!, {
 							headers: request.headers,
-							followRedirects: this.definition.followredirect ?? true
+							followRedirects: this.definition.followredirect ?? true,
+							signal
 						})
 					: await this.http.get(request.url, {
 							headers: request.headers,
-							followRedirects: this.definition.followredirect ?? true
+							followRedirects: this.definition.followredirect ?? true,
+							signal
 						});
 
 			const retryApiError = this.detectProviderError(retryResponse.body);
