@@ -19,7 +19,7 @@
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run",
 		"test:coverage": "vitest run --coverage",
-		"test:live": "LIVE_TESTS=true vitest run src/lib/server/subtitles/providers.live.test.ts",
+		"test:live": "LIVE_TESTS=true vitest run src/lib/server/subtitles/providers.live.test.ts src/lib/server/tmdb.live.test.ts src/lib/server/streaming/utils/cloudflare-streaming.live.test.ts src/lib/server/subtitles/providers/supersubtitles/SuperSubtitlesProvider.live.test.ts",
 		"deps:audit": "npx --yes knip --dependencies --include dependencies,devDependencies --no-progress --reporter compact",
 		"camoufox:update": "camoufox fetch",
 		"migrate:remove-enabled": "tsx scripts/remove-monitoring-enabled.ts",

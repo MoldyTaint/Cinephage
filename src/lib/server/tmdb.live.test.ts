@@ -1,14 +1,17 @@
+/**
+ * Live TMDB API tests.
+ *
+ * Requires a TMDB API key stored in the database, so they stay out of the
+ * normal suite; run them with `npm run test:live`.
+ */
+
 import { describe, it, expect } from 'vitest';
 import { tmdb } from './tmdb';
 import type { CastMember } from '$lib/types/tmdb';
 
-// These are live API tests requiring a TMDB API key stored in the database.
-// Skip in CI environments where no database/API key is available.
-// Run locally with: npm run test -- src/lib/server/tmdb.test.ts
-
 type TmdbResponse = any;
 
-describe.skipIf(process.env.CI)('TMDB Integration', () => {
+describe.skipIf(process.env.LIVE_TESTS !== 'true')('TMDB Integration', () => {
 	it('should fetch configuration', async () => {
 		const config = (await tmdb.fetch('/configuration')) as TmdbResponse;
 		expect(config).not.toBeNull();
@@ -85,23 +88,6 @@ describe.skipIf(process.env.CI)('TMDB Integration', () => {
 		expect(episode.credits.cast.length).toBeGreaterThan(0);
 		const bryanCranston = episode.credits.cast.find((c: CastMember) => c.name === 'Bryan Cranston');
 		expect(bryanCranston).toBeDefined();
-	});
-
-	it.skip('should fetch person details and credits', async () => {
-		// Brad Pitt (287) combined_credits is a very large payload that times out in constrained environments
-		const person = (await tmdb.fetch(
-			'/person/287?append_to_response=combined_credits'
-		)) as TmdbResponse;
-		expect(person).not.toBeNull();
-
-		expect(person.name).toBe('Brad Pitt');
-		expect(person.combined_credits).toBeDefined();
-		expect(person.combined_credits.cast.length).toBeGreaterThan(0);
-
-		const fightClub = person.combined_credits.cast.find(
-			(c: { title?: string }) => c.title === 'Fight Club'
-		);
-		expect(fightClub).toBeDefined();
 	});
 
 	it('should handle 404 errors gracefully', async () => {

@@ -82,7 +82,13 @@ export default defineConfig({
 					name: 'node',
 					environment: 'node',
 					include: ['src/**/*.{test,spec}.{js,ts}'],
-					exclude: ['src/lib/components/**/*.test.ts', 'src/**/*.svelte.{test,spec}.{js,ts}'],
+					exclude: [
+						'src/lib/components/**/*.test.ts',
+						'src/**/*.svelte.{test,spec}.{js,ts}',
+						// Provider-dependent suites stay out of the normal run; `npm run
+						// test:live` sets LIVE_TESTS=true to include them (see AGENTS.md).
+						...(process.env.LIVE_TESTS === 'true' ? [] : ['src/**/*.live.test.ts'])
+					],
 					fileParallelism: true,
 					// First test in each file bears the full module + DB cold-start cost;
 					// under concurrent load this can exceed the 5s default.
