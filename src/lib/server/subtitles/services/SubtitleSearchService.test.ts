@@ -480,6 +480,44 @@ describe('SubtitleSearchService - searchForMovie', () => {
 			searchSpy.mockRestore();
 		}
 	});
+
+	it('passes the movie original language to providers as a canonical tag', async () => {
+		const rootFolderId = 'root-original-language';
+		const movieId = 'movie-original-language';
+		await testDb.db.insert(rootFolders).values({
+			id: rootFolderId,
+			name: 'Movies',
+			path: ROOT_PATH,
+			mediaType: 'movie'
+		});
+		await testDb.db.insert(movies).values({
+			id: movieId,
+			tmdbId: 202,
+			title: 'Idioma Original',
+			path: 'Idioma Original (2024)',
+			rootFolderId,
+			originalLanguage: 'spa'
+		});
+		await testDb.db.insert(movieFiles).values({
+			id: 'file-original-language',
+			movieId,
+			relativePath: 'Idioma.Original.2024.mkv',
+			size: 1000
+		});
+
+		const service = SubtitleSearchService.getInstance();
+		const searchSpy = vi.spyOn(service, 'search').mockResolvedValue(buildAggregatedResult([]));
+
+		try {
+			await service.searchForMovie(movieId, ['es']);
+
+			const criteria = searchSpy.mock.calls[0][0] as SubtitleSearchCriteria;
+			// ISO-639-3 input ('spa') reaches providers as the canonical tag.
+			expect(criteria.originalLanguage).toBe('es');
+		} finally {
+			searchSpy.mockRestore();
+		}
+	});
 });
 
 describe('SubtitleSearchService - capability gating and priority tiers', () => {

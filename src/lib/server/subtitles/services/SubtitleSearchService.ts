@@ -26,7 +26,8 @@ import type {
 	SubtitleSearchResult,
 	AggregatedSearchResult,
 	MediaContext,
-	SubtitleMediaKind
+	SubtitleMediaKind,
+	LanguageCode
 } from '../types';
 import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
 import { DEFAULT_MINIMUM_SCORE } from '$lib/shared/language-profile.js';
@@ -36,9 +37,20 @@ import { getSubtitleProviderManager } from './SubtitleProviderManager';
 import { getSubtitleScoringService } from './SubtitleScoringService';
 import type { ISubtitleProvider } from '../providers/interfaces';
 import type { ProviderCapabilities } from '../providers/BaseProvider';
+import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
 
 const criteriaIdCache = new Map<string, { imdbId?: string; tvdbId?: number; expires: number }>();
 const CACHE_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * Canonical tag for a stored original-language value, or undefined when it is
+ * missing or unresolvable so providers can pick their own fallback.
+ */
+function originalLanguageTag(raw: string | null | undefined): LanguageCode | undefined {
+	if (!raw) return undefined;
+	const tag = normalizeLanguageTag(raw);
+	return tag === 'und' ? undefined : tag;
+}
 
 export function clearIdCacheForTests(): void {
 	criteriaIdCache.clear();
@@ -157,6 +169,7 @@ export class SubtitleSearchService {
 			const criteria: SubtitleSearchCriteria = {
 				title: movie[0].title,
 				originalTitle: movie[0].originalTitle || undefined,
+				originalLanguage: originalLanguageTag(movie[0].originalLanguage),
 				year: movie[0].year || undefined,
 				imdbId: movie[0].imdbId || undefined,
 				tmdbId: movie[0].tmdbId,
@@ -182,6 +195,7 @@ export class SubtitleSearchService {
 			const criteria: SubtitleSearchCriteria = {
 				title: movie[0].title,
 				originalTitle: movie[0].originalTitle || undefined,
+				originalLanguage: originalLanguageTag(movie[0].originalLanguage),
 				year: movie[0].year || undefined,
 				imdbId: movie[0].imdbId || undefined,
 				tmdbId: movie[0].tmdbId,
@@ -282,6 +296,7 @@ export class SubtitleSearchService {
 			title: episode[0].title || seriesData[0].title,
 			seriesTitle: seriesData[0].title,
 			originalTitle: seriesData[0].originalTitle || undefined,
+			originalLanguage: originalLanguageTag(seriesData[0].originalLanguage),
 			year: seriesData[0].year || undefined,
 			season: episode[0].seasonNumber,
 			episode: episode[0].episodeNumber,

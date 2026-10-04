@@ -69,6 +69,8 @@ export interface SubtitleSearchCriteria {
 	tvdbId?: number; // For TV show lookups
 	title: string;
 	originalTitle?: string;
+	/** Canonical tag of the media's original language, when known. */
+	originalLanguage?: LanguageCode;
 	year?: number;
 
 	// For TV episodes
