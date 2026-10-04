@@ -21,6 +21,7 @@
 		"test:coverage": "vitest run --coverage",
 		"test:live": "LIVE_TESTS=true vitest run src/lib/server/subtitles/providers.live.test.ts",
 		"deps:audit": "npx --yes knip --dependencies --include dependencies,devDependencies --no-progress --reporter compact",
+		"camoufox:update": "camoufox fetch",
 		"migrate:remove-enabled": "tsx scripts/remove-monitoring-enabled.ts",
 		"auth:reset-admin-password": "node scripts/reset-admin-password.js",
 		"fix:tv-subtitles": "node scripts/fix-tv-subtitle-paths.js",
@@ -87,11 +88,11 @@
 	},
 	"dependencies": {
 		"@better-auth/api-key": "1.7.5",
+		"@camoufox/camoufox": "^0.5.7",
 		"@parcel/watcher": "^2.6.0",
 		"adm-zip": "^0.6.0",
 		"better-auth": "1.7.5",
 		"better-sqlite3": "^13.0.2",
-		"camoufox-js": "^0.12.0",
 		"cheerio": "^1.2.0",
 		"date-format-parse": "^0.2.7",
 		"domhandler": "^5.0.3",
@@ -105,7 +106,7 @@
 		"minimatch": "^10.2.6",
 		"parse-torrent": "^11.0.24",
 		"pino": "^10.3.1",
-		"playwright-core": "^1.62.1",
+		"playwright-core": "~1.62.0",
 		"zod": "^4.4.3"
 	}
 }

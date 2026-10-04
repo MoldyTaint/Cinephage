@@ -6,8 +6,7 @@
  * at the C++ level, making it highly effective against Cloudflare and similar protections.
  */
 
-import { Camoufox, type LaunchOptions } from 'camoufox-js';
-import { VirtualDisplay } from 'camoufox-js/dist/virtdisplay.js';
+import { Camoufox, type NewBrowserOptions } from '@camoufox/camoufox';
 import type { Browser, BrowserContext, Page, Cookie } from 'playwright-core';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -22,40 +21,14 @@ import type { ProxyConfig } from '../types';
  * A 1x1 viewport/screen is a well-known Cloudflare bot signal: the fingerprint
  * reports a real device screen while the actual window is clamped to 1x1, so
  * client-side challenge scoring flags the browser and the challenge never
- * clears (camoufox-js issues #311 / #574: "works locally, stuck in challenge
- * loop in Docker"). Patch the Xvfb screen to a realistic resolution.
+ * clears (camoufox issues #311 / #574: "works locally, stuck in challenge loop
+ * in Docker"). The paired launcher reads CAMOUFOX_VIRTUAL_DISPLAY_SIZE (it
+ * validates the value against 1920x1080 / 1920x1080x24), so set it once here
+ * unless the operator already chose a size.
  */
-let xvfbPatched = false;
-function patchVirtualDisplayResolution(): void {
-	if (xvfbPatched) return;
-	xvfbPatched = true;
-	try {
-		const descriptor = Object.getOwnPropertyDescriptor(VirtualDisplay.prototype, 'xvfb_args');
-		const origGet = descriptor?.get;
-		if (typeof origGet !== 'function') return;
-		Object.defineProperty(VirtualDisplay.prototype, 'xvfb_args', {
-			configurable: true,
-			enumerable: descriptor?.enumerable,
-			get(this: VirtualDisplay) {
-				const args = origGet.call(this);
-				const idx = args.indexOf('1x1x24');
-				if (idx !== -1) args[idx] = '1920x1080x24';
-				return args;
-			}
-		});
-		logger.info(
-			'[CamoufoxManager] Patched virtual Xvfb screen to 1920x1080 (Cloudflare bot-signal fix)'
-		);
-	} catch (error) {
-		logger.warn(
-			{
-				error: error instanceof Error ? error.message : String(error)
-			},
-			'[CamoufoxManager] Failed to patch virtual Xvfb resolution'
-		);
-	}
+if (!process.env.CAMOUFOX_VIRTUAL_DISPLAY_SIZE) {
+	process.env.CAMOUFOX_VIRTUAL_DISPLAY_SIZE = '1920x1080';
 }
-patchVirtualDisplayResolution();
 
 /**
  * Resolve the filesystem path to the shadow-unlock Camoufox addon.
@@ -75,6 +48,9 @@ function resolveAddonPath(): string | null {
 	} catch {
 		// import.meta.url unavailable (unexpected) — fall through to other candidates
 	}
+	// Bare-metal deployments run from a source checkout, where the build output
+	// does not include the addon (Docker copies it to /app/camoufox-addon).
+	candidates.push(join(process.cwd(), 'src/lib/server/captcha/browser/addon'));
 	candidates.push('/app/camoufox-addon');
 	candidates.push(join(process.cwd(), 'camoufox-addon'));
 
@@ -192,9 +168,9 @@ export class CamoufoxManager {
 			// Try to launch a quick browser to verify availability
 			// Use "virtual" headless mode which spawns an internal Xvfb display
 			const browser = await Camoufox({
-				headless: 'virtual' as unknown as boolean,
+				headless: 'virtual',
 				geoip: false
-			} as LaunchOptions);
+			});
 			await browser.close();
 			this.isAvailable = true;
 			this.availabilityError = undefined;
@@ -293,8 +269,8 @@ export class CamoufoxManager {
 			//  - main_world_eval + config.forceScopeAccess: needed by the solving helpers
 			//  - locale en-US: avoids fingerprint/locale inconsistency (seen as localized
 			//    "Un momento…" challenge loops when geoip picks a mismatched locale)
-			const camoufoxOptions: LaunchOptions = {
-				headless: options.headless ? ('virtual' as unknown as boolean) : false,
+			const camoufoxOptions: NewBrowserOptions = {
+				headless: options.headless ? 'virtual' : false,
 				geoip: true, // Auto-detect IP and set matching timezone
 				humanize: true, // Human-like mouse movements
 				locale: 'en-US',
@@ -399,10 +375,7 @@ export class CamoufoxManager {
 			this.releaseSlot();
 			if (launchedBrowser) {
 				try {
-					const closeResult = launchedBrowser.close();
-					if (closeResult && typeof closeResult.then === 'function') {
-						await closeResult.catch(() => {});
-					}
+					await launchedBrowser.close().catch(() => {});
 				} catch {
 					// ignore
 				}
@@ -446,14 +419,9 @@ export class CamoufoxManager {
 			// Remove from active list using the stored ID (O(1) instead of O(n))
 			this.activeBrowsers.delete(managed.id);
 
-			// Close browser (this closes all contexts and pages)
-			// Note: camoufox-js has an upstream bug where syncAttachVD wraps close()
-			// but doesn't return the Promise, so close() may return undefined.
-			// We must check if the result is thenable before calling .catch()
-			const closeResult = managed.browser.close();
-			if (closeResult && typeof closeResult.then === 'function') {
-				await closeResult.catch(() => {});
-			}
+			// Close browser (this closes all contexts and pages). The launcher
+			// wraps close() so the virtual display is torn down with it.
+			await managed.browser.close().catch(() => {});
 
 			logger.debug({ id: managed.id }, '[CamoufoxManager] Closed browser');
 		} catch (error) {
@@ -488,11 +456,7 @@ export class CamoufoxManager {
 				managed.isClosed = true;
 
 				try {
-					// Handle upstream camoufox-js bug where close() may return undefined
-					const closeResult = managed.browser.close();
-					if (closeResult && typeof closeResult.then === 'function') {
-						await closeResult.catch(() => {});
-					}
+					await managed.browser.close().catch(() => {});
 				} catch {
 					// Ignore errors during cleanup
 				} finally {
@@ -532,7 +496,7 @@ export class CamoufoxManager {
 	 * A timed-out launch promise is abandoned; in practice the stall is in the
 	 * pre-launch geoip IP lookup (no browser process spawned yet), so nothing leaks.
 	 */
-	private async launchWithTimeout(options: LaunchOptions): Promise<Browser> {
+	private async launchWithTimeout(options: NewBrowserOptions): Promise<Browser> {
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const timeoutPromise = new Promise<never>((_, reject) => {
 			timer = setTimeout(

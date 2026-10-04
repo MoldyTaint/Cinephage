@@ -49,14 +49,14 @@ EXTERNAL_LISTS_CUSTOM_PRESETS_PATH="${EXTERNAL_LISTS_CUSTOM_PRESETS_PATH:-${EXTE
 export DATA_DIR INDEXER_DEFINITIONS_PATH EXTERNAL_LISTS_PRESETS_PATH \
   INDEXER_CUSTOM_DEFINITIONS_PATH EXTERNAL_LISTS_CUSTOM_PRESETS_PATH
 
-# camoufox-js resolves install path from os.homedir(), so force HOME into /config/cache
+# camoufox resolves its browser cache from the XDG cache dir under HOME, so
+# force HOME into /config/cache/home to keep the install on the config volume.
 HOME="${CONFIG_ROOT}/cache/home"
 export HOME
 CAMOUFOX_CACHE_DIR="${HOME}/.cache/camoufox"
 CAMOUFOX_TMP_DIR="${CONFIG_ROOT}/cache/tmp"
 CAMOUFOX_NOTICE_FILE="${CONFIG_ROOT}/README-DO-NOT-DELETE-CAMOUFOX-CACHE.txt"
 OWNERSHIP_STAMP_FILE="${CONFIG_ROOT}/.cinephage-ownership-stamp"
-export CAMOUFOX_PATH="$CAMOUFOX_CACHE_DIR"
 
 has_contents() {
   [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]
@@ -270,25 +270,30 @@ sync_bundled_data "$BUNDLED_DATA_DIR/external-lists" "$DATA_DIR/external-lists" 
 
 mkdir -p "$INDEXER_CUSTOM_DEFINITIONS_PATH" "$EXTERNAL_LISTS_CUSTOM_PRESETS_PATH"
 
-# Download Camoufox into HOME-backed cache under /config so it persists across container recreates
-CAMOUFOX_MARKER="$CAMOUFOX_CACHE_DIR/version.json"
+# Download Camoufox into a HOME-backed cache under /config so it persists across
+# container recreates. The launcher keeps a multiversion cache
+# (browsers/<repo>/<tag>) and each package release installs the browser build it
+# was paired with, so that fetch is what pins the version. Our own marker records
+# a completed fetch so restarts stay fast.
+CAMOUFOX_MARKER="$CAMOUFOX_CACHE_DIR/.cinephage-fetch-complete"
 
 if [ ! -f "$CAMOUFOX_MARKER" ]; then
   if has_contents "$CAMOUFOX_CACHE_DIR"; then
-    echo "Incomplete Camoufox install detected (missing version marker); re-downloading..."
+    echo "Incomplete Camoufox install detected (missing completion marker); re-downloading..."
   else
     echo "Downloading Camoufox (first run only; large download, may take several minutes)..."
   fi
   mkdir -p "$CAMOUFOX_CACHE_DIR"
 
   # Stage into the persisted cache volume instead of the container overlay: an install
-  # killed mid-extraction leaves its staging zip behind, and sweep-on-boot keeps that
-  # bounded. Extraction runs silently after the download progress bar finishes.
+  # killed mid-extraction leaves its staging files behind, and sweep-on-boot keeps
+  # that bounded. Extraction runs silently after the download progress bar finishes.
   mkdir -p "$CAMOUFOX_TMP_DIR" 2>/dev/null || true
   FETCH_START="$(date +%s)"
   echo "Fetching Camoufox (extraction runs silently after the download bar finishes)..."
-  if HOME="$HOME" TMPDIR="$CAMOUFOX_TMP_DIR" ./node_modules/.bin/camoufox-js fetch; then
+  if HOME="$HOME" TMPDIR="$CAMOUFOX_TMP_DIR" ./node_modules/.bin/camoufox fetch; then
     FETCH_END="$(date +%s)"
+    touch "$CAMOUFOX_MARKER"
     echo "Camoufox fetched successfully in $((FETCH_END - FETCH_START))s"
     echo "Camoufox installed ($(du -sh "$CAMOUFOX_CACHE_DIR" | cut -f1)) at $CAMOUFOX_CACHE_DIR"
   else
@@ -296,6 +301,22 @@ if [ ! -f "$CAMOUFOX_MARKER" ]; then
   fi
 else
   echo "Camoufox already installed at $CAMOUFOX_CACHE_DIR ($(du -sh "$CAMOUFOX_CACHE_DIR" | cut -f1))"
+
+  # Opt-in update check. Camoufox ships frequent anti-detection builds and each
+  # package release pairs with a specific browser build, so the installed browser
+  # can go stale across image updates. CAMOUFOX_UPDATE_ON_START=true installs the
+  # paired build at startup (needs network; downloads ~1.3GB when it changes).
+  # GITHUB_TOKEN avoids GitHub API rate limits.
+  if [ "${CAMOUFOX_UPDATE_ON_START:-false}" = "true" ]; then
+    echo "Checking for Camoufox updates (CAMOUFOX_UPDATE_ON_START=true)..."
+    mkdir -p "$CAMOUFOX_TMP_DIR" 2>/dev/null || true
+    if HOME="$HOME" TMPDIR="$CAMOUFOX_TMP_DIR" ./node_modules/.bin/camoufox fetch; then
+      touch "$CAMOUFOX_MARKER"
+      echo "Camoufox update check complete ($(HOME="$HOME" ./node_modules/.bin/camoufox active 2>/dev/null | head -1 || echo 'active version unknown'))"
+    else
+      echo "Warning: Camoufox update check failed; continuing with the installed browser."
+    fi
+  fi
 fi
 
 echo "Starting Cinephage..."
