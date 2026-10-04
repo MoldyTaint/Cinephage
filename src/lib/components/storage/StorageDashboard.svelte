@@ -64,7 +64,6 @@
 		scanError: string | null;
 		scanSuccess: ScanSuccess | null;
 		serverStatuses: ServerStatus[];
-		onOpenInsight?: (insight: Insight) => void;
 	}
 
 	let {
@@ -77,8 +76,7 @@
 		largestItems,
 		scanError,
 		scanSuccess,
-		serverStatuses,
-		onOpenInsight
+		serverStatuses
 	}: Props = $props();
 
 	// --- Tile computations ---
@@ -280,12 +278,12 @@
 			: healthStatus === 'warning'
 				? 'bg-warning/10 text-warning'
 				: 'bg-error/10 text-error'}
-		label="Health"
+		label="Health Insights"
 		value={healthLabel}
 		context={insights.length > 0
 			? `${insights.length} insight${insights.length === 1 ? '' : 's'}`
 			: 'No issues'}
-		href={`${baseUrl}`}
+		href={`${baseUrl}/insights`}
 		statusDot={healthStatus}
 	/>
 	<StorageTile
@@ -448,9 +446,8 @@
 				</div>
 			{:else}
 				{#each topInsights as insight (insight.id)}
-					<button
-						type="button"
-						onclick={() => onOpenInsight?.(insight)}
+					<a
+						href={`${baseUrl}/insights`}
 						class="flex w-full items-center gap-2.5 rounded-lg border border-base-300 bg-base-200/50 p-2.5 text-left transition-colors hover:bg-base-300/50"
 					>
 						<span
@@ -463,7 +460,7 @@
 							>
 						{/if}
 						<ChevronRight class="h-3.5 w-3.5 shrink-0 text-base-content/30" />
-					</button>
+					</a>
 				{/each}
 			{/if}
 		</div>
