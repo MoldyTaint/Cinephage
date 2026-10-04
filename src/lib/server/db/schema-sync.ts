@@ -151,11 +151,22 @@ import {
  * Version 144: Add language_settings.prefer_original_title instance default (boolean, default 0)
  * Version 145: Drop deprecated per-item adaptive subtitle columns (movies/episodes failed_subtitle_attempts, first_subtitle_search_at)
  * Version 146: Per-item subtitle requirement overrides on movies/series/episodes + inheritance repair
+ * Version 147: language_shortfall flags on movies/series (audio-preference verification)
  * Version 148: Acquisition intents + reservations — durable acquisition authority and slot exclusivity
  * Version 149: Import operations journal — durable multi-step import record for recovery and reports
  * Version 150: movie_files (movie_id, relative_path) unique index (legacy duplicates deduped)
+ * Version 151: Language-system column guards — idempotent ALTERs for the m140-146 columns on legacy databases (episodes.wants_subtitles_override et al.)
+ * Version 152: Drop the legacy subtitle_settings key-value table (superseded by language_settings + subtitle_providers)
+ * Version 153: Backfill remove_after_import = 1 for existing non-debrid download clients
+ * Version 154: library_jobs.acknowledged_at — dismiss failed background-import batches from Activity
+ * Version 155: indexers.rate_limit_per_minute — manual per-indexer request cap override
+ * Version 156: indexer_status.disabled_reason — distinguish quota_exhausted from consecutive-failure disables
+ * Version 157: user_media_server_links — Cinephage account <-> media-server identity pairing (no tokens)
+ * Version 158: user_preferences table; global calendar preferences migrated to the first admin
+ * Version 159: Encrypt media_browser_servers.api_key at rest (AES-256-GCM under BETTER_AUTH_SECRET)
+ * Version 160: Request system foundation — requests, user_request_settings, request_notifications tables
  */
-export const CURRENT_SCHEMA_VERSION = 152;
+export const CURRENT_SCHEMA_VERSION = 160;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
