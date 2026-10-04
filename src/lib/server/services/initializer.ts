@@ -11,6 +11,7 @@ import { getDataRepairService } from '$lib/server/services/DataRepairService.js'
 import { qualityFilter } from '$lib/server/quality';
 import { initializeDatabase } from '$lib/server/db';
 import { getCaptchaSolver } from '$lib/server/captcha';
+import { ensureCamoufoxBrowserInBackground } from '$lib/server/captcha/browser/browserProvisioning.js';
 import { getServiceManager } from '$lib/server/services/service-manager.js';
 import { getNntpManager } from '$lib/server/streaming/usenet/NntpManager';
 import { getExtractionCacheManager } from '$lib/server/streaming/nzb/extraction/ExtractionCacheManager';
@@ -208,6 +209,13 @@ async function initializeServices(): Promise<void> {
 			serviceManager.startAll();
 
 			logger.info('All background services initialized and started');
+
+			// Non-blocking: keep the browser build paired with the installed
+			// Camoufox launcher provisioned for self-hosted deployments
+			// (see browserProvisioning.ts).
+			setImmediate(() => {
+				void ensureCamoufoxBrowserInBackground();
+			});
 		} catch (error) {
 			logger.error('Failed to initialize services', error);
 			throw error;

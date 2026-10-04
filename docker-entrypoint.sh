@@ -270,52 +270,41 @@ sync_bundled_data "$BUNDLED_DATA_DIR/external-lists" "$DATA_DIR/external-lists" 
 
 mkdir -p "$INDEXER_CUSTOM_DEFINITIONS_PATH" "$EXTERNAL_LISTS_CUSTOM_PRESETS_PATH"
 
-# Download Camoufox into a HOME-backed cache under /config so it persists across
-# container recreates. The launcher keeps a multiversion cache
-# (browsers/<repo>/<tag>) and each package release installs the browser build it
-# was paired with, so that fetch is what pins the version. Our own marker records
-# a completed fetch so restarts stay fast.
-CAMOUFOX_MARKER="$CAMOUFOX_CACHE_DIR/.cinephage-fetch-complete"
+# Ensure the browser build paired with the launcher in this image is installed.
+# `list installed` is a local check (~0.1s), so a normal restart skips the
+# download and an image update with a new launcher provisions the matching
+# browser automatically. Checking the installed list rather than the active
+# build leaves a deliberate `camoufox set` choice alone.
+# CAMOUFOX_AUTO_FETCH=false skips provisioning (air-gapped installs);
+# GITHUB_TOKEN avoids GitHub API rate limits.
+mkdir -p "$CAMOUFOX_TMP_DIR" 2>/dev/null || true
+CAMOUFOX_PIN_TAG="$(node -e "try { console.log(require('./node_modules/@camoufox/camoufox/dist/data-files/browser-pin.json').tag); } catch {}" 2>/dev/null || true)"
+CAMOUFOX_PIN_TAG="${CAMOUFOX_PIN_TAG#v}"
+CAMOUFOX_INSTALLED="$(HOME="$HOME" ./node_modules/.bin/camoufox list installed 2>/dev/null | head -24 || true)"
 
-if [ ! -f "$CAMOUFOX_MARKER" ]; then
+if [ "${CAMOUFOX_AUTO_FETCH:-true}" = "false" ]; then
+  echo "Camoufox auto-fetch disabled (CAMOUFOX_AUTO_FETCH=false); using the installed browser if any."
+elif [ -n "$CAMOUFOX_PIN_TAG" ] && printf '%s' "$CAMOUFOX_INSTALLED" | grep -qF "$CAMOUFOX_PIN_TAG"; then
+  echo "Camoufox browser paired with this release is installed"
+else
   if has_contents "$CAMOUFOX_CACHE_DIR"; then
-    echo "Incomplete Camoufox install detected (missing completion marker); re-downloading..."
+    echo "Updating Camoufox to the build paired with this release (large download, may take several minutes)..."
   else
     echo "Downloading Camoufox (first run only; large download, may take several minutes)..."
   fi
   mkdir -p "$CAMOUFOX_CACHE_DIR"
 
-  # Stage into the persisted cache volume instead of the container overlay: an install
-  # killed mid-extraction leaves its staging files behind, and sweep-on-boot keeps
-  # that bounded. Extraction runs silently after the download progress bar finishes.
-  mkdir -p "$CAMOUFOX_TMP_DIR" 2>/dev/null || true
+  # Stage into the persisted cache volume instead of the container overlay: an
+  # install killed mid-extraction leaves its staging files behind, and
+  # sweep-on-boot keeps that bounded. Extraction runs silently after the
+  # download progress bar finishes.
   FETCH_START="$(date +%s)"
   echo "Fetching Camoufox (extraction runs silently after the download bar finishes)..."
   if HOME="$HOME" TMPDIR="$CAMOUFOX_TMP_DIR" ./node_modules/.bin/camoufox fetch; then
     FETCH_END="$(date +%s)"
-    touch "$CAMOUFOX_MARKER"
-    echo "Camoufox fetched successfully in $((FETCH_END - FETCH_START))s"
-    echo "Camoufox installed ($(du -sh "$CAMOUFOX_CACHE_DIR" | cut -f1)) at $CAMOUFOX_CACHE_DIR"
+    echo "Camoufox ready in $((FETCH_END - FETCH_START))s ($(HOME="$HOME" ./node_modules/.bin/camoufox active 2>/dev/null | head -1))"
   else
-    echo "Warning: Failed to download Camoufox browser. Captcha solving will be unavailable."
-  fi
-else
-  echo "Camoufox already installed at $CAMOUFOX_CACHE_DIR ($(du -sh "$CAMOUFOX_CACHE_DIR" | cut -f1))"
-
-  # Opt-in update check. Camoufox ships frequent anti-detection builds and each
-  # package release pairs with a specific browser build, so the installed browser
-  # can go stale across image updates. CAMOUFOX_UPDATE_ON_START=true installs the
-  # paired build at startup (needs network; downloads ~1.3GB when it changes).
-  # GITHUB_TOKEN avoids GitHub API rate limits.
-  if [ "${CAMOUFOX_UPDATE_ON_START:-false}" = "true" ]; then
-    echo "Checking for Camoufox updates (CAMOUFOX_UPDATE_ON_START=true)..."
-    mkdir -p "$CAMOUFOX_TMP_DIR" 2>/dev/null || true
-    if HOME="$HOME" TMPDIR="$CAMOUFOX_TMP_DIR" ./node_modules/.bin/camoufox fetch; then
-      touch "$CAMOUFOX_MARKER"
-      echo "Camoufox update check complete ($(HOME="$HOME" ./node_modules/.bin/camoufox active 2>/dev/null | head -1 || echo 'active version unknown'))"
-    else
-      echo "Warning: Camoufox update check failed; continuing with the installed browser."
-    fi
+    echo "Warning: Failed to provision the Camoufox browser. Captcha solving will retry when a solve needs it."
   fi
 fi
 
