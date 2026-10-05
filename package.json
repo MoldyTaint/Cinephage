@@ -37,7 +37,7 @@
 		"@inlang/paraglide-js": "^2.23.0",
 		"@semantic-release/exec": "^7.1.0",
 		"@semantic-release/github": "^12.0.9",
-		"@sveltejs/adapter-node": "^5.5.7",
+		"@sveltejs/adapter-node": "^6.0.0",
 		"@sveltejs/kit": "^2.70.2",
 		"@sveltejs/vite-plugin-svelte": "^7.2.0",
 		"@tailwindcss/vite": "^4.3.3",
