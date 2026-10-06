@@ -1,7 +1,27 @@
 import { and, eq, like, desc, asc, notInArray } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.js';
 import { authApiKeys, user, userApiKeySecrets } from '$lib/server/db/schema.js';
-import { decryptApiKey, encryptApiKey } from '$lib/server/crypto/apiKeyCrypto.js';
+import { decryptApiKey } from '$lib/server/crypto/apiKeyCrypto.js';
+import {
+	decryptCredential,
+	encryptCredential,
+	isEncryptedCredential
+} from '$lib/server/crypto/credentialsCrypto.js';
+
+/** AAD purpose for recoverable API-key secrets at rest. */
+const USER_API_KEY_PURPOSE = 'user-api-key';
+
+function encryptRecoverableKey(keyId: string, plainKey: string): string {
+	return encryptCredential(USER_API_KEY_PURPOSE, keyId, plainKey);
+}
+
+function decryptRecoverableKey(keyId: string, stored: string): string | null {
+	if (isEncryptedCredential(stored)) {
+		return decryptCredential(USER_API_KEY_PURPOSE, keyId, stored, `api-key:${keyId}`);
+	}
+	// Legacy `iv:tag:ct` blobs from apiKeyCrypto (pre-migration 161).
+	return decryptApiKey(stored);
+}
 import { auth } from './auth.js';
 
 type KeyCreationResult = {
@@ -85,7 +105,7 @@ export async function upsertRecoverableApiKeySecret(
 	userId: string,
 	plainKey: string
 ): Promise<void> {
-	const encryptedKey = encryptApiKey(plainKey);
+	const encryptedKey = encryptRecoverableKey(keyId, plainKey);
 	const createdAt = new Date().toISOString();
 
 	await db
@@ -111,7 +131,7 @@ export async function getRecoverableApiKeyValue(keyId: string): Promise<string |
 		where: eq(userApiKeySecrets.id, keyId)
 	});
 
-	return keyRecord ? decryptApiKey(keyRecord.encryptedKey) : null;
+	return keyRecord ? decryptRecoverableKey(keyRecord.id, keyRecord.encryptedKey) : null;
 }
 
 export async function createRecoverableApiKey(options: {
@@ -336,6 +356,7 @@ export async function getRecoverableApiKeyByType(
 
 	const [result] = await db
 		.select({
+			id: userApiKeySecrets.id,
 			encryptedKey: userApiKeySecrets.encryptedKey
 		})
 		.from(authApiKeys)
@@ -344,7 +365,7 @@ export async function getRecoverableApiKeyByType(
 		.orderBy(desc(authApiKeys.createdAt))
 		.limit(1);
 
-	return result ? decryptApiKey(result.encryptedKey) : null;
+	return result ? decryptRecoverableKey(result.id, result.encryptedKey) : null;
 }
 
 /**

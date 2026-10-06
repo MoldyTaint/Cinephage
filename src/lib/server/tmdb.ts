@@ -2,6 +2,7 @@ import { db } from './db';
 import { languageSettings, settings } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { normalizeMetadataLocale, normalizeRegionCode } from '$lib/server/languages/normalize.js';
+import { decryptSettingValue } from '$lib/server/settings/secretSettings';
 import type {
 	GlobalTmdbFilters,
 	MovieDetails,
@@ -68,7 +69,7 @@ async function loadTmdbSettings(): Promise<{
 					db.query.settings.findFirst({ where: eq(settings.key, 'global_filters') })
 				]);
 
-				_cachedApiKey = apiKeySetting?.value ?? null;
+				_cachedApiKey = decryptSettingValue('tmdb_api_key', apiKeySetting?.value) ?? null;
 
 				// language_settings is the TMDB locale/region authority. It is read
 				// independently of global_filters: a fresh install without the

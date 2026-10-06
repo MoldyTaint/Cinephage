@@ -51,12 +51,15 @@ const liveTvAccountTestSchema = z.object({
 			epgUrl: z.string().url().optional()
 		})
 		.optional(),
-	// M3U-specific config
+	// M3U-specific config (url/epgUrl accept the [REDACTED] marker echoed by
+	// the edit form; headers can carry per-header redacted values)
 	m3uConfig: z
 		.object({
-			url: z.string().url().optional(),
+			url: z.union([z.string().url(), z.literal(REDACTED_VALUE)]).optional(),
 			fileContent: z.string().optional(),
-			epgUrl: z.string().url().optional()
+			epgUrl: z.union([z.string().url(), z.literal(REDACTED_VALUE)]).optional(),
+			headers: z.record(z.string(), z.string()).optional(),
+			userAgent: z.string().optional()
 		})
 		.optional(),
 	// Cinephage IPTV config
@@ -164,12 +167,27 @@ export const POST: RequestHandler = async (event) => {
 			) {
 				parsed.data.xstreamConfig.password = stored.xstreamConfig?.password ?? '';
 			}
+			if (parsed.data.xstreamConfig && parsed.data.xstreamConfig.epgUrl === REDACTED_VALUE) {
+				parsed.data.xstreamConfig.epgUrl = stored.xstreamConfig?.epgUrl;
+			}
 			if (
 				parsed.data.stalkerConfig &&
 				(!parsed.data.stalkerConfig.password ||
 					parsed.data.stalkerConfig.password === REDACTED_VALUE)
 			) {
 				parsed.data.stalkerConfig.password = stored.stalkerConfig?.password;
+			}
+			if (parsed.data.m3uConfig) {
+				if (parsed.data.m3uConfig.url === REDACTED_VALUE) {
+					parsed.data.m3uConfig.url = stored.m3uConfig?.url;
+				}
+				if (parsed.data.m3uConfig.epgUrl === REDACTED_VALUE) {
+					parsed.data.m3uConfig.epgUrl = stored.m3uConfig?.epgUrl;
+				}
+				const headers = parsed.data.m3uConfig.headers;
+				if (headers && Object.values(headers).some((v) => v === REDACTED_VALUE)) {
+					parsed.data.m3uConfig.headers = stored.m3uConfig?.headers;
+				}
 			}
 		}
 

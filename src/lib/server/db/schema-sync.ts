@@ -165,8 +165,11 @@ import {
  * Version 158: user_preferences table; global calendar preferences migrated to the first admin
  * Version 159: Encrypt media_browser_servers.api_key at rest (AES-256-GCM under BETTER_AUTH_SECRET)
  * Version 160: Request system foundation — requests, user_request_settings, request_notifications tables
+ * Version 161: Encrypt remaining plaintext credentials at rest (secret-field registry walk) and re-encode
+ *   the legacy iv:tag:ct surfaces (user API key secrets, media-browser keys, debrid tokens) onto the
+ *   versioned cphg1 envelope
  */
-export const CURRENT_SCHEMA_VERSION = 160;
+export const CURRENT_SCHEMA_VERSION = 161;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{

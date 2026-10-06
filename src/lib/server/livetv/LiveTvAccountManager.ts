@@ -15,6 +15,7 @@ import { getProvider, getProviderForAccount } from './providers';
 import { probeStalkerEndpoint } from './stalker/StalkerPortalClient';
 import { normalizeTmdbLanguage } from '$lib/server/languages/normalize.js';
 import { liveTvEvents } from './LiveTvEvents';
+import { decryptLivetvConfig, encryptLivetvConfig } from './configCrypto';
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
 import { ExternalServiceError } from '$lib/errors';
 import type {
@@ -63,10 +64,26 @@ export function recordToAccount(record: LivetvAccountRecord): LiveTvAccount {
 		name: record.name,
 		providerType: record.providerType as LiveTvProviderType,
 		enabled: record.enabled ?? true,
-		// Provider configs
-		stalkerConfig: record.stalkerConfig ?? undefined,
-		xstreamConfig: record.xstreamConfig ?? undefined,
-		m3uConfig: record.m3uConfig ?? undefined,
+		// Provider configs (credential fields are enveloped at rest; decrypted
+		// here for the API/service layer)
+		stalkerConfig: record.stalkerConfig
+			? (decryptLivetvConfig(
+					record.id,
+					record.stalkerConfig as unknown as Record<string, unknown>
+				) as unknown as StalkerConfig)
+			: undefined,
+		xstreamConfig: record.xstreamConfig
+			? (decryptLivetvConfig(
+					record.id,
+					record.xstreamConfig as unknown as Record<string, unknown>
+				) as unknown as XstreamConfig)
+			: undefined,
+		m3uConfig: record.m3uConfig
+			? (decryptLivetvConfig(
+					record.id,
+					record.m3uConfig as unknown as Record<string, unknown>
+				) as unknown as M3uConfig)
+			: undefined,
 		cinephageIptvConfig: record.iptvOrgConfig as CinephageIptvConfig | undefined,
 		// Metadata from provider
 		playbackLimit: record.playbackLimit ?? null,
@@ -387,15 +404,32 @@ export class LiveTvAccountManager implements BackgroundService {
 			}
 		}
 
-		// Prepare insert data
+		// Prepare insert data (credential fields encrypted at rest, bound to the
+		// account id via AAD)
+		const accountId = randomUUID();
 		const insertData: typeof livetvAccounts.$inferInsert = {
-			id: randomUUID(),
+			id: accountId,
 			name: input.name,
 			providerType: input.providerType,
 			enabled: input.enabled ?? true,
-			stalkerConfig,
-			xstreamConfig,
-			m3uConfig,
+			stalkerConfig: stalkerConfig
+				? (encryptLivetvConfig(
+						accountId,
+						stalkerConfig as unknown as Record<string, unknown>
+					) as unknown as StalkerConfig)
+				: stalkerConfig,
+			xstreamConfig: xstreamConfig
+				? (encryptLivetvConfig(
+						accountId,
+						xstreamConfig as unknown as Record<string, unknown>
+					) as unknown as XstreamConfig)
+				: xstreamConfig,
+			m3uConfig: m3uConfig
+				? (encryptLivetvConfig(
+						accountId,
+						m3uConfig as unknown as Record<string, unknown>
+					) as unknown as M3uConfig)
+				: m3uConfig,
 			iptvOrgConfig,
 			createdAt: now,
 			updatedAt: now
@@ -467,14 +501,17 @@ export class LiveTvAccountManager implements BackgroundService {
 				mergedConfig.endpoint = await probeStalkerEndpoint(updates.stalkerConfig.portalUrl);
 			}
 
-			updateData.stalkerConfig = mergedConfig;
+			updateData.stalkerConfig = encryptLivetvConfig(
+				id,
+				mergedConfig as unknown as Record<string, unknown>
+			) as unknown as StalkerConfig;
 		}
 
 		if (updates.xstreamConfig && existing.providerType === 'xstream') {
-			updateData.xstreamConfig = {
+			updateData.xstreamConfig = encryptLivetvConfig(id, {
 				...existing.xstreamConfig,
 				...updates.xstreamConfig
-			} as XstreamConfig;
+			} as unknown as Record<string, unknown>) as unknown as XstreamConfig;
 		}
 
 		if (updates.m3uConfig && existing.providerType === 'm3u') {
@@ -494,7 +531,10 @@ export class LiveTvAccountManager implements BackgroundService {
 				mergedM3uConfig.epgUrl = nextEpgUrl || undefined;
 			}
 
-			updateData.m3uConfig = mergedM3uConfig;
+			updateData.m3uConfig = encryptLivetvConfig(
+				id,
+				mergedM3uConfig as unknown as Record<string, unknown>
+			) as M3uConfig;
 
 			if (purgeAccountEpgData) {
 				// Force fresh EPG state when source changes/clears.

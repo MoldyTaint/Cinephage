@@ -51,19 +51,22 @@ const liveTvAccountUpdateSchema = z.object({
 			authToken: z.string().optional(),
 			epgUrl: z.preprocess(
 				(value) => (typeof value === 'string' ? value.trim() : value),
-				z.union([z.string().url(), z.literal('')]).optional()
+				z.union([z.string().url(), z.literal(''), z.literal(REDACTED_VALUE)]).optional()
 			)
 		})
 		.optional(),
-	// M3U-specific config updates
+	// M3U-specific config updates (url/epgUrl accept the [REDACTED] marker the
+	// edit form echoes back for unchanged redacted values)
 	m3uConfig: z
 		.object({
-			url: z.string().url().optional(),
+			url: z.union([z.string().url(), z.literal(REDACTED_VALUE)]).optional(),
 			fileContent: z.string().optional(),
 			epgUrl: z.preprocess(
 				(value) => (typeof value === 'string' ? value.trim() : value),
-				z.union([z.string().url(), z.literal('')]).optional()
+				z.union([z.string().url(), z.literal(''), z.literal(REDACTED_VALUE)]).optional()
 			),
+			headers: z.record(z.string(), z.string()).optional(),
+			userAgent: z.string().optional(),
 			refreshIntervalHours: z.number().min(1).max(168).optional(),
 			autoRefresh: z.boolean().optional()
 		})
@@ -206,7 +209,8 @@ export const PUT: RequestHandler = async (event) => {
 			hasExplicitM3uEpgField &&
 			typeof body.m3uConfig === 'object' &&
 			body.m3uConfig !== null &&
-			typeof body.m3uConfig.epgUrl === 'string'
+			typeof body.m3uConfig.epgUrl === 'string' &&
+			body.m3uConfig.epgUrl !== REDACTED_VALUE
 				? body.m3uConfig.epgUrl.trim()
 				: null;
 
@@ -221,7 +225,8 @@ export const PUT: RequestHandler = async (event) => {
 			hasExplicitXstreamEpgField &&
 			typeof body.xstreamConfig === 'object' &&
 			body.xstreamConfig !== null &&
-			typeof body.xstreamConfig.epgUrl === 'string'
+			typeof body.xstreamConfig.epgUrl === 'string' &&
+			body.xstreamConfig.epgUrl !== REDACTED_VALUE
 				? body.xstreamConfig.epgUrl.trim()
 				: null;
 
@@ -257,6 +262,27 @@ export const PUT: RequestHandler = async (event) => {
 		if (updates.stalkerConfig?.token === REDACTED_VALUE) {
 			updates.stalkerConfig = { ...updates.stalkerConfig };
 			delete updates.stalkerConfig.token;
+		}
+		// Newly redacted fields (url/headers embed credentials; epgUrl may):
+		// echoed markers mean "unchanged".
+		if (updates.m3uConfig?.url === REDACTED_VALUE) {
+			updates.m3uConfig = { ...updates.m3uConfig };
+			delete updates.m3uConfig.url;
+		}
+		if (updates.m3uConfig?.epgUrl === REDACTED_VALUE) {
+			updates.m3uConfig = { ...updates.m3uConfig };
+			delete updates.m3uConfig.epgUrl;
+		}
+		if (
+			updates.m3uConfig?.headers &&
+			Object.values(updates.m3uConfig.headers).some((v) => v === REDACTED_VALUE)
+		) {
+			updates.m3uConfig = { ...updates.m3uConfig };
+			delete updates.m3uConfig.headers;
+		}
+		if (updates.xstreamConfig?.epgUrl === REDACTED_VALUE) {
+			updates.xstreamConfig = { ...updates.xstreamConfig };
+			delete updates.xstreamConfig.epgUrl;
 		}
 
 		const manager = getLiveTvAccountManager();

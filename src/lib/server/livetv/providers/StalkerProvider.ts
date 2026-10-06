@@ -28,6 +28,7 @@ import type {
 } from '$lib/types/livetv';
 import { StalkerPortalClient, type StalkerPortalConfig } from '../stalker/StalkerPortalClient';
 import { recordToAccount } from '../LiveTvAccountManager.js';
+import { decryptLivetvConfig, encryptLivetvConfig } from '../configCrypto';
 
 export class StalkerProvider implements LiveTvProvider {
 	readonly type = 'stalker';
@@ -640,7 +641,16 @@ export class StalkerProvider implements LiveTvProvider {
 			.then((rows) => rows[0]);
 
 		if (account?.stalkerConfig) {
-			const updatedConfig = { ...account.stalkerConfig, token };
+			// Stored config is encrypted at rest: decrypt, merge the fresh
+			// token, re-encrypt (other envelopes pass through idempotently).
+			const decrypted = decryptLivetvConfig(
+				accountId,
+				account.stalkerConfig as unknown as Record<string, unknown>
+			);
+			const updatedConfig = encryptLivetvConfig(accountId, {
+				...decrypted,
+				token
+			}) as unknown as typeof account.stalkerConfig;
 			await db
 				.update(livetvAccounts)
 				.set({ stalkerConfig: updatedConfig })

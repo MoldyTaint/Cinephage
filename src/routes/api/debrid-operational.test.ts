@@ -75,7 +75,7 @@ const { getDebridPollService, resetDebridPollService } =
 	await import('$lib/server/downloadClients/debrid/DebridPollService');
 const { qualityFilter } = await import('$lib/server/quality/QualityFilter');
 const { decryptBackupPayload } = await import('$lib/server/crypto/backupCrypto');
-const { decryptDebridToken } = await import('$lib/server/crypto/debridTokenCrypto');
+const { decryptCredential } = await import('$lib/server/crypto/credentialsCrypto');
 
 type Provider = 'realdebrid' | 'torbox';
 
@@ -462,7 +462,10 @@ describe('public debrid workflow operational acceptance', () => {
 					)
 					.get(created.data.client.id) as { apiToken: string; removeAfterImport: number };
 				expect(rawClient.apiToken).not.toBe(scenario.token);
-				expect(decryptDebridToken(rawClient.apiToken)).toBe(scenario.token);
+				// Versioned envelope bound to the client id (post-161 format).
+				expect(decryptCredential('debrid-token', created.data.client.id, rawClient.apiToken)).toBe(
+					scenario.token
+				);
 				expect(rawClient.removeAfterImport).toBe(scenario.removeAfterImport ? 1 : 0);
 
 				resetDownloadClientManager();
@@ -580,7 +583,9 @@ describe('public debrid workflow operational acceptance', () => {
 					.get()?.apiToken;
 				expect(restoredCiphertext).toBeTruthy();
 				expect(restoredCiphertext).not.toBe(rawClient.apiToken);
-				expect(decryptDebridToken(restoredCiphertext as string)).toBe(scenario.token);
+				expect(
+					decryptCredential('debrid-token', created.data.client.id, restoredCiphertext as string)
+				).toBe(scenario.token);
 
 				assertNoSecret(testDb.db.select().from(downloadQueue).all(), scenario);
 				assertNoSecret(testDb.db.select().from(downloadHistory).all(), scenario);

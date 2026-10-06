@@ -15,8 +15,28 @@ import {
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { createChildLogger } from '$lib/logging';
+import { decryptSecretJsonValues, encryptSecretJsonValues } from '$lib/server/crypto/secretFields';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
+
+/** AAD purpose for credentials inside indexers.settings. */
+const INDEXER_SETTINGS_PURPOSE = 'indexer-settings';
+
+/** Encrypt credential keys inside an indexer settings object (idempotent). */
+function encryptIndexerSettings(
+	indexerId: string,
+	settings: Record<string, unknown>
+): Record<string, unknown> {
+	return encryptSecretJsonValues(INDEXER_SETTINGS_PURPOSE, indexerId, settings);
+}
+
+/** Decrypt credential envelopes inside an indexer settings object. */
+function decryptIndexerSettings(
+	indexerId: string,
+	settings: Record<string, unknown>
+): Record<string, unknown> {
+	return decryptSecretJsonValues(INDEXER_SETTINGS_PURPOSE, indexerId, settings);
+}
 
 import type {
 	IIndexer,
@@ -256,10 +276,13 @@ export class IndexerManager {
 		// Build protocol settings from config
 		const protocolSettings = this.buildProtocolSettings(config, effectiveProtocol);
 
-		// Insert and return the generated ID
+		// Insert and return the generated ID. The id is generated client-side so
+		// the settings' credential envelope can bind to it (AAD) before insert.
+		const id = randomUUID();
 		const result = await db
 			.insert(indexersTable)
 			.values({
+				id,
 				name: config.name,
 				definitionId: config.definitionId,
 				enabled: config.enabled,
@@ -269,7 +292,10 @@ export class IndexerManager {
 				alternateUrls: config.alternateUrls ?? null,
 				priority: config.priority,
 				rateLimitPerMinute: config.rateLimitPerMinute ?? null,
-				settings: config.settings as Record<string, string | number | boolean>,
+				settings: encryptIndexerSettings(
+					id,
+					(config.settings as Record<string, unknown>) ?? {}
+				) as Record<string, string | number | boolean>,
 				protocolSettings: protocolSettings ?? undefined,
 
 				// Search capability toggles
@@ -278,8 +304,7 @@ export class IndexerManager {
 			})
 			.returning({ id: indexersTable.id });
 
-		const id = result[0]?.id;
-		if (!id) {
+		if (!result[0]?.id) {
 			throw new Error('Failed to create indexer: no ID returned');
 		}
 
@@ -367,7 +392,12 @@ export class IndexerManager {
 		if (updates.priority !== undefined) updateData.priority = updates.priority;
 		if (updates.rateLimitPerMinute !== undefined)
 			updateData.rateLimitPerMinute = updates.rateLimitPerMinute;
-		if (updates.settings !== undefined) updateData.settings = updates.settings;
+		if (updates.settings !== undefined) {
+			updateData.settings = encryptIndexerSettings(
+				id,
+				(updates.settings as Record<string, unknown>) ?? {}
+			);
+		}
 		if (updates.additionalCategories !== undefined)
 			updateData.additionalCategories = updates.additionalCategories;
 
@@ -714,7 +744,10 @@ export class IndexerManager {
 			// Note: cinephage-stream's settings JSON is no longer used as a
 			// source of truth after migration 103 — its config lives in the
 			// CinephageAPI subsystem tables. The row's settings are null/empty.
-			settings: (row.settings as Record<string, string>) ?? {},
+			settings: decryptIndexerSettings(
+				row.id,
+				(row.settings as Record<string, unknown> | null) ?? {}
+			) as Record<string, string>,
 
 			// Search capability toggles
 			enableAutomaticSearch: row.enableAutomaticSearch ?? true,

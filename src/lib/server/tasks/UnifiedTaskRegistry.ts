@@ -235,6 +235,14 @@ const MAINTENANCE_TASKS: UnifiedTaskDefinition[] = [
 			'Fill in the original language for movies and series that are missing it (typically imported before this data was tracked) by fetching their TMDB details. Safe to re-run; already-populated items are skipped.',
 		category: 'maintenance',
 		runEndpoint: '/api/monitoring/search/original-language-backfill'
+	},
+	{
+		id: 'rotate-credentials',
+		name: 'Rotate Credential Encryption',
+		description:
+			'Re-encrypt every stored credential (download clients, indexers, subtitle providers, Live TV, metadata API keys, NNTP) under the current encryption master key. Run this after changing the master key with the old key listed in ENCRYPTION_PREVIOUS_KEYS, then remove the fallback variable.',
+		category: 'maintenance',
+		runEndpoint: '/api/settings/system/rotate-credentials'
 	}
 ];
 

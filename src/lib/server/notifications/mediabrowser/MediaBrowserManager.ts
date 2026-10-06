@@ -4,7 +4,12 @@
  */
 
 import { db } from '$lib/server/db';
-import { decryptApiKey, encryptApiKey } from '$lib/server/crypto/apiKeyCrypto.js';
+import { decryptApiKey } from '$lib/server/crypto/apiKeyCrypto.js';
+import {
+	decryptCredential,
+	encryptCredential,
+	isEncryptedCredential
+} from '$lib/server/crypto/credentialsCrypto.js';
 import {
 	mediaBrowserServers,
 	mediaServerSyncedItems,
@@ -73,38 +78,48 @@ class MediaBrowserManager {
 	}
 
 	/**
-	 * Values at rest are AES-256-GCM ciphertext (iv:tag:hex). The heuristic
-	 * also tolerates legacy plaintext rows written by anything that raced
-	 * the encrypting migration.
+	 * Legacy `iv:tag:hex` ciphertext from apiKeyCrypto (pre-migration 161).
+	 * New values use the versioned `cphg1.` envelope, detected exactly by
+	 * isEncryptedCredential; plaintext rows that raced the encrypting
+	 * migration remain tolerated.
 	 */
-	private static looksEncrypted(value: string): boolean {
+	private static looksLegacyEncrypted(value: string): boolean {
 		const parts = value.split(':');
 		return parts.length === 3 && parts.every((p) => /^[0-9a-f]+$/i.test(p));
 	}
 
 	/**
 	 * Decrypt the stored key, or null when the row looks like ciphertext but
-	 * will not decrypt (rotated BETTER_AUTH_SECRET, corruption). Never returns
+	 * will not decrypt (rotated master key, corruption). Never returns
 	 * the ciphertext itself: sending it to the media server would leak
 	 * key material to a third party while masking the misconfiguration.
 	 */
-	private static decryptStoredKey(value: string, context?: string): string | null {
-		if (!MediaBrowserManager.looksEncrypted(value)) {
-			return value;
-		}
-		const plaintext = decryptApiKey(value);
-		if (plaintext === null && context) {
-			logger.error(
-				{ logDomain: 'notifications', serverId: context },
-				'[MediaBrowser] Stored API key failed to decrypt — the credential is being dropped. ' +
-					'If BETTER_AUTH_SECRET was rotated, re-enter the server API key in settings.'
+	private static decryptStoredKey(serverId: string, value: string): string | null {
+		if (isEncryptedCredential(value)) {
+			return decryptCredential(
+				'media-browser-api-key',
+				serverId,
+				value,
+				`media-browser:${serverId}`
 			);
 		}
-		return plaintext;
+		if (MediaBrowserManager.looksLegacyEncrypted(value)) {
+			const plaintext = decryptApiKey(value);
+			if (plaintext === null) {
+				logger.error(
+					{ logDomain: 'notifications', serverId },
+					'[MediaBrowser] Stored API key failed to decrypt — the credential is being dropped. ' +
+						'If the encryption master key was rotated, re-enter the server API key in settings.'
+				);
+			}
+			return plaintext;
+		}
+		return value;
 	}
 
-	private static encryptStoredKey(value: string): string {
-		return MediaBrowserManager.looksEncrypted(value) ? value : encryptApiKey(value);
+	private static encryptStoredKey(serverId: string, value: string): string {
+		if (isEncryptedCredential(value)) return value;
+		return encryptCredential('media-browser-api-key', serverId, value);
 	}
 
 	/**
@@ -146,7 +161,7 @@ class MediaBrowserManager {
 			.orderBy(asc(mediaBrowserServers.name));
 		return records.map((record) => ({
 			...record,
-			apiKey: MediaBrowserManager.decryptStoredKey(record.apiKey, record.id) ?? ''
+			apiKey: MediaBrowserManager.decryptStoredKey(record.id, record.apiKey) ?? ''
 		}));
 	}
 
@@ -176,7 +191,7 @@ class MediaBrowserManager {
 		if (!record) return null;
 		return {
 			...record,
-			apiKey: MediaBrowserManager.decryptStoredKey(record.apiKey, record.id) ?? ''
+			apiKey: MediaBrowserManager.decryptStoredKey(record.id, record.apiKey) ?? ''
 		};
 	}
 
@@ -185,13 +200,14 @@ class MediaBrowserManager {
 	 */
 	async createServer(input: MediaBrowserServerInput): Promise<MediaBrowserServerPublic> {
 		const now = new Date().toISOString();
+		const serverId = randomUUID();
 
 		const newServer = {
-			id: randomUUID(),
+			id: serverId,
 			name: input.name,
 			serverType: input.serverType,
 			host: input.host.replace(/\/+$/, ''), // Normalize URL
-			apiKey: MediaBrowserManager.encryptStoredKey(input.apiKey),
+			apiKey: MediaBrowserManager.encryptStoredKey(serverId, input.apiKey),
 			enabled: input.enabled ?? true,
 			onImport: input.onImport ?? true,
 			onUpgrade: input.onUpgrade ?? true,
@@ -227,7 +243,7 @@ class MediaBrowserManager {
 		if (input.serverType !== undefined) updates.serverType = input.serverType;
 		if (input.host !== undefined) updates.host = input.host.replace(/\/+$/, '');
 		if (input.apiKey !== undefined)
-			updates.apiKey = MediaBrowserManager.encryptStoredKey(input.apiKey);
+			updates.apiKey = MediaBrowserManager.encryptStoredKey(id, input.apiKey);
 		if (input.enabled !== undefined) updates.enabled = input.enabled;
 		if (input.onImport !== undefined) updates.onImport = input.onImport;
 		if (input.onUpgrade !== undefined) updates.onUpgrade = input.onUpgrade;

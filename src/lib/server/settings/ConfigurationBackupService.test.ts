@@ -34,7 +34,6 @@ describe('ConfigurationBackupService debrid safety', () => {
 	it('restores plaintext tokens without guessing their format', async () => {
 		const { getConfigurationBackupService } = await import('./ConfigurationBackupService');
 		const { encryptBackupPayload } = await import('$lib/server/crypto/backupCrypto');
-		const { decryptDebridToken } = await import('$lib/server/crypto/debridTokenCrypto');
 		const clientId = 'debrid-client-1';
 		const token = 'looks:like:encrypted:but:is:plaintext';
 		const backup = {
@@ -73,7 +72,9 @@ describe('ConfigurationBackupService debrid safety', () => {
 			.prepare(`SELECT "api_token" FROM "download_clients" WHERE "id" = ?`)
 			.get(clientId) as { api_token: string };
 
-		expect(decryptDebridToken(row.api_token)).toBe(token);
+		// Restored under the versioned envelope bound to the client id.
+		const { decryptCredential } = await import('$lib/server/crypto/credentialsCrypto');
+		expect(decryptCredential('debrid-token', clientId, row.api_token)).toBe(token);
 	});
 
 	it('fails export closed when a stored token cannot be decrypted', async () => {

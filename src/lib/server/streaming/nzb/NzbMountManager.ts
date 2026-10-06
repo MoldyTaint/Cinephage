@@ -10,6 +10,7 @@ import { db } from '$lib/server/db';
 import { nzbStreamMounts } from '$lib/server/db/schema';
 import { createChildLogger } from '$lib/logging';
 import { parseNzb } from '$lib/server/streaming/usenet/NzbParser';
+import { encryptCredential } from '$lib/server/crypto/credentialsCrypto';
 
 const logger = createChildLogger({ logDomain: 'streams' as const });
 import type { NzbFile } from '$lib/server/streaming/usenet/types';
@@ -128,10 +129,13 @@ class NzbMountManager {
 				groups: f.groups
 			}));
 
-			// Insert mount record and get generated ID
+			// Insert mount record and get generated ID. The id is generated
+			// client-side so the RAR password envelope can bind to it (AAD).
+			const mountId = randomUUID();
 			const [inserted] = await db
 				.insert(nzbStreamMounts)
 				.values({
+					id: mountId,
 					nzbHash: parsed.hash,
 					title: input.title,
 					indexerId: input.indexerId,
@@ -152,7 +156,9 @@ class NzbMountManager {
 								innerFiles: []
 							}
 						: undefined,
-					password: input.password,
+					password: input.password
+						? encryptCredential('nzb-mount-password', mountId, input.password)
+						: undefined,
 					status: 'ready',
 					expiresAt
 				})

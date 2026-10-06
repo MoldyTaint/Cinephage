@@ -45,6 +45,8 @@ vi.mock('$lib/logging', () => ({
 
 const { getMediaBrowserManager } = await import('./MediaBrowserManager.js');
 const { decryptApiKey, encryptApiKey } = await import('$lib/server/crypto/apiKeyCrypto.js');
+const { decryptCredential, isEncryptedCredential } =
+	await import('$lib/server/crypto/credentialsCrypto.js');
 
 const PLAINTEXT_KEY = '858b516c791c44959d079285a6c3428d';
 let serverId: string;
@@ -86,7 +88,9 @@ describe('media-browser key encryption — manager roundtrip', () => {
 			.all()
 			.find((row) => row.name === 'Created')!;
 		expect(raw.apiKey).not.toBe(PLAINTEXT_KEY);
-		expect(decryptApiKey(raw.apiKey)).toBe(PLAINTEXT_KEY);
+		// New rows use the versioned envelope bound to the server id.
+		expect(isEncryptedCredential(raw.apiKey)).toBe(true);
+		expect(decryptCredential('media-browser-api-key', raw.id, raw.apiKey)).toBe(PLAINTEXT_KEY);
 
 		const record = await manager.getServerRecord(raw.id);
 		expect(record?.apiKey).toBe(PLAINTEXT_KEY);

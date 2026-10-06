@@ -6,6 +6,7 @@ import { settings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { tmdbApiKeySchema } from '$lib/validation/schemas';
 import { tmdb } from '$lib/server/tmdb';
+import { encryptSettingValue } from '$lib/server/settings/secretSettings';
 import { z } from 'zod';
 import { parseBody } from '$lib/server/api/validate.js';
 
@@ -51,10 +52,12 @@ export const PUT: RequestHandler = async (event) => {
 		);
 	}
 
+	const storedApiKey = encryptSettingValue('tmdb_api_key', apiKey);
+
 	await db
 		.insert(settings)
-		.values({ key: 'tmdb_api_key', value: apiKey })
-		.onConflictDoUpdate({ target: settings.key, set: { value: apiKey } });
+		.values({ key: 'tmdb_api_key', value: storedApiKey })
+		.onConflictDoUpdate({ target: settings.key, set: { value: storedApiKey } });
 
 	tmdb.invalidateSettings();
 

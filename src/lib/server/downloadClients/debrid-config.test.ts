@@ -72,7 +72,7 @@ describe('debrid client configuration', () => {
 
 	it('stores encrypted credentials while every public client shape remains redacted', async () => {
 		const { DownloadClientManager } = await import('./DownloadClientManager');
-		const { decryptDebridToken } = await import('$lib/server/crypto/debridTokenCrypto');
+		const { decryptCredential } = await import('$lib/server/crypto/credentialsCrypto');
 		const manager = new DownloadClientManager();
 		const created = await manager.createClient({
 			name: 'Real-Debrid',
@@ -91,12 +91,17 @@ describe('debrid client configuration', () => {
 			port: 443
 		});
 		expect(JSON.stringify(created)).not.toContain('original-token');
-		expect(decryptDebridToken(originalCiphertext)).toBe('original-token');
+		// Stored under the versioned envelope bound to the client id.
+		expect(decryptCredential('debrid-token', created.id, originalCiphertext)).toBe(
+			'original-token'
+		);
 
 		await manager.updateClient(created.id, { name: 'Renamed' });
 		expect(rawClient(created.id).api_token).toBe(originalCiphertext);
 		await manager.updateClient(created.id, { apiToken: 'replacement-token' });
-		expect(decryptDebridToken(rawClient(created.id).api_token as string)).toBe('replacement-token');
+		expect(
+			decryptCredential('debrid-token', created.id, rawClient(created.id).api_token as string)
+		).toBe('replacement-token');
 
 		const serialized = JSON.stringify(await manager.getClients());
 		expect(serialized).not.toContain('replacement-token');

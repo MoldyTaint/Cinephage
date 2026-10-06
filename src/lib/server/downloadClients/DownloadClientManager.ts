@@ -8,9 +8,46 @@ import { downloadClients as downloadClientsTable } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { createChildLogger } from '$lib/logging';
-import { decryptDebridToken, encryptDebridToken } from '$lib/server/crypto/debridTokenCrypto';
+import { decryptDebridToken } from '$lib/server/crypto/debridTokenCrypto';
+import {
+	decryptCredential,
+	encryptCredential,
+	isEncryptedCredential
+} from '$lib/server/crypto/credentialsCrypto';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
+
+/** AAD purposes for the two credential columns this manager owns. */
+const DL_PASSWORD_PURPOSE = 'dl-client-password';
+const DEBRID_TOKEN_PURPOSE = 'debrid-token';
+
+function encryptStoredPassword(clientId: string, password: string): string {
+	return encryptCredential(DL_PASSWORD_PURPOSE, clientId, password);
+}
+
+function decryptStoredPassword(clientId: string, stored: string | null | undefined): string | null {
+	if (!stored) return null;
+	if (isEncryptedCredential(stored)) {
+		return decryptCredential(DL_PASSWORD_PURPOSE, clientId, stored, `download-client:${clientId}`);
+	}
+	return stored; // plaintext tolerance for rows that raced the migration
+}
+
+function encryptStoredDebridToken(clientId: string, token: string): string {
+	return encryptCredential(DEBRID_TOKEN_PURPOSE, clientId, token);
+}
+
+function decryptStoredDebridToken(
+	clientId: string,
+	stored: string | null | undefined
+): string | null {
+	if (!stored) return null;
+	if (isEncryptedCredential(stored)) {
+		return decryptCredential(DEBRID_TOKEN_PURPOSE, clientId, stored, `download-client:${clientId}`);
+	}
+	// Legacy `iv:tag:ct` blobs from debridTokenCrypto (pre-migration 161).
+	return decryptDebridToken(stored);
+}
 
 import type { IDownloadClient, DownloadClientConfig } from './core/interfaces';
 import type {
@@ -222,14 +259,14 @@ export class DownloadClientManager {
 		const client = this.rowToClient(rows[0]);
 		return {
 			...client,
-			password: rows[0].password
+			password: decryptStoredPassword(id, rows[0].password)
 		};
 	}
 
 	private async loadStoredDebridToken(id: string): Promise<StoredDebridTokenResult> {
 		const rows = await this.selectClientRowsById(id);
 		const encryptedToken = rows[0]?.apiToken;
-		const apiToken = encryptedToken ? decryptDebridToken(encryptedToken) : null;
+		const apiToken = decryptStoredDebridToken(id, encryptedToken);
 
 		return apiToken
 			? { success: true, apiToken }
@@ -274,7 +311,8 @@ export class DownloadClientManager {
 		}
 
 		// Encrypt the debrid API token before storing.
-		const apiToken = isDebrid && input.apiToken ? encryptDebridToken(input.apiToken) : null;
+		const apiToken =
+			isDebrid && input.apiToken ? encryptStoredDebridToken(id, input.apiToken) : null;
 
 		await db.insert(downloadClientsTable).values({
 			id,
@@ -287,7 +325,7 @@ export class DownloadClientManager {
 			urlBase: isDebrid ? null : (input.urlBase ?? null),
 			mountMode: isDebrid ? null : this.normalizeMountMode(input.mountMode),
 			username: isDebrid ? null : input.username,
-			password: isDebrid ? null : input.password,
+			password: isDebrid || !input.password ? null : encryptStoredPassword(id, input.password),
 			apiToken,
 			removeAfterImport: input.removeAfterImport ?? false,
 			allowMovies: isDebrid ? (input.allowMovies ?? true) : true,
@@ -358,13 +396,13 @@ export class DownloadClientManager {
 		// Only update password if explicitly provided with a non-empty value
 		// (null or empty string means "keep existing password")
 		if (updates.password !== undefined && updates.password !== null && updates.password !== '') {
-			updateData.password = updates.password;
+			updateData.password = encryptStoredPassword(id, updates.password);
 		}
 		// Only update apiToken if explicitly provided with a non-empty value.
 		// If apiToken is not provided (undefined/null/empty), preserve the existing
 		// encrypted token — same pattern as password.
 		if (updates.apiToken !== undefined && updates.apiToken !== null && updates.apiToken !== '') {
-			updateData.apiToken = encryptDebridToken(updates.apiToken);
+			updateData.apiToken = encryptStoredDebridToken(id, updates.apiToken);
 		}
 		if (updates.removeAfterImport !== undefined) {
 			updateData.removeAfterImport = updates.removeAfterImport;

@@ -157,6 +157,7 @@ import { migration_v157 } from './157-user-media-server-links.js';
 import { migration_v158 } from './158-user-preferences.js';
 import { migration_v159 } from './159-encrypt-media-browser-api-keys.js';
 import { migration_v160 } from './160-request-system.js';
+import { migration_v161 } from './161-encrypt-credentials-at-rest.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -316,5 +317,6 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v157,
 	migration_v158,
 	migration_v159,
-	migration_v160
+	migration_v160,
+	migration_v161
 ];
