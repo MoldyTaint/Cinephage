@@ -22,7 +22,11 @@ export const TERMINAL_REQUEST_STATUSES: readonly RequestStatus[] = [
 	'declined',
 	'expired',
 	'cancelled',
-	'fulfilled'
+	'fulfilled',
+	// Failed rows keep their Retry action while they exist, but the owner
+	// (or an admin) may also remove them outright — e.g. requests failed by
+	// media deletion, where the requester re-requests instead of retrying.
+	'failed'
 ] as const;
 
 /** Statuses that do NOT consume quota (everything else counts). */

@@ -109,11 +109,13 @@ export class RequestAvailabilityProjector {
 		fulfilledAdvanced: number;
 		expired: number;
 		targetRetries: number;
+		orphanedFailed: number;
 		notificationsPruned: number;
 	}> {
 		const requestService = getRequestService();
 		const expired = await requestService.expireStalePending();
 		const targetRetries = await requestService.retryAwaitingTarget();
+		const orphanedFailed = await requestService.reconcileDeletedMedia();
 		const notificationsPruned = await getRequestNotificationService().pruneReadNotifications(30);
 
 		// Identity-keyed, not row-limited: every active request's media gets
@@ -123,7 +125,7 @@ export class RequestAvailabilityProjector {
 		for (const key of keys) {
 			fulfilledAdvanced += await requestService.advanceFulfilledByMedia(key.mediaType, key.tmdbId);
 		}
-		return { fulfilledAdvanced, expired, targetRetries, notificationsPruned };
+		return { fulfilledAdvanced, expired, targetRetries, orphanedFailed, notificationsPruned };
 	}
 }
 

@@ -775,6 +775,83 @@ describe('fulfillment projection and expiry', () => {
 	});
 });
 
+describe('deleted-media reconciliation', () => {
+	it('fails approved requests orphaned by media deletion and notifies the requester', async () => {
+		const svc = getRequestService();
+		const created = await svc.create(viewer(), { mediaType: 'movie', tmdbId: 42 });
+		// Real FK path: approve stamps the movie id, then deleting the movie
+		// row nulls it (ON DELETE SET NULL) — exactly the orphan class.
+		insertMovie('m-deleted', 42, { hasFile: false });
+		testDb.db
+			.update(requests)
+			.set({ status: 'approved', movieId: 'm-deleted' })
+			.where(eq(requests.id, created.id))
+			.run();
+		testDb.db.delete(movies).where(eqId('m-deleted')).run();
+
+		const afterDelete = await svc.getRequest(created.id);
+		expect(afterDelete.movieId).toBeNull();
+
+		const failed = await svc.reconcileDeletedMedia();
+		expect(failed).toBe(1);
+		const after = await svc.getRequest(created.id);
+		expect(after.status).toBe('failed');
+		expect(after.failureReason).toBe('Library item was deleted');
+
+		const notifs = testDb.sqlite
+			.prepare('SELECT event FROM request_notifications WHERE user_id = ?')
+			.all(viewerId) as Array<{ event: string }>;
+		expect(notifs.some((n) => n.event === 'request_failed')).toBe(true);
+	});
+
+	it('leaves approved requests that still carry their library id, and other statuses, untouched', async () => {
+		const svc = getRequestService();
+		const orphan = await svc.create(viewer(), { mediaType: 'movie', tmdbId: 42 });
+		const linked = await svc.create(viewer(), { mediaType: 'movie', tmdbId: 43 });
+		const pending = await svc.create(viewer(), { mediaType: 'movie', tmdbId: 44 });
+		insertMovie('m-alive', 43, { hasFile: false });
+
+		testDb.db
+			.update(requests)
+			.set({ status: 'approved', movieId: null })
+			.where(eq(requests.id, orphan.id))
+			.run();
+		testDb.db
+			.update(requests)
+			.set({ status: 'approved', movieId: 'm-alive' })
+			.where(eq(requests.id, linked.id))
+			.run();
+		void pending;
+
+		const failed = await svc.reconcileDeletedMedia();
+		expect(failed).toBe(1);
+		expect((await svc.getRequest(orphan.id)).status).toBe('failed');
+		expect((await svc.getRequest(linked.id)).status).toBe('approved');
+		expect((await svc.getRequest(pending.id)).status).toBe('pending');
+	});
+
+	it('treats failed as terminal: owners may remove the row (unlocking a fresh request)', async () => {
+		const svc = getRequestService();
+		const created = await svc.create(viewer(), { mediaType: 'movie', tmdbId: 42 });
+		testDb.db
+			.update(requests)
+			.set({ status: 'failed', failureReason: 'Library item was deleted' })
+			.where(eq(requests.id, created.id))
+			.run();
+
+		const result = await svc.cancelOrRemove(created.id, viewer());
+		expect(result.kind).toBe('removed');
+		const rows = testDb.sqlite
+			.prepare('SELECT COUNT(*) AS c FROM requests WHERE id = ?')
+			.get(created.id) as { c: number };
+		expect(rows.c).toBe(0);
+
+		// With the failed row gone, the title is requestable again.
+		const recreated = await svc.create(viewer(), { mediaType: 'movie', tmdbId: 42 });
+		expect(recreated.status).toBe('pending');
+	});
+});
+
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------

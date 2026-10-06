@@ -36,6 +36,7 @@ export async function executeRequestSweepTask(
 				result.expired +
 				result.fulfilledAdvanced +
 				result.targetRetries +
+				result.orphanedFailed +
 				result.notificationsPruned,
 			itemsGrabbed: 0,
 			errors: 0,

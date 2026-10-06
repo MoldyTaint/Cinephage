@@ -397,17 +397,33 @@ describe('DELETE /api/requests/[id] — decided requests', () => {
 		expect(removed.data.deleted).toBe(true);
 
 		// An approved (active, non-pending) request cannot be removed —
-		// decline/retry are the verbs there.
+		// decline is the verb there. (Failed requests ARE owner-removable;
+		// that's covered in the service suite.) Seed the movie row AFTER the
+		// request exists (create rejects in-library titles) so approval takes
+		// the existing-row branch and genuinely lands `approved` without
+		// touching the mocked add orchestrator.
 		const active = await callJson(
 			POST,
 			'POST',
 			{ mediaType: 'movie', tmdbId: 100 },
 			{ auth: 'user' }
 		);
-		await callJson(POST_APPROVE, 'POST', undefined, {
+		testDb.db
+			.insert(movies)
+			.values({
+				tmdbId: 100,
+				title: 'Approved But Not Imported',
+				path: 'Approved But Not Imported (2020)',
+				libraryId: 'lib',
+				rootFolderId: 'rf',
+				hasFile: false
+			})
+			.run();
+		const approved = await callJson(POST_APPROVE, 'POST', undefined, {
 			auth: 'admin',
 			params: { id: active.data.request.id }
 		});
+		expect(approved.data.request.status).toBe('approved');
 		const conflict = await callJson(DELETE, 'DELETE', undefined, {
 			auth: 'user',
 			params: { id: active.data.request.id }

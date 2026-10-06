@@ -8,7 +8,7 @@ import {
 	movieFiles,
 	rootFolders
 } from '$lib/server/db/schema.js';
-import { and, desc, eq, gt, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import {
 	fetchMovieDetails,
 	fetchSeriesDetails,
@@ -1025,7 +1025,14 @@ export class RequestService {
 		requester: RequesterContext
 	): Promise<{ kind: 'cancelled'; request: typeof requests.$inferSelect } | { kind: 'removed' }> {
 		const request = await this.getRequest(requestId);
-		if ((ACTIVE_REQUEST_STATUSES as readonly string[]).includes(request.status)) {
+		// `failed` stays an ACTIVE status (it blocks duplicates and carries the
+		// Retry action), but unlike the other active statuses it is also
+		// owner-removable — e.g. requests failed by media deletion, where the
+		// requester prefers a fresh request over a retry.
+		const cancellable =
+			(ACTIVE_REQUEST_STATUSES as readonly string[]).includes(request.status) &&
+			request.status !== 'failed';
+		if (cancellable) {
 			return { kind: 'cancelled', request: await this.cancel(requestId, requester) };
 		}
 		// Terminal: owner or admin may clear the row; the conditional delete
@@ -1281,6 +1288,55 @@ export class RequestService {
 			if (result && result.status !== 'awaiting_target') advanced++;
 		}
 		return advanced;
+	}
+
+	/**
+	 * Fail requests orphaned by media deletion. Approval always stamps the
+	 * library id, and only the requests FK (ON DELETE SET NULL) clears it —
+	 * so `approved` with both ids null is exactly the deleted-after-approval
+	 * class, whether the delete came from the admin UI, bulk actions, or
+	 * scan-driven removal. `failed` is not an active status, so re-requesting
+	 * the title unlocks; nothing auto-retries a failed row. Called from the
+	 * hourly sweep.
+	 */
+	async reconcileDeletedMedia(): Promise<number> {
+		const orphaned = await db
+			.select()
+			.from(requests)
+			.where(
+				and(eq(requests.status, 'approved'), isNull(requests.movieId), isNull(requests.seriesId))
+			);
+		let failed = 0;
+		for (const request of orphaned) {
+			const claimed = await db
+				.update(requests)
+				.set({
+					status: 'failed',
+					failureReason: 'Library item was deleted',
+					updatedAt: new Date().toISOString()
+				})
+				.where(and(eq(requests.id, request.id), eq(requests.status, 'approved')))
+				.returning({ id: requests.id });
+			if (claimed.length === 0) continue;
+			failed++;
+
+			await getRequestNotificationService().notifyUser(
+				request.requestedBy,
+				'request_failed',
+				{
+					title: request.title,
+					mediaType: request.mediaType,
+					reason: 'Library item was deleted'
+				},
+				request.id
+			);
+			requestStreamEvents.emitRefresh({
+				requesterId: request.requestedBy,
+				requestId: request.id,
+				timestamp: new Date().toISOString()
+			});
+		}
+		return failed;
 	}
 
 	// ---------------------------------------------------------------------------
