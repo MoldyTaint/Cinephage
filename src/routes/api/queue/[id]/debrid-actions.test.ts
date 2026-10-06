@@ -143,7 +143,8 @@ describe('debrid queue actions', () => {
 						method: 'PATCH',
 						headers: { 'content-type': 'application/json' },
 						body: JSON.stringify({ action })
-					})
+					}),
+					locals: { user: { id: 'admin-1', role: 'admin' } }
 				} as never)
 			);
 
@@ -166,7 +167,10 @@ describe('debrid queue actions', () => {
 		});
 		const { POST } = await import('./retry/+server');
 
-		const response = await POST({ params: { id: original.id } } as never);
+		const response = await POST({
+			params: { id: original.id },
+			locals: { user: { id: 'admin-1', role: 'admin' } }
+		} as never);
 		const body = await response.json();
 
 		expect(response.status).toBe(200);
@@ -195,7 +199,10 @@ describe('debrid queue actions', () => {
 		});
 		const { POST } = await import('./retry/+server');
 
-		const response = await POST({ params: { id: original.id } } as never);
+		const response = await POST({
+			params: { id: original.id },
+			locals: { user: { id: 'admin-1', role: 'admin' } }
+		} as never);
 		const body = await response.json();
 
 		expect(response.status).toBe(400);
@@ -219,7 +226,10 @@ describe('debrid queue actions', () => {
 		});
 		const { POST } = await import('./retry/+server');
 
-		const response = await POST({ params: { id: original.id } } as never);
+		const response = await POST({
+			params: { id: original.id },
+			locals: { user: { id: 'admin-1', role: 'admin' } }
+		} as never);
 		const body = await response.json();
 
 		expect(response.status).toBe(409);

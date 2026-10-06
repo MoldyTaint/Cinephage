@@ -51,7 +51,8 @@ async function call(id: string) {
 	try {
 		return await callHandler(POST, 'POST', undefined, {
 			url: `http://localhost/api/reports/renaming-failures/${id}/retry`,
-			params: { id }
+			params: { id },
+			auth: 'admin' as const
 		});
 	} catch (err: any) {
 		if (err && typeof err.status === 'number') {

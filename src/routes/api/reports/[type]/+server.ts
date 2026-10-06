@@ -10,6 +10,7 @@ import {
 } from '$lib/server/db/schema.js';
 import { count, desc, asc, eq, ne, and, or, like, gt, inArray } from 'drizzle-orm';
 import { logger } from '$lib/logging';
+import { requireAdminLocals } from '$lib/server/auth/authorization.js';
 
 const VALID_TYPES = [
 	'rejected-releases',
@@ -47,7 +48,12 @@ function reportTypeDomain(type: ReportType): 'downloads' | 'imports' | 'scans' {
  * - status: filter by status string
  * - order: 'asc' | 'desc' (default: 'desc')
  */
-export const GET: RequestHandler = async ({ params, url }) => {
+export const GET: RequestHandler = async ({ params, url, locals }) => {
+	// Defense-in-depth: the hooks viewer gate confines this route; this
+	// guard keeps it admin-only even if the gate is ever refactored.
+	const authError = requireAdminLocals(locals);
+	if (authError) return authError;
+
 	const type = params.type as ReportType;
 
 	if (!VALID_TYPES.includes(type)) {
@@ -337,7 +343,12 @@ export const GET: RequestHandler = async ({ params, url }) => {
  * PATCH /api/reports/[type]
  * Bulk-update record status. Body: { ids: string[], status: string }
  */
-export const PATCH: RequestHandler = async ({ params, request }) => {
+export const PATCH: RequestHandler = async ({ params, request, locals }) => {
+	// Defense-in-depth: the hooks viewer gate confines this route; this
+	// guard keeps it admin-only even if the gate is ever refactored.
+	const authError = requireAdminLocals(locals);
+	if (authError) return authError;
+
 	const type = params.type as ReportType;
 
 	if (!VALID_TYPES.includes(type)) {

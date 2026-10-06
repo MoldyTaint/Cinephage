@@ -4,10 +4,16 @@ import { db } from '$lib/server/db/index.js';
 import { rejectedReleases } from '$lib/server/db/schema.js';
 import { count, eq, ne, and, gt } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'ReportsRejectedStats', logDomain: 'downloads' });
 
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async (event) => {
+	// Defense-in-depth: the hooks viewer gate confines this route; this
+	// guard keeps it admin-only even if the gate is ever refactored.
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
 	try {
 		const cutoff24h = new Date(Date.now() - 86_400_000).toISOString();
 		const active = ne(rejectedReleases.status, 'resolved');

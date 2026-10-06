@@ -51,7 +51,7 @@ function makeUrl(type: string, params: Record<string, string> = {}): string {
 }
 
 function opts(type: string, params: Record<string, string> = {}) {
-	return { url: makeUrl(type, params), params: { type } };
+	return { url: makeUrl(type, params), params: { type }, auth: 'admin' as const };
 }
 
 describe('Reports [type] API', () => {

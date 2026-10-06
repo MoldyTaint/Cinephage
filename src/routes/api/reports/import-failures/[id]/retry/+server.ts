@@ -5,6 +5,7 @@ import { importFailures, downloadQueue } from '$lib/server/db/schema.js';
 import { eq, or, and } from 'drizzle-orm';
 import { getImportService } from '$lib/server/downloadClients/import';
 import { createChildLogger } from '$lib/logging';
+import { requireAdminLocals } from '$lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'ReportsImportFailuresRetry', logDomain: 'imports' });
 
@@ -15,7 +16,12 @@ const logger = createChildLogger({ module: 'ReportsImportFailuresRetry', logDoma
  * the file from the download client. Returns 404 if no matching
  * download queue entry can be found (likely cleaned up already).
  */
-export const POST: RequestHandler = async ({ params }) => {
+export const POST: RequestHandler = async ({ params, locals }) => {
+	// Defense-in-depth: the hooks viewer gate confines this route; this
+	// guard keeps it admin-only even if the gate is ever refactored.
+	const authError = requireAdminLocals(locals);
+	if (authError) return authError;
+
 	const { id } = params;
 
 	const failure = await db.select().from(importFailures).where(eq(importFailures.id, id)).get();

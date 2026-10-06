@@ -53,7 +53,17 @@ export function requireAdminPage(locals: App.Locals): void {
  * ```
  */
 export function requireAdmin(event: RequestEvent): Response | null {
-	if (!event.locals.user) {
+	return requireAdminLocals(event.locals);
+}
+
+/**
+ * Same check as requireAdmin for handlers that destructure their arguments
+ * (`async ({ params, locals }) =>`). The hooks viewer gate already confines
+ * these routes; this is defense-in-depth so a future gate refactor cannot
+ * silently expose them.
+ */
+export function requireAdminLocals(locals: App.Locals): Response | null {
+	if (!locals.user) {
 		return json(
 			{
 				success: false,
@@ -64,7 +74,7 @@ export function requireAdmin(event: RequestEvent): Response | null {
 		);
 	}
 
-	if (event.locals.user.role !== 'admin') {
+	if (locals.user.role !== 'admin') {
 		return json(
 			{
 				success: false,

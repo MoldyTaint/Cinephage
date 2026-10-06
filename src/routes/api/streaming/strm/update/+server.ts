@@ -12,10 +12,16 @@ import type { RequestHandler } from './$types';
 import { strmService, getStreamingBaseUrl } from '$lib/server/streaming';
 import { getBaseUrl } from '$lib/server/streaming/url';
 import { createChildLogger } from '$lib/logging';
+import { requireAdminLocals } from '$lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'StrmUpdateAPI' });
 
 export const POST: RequestHandler = async ({ request, locals }) => {
+	// Defense-in-depth: the hooks viewer gate confines this route; this
+	// guard keeps it admin-only even if the gate is ever refactored.
+	const authError = requireAdminLocals(locals);
+	if (authError) return authError;
+
 	// Require authentication
 	if (!locals.user) {
 		return json(

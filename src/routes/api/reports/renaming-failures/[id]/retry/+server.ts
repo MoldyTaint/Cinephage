@@ -6,12 +6,18 @@ import { eq } from 'drizzle-orm';
 import { rename, mkdir, access } from 'fs/promises';
 import { dirname, basename } from 'path';
 import { createChildLogger } from '$lib/logging';
+import { requireAdminLocals } from '$lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'ReportsRenamingFailuresRetry', logDomain: 'scans' });
 
 const NON_RETRYABLE = new Set(['source_not_found', 'path_too_long', 'invalid_chars']);
 
-export const POST: RequestHandler = async ({ params }) => {
+export const POST: RequestHandler = async ({ params, locals }) => {
+	// Defense-in-depth: the hooks viewer gate confines this route; this
+	// guard keeps it admin-only even if the gate is ever refactored.
+	const authError = requireAdminLocals(locals);
+	if (authError) return authError;
+
 	const { id } = params;
 
 	const failure = await db.select().from(renamingFailures).where(eq(renamingFailures.id, id)).get();

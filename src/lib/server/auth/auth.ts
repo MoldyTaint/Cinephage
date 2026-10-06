@@ -385,6 +385,38 @@ export const auth = betterAuth({
 					return true;
 				}
 			}
+		},
+		account: {
+			update: {
+				after: async (account, ctx) => {
+					// A credential-provider password change performed by someone
+					// OTHER than the account owner (admin reset via setUserPassword —
+					// the plugin itself does not revoke sessions) kills every
+					// session of the target, server-side, so the raw admin API
+					// cannot leave stale authenticated sessions behind. Self-service
+					// password changes (actor === owner) keep their sessions.
+					const actor = ctx?.context?.session?.user;
+					if (typeof account?.userId === 'string' && (!actor || actor.id !== account.userId)) {
+						try {
+							const sqlite = getSharedSqliteConnection();
+							const result = sqlite
+								.prepare(`DELETE FROM session WHERE "userId" = ?`)
+								.run(account.userId);
+							if (result.changes > 0) {
+								logger.info(
+									{ userId: account.userId, revoked: result.changes, logDomain: 'auth' },
+									'[Auth] Admin password reset revoked target sessions'
+								);
+							}
+						} catch (error) {
+							logger.error(
+								{ err: error, userId: account.userId, logDomain: 'auth' },
+								'[Auth] Failed to revoke sessions after admin password reset'
+							);
+						}
+					}
+				}
+			}
 		}
 	},
 

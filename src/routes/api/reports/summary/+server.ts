@@ -9,6 +9,7 @@ import {
 } from '$lib/server/db/schema.js';
 import { count, ne } from 'drizzle-orm';
 import { createChildLogger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 // Cross-cutting summary across all four report types - not tied to one pipeline stage.
 const logger = createChildLogger({ module: 'ReportsSummary', logDomain: 'system' });
@@ -17,7 +18,12 @@ const logger = createChildLogger({ module: 'ReportsSummary', logDomain: 'system'
  * GET /api/reports/summary
  * Returns unresolved record counts for all diagnostic report types.
  */
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async (event) => {
+	// Defense-in-depth: the hooks viewer gate confines this route; this
+	// guard keeps it admin-only even if the gate is ever refactored.
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
 	try {
 		const [[rejectedCount], [importCount], [renamingCount], [unmatchedCount]] = await Promise.all([
 			db

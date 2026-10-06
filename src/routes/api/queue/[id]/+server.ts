@@ -14,6 +14,7 @@ import { downloadMonitor } from '$lib/server/downloadClients/monitoring';
 import { upsertQueueTombstoneFromQueueItem } from '$lib/server/downloadClients/monitoring/QueueTombstoneService';
 import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
 import { createChildLogger } from '$lib/logging';
+import { requireAdminLocals } from '$lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'QueueItemApi', logDomain: 'downloads' });
 
@@ -143,7 +144,12 @@ async function removeDownloadWithTimeout(
 /**
  * GET - Get a single queue item by ID
  */
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async ({ params, locals }) => {
+	// Defense-in-depth: the hooks viewer gate confines this route; this
+	// guard keeps it admin-only even if the gate is ever refactored.
+	const authError = requireAdminLocals(locals);
+	if (authError) return authError;
+
 	const { id } = params;
 
 	try {
@@ -201,7 +207,12 @@ export const GET: RequestHandler = async ({ params }) => {
 /**
  * PATCH - Update a queue item (e.g., pause, resume, change priority)
  */
-export const PATCH: RequestHandler = async ({ params, request }) => {
+export const PATCH: RequestHandler = async ({ params, request, locals }) => {
+	// Defense-in-depth: the hooks viewer gate confines this route; this
+	// guard keeps it admin-only even if the gate is ever refactored.
+	const authError = requireAdminLocals(locals);
+	if (authError) return authError;
+
 	const { id } = params;
 
 	try {
@@ -242,7 +253,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 /**
  * DELETE - Remove a queue item from queue and optionally from download client
  */
-export const DELETE: RequestHandler = async ({ params, url }) => {
+export const DELETE: RequestHandler = async ({ params, url, locals }) => {
+	// Defense-in-depth: the hooks viewer gate confines this route; this
+	// guard keeps it admin-only even if the gate is ever refactored.
+	const authError = requireAdminLocals(locals);
+	if (authError) return authError;
+
 	const { id } = params;
 	const removeFromClient = url.searchParams.get('removeFromClient') !== 'false';
 	const deleteFiles = url.searchParams.get('deleteFiles') === 'true';

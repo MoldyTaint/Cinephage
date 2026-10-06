@@ -16,6 +16,7 @@ import { createChildLogger } from '$lib/logging';
 import { and, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'StrmReprobeAPI' });
 
@@ -47,7 +48,12 @@ function resolveMediaPath(
 	return join(rootPath, cleanedParent, relativePath);
 }
 
-export const POST: RequestHandler = async () => {
+export const POST: RequestHandler = async (event) => {
+	// Defense-in-depth: the hooks viewer gate confines this route; this
+	// guard keeps it admin-only even if the gate is ever refactored.
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
 	try {
 		const result: ReprobeResult = {
 			success: true,

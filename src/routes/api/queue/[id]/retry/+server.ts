@@ -16,6 +16,7 @@ import { redactUrl } from '$lib/server/utils/urlSecurity';
 import { matchesImportError } from '$lib/types/activity.js';
 import { DebridHandler } from '$lib/server/downloads/handlers/DebridHandler.js';
 import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
+import { requireAdminLocals } from '$lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'QueueRetryApi', logDomain: 'downloads' });
 
@@ -138,7 +139,12 @@ function toSafeQueueItem(item: typeof downloadQueue.$inferSelect | undefined) {
  * If the client still reports the item as completed, retry import first.
  * Otherwise, fall back to download retry (native client retry or re-add).
  */
-export const POST: RequestHandler = async ({ params }) => {
+export const POST: RequestHandler = async ({ params, locals }) => {
+	// Defense-in-depth: the hooks viewer gate confines this route; this
+	// guard keeps it admin-only even if the gate is ever refactored.
+	const authError = requireAdminLocals(locals);
+	if (authError) return authError;
+
 	const { id } = params;
 
 	try {
