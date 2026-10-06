@@ -129,8 +129,25 @@ designed for trusted networks.
 ### Stored Credentials
 
 Integration credentials (indexers, download clients, subtitle providers,
-Live TV portals, media servers) are stored in the SQLite database, and the
-database also holds password hashes and session rows. Ensure:
+Live TV portals, media servers) and metadata API keys (TMDB/TVDB) are stored
+in the SQLite database **encrypted at rest** (schema 161+), and the database
+also holds password hashes and session rows. Encryption details:
+
+- AES-256-GCM with per-value random nonces, keys derived via HKDF-SHA256 from
+  a master key, and each ciphertext bound to its owning record — relocated
+  ciphertexts fail to decrypt
+- Key custody: `ENCRYPTION_MASTER_KEY` (or `ENCRYPTION_MASTER_KEY_FILE` for
+  Docker secrets) when set; otherwise derived from `BETTER_AUTH_SECRET`
+- Key rotation: set the new master key plus `ENCRYPTION_PREVIOUS_KEYS` (old
+  secrets), run the `rotate-credentials` task in Settings → Tasks to
+  re-encrypt everything, then remove the fallback variable
+- Configuration backups deliberately carry credentials in plaintext so they
+  restore onto instances with different master keys — protect backup files
+  accordingly (the optional backup passphrase encrypts the whole payload)
+- A wrong/rotated-away master key fails closed: affected credentials are
+  dropped and must be re-entered
+
+Ensure:
 
 - Restrictive file permissions on `data/cinephage.db`, its `-wal`/`-shm`
   companions, `data/logs/`, and the `.env` holding `BETTER_AUTH_SECRET`
