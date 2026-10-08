@@ -16,6 +16,7 @@ FROM build-deps-base AS builder
 
 COPY package*.json ./
 COPY .npmrc ./
+COPY tools/npm-stub ./tools/npm-stub
 
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 
@@ -48,9 +49,15 @@ COPY .npmrc ./
 # Install only runtime dependencies.
 # Keep optional deps, some runtime packages (e.g. impit) ship
 # platform-native bindings through optionalDependencies.
+# The doc/docs pruning must not touch */dist/* trees: the yaml package ships
+# actual code in dist/doc/ (its document AST), required at runtime via
+# camoufox — deleting it crashes the server on require.
 RUN npm ci --omit=dev --no-audit --no-fund \
 	&& find node_modules -type f -name '*.map' -delete \
-	&& find node_modules -type d \( -name test -o -name tests -o -name __tests__ -o -name docs -o -name doc -o -name examples -o -name example \) -prune -exec rm -rf '{}' + \
+	&& find node_modules -type d \
+		\( -name test -o -name tests -o -name __tests__ -o -name examples -o -name example \
+		-o \( \( -name doc -o -name docs \) ! -path '*/dist/*' \) \) \
+		-prune -exec rm -rf '{}' + \
 	&& find node_modules -name 'lightningcss-linux-x64-musl' -prune -exec rm -rf '{}' + \
 	&& find node_modules -type d -empty -delete
 
