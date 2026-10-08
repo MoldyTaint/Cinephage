@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import {
 		ChevronDown,
 		ChevronUp,
@@ -10,8 +10,8 @@
 		Clapperboard,
 		Tv
 	} from 'lucide-svelte';
-	import type { UnmatchedFolder } from '$lib/types/unmatched.js';
-	import { getFileName } from '$lib/utils/format.js';
+	import type { UnmatchedFolder } from '#lib/types/unmatched.js';
+	import { getFileName } from '#lib/utils/format.js';
 	import { SvelteMap } from 'svelte/reactivity';
 
 	interface AggregatedCandidate {

@@ -10,16 +10,16 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db';
-import { user } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { user } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { parseBody } from '$lib/server/api/validate.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { isAppError } from '$lib/errors';
+import { parseBody } from '#lib/server/api/validate.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { isAppError } from '#lib/errors/index.js';
 import {
 	getUserRequestSettingsService,
 	userRequestSettingsUpdateSchema
-} from '$lib/server/requests/UserRequestSettingsService.js';
+} from '#lib/server/requests/UserRequestSettingsService.js';
 
 async function userExists(userId: string): Promise<boolean> {
 	const row = await db.select({ id: user.id }).from(user).where(eq(user.id, userId)).get();

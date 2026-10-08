@@ -9,13 +9,13 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { parseBody } from '$lib/server/api/validate.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { isAppError } from '$lib/errors';
+import { parseBody } from '#lib/server/api/validate.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { isAppError } from '#lib/errors/index.js';
 import {
 	getRequestSettingsService,
 	requestSettingsSchema
-} from '$lib/server/requests/RequestSettingsService.js';
+} from '#lib/server/requests/RequestSettingsService.js';
 
 export const GET: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);

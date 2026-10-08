@@ -1,7 +1,7 @@
 import type { LayoutServerLoad } from './$types';
-import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-import { tmdb } from '$lib/server/tmdb.js';
-import { mediaServerLinkService } from '$lib/server/mediaServerLink/MediaServerLinkService.js';
+import { getLibraryEntityService } from '#lib/server/library/LibraryEntityService.js';
+import { tmdb } from '#lib/server/tmdb.js';
+import { mediaServerLinkService } from '#lib/server/mediaServerLink/MediaServerLinkService.js';
 
 export const load: LayoutServerLoad = async ({ locals }) => {
 	const defaultRegion = await tmdb.getRegion();

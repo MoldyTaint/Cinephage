@@ -7,11 +7,11 @@ import {
 } from '../../../../../test/db-helper';
 import { callHandler } from '../../../../../test/api-helper';
 import { randomUUID } from 'node:crypto';
-import { unmatchedFiles } from '$lib/server/db/schema';
+import { unmatchedFiles } from '#lib/server/db/schema.js';
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	},
@@ -29,20 +29,20 @@ const mockLogger = vi.hoisted(() => ({
 	child: vi.fn().mockReturnThis()
 }));
 
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: mockLogger,
 	createChildLogger: vi.fn(() => mockLogger)
 }));
 
 const mockAcceptMatch = vi.fn().mockResolvedValue(undefined);
 
-vi.mock('$lib/server/library/media-matcher', () => ({
+vi.mock('#lib/server/library/media-matcher.js', () => ({
 	mediaMatcherService: {
 		acceptMatch: mockAcceptMatch
 	}
 }));
 
-vi.mock('$lib/server/auth/authorization', () => ({
+vi.mock('#lib/server/auth/authorization.js', () => ({
 	requireAdmin: vi.fn().mockReturnValue(null)
 }));
 

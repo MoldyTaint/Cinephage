@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getExtractionCacheManager } from '$lib/server/streaming/nzb/extraction/ExtractionCacheManager';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { getExtractionCacheManager } from '#lib/server/streaming/nzb/extraction/ExtractionCacheManager.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 
 export const POST: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);

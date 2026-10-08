@@ -8,10 +8,10 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { channelCategoryService } from '$lib/server/livetv/categories';
-import { ValidationError } from '$lib/errors';
-import { createChildLogger } from '$lib/logging';
-import type { ChannelCategoryFormData } from '$lib/types/livetv';
+import { channelCategoryService } from '#lib/server/livetv/categories/index.js';
+import { ValidationError } from '#lib/errors/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import type { ChannelCategoryFormData } from '#lib/types/livetv.js';
 
 const logger = createChildLogger({ module: 'LiveTvChannelCategoryById', logDomain: 'livetv' });
 

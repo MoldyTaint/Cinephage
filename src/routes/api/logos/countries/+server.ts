@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
-import { getLogoDownloadService } from '$lib/server/logos/LogoDownloadService.js';
-import { listLogoCountries } from '$lib/server/logos/logo-library.js';
+import { getLogoDownloadService } from '#lib/server/logos/LogoDownloadService.js';
+import { listLogoCountries } from '#lib/server/logos/logo-library.js';
 
 const logger = createChildLogger({ module: 'LogosCountriesApi', logDomain: 'system' });
 

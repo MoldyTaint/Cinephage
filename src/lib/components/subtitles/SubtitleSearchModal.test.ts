@@ -7,7 +7,7 @@ const searchSubtitlesMock = vi.hoisted(() => vi.fn());
 const downloadSubtitleMock = vi.hoisted(() => vi.fn());
 const getSubtitleProvidersMock = vi.hoisted(() => vi.fn());
 
-vi.mock('$lib/api/subtitles.js', () => ({
+vi.mock('#lib/api/subtitles.js', () => ({
 	searchSubtitles: searchSubtitlesMock,
 	downloadSubtitle: downloadSubtitleMock,
 	getSubtitleProviders: getSubtitleProvidersMock

@@ -1,16 +1,16 @@
 import { opendir } from 'node:fs/promises';
 import { join, dirname, relative, extname, isAbsolute, resolve, sep } from 'node:path';
 import { stat } from 'node:fs/promises';
-import { isVideoFile } from '$lib/server/library/media-info.js';
-import { DOWNLOAD } from '$lib/config/constants';
-import type { DiscoveredFile } from '$lib/server/library/disk-scan.js';
+import { isVideoFile } from '#lib/server/library/media-info.js';
+import { DOWNLOAD } from '#lib/config/constants.js';
+import type { DiscoveredFile } from '#lib/server/library/disk-scan.js';
 import {
 	matchIgnore,
 	classifyFile,
 	recognizeStructure,
 	type CompiledPatterns
-} from '$lib/server/library/patterns/PatternRecognitionService.js';
-import { createChildLogger } from '$lib/logging';
+} from '#lib/server/library/patterns/PatternRecognitionService.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 

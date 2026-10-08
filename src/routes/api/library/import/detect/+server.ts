@@ -2,10 +2,10 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { z } from 'zod';
 import { stat } from 'node:fs/promises';
-import { manualImportService } from '$lib/server/library/manual-import-service.js';
-import { isPathAllowed, isPathInsideManagedRoot } from '$lib/server/filesystem/path-guard.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { createChildLogger } from '$lib/logging';
+import { manualImportService } from '#lib/server/library/manual-import-service.js';
+import { isPathAllowed, isPathInsideManagedRoot } from '#lib/server/filesystem/path-guard.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LibraryImportDetectApi', logDomain: 'scans' });
 

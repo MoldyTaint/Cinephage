@@ -2,7 +2,7 @@ import {
 	decryptRecordSecrets,
 	encryptRecordSecrets,
 	findSecretFieldSpec
-} from '$lib/server/crypto/secretFields';
+} from '#lib/server/crypto/secretFields.js';
 
 /**
  * Encrypt/decrypt settings-table values whose rows hold third-party secrets

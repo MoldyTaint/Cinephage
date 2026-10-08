@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { TrendingUp, TrendingDown, Minus, Loader2 } from 'lucide-svelte';
 
 	interface Props {

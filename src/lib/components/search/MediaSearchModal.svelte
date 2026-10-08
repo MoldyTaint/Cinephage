@@ -3,9 +3,9 @@
 	import InteractiveSearchModal from './InteractiveSearchModal.svelte';
 	import type { SearchMode } from './InteractiveSearchModal.svelte';
 	import type { Release } from './SearchResultRow.svelte';
-	import { getMovie, getSeries } from '$lib/api/library.js';
-	import { grabRelease } from '$lib/api/downloads.js';
-	import * as m from '$lib/paraglide/messages.js';
+	import { getMovie, getSeries } from '#lib/api/library.js';
+	import { grabRelease } from '#lib/api/downloads.js';
+	import * as m from '#lib/paraglide/messages.js';
 
 	interface Props {
 		open: boolean;

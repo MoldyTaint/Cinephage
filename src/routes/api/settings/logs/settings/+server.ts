@@ -2,14 +2,14 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 
-import { createChildLogger } from '$lib/logging';
-import { DEFAULT_CAPTURED_LOG_LEVEL } from '$lib/logging/log-capture';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { DEFAULT_CAPTURED_LOG_LEVEL } from '#lib/logging/log-capture.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import {
 	DEFAULT_LOG_RETENTION_DAYS,
 	MAX_LOG_RETENTION_DAYS,
 	logHistoryService
-} from '$lib/server/logging/log-history.js';
+} from '#lib/server/logging/log-history.js';
 
 const logger = createChildLogger({ module: 'LogSettingsApi', logDomain: 'system' });
 

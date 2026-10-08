@@ -7,10 +7,10 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getSmartListService } from '$lib/server/smartlists/index.js';
-import { db } from '$lib/server/db/index.js';
-import { rootFolders } from '$lib/server/db/schema.js';
-import { isAppError } from '$lib/errors';
+import { getSmartListService } from '#lib/server/smartlists/index.js';
+import { db } from '#lib/server/db/index.js';
+import { rootFolders } from '#lib/server/db/schema.js';
+import { isAppError } from '#lib/errors/index.js';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 

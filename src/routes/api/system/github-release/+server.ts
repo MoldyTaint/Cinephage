@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { createChildLogger } from '$lib/logging';
-import { ensureVersionPrefix } from '$lib/version.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { ensureVersionPrefix } from '#lib/version.js';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 

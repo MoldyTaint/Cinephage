@@ -1,5 +1,5 @@
-import type { ServiceStatus, BackgroundService } from '$lib/server/services/background-service.js';
-import { createChildLogger } from '$lib/logging';
+import type { ServiceStatus, BackgroundService } from '#lib/server/services/background-service.js';
+import { createChildLogger } from '#lib/logging/index.js';
 import { upsertInsights } from './upsert.js';
 import { storageEvents } from '../StorageEvents.js';
 import type { StorageInsightRule, RuleContext, InsightFinding } from './types.js';
@@ -57,7 +57,7 @@ class InsightsService implements BackgroundService {
 	private attachListeners(): void {
 		if (this.listenersAttached) return;
 		this.listenersAttached = true;
-		this.attachPromise = import('$lib/server/storage/reconciliation/ReconciliationService.js')
+		this.attachPromise = import('#lib/server/storage/reconciliation/ReconciliationService.js')
 			.then(({ getReconciliationService }) => {
 				getReconciliationService().on('reconcileComplete', this.handleTrigger);
 			})
@@ -69,7 +69,7 @@ class InsightsService implements BackgroundService {
 	private detachListeners(): void {
 		if (!this.listenersAttached) return;
 		this.listenersAttached = false;
-		void import('$lib/server/storage/reconciliation/ReconciliationService.js')
+		void import('#lib/server/storage/reconciliation/ReconciliationService.js')
 			.then(({ getReconciliationService }) => {
 				getReconciliationService().off('reconcileComplete', this.handleTrigger);
 			})
@@ -97,7 +97,7 @@ class InsightsService implements BackgroundService {
 		try {
 			const now = new Date().toISOString();
 			const ctx: RuleContext = {
-				db: await import('$lib/server/db/index.js').then((m) => m.db),
+				db: await import('#lib/server/db/index.js').then((m) => m.db),
 				now
 			};
 

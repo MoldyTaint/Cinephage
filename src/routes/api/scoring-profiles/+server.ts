@@ -1,19 +1,19 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db';
-import { scoringProfiles } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { scoringProfiles } from '#lib/server/db/schema.js';
 import { and, eq, ne, sql } from 'drizzle-orm';
-import { DEFAULT_PROFILES, getProfile, isBuiltInProfile } from '$lib/server/scoring';
-import { qualityFilter } from '$lib/server/quality';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { toNullableNumber } from '$lib/utils/number.js';
-import { AppError, NotFoundError, ValidationError } from '$lib/errors';
-import { parseBody } from '$lib/server/api/validate.js';
+import { DEFAULT_PROFILES, getProfile, isBuiltInProfile } from '#lib/server/scoring/index.js';
+import { qualityFilter } from '#lib/server/quality/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { toNullableNumber } from '#lib/utils/number.js';
+import { AppError, NotFoundError, ValidationError } from '#lib/errors/index.js';
+import { parseBody } from '#lib/server/api/validate.js';
 import {
 	scoringProfileCreateSchema,
 	scoringProfileUpdateBodySchema,
 	scoringProfileDeleteSchema
-} from '$lib/validation/schemas.js';
+} from '#lib/validation/schemas.js';
 
 const BUILT_IN_IDS = DEFAULT_PROFILES.map((p) => p.id);
 

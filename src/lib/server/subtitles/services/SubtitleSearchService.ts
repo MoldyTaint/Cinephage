@@ -5,7 +5,7 @@
  * Handles deduplication, scoring, and result aggregation.
  */
 
-import { db } from '$lib/server/db';
+import { db } from '#lib/server/db/index.js';
 import {
 	movies,
 	episodes,
@@ -15,10 +15,10 @@ import {
 	subtitleBlacklist,
 	rootFolders,
 	libraries
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { basename, join } from 'path';
 import { eq, and } from 'drizzle-orm';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import type {
@@ -29,15 +29,15 @@ import type {
 	SubtitleMediaKind,
 	LanguageCode
 } from '../types';
-import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
-import { DEFAULT_MINIMUM_SCORE } from '$lib/shared/language-profile.js';
+import type { SubtitleRequirement } from '#lib/shared/language-profile.js';
+import { DEFAULT_MINIMUM_SCORE } from '#lib/shared/language-profile.js';
 import { selectBestCandidate } from '../acquisition.js';
 import { languageSatisfies } from '../requirement-matcher.js';
 import { getSubtitleProviderManager } from './SubtitleProviderManager';
 import { getSubtitleScoringService } from './SubtitleScoringService';
 import type { ISubtitleProvider } from '../providers/interfaces';
 import type { ProviderCapabilities } from '../providers/BaseProvider';
-import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
+import { normalizeLanguageTag } from '#lib/server/languages/normalize.js';
 
 const criteriaIdCache = new Map<string, { imdbId?: string; tvdbId?: number; expires: number }>();
 const CACHE_TTL_MS = 30 * 60 * 1000;
@@ -360,7 +360,7 @@ export class SubtitleSearchService {
 		}
 
 		try {
-			const { tmdb } = await import('$lib/server/tmdb');
+			const { tmdb } = await import('#lib/server/tmdb.js');
 			const isTv = criteria.season !== undefined;
 			let resolvedImdb: string | undefined;
 			let resolvedTvdb: number | undefined;

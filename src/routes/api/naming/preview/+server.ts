@@ -4,11 +4,11 @@ import {
 	NamingService,
 	type MediaNamingInfo,
 	type NamingConfig
-} from '$lib/server/library/naming/NamingService';
-import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { namingPreviewSchema } from '$lib/validation/schemas.js';
-import { createChildLogger } from '$lib/logging';
+} from '#lib/server/library/naming/NamingService.js';
+import { namingSettingsService } from '#lib/server/library/naming/NamingSettingsService.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { namingPreviewSchema } from '#lib/validation/schemas.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'NamingPreviewApi', logDomain: 'scans' });
 

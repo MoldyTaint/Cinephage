@@ -1,10 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { parseBody } from '$lib/server/api/validate.js';
-import { getConfigurationBackupService } from '$lib/server/settings/ConfigurationBackupService.js';
-import { backupExportSchema, backupImportSchema } from '$lib/validation/schemas.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { parseBody } from '#lib/server/api/validate.js';
+import { getConfigurationBackupService } from '#lib/server/settings/ConfigurationBackupService.js';
+import { backupExportSchema, backupImportSchema } from '#lib/validation/schemas.js';
 
 export const POST: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);

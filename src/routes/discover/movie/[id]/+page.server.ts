@@ -1,16 +1,16 @@
-import { tmdb } from '$lib/server/tmdb';
+import { tmdb } from '#lib/server/tmdb.js';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 import {
 	enrichWithLibraryStatus,
 	getLibraryStatus,
 	filterBlockedMedia,
 	getRequestStateMap
-} from '$lib/server/library/status';
-import { keywordBlocklistService } from '$lib/server/settings/KeywordBlocklistService.js';
-import { enrichWithReleaseDates } from '$lib/server/release-enrichment.js';
+} from '#lib/server/library/status.js';
+import { keywordBlocklistService } from '#lib/server/settings/KeywordBlocklistService.js';
+import { enrichWithReleaseDates } from '#lib/server/release-enrichment.js';
 
 const logger = createChildLogger({ module: 'DiscoverMoviePage', logDomain: 'system' });
 
@@ -23,10 +23,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	// Check if TMDB is configured
 	const tmdbConfigured = await tmdb.isConfigured();
 	if (!tmdbConfigured) {
-		throw error(503, {
-			message:
-				'TMDB API key not configured. Please configure your TMDB API key in Settings > Integrations.'
-		});
+		throw error(
+			503,
+			'TMDB API key not configured. Please configure your TMDB API key in Settings > Integrations.'
+		);
 	}
 
 	try {
@@ -34,10 +34,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 		// Handle null response (shouldn't happen since we checked config, but be safe)
 		if (!movie) {
-			throw error(503, {
-				message:
-					'TMDB API key not configured. Please configure your TMDB API key in Settings > Integrations.'
-			});
+			throw error(
+				503,
+				'TMDB API key not configured. Please configure your TMDB API key in Settings > Integrations.'
+			);
 		}
 
 		const blockedKeywordIds = await keywordBlocklistService.getBlockedKeywordIds();

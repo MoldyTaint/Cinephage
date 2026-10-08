@@ -3,17 +3,17 @@
  * Handles client configuration, testing, and download operations.
  */
 
-import { db } from '$lib/server/db';
-import { downloadClients as downloadClientsTable } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { downloadClients as downloadClientsTable } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { createChildLogger } from '$lib/logging';
-import { decryptDebridToken } from '$lib/server/crypto/debridTokenCrypto';
+import { createChildLogger } from '#lib/logging/index.js';
+import { decryptDebridToken } from '#lib/server/crypto/debridTokenCrypto.js';
 import {
 	decryptCredential,
 	encryptCredential,
 	isEncryptedCredential
-} from '$lib/server/crypto/credentialsCrypto';
+} from '#lib/server/crypto/credentialsCrypto.js';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
 
@@ -56,7 +56,7 @@ import type {
 	ConnectionTestResult,
 	DownloadClientImplementation,
 	DownloadClientHealth
-} from '$lib/types/downloadClient';
+} from '#lib/types/downloadClient.js';
 import { QBittorrentClient } from './qbittorrent/QBittorrentClient';
 import { TransmissionClient } from './transmission/TransmissionClient';
 import { DelugeClient } from './deluge/DelugeClient';

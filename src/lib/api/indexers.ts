@@ -5,7 +5,7 @@ import type {
 	CustomFormatCreate,
 	CustomFormatUpdateBody,
 	Condition
-} from '$lib/validation/schemas.js';
+} from '#lib/validation/schemas.js';
 
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
 

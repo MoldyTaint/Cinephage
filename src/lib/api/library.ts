@@ -8,17 +8,17 @@ import type {
 	UnmatchedSingleMatch,
 	ManualImportRequest,
 	SeriesUpdate
-} from '$lib/validation/schemas.js';
+} from '#lib/validation/schemas.js';
 
 import { apiGet, apiPost, apiPatch, apiPut, apiDelete, type ApiResponse } from './client.js';
-import { MAX_BULK_IMPORT_JOBS } from '$lib/shared/bulk-import.js';
-import type { DesiredQuality } from '$lib/types/library.js';
-import type { FileScoreResponse } from '$lib/types/score.js';
+import { MAX_BULK_IMPORT_JOBS } from '#lib/shared/bulk-import.js';
+import type { DesiredQuality } from '#lib/types/library.js';
+import type { FileScoreResponse } from '#lib/types/score.js';
 import type {
 	EffectiveLanguageProfile,
 	EffectiveSubtitleRequirements,
 	SubtitleRequirement
-} from '$lib/shared/language-profile.js';
+} from '#lib/shared/language-profile.js';
 import type {
 	BatchMatchResult,
 	LibraryIssue,
@@ -26,7 +26,7 @@ import type {
 	RootFolderOption,
 	UnmatchedFile,
 	UnmatchedFolder
-} from '$lib/types/unmatched.js';
+} from '#lib/types/unmatched.js';
 
 // ---------------------------------------------------------------------------
 // Shared response payload types (client mirrors of the JSON the server emits)

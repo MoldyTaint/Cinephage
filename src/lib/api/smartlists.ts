@@ -3,7 +3,7 @@ import type {
 	SmartListPreviewRequest,
 	SmartListExternalPreviewRequest,
 	SmartListItemsAction
-} from '$lib/validation/schemas.js';
+} from '#lib/validation/schemas.js';
 
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
 import type { MonitoringTaskResult } from './monitoring.js';

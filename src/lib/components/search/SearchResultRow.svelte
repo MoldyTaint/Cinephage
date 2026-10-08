@@ -15,9 +15,9 @@
 		Ban
 	} from 'lucide-svelte';
 	import { getContext } from 'svelte';
-	import { formatBytes } from '$lib/utils/format';
-	import type { ScoreComponents } from '$lib/server/quality/types.js';
-	import * as m from '$lib/paraglide/messages.js';
+	import { formatBytes } from '#lib/utils/format.js';
+	import type { ScoreComponents } from '#lib/server/quality/types.js';
+	import * as m from '#lib/paraglide/messages.js';
 
 	export interface Release {
 		guid: string;

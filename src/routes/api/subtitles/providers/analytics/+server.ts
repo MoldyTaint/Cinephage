@@ -10,8 +10,8 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestEvent } from '@sveltejs/kit';
-import { getSubtitleProviderManager } from '$lib/server/subtitles/services/SubtitleProviderManager';
-import { assertFound } from '$lib/server/api/validate.js';
+import { getSubtitleProviderManager } from '#lib/server/subtitles/services/SubtitleProviderManager.js';
+import { assertFound } from '#lib/server/api/validate.js';
 
 export interface ProviderAnalyticsResponse {
 	/** Provider ID */

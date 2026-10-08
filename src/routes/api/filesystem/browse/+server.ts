@@ -7,8 +7,8 @@ import {
 	isManagedRootPath,
 	isPathAllowed,
 	isPathInsideManagedRoot
-} from '$lib/server/filesystem/path-guard.js';
-import { isVideoFile } from '$lib/server/library/media-info.js';
+} from '#lib/server/filesystem/path-guard.js';
+import { isVideoFile } from '#lib/server/library/media-info.js';
 
 export interface DirectoryEntry {
 	name: string;

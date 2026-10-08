@@ -15,13 +15,13 @@
  * - channels:syncFailed: Channel sync failed
  */
 
-import { createSSEStream } from '$lib/server/sse';
-import { liveTvEvents } from '$lib/server/livetv/LiveTvEvents';
-import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
-import { redactAccountSecrets } from '$lib/server/livetv/accountRedaction';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { createSSEStream } from '#lib/server/sse.js';
+import { liveTvEvents } from '#lib/server/livetv/LiveTvEvents.js';
+import { getLiveTvAccountManager } from '#lib/server/livetv/LiveTvAccountManager.js';
+import { redactAccountSecrets } from '#lib/server/livetv/accountRedaction.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import type { RequestHandler } from './$types';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LiveTVAccountsStream' });
 

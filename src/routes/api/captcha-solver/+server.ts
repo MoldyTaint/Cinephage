@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { captchaSolverSettingsService } from '$lib/server/captcha';
-import { captchaSolverSettingsUpdateSchema } from '$lib/validation/schemas.js';
-import { createChildLogger } from '$lib/logging';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { captchaSolverSettingsService } from '#lib/server/captcha/index.js';
+import { captchaSolverSettingsUpdateSchema } from '#lib/validation/schemas.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'CaptchaSolverApi', logDomain: 'indexers' });
 

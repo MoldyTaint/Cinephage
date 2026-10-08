@@ -1,7 +1,7 @@
-import type { UnifiedActivity } from '$lib/types/activity';
-import { isImportFailedActivity, TASK_TYPE_LABELS } from '$lib/types/activity';
-import * as m from '$lib/paraglide/messages.js';
-import { getLocale } from '$lib/paraglide/runtime.js';
+import type { UnifiedActivity } from '#lib/types/activity.js';
+import { isImportFailedActivity, TASK_TYPE_LABELS } from '#lib/types/activity.js';
+import * as m from '#lib/paraglide/messages.js';
+import { getLocale } from '#lib/paraglide/runtime.js';
 import {
 	CheckCircle2,
 	XCircle,

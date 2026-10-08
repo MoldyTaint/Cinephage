@@ -9,7 +9,7 @@ import {
 	createBetterAuthIndexes,
 	recreateBetterAuthSchema
 } from '../migration-helpers.js';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 // Version 63: Repair Better Auth schema drift and add missing plugin tables

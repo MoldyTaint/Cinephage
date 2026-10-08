@@ -18,7 +18,7 @@ import { api } from '../../../../../test/api-helper';
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	},
@@ -36,7 +36,7 @@ const mockLogger = vi.hoisted(() => ({
 	child: vi.fn().mockReturnThis()
 }));
 
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: mockLogger,
 	createChildLogger: vi.fn(() => mockLogger)
 }));
@@ -44,7 +44,7 @@ vi.mock('$lib/logging', () => ({
 // Stub out the library job service so this suite only exercises validation/
 // batching, not real job persistence (that's LibraryJobService's own tests).
 const enqueueJobMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/library/jobs/LibraryJobService.js', () => ({
+vi.mock('#lib/server/library/jobs/LibraryJobService.js', () => ({
 	libraryJobService: {
 		enqueueJob: enqueueJobMock
 	}

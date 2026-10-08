@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { invalidateAll } from '$app/navigation';
 	import { Clock, Plus, Pencil, Trash2 } from 'lucide-svelte';
 	import {
@@ -7,15 +7,15 @@
 		ModalHeader,
 		ModalFooter,
 		ConfirmationModal
-	} from '$lib/components/ui/modal';
-	import { toasts } from '$lib/stores/toast.svelte';
+	} from '#lib/components/ui/modal/index.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
 	import {
 		createDelayProfile,
 		updateDelayProfile,
 		deleteDelayProfile,
 		type DelayProfile,
 		type DelayProfileInput
-	} from '$lib/api/delay-profiles.js';
+	} from '#lib/api/delay-profiles.js';
 
 	interface Props {
 		delayProfiles: DelayProfile[];

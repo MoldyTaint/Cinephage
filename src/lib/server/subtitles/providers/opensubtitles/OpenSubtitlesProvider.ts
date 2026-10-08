@@ -26,7 +26,7 @@ import type {
 } from './types';
 import { OPENSUBTITLES_LANGUAGES } from './types';
 import { calculateOpenSubtitlesHash, canHashFile } from './hash';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import {

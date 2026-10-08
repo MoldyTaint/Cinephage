@@ -5,12 +5,12 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { tmdb, type DiscoverParams } from '$lib/server/tmdb.js';
-import { type SmartListFilters } from '$lib/server/db/schema.js';
-import { contentFilterPipeline } from '$lib/server/filters/ContentFilterPipeline.js';
-import { createChildLogger } from '$lib/logging';
+import { tmdb, type DiscoverParams } from '#lib/server/tmdb.js';
+import { type SmartListFilters } from '#lib/server/db/schema.js';
+import { contentFilterPipeline } from '#lib/server/filters/ContentFilterPipeline.js';
+import { createChildLogger } from '#lib/logging/index.js';
 import { z } from 'zod';
-import { smartListPreviewSchema } from '$lib/validation/schemas.js';
+import { smartListPreviewSchema } from '#lib/validation/schemas.js';
 
 const logger = createChildLogger({ module: 'SmartListsPreviewApi', logDomain: 'monitoring' });
 

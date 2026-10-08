@@ -16,13 +16,13 @@ import {
 	episodes,
 	mediaServerSyncedItems,
 	mediaBrowserServers
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 
 // Mock the db module to return the test db through a getter so all consumers
 // (including those imported transitively) hit the in-memory instance.
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	},
@@ -32,7 +32,7 @@ vi.mock('$lib/server/db', () => ({
 	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
 
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	},
@@ -43,10 +43,10 @@ vi.mock('$lib/server/db/index.js', () => ({
 }));
 
 // Suppress event subscriptions during tests - we call reconcile() directly.
-vi.mock('$lib/server/library/library-scheduler.js', () => ({
+vi.mock('#lib/server/library/library-scheduler.js', () => ({
 	getLibraryScheduler: () => ({ on: vi.fn(), off: vi.fn(), emit: vi.fn() })
 }));
-vi.mock('$lib/server/mediaServerStats/MediaServerStatsSyncService.js', () => ({
+vi.mock('#lib/server/mediaServerStats/MediaServerStatsSyncService.js', () => ({
 	getMediaServerStatsSyncService: () => ({ on: vi.fn(), off: vi.fn(), emit: vi.fn() })
 }));
 
@@ -287,7 +287,7 @@ describe('ReconciliationService', () => {
 		// those run before emitting the event.
 		await new Promise((resolve) => setTimeout(resolve, 50));
 
-		const { libraryMediaEvents } = await import('$lib/server/library/LibraryMediaEvents.js');
+		const { libraryMediaEvents } = await import('#lib/server/library/LibraryMediaEvents.js');
 		libraryMediaEvents.emitLibraryDataChanged({
 			source: 'movie',
 			reason: 'test-mutation'

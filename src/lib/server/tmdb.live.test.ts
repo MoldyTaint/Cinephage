@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { tmdb } from './tmdb';
-import type { CastMember } from '$lib/types/tmdb';
+import type { CastMember } from '#lib/types/tmdb.js';
 
 type TmdbResponse = any;
 

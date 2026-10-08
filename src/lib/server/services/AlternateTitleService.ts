@@ -11,16 +11,16 @@
  * - Title normalization for matching
  */
 
-import { db } from '$lib/server/db/index.js';
-import { alternateTitles, movies, series } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { alternateTitles, movies, series } from '#lib/server/db/schema.js';
 import { eq, and } from 'drizzle-orm';
-import { tmdb } from '$lib/server/tmdb.js';
-import type { MetadataTitleVariant } from '$lib/server/metadata/providers/types.js';
-import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
-import { languageMatches } from '$lib/server/languages/audio-preference.js';
-import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService.js';
-import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
-import { createChildLogger } from '$lib/logging/index.js';
+import { tmdb } from '#lib/server/tmdb.js';
+import type { MetadataTitleVariant } from '#lib/server/metadata/providers/types.js';
+import { normalizeLanguageTag } from '#lib/server/languages/normalize.js';
+import { languageMatches } from '#lib/server/languages/audio-preference.js';
+import { getLanguageSettingsService } from '#lib/server/subtitles/services/LanguageSettingsService.js';
+import { getLanguageProfileService } from '#lib/server/subtitles/services/LanguageProfileService.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'AlternateTitleService', logDomain: 'system' });
 

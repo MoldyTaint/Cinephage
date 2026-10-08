@@ -26,7 +26,7 @@ import {
 import { extractFromZip } from '../mixins';
 import { AuthenticationError, ConfigurationError } from '../../errors/ProviderErrors';
 import { languageSatisfies } from '../../requirement-matcher';
-import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
+import { normalizeLanguageTag } from '#lib/server/languages/normalize.js';
 
 /**
  * Map a Betaseries language marker to a canonical tag.

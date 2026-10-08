@@ -36,7 +36,7 @@ const mockLogger = {
 	child: vi.fn().mockReturnThis()
 };
 
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: mockLogger,
 	createChildLogger: vi.fn(() => mockLogger)
 }));

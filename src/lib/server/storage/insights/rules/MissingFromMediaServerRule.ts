@@ -1,5 +1,5 @@
 import { count, eq } from 'drizzle-orm';
-import { mediaBrowserServers, storageItems } from '$lib/server/db/schema';
+import { mediaBrowserServers, storageItems } from '#lib/server/db/schema.js';
 import type { StorageInsightRule, RuleContext, InsightFinding } from '../types.js';
 
 /**

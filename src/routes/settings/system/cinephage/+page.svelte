@@ -1,17 +1,17 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
-	import { toasts } from '$lib/stores/toast.svelte';
+	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { Sparkles, Loader2 } from 'lucide-svelte';
-	import { SettingsPage } from '$lib/components/ui/settings';
-	import * as m from '$lib/paraglide/messages.js';
-	import { ensureVersionPrefix } from '$lib/version.js';
+	import { SettingsPage } from '#lib/components/ui/settings/index.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { ensureVersionPrefix } from '#lib/version.js';
 	import {
 		updateCinephageConfig,
 		updateCinephageModule,
 		testCinephageConnection,
 		getGithubRelease
-	} from '$lib/api';
+	} from '#lib/api/index.js';
 
 	let { data } = $props();
 

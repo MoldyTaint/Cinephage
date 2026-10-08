@@ -1,5 +1,5 @@
-import { db } from '$lib/server/db/index.js';
-import { delayProfileService } from '$lib/server/monitoring/specifications/DelaySpecification.js';
+import { db } from '#lib/server/db/index.js';
+import { delayProfileService } from '#lib/server/monitoring/specifications/DelaySpecification.js';
 import {
 	movies,
 	movieFiles,
@@ -8,25 +8,25 @@ import {
 	downloadQueue,
 	subtitles,
 	libraries
-} from '$lib/server/db/schema.js';
+} from '#lib/server/db/schema.js';
 import { eq, and, inArray } from 'drizzle-orm';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import type { LibraryMovie, MovieFile, QualityProfileSummary } from '$lib/types/library';
-import type { MovieDetails } from '$lib/types/tmdb';
-import { tmdb } from '$lib/server/tmdb.js';
-import { isMovieSearching } from '$lib/server/library/ActiveSearchTracker.js';
-import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
-import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
-import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
-import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
-import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService.js';
-import type { SubtitleStatus } from '$lib/server/subtitles/types.js';
+import type { LibraryMovie, MovieFile, QualityProfileSummary } from '#lib/types/library.js';
+import type { MovieDetails } from '#lib/types/tmdb.js';
+import { tmdb } from '#lib/server/tmdb.js';
+import { isMovieSearching } from '#lib/server/library/ActiveSearchTracker.js';
+import { ACTIVE_DOWNLOAD_STATUSES } from '#lib/types/queue.js';
+import { resolveMissingAnimeProviderRefs } from '#lib/server/metadata/provider-ref-resolver.js';
+import { getMetadataProviderConfig } from '#lib/server/metadata/provider-settings.js';
+import { getLanguageProfileService } from '#lib/server/subtitles/services/LanguageProfileService.js';
+import { getLanguageSettingsService } from '#lib/server/subtitles/services/LanguageSettingsService.js';
+import type { SubtitleStatus } from '#lib/server/subtitles/types.js';
 import type {
 	EffectiveLanguageProfile,
 	EffectiveSubtitleRequirements
-} from '$lib/shared/language-profile.js';
-import { createChildLogger } from '$lib/logging';
+} from '#lib/shared/language-profile.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LibraryMoviePage', logDomain: 'scans' });
 

@@ -3,7 +3,7 @@ import type { AsyncLocalStorage as NodeAsyncLocalStorage } from 'node:async_hook
 import pino, { stdSerializers, type Logger as PinoLogger, type LoggerOptions } from 'pino';
 
 import type { CapturedLogEntry } from './log-capture';
-import { PLACEHOLDER_PACKAGE_VERSION } from '$lib/version.js';
+import { PLACEHOLDER_PACKAGE_VERSION } from '#lib/version.js';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 

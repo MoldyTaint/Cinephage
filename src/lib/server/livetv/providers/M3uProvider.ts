@@ -5,10 +5,10 @@
  * Parses M3U playlists to extract channels and stream URLs.
  */
 
-import { db } from '$lib/server/db';
-import { livetvAccounts, livetvChannels, livetvCategories } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { livetvAccounts, livetvChannels, livetvCategories } from '#lib/server/db/schema.js';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'util';
 import { gunzip, inflate } from 'zlib';
@@ -29,7 +29,7 @@ import type {
 	LiveTvAccountTestResult,
 	M3uChannelData,
 	M3uConfig
-} from '$lib/types/livetv';
+} from '#lib/types/livetv.js';
 import { recordToAccount } from '../LiveTvAccountManager.js';
 import { resolveHttpUrl } from '../urlGuards.js';
 

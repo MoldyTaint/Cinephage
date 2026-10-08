@@ -11,11 +11,11 @@ import {
 	clearTestDb,
 	type TestDatabase
 } from '../../../../test/db-helper';
-import { movies, rootFolders, libraries } from '$lib/server/db/schema';
+import { movies, rootFolders, libraries } from '#lib/server/db/schema.js';
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	}
@@ -30,7 +30,7 @@ const mockLogger = vi.hoisted(() => ({
 	fatal: vi.fn(),
 	trace: vi.fn()
 }));
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: mockLogger,
 	createChildLogger: vi.fn(() => mockLogger),
 	createRequestLogger: vi.fn(() => mockLogger),
@@ -45,30 +45,30 @@ const libraryAddMock = vi.hoisted(() => ({
 	getEffectiveScoringProfileId: vi.fn(async () => null),
 	triggerMovieSearch: vi.fn(async () => ({ triggered: true }))
 }));
-vi.mock('$lib/server/library/LibraryAddService.js', () => libraryAddMock);
+vi.mock('#lib/server/library/LibraryAddService.js', () => libraryAddMock);
 
-vi.mock('$lib/server/subtitles/services/LanguageProfileService.js', () => ({
+vi.mock('#lib/server/subtitles/services/LanguageProfileService.js', () => ({
 	getLanguageProfileService: () => ({ getProfile: vi.fn(async () => null) })
 }));
 
-vi.mock('$lib/server/services/AlternateTitleService.js', () => ({
+vi.mock('#lib/server/services/AlternateTitleService.js', () => ({
 	fetchAndStoreMovieAlternateTitles: vi.fn(async () => undefined)
 }));
 
-vi.mock('$lib/server/library/LibraryEntityService.js', () => ({
+vi.mock('#lib/server/library/LibraryEntityService.js', () => ({
 	getLibraryEntityService: () => ({
 		resolveOwningLibraryForRootFolder: vi.fn(async () => ({ id: 'lib' }))
 	})
 }));
 
-vi.mock('$lib/server/library/naming/NamingSettingsService.js', () => ({
+vi.mock('#lib/server/library/naming/NamingSettingsService.js', () => ({
 	namingSettingsService: {
 		getConfigSync: () => ({ movieFolderFormat: '{title}', movieFileFormat: '{title}' })
 	}
 }));
 
 const { addMovieToLibrary } = await import('./add-movie.js');
-const { ValidationError } = await import('$lib/errors');
+const { ValidationError } = await import('#lib/errors/index.js');
 
 function movieDetails(overrides: Record<string, unknown> = {}) {
 	return {

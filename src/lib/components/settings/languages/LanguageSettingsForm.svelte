@@ -1,15 +1,15 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
-	import { SettingsSection } from '$lib/components/ui/settings';
-	import { FormSelect, FormCheckbox } from '$lib/components/ui/form';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { getResponseErrorMessage } from '$lib/utils/http';
+	import * as m from '#lib/paraglide/messages.js';
+	import { SettingsSection } from '#lib/components/ui/settings/index.js';
+	import { FormSelect, FormCheckbox } from '#lib/components/ui/form/index.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { getResponseErrorMessage } from '#lib/utils/http.js';
 	import { resolve } from '$app/paths';
-	import { updateLanguageSettings, ApiError } from '$lib/api';
+	import { updateLanguageSettings, ApiError } from '#lib/api/index.js';
 	import { ArrowRight } from 'lucide-svelte';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { ALL_LANGUAGE_OPTIONS, getLanguageName } from '$lib/shared/languages';
-	import type { LanguageSettingsUpdateInput } from '$lib/validation/schemas';
+	import { ALL_LANGUAGE_OPTIONS, getLanguageName } from '#lib/shared/languages.js';
+	import type { LanguageSettingsUpdateInput } from '#lib/validation/schemas.js';
 
 	interface LanguageOption {
 		code: string;
@@ -83,8 +83,7 @@
 			(discoverFilter || null) !== savedSnapshot.discoverOriginalFilter ||
 			preferOriginalTitle !== savedSnapshot.preferOriginalTitle ||
 			unknownPolicy !== savedSnapshot.unknownSubtitlePolicy ||
-			(assumedLanguage || null) !== (savedSnapshot.assumedLanguage ?? null) ||
-			// Switching back to the 'und' policy clears a stored assumed language.
+			(assumedLanguage || null) !== (savedSnapshot.assumedLanguage ?? null) || // Switching back to the 'und' policy clears a stored assumed language.
 			(unknownPolicy === 'und' && !!savedSnapshot.assumedLanguage) ||
 			autoSyncSubtitles !== savedSnapshot.autoSyncSubtitles
 	);
@@ -304,7 +303,7 @@
 
 	<a
 		class="inline-flex items-center gap-2 text-sm font-medium text-primary transition-opacity hover:opacity-80"
-		href={resolve('/settings/integrations/subtitle-providers')}
+		href={resolve('settings/integrations/subtitle-providers')}
 	>
 		{m.settings_languages_linkSubtitleProviders()}
 		<ArrowRight class="h-4 w-4 shrink-0" />

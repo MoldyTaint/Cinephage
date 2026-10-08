@@ -1,27 +1,27 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
-import type { SearchCriteria } from '$lib/server/indexers/types';
+import { getIndexerManager } from '#lib/server/indexers/IndexerManager.js';
+import type { SearchCriteria } from '#lib/server/indexers/types/index.js';
 import {
 	getCategoriesForSearchType,
 	expandCategoriesForClassification
-} from '$lib/server/indexers/types';
-import { searchQuerySchema } from '$lib/validation/schemas';
-import { extractSearchYear } from '$lib/utils/search-query.js';
-import { qualityFilter, type EnrichmentOptions } from '$lib/server/quality';
-import { createChildLogger } from '$lib/logging';
+} from '#lib/server/indexers/types/index.js';
+import { searchQuerySchema } from '#lib/validation/schemas.js';
+import { extractSearchYear } from '#lib/utils/search-query.js';
+import { qualityFilter, type EnrichmentOptions } from '#lib/server/quality/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
-import { redactUrl } from '$lib/server/utils/urlSecurity';
-import { db } from '$lib/server/db';
-import { movies, series, settings } from '$lib/server/db/schema';
+import { redactUrl } from '#lib/server/utils/urlSecurity.js';
+import { db } from '#lib/server/db/index.js';
+import { movies, series, settings } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { evaluateIndexerSearchAvailability } from '$lib/server/indexers/search/availability';
+import { evaluateIndexerSearchAvailability } from '#lib/server/indexers/search/availability.js';
 import {
 	getMovieSearchTitles,
 	getSeriesSearchTitles,
 	fetchAndStoreMovieAlternateTitles,
 	fetchAndStoreSeriesAlternateTitles
-} from '$lib/server/services/AlternateTitleService';
+} from '#lib/server/services/AlternateTitleService.js';
 
 const logger = createChildLogger({ module: 'SearchApi', logDomain: 'system' });
 

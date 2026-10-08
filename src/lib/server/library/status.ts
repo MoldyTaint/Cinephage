@@ -1,5 +1,5 @@
-import { db } from '$lib/server/db/index.js';
-import { movies, series, blockedMedia, requests } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { movies, series, blockedMedia, requests } from '#lib/server/db/schema.js';
 import { inArray, eq, and, desc } from 'drizzle-orm';
 
 /**

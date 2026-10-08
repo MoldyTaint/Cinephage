@@ -1,17 +1,17 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
-import { db } from '$lib/server/db/index.js';
-import { movies } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { movies } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { tmdb } from '$lib/server/tmdb.js';
-import { requireAuth } from '$lib/server/auth/authorization.js';
-import { buildMovieFolderName } from '$lib/server/library/naming/naming-helpers.js';
-import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
+import { tmdb } from '#lib/server/tmdb.js';
+import { requireAuth } from '#lib/server/auth/authorization.js';
+import { buildMovieFolderName } from '#lib/server/library/naming/naming-helpers.js';
+import { namingSettingsService } from '#lib/server/library/naming/NamingSettingsService.js';
 import {
 	extractLanguageCodes,
 	resolveLocalizedTitles
-} from '$lib/server/library/naming/localization.js';
+} from '#lib/server/library/naming/localization.js';
 import {
 	validateRootFolder,
 	getAnimeSubtypeEnforcement,
@@ -19,12 +19,12 @@ import {
 	fetchMovieDetails,
 	fetchMovieExternalIds,
 	triggerMovieSearch
-} from '$lib/server/library/LibraryAddService.js';
-import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
-import { fetchAndStoreMovieAlternateTitles } from '$lib/server/services/AlternateTitleService.js';
-import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
-import { createChildLogger } from '$lib/logging';
+} from '#lib/server/library/LibraryAddService.js';
+import { isLikelyAnimeMedia } from '#lib/shared/anime-classification.js';
+import { fetchAndStoreMovieAlternateTitles } from '#lib/server/services/AlternateTitleService.js';
+import { getLibraryEntityService } from '#lib/server/library/LibraryEntityService.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LibraryCollectionsTrackApi', logDomain: 'scans' });
 

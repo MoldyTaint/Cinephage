@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import * as svc from '$lib/server/library/duplicates/DuplicateDetectionService.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import * as svc from '#lib/server/library/duplicates/DuplicateDetectionService.js';
 import { z } from 'zod';
 
 const suppressSchema = z.object({

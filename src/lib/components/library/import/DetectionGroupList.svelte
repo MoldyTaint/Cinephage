@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { Search, X } from 'lucide-svelte';
 	import type { MediaType, DetectionGroup, DetectionSection, TvSeasonSection } from './types.js';
 

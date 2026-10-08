@@ -1,5 +1,5 @@
 import { apiGet, apiPut } from './client.js';
-import type { CalendarPreferences } from '$lib/validation/schemas.js';
+import type { CalendarPreferences } from '#lib/validation/schemas.js';
 
 /**
  * Client-safe mirrors of the calendar payload shapes. Source of truth:

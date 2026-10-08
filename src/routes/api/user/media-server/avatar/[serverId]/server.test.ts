@@ -13,18 +13,18 @@ import {
 	clearTestDb,
 	type TestDatabase
 } from '../../../../../../test/db-helper';
-import { user } from '$lib/server/db/schema';
+import { user } from '#lib/server/db/schema.js';
 import { callHandlerRaw } from '../../../../../../test/api-helper';
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	}
 }));
 
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: {
 		info: vi.fn(),
 		warn: vi.fn(),
@@ -48,7 +48,7 @@ vi.mock('$lib/logging', () => ({
 }));
 
 const fetchAvatarMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/mediaServerLink/MediaServerLinkService.js', () => ({
+vi.mock('#lib/server/mediaServerLink/MediaServerLinkService.js', () => ({
 	mediaServerLinkService: { fetchAvatar: fetchAvatarMock }
 }));
 

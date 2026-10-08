@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { computeEpisodeFileScore } from '$lib/server/scoring/file-scorer.js';
-import { createChildLogger } from '$lib/logging';
+import { computeEpisodeFileScore } from '#lib/server/scoring/file-scorer.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LibraryEpisodeScoreApi', logDomain: 'scans' });
 

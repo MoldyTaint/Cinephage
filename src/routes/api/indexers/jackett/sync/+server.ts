@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { syncJackettIndexers } from '$lib/server/indexers/jackett/JackettConnectionService.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { syncJackettIndexers } from '#lib/server/indexers/jackett/JackettConnectionService.js';
 
 /** POST: trigger an immediate Jackett sync */
 export const POST: RequestHandler = async (event) => {

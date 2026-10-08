@@ -5,16 +5,16 @@
  * Handles CRUD operations, instance caching, and health tracking.
  */
 
-import { db } from '$lib/server/db';
-import { subtitleProviders } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { subtitleProviders } from '#lib/server/db/schema.js';
 import { eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 import {
 	decryptCredential,
 	encryptCredential,
 	isEncryptedCredential
-} from '$lib/server/crypto/credentialsCrypto';
+} from '#lib/server/crypto/credentialsCrypto.js';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 

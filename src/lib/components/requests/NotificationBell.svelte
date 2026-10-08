@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import {
 		Bell,
 		CheckCheck,
@@ -14,8 +14,8 @@
 		listNotifications,
 		markNotificationsRead,
 		type RequestNotification
-	} from '$lib/api/requests.js';
-	import { formatDisplayDateShort } from '$lib/utils/format.js';
+	} from '#lib/api/requests.js';
+	import { formatDisplayDateShort } from '#lib/utils/format.js';
 
 	interface Props {
 		/**

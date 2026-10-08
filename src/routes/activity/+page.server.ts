@@ -1,11 +1,11 @@
 import type { PageServerLoad } from './$types';
-import type { ActivityFilters, FilterOptions } from '$lib/types/activity';
-import { db } from '$lib/server/db';
-import { downloadClients, indexers } from '$lib/server/db/schema';
+import type { ActivityFilters, FilterOptions } from '#lib/types/activity.js';
+import { db } from '#lib/server/db/index.js';
+import { downloadClients, indexers } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { activityService } from '$lib/server/activity';
-import { libraryJobService } from '$lib/server/library/jobs/LibraryJobService.js';
-import { requireAdminPage } from '$lib/server/auth/authorization.js';
+import { activityService } from '#lib/server/activity/index.js';
+import { libraryJobService } from '#lib/server/library/jobs/LibraryJobService.js';
+import { requireAdminPage } from '#lib/server/auth/authorization.js';
 import { z } from 'zod';
 
 type ActivityTab = 'active' | 'history';

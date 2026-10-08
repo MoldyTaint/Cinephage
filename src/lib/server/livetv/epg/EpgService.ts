@@ -8,16 +8,16 @@
 
 import { eq, and, gte, lte, inArray, isNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { db } from '$lib/server/db';
+import { db } from '#lib/server/db/index.js';
 import {
 	livetvAccounts,
 	livetvChannels,
 	channelLineupItems,
 	epgPrograms,
 	type EpgProgramRecord
-} from '$lib/server/db/schema';
-import { createChildLogger } from '$lib/logging';
-import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
+} from '#lib/server/db/schema.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { normalizeLanguageTag } from '#lib/server/languages/normalize.js';
 import { getProvider } from '../providers';
 import { liveTvEvents } from '../LiveTvEvents';
 import { recordToAccount } from '../LiveTvAccountManager.js';
@@ -34,7 +34,7 @@ import type {
 	ChannelNowNext,
 	LiveTvAccount,
 	LiveTvProviderType
-} from '$lib/types/livetv';
+} from '#lib/types/livetv.js';
 
 const logger = createChildLogger({ module: 'EpgService' });
 

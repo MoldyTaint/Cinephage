@@ -15,12 +15,12 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getUnifiedTaskById } from '$lib/server/tasks/UnifiedTaskRegistry';
-import { taskHistoryService } from '$lib/server/tasks/TaskHistoryService';
-import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler';
-import { createChildLogger } from '$lib/logging';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { getRecoverableApiKeyByType } from '$lib/server/auth/index.js';
+import { getUnifiedTaskById } from '#lib/server/tasks/UnifiedTaskRegistry.js';
+import { taskHistoryService } from '#lib/server/tasks/TaskHistoryService.js';
+import { monitoringScheduler } from '#lib/server/monitoring/MonitoringScheduler.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { getRecoverableApiKeyByType } from '#lib/server/auth/index.js';
 
 const logger = createChildLogger({ module: 'TaskRunAPI' });
 

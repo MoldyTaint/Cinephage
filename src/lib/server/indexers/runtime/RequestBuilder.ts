@@ -13,7 +13,7 @@ import type { SearchCriteria } from '../types';
 import { getCategoriesForSearchType, isMovieSearch, isTvSearch } from '../types';
 import { TemplateEngine } from '../engine/TemplateEngine';
 import { FilterEngine } from '../engine/FilterEngine';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
 import { encodeUrlParam } from '../http/EncodingUtils';

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { LibraryMovie, LibrarySeries } from '$lib/types/library';
-	import { displayTitle } from '$lib/types/library';
+	import type { LibraryMovie, LibrarySeries } from '#lib/types/library.js';
+	import { displayTitle } from '#lib/types/library.js';
 	import {
 		CheckCircle2,
 		XCircle,
@@ -13,11 +13,11 @@
 		Search,
 		Download
 	} from 'lucide-svelte';
-	import { formatBytes, getStatusColor } from '$lib/utils/format';
-	import { formatSeriesStatus } from '$lib/utils/format-status.js';
-	import { getPosterUrl } from '$lib/utils/poster-url.js';
+	import { formatBytes, getStatusColor } from '#lib/utils/format.js';
+	import { formatSeriesStatus } from '#lib/utils/format-status.js';
+	import { getPosterUrl } from '#lib/utils/poster-url.js';
 	import { isMovie, isSeries, getItemSize, getQualityBadges } from './mediaTableUtils.ts';
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 
 	interface Props {
 		item: LibraryMovie | LibrarySeries;

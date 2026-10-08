@@ -22,8 +22,8 @@ import {
 	episodes,
 	unmatchedFiles,
 	libraries
-} from '$lib/server/db/schema.js';
-import { RootFolderConflictError } from '$lib/errors';
+} from '#lib/server/db/schema.js';
+import { RootFolderConflictError } from '#lib/errors/index.js';
 
 const mocks = vi.hoisted(() => ({
 	getTVShow: vi.fn(),
@@ -38,7 +38,7 @@ const mocks = vi.hoisted(() => ({
 	resolveOwningLibraryForRootFolder: vi.fn()
 }));
 
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	},
@@ -48,7 +48,7 @@ vi.mock('$lib/server/db/index.js', () => ({
 	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
 
-vi.mock('$lib/server/tmdb.js', () => ({
+vi.mock('#lib/server/tmdb.js', () => ({
 	tmdb: {
 		getTVShow: mocks.getTVShow,
 		getMovie: mocks.getMovie,
@@ -60,23 +60,23 @@ vi.mock('$lib/server/tmdb.js', () => ({
 	}
 }));
 
-vi.mock('$lib/server/library/media-info.js', () => ({
+vi.mock('#lib/server/library/media-info.js', () => ({
 	mediaInfoService: {
 		extractMediaInfo: mocks.extractMediaInfo
 	}
 }));
 
-vi.mock('$lib/server/monitoring/MonitoringScheduler.js', () => ({
+vi.mock('#lib/server/monitoring/MonitoringScheduler.js', () => ({
 	monitoringScheduler: {
 		getSettings: mocks.getSettings
 	}
 }));
 
-vi.mock('$lib/server/subtitles/services/SubtitleImportService.js', () => ({
+vi.mock('#lib/server/subtitles/services/SubtitleImportService.js', () => ({
 	searchSubtitlesForNewMedia: vi.fn()
 }));
 
-vi.mock('$lib/server/library/LibraryEntityService.js', () => ({
+vi.mock('#lib/server/library/LibraryEntityService.js', () => ({
 	getLibraryEntityService: () => ({
 		resolveOwningLibraryForRootFolder: mocks.resolveOwningLibraryForRootFolder
 	})
@@ -90,12 +90,12 @@ const mockLogger = vi.hoisted(() => ({
 	child: vi.fn().mockReturnThis()
 }));
 
-vi.mock('$lib/logging/index.js', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: mockLogger,
 	createChildLogger: vi.fn(() => mockLogger)
 }));
 
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: mockLogger,
 	createChildLogger: vi.fn(() => mockLogger)
 }));

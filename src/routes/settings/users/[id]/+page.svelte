@@ -1,7 +1,7 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { invalidateAll } from '$app/navigation';
-	import { resolvePath } from '$lib/utils/routing';
+	import { resolvePath } from '#lib/utils/routing.js';
 	import { page } from '$app/state';
 	import {
 		ArrowLeft,
@@ -19,24 +19,24 @@
 		Tv,
 		Unlink
 	} from 'lucide-svelte';
-	import { authClient } from '$lib/auth/client.js';
-	import { ApiError, apiGet, apiPost, apiDelete } from '$lib/api/client.js';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { formatDisplayDate } from '$lib/utils/format.js';
-	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
-	import { UserAvatar } from '$lib/components/ui';
-	import { ToggleSetting } from '$lib/components/ui/modal';
+	import { authClient } from '#lib/auth/client.js';
+	import { ApiError, apiGet, apiPost, apiDelete } from '#lib/api/client.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { formatDisplayDate } from '#lib/utils/format.js';
+	import { SettingsPage, SettingsSection } from '#lib/components/ui/settings/index.js';
+	import { UserAvatar } from '#lib/components/ui/index.js';
+	import { ToggleSetting } from '#lib/components/ui/modal/index.js';
 	import {
 		getUserRequestSettings,
 		saveUserRequestSettings,
 		type UserRequestSettings
-	} from '$lib/api/requests.js';
+	} from '#lib/api/requests.js';
 	import {
 		ConfirmationModal,
 		ModalWrapper,
 		ModalHeader,
 		ModalFooter
-	} from '$lib/components/ui/modal';
+	} from '#lib/components/ui/modal/index.js';
 
 	let { data } = $props();
 

@@ -8,10 +8,10 @@
 
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { join, dirname, resolve, relative } from 'path';
-import { createChildLogger } from '$lib/logging';
-import { todayDateString } from '$lib/utils/format.js';
-import { getOwnerStreamingApiKey } from '$lib/server/auth/index.js';
-import { db } from '$lib/server/db';
+import { createChildLogger } from '#lib/logging/index.js';
+import { todayDateString } from '#lib/utils/format.js';
+import { getOwnerStreamingApiKey } from '#lib/server/auth/index.js';
+import { db } from '#lib/server/db/index.js';
 import {
 	movies,
 	series,
@@ -19,11 +19,11 @@ import {
 	rootFolders,
 	movieFiles,
 	episodeFiles
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { eq, and, sql, inArray } from 'drizzle-orm';
-import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
-import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
-import { resolveLocalizedTitlesForFormats } from '$lib/server/library/naming/localization.js';
+import { NamingService, type MediaNamingInfo } from '#lib/server/library/naming/NamingService.js';
+import { namingSettingsService } from '#lib/server/library/naming/NamingSettingsService.js';
+import { resolveLocalizedTitlesForFormats } from '#lib/server/library/naming/localization.js';
 
 const logger = createChildLogger({ module: 'StrmService' });
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { CheckCircle, XCircle, Download, Clock } from 'lucide-svelte';
 
 	type Status = 'downloaded' | 'missing' | 'downloading' | 'queued';

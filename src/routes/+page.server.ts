@@ -1,16 +1,16 @@
 import type { PageServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
-import { activityService } from '$lib/server/activity';
+import { activityService } from '#lib/server/activity/index.js';
 import {
 	getDashboardStats,
 	getRecentlyAdded,
 	getMissingEpisodes
-} from '$lib/server/dashboard/queries';
-import { getUpcomingItems } from '$lib/server/calendar/queries.js';
-import { getUserPreference } from '$lib/server/preferences/user-preferences.js';
-import type { DashboardStats } from '$lib/types/dashboard.js';
+} from '#lib/server/dashboard/queries.js';
+import { getUpcomingItems } from '#lib/server/calendar/queries.js';
+import { getUserPreference } from '#lib/server/preferences/user-preferences.js';
+import type { DashboardStats } from '#lib/types/dashboard.js';
 
 const logger = createChildLogger({ module: 'HomePage', logDomain: 'system' });
 

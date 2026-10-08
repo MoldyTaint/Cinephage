@@ -13,7 +13,7 @@
  * `audio` / `subtitles` objects directly.
  */
 
-import { db } from '$lib/server/db';
+import { db } from '#lib/server/db/index.js';
 import {
 	episodes,
 	languageProfiles,
@@ -24,12 +24,12 @@ import {
 	smartLists,
 	subtitles,
 	type LanguageProfileRow
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { extname } from 'node:path';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 
@@ -56,24 +56,24 @@ function requirementLimit(
 	return cutoffIndex === null ? requirements.length : cutoffIndex + 1;
 }
 import type { SubtitleStatus } from '../types';
-import { normalizeLanguageCode } from '$lib/shared/languages';
+import { normalizeLanguageCode } from '#lib/shared/languages.js';
 import type {
 	AudioPreference,
 	EffectiveLanguageProfile,
 	EffectiveSubtitleRequirements,
 	EpisodeSubtitleCounts,
 	SubtitleRequirement
-} from '$lib/shared/language-profile.js';
-import { DEFAULT_MINIMUM_SCORE, requirementKey } from '$lib/shared/language-profile.js';
+} from '#lib/shared/language-profile.js';
+import { DEFAULT_MINIMUM_SCORE, requirementKey } from '#lib/shared/language-profile.js';
 import { matchesRequirement } from '../requirement-matcher.js';
 import { resolveStoredSubtitlePaths } from '../subtitle-paths.js';
 import { LanguageSettingsService } from './LanguageSettingsService.js';
 import {
 	languageProfileV2CreateSchema,
 	languageProfileV2UpdateSchema
-} from '$lib/validation/schemas';
+} from '#lib/validation/schemas.js';
 
-/** Language profile with all fields (v2 shape, see $lib/shared/language-profile). */
+/** Language profile with all fields (v2 shape, see #lib/shared/language-profile). */
 export type LanguageProfile = LanguageProfileRow;
 
 /** Create profile input */

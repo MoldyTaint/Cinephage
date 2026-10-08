@@ -24,7 +24,7 @@ export {
 	USERNAME_MAX_LENGTH,
 	USERNAME_MIN_LENGTH,
 	USERNAME_PATTERN
-} from '$lib/auth/username-policy.js';
+} from '#lib/auth/username-policy.js';
 export { isSetupComplete, resetSetupCompleteCache, requireSetup } from './setup.js';
 export {
 	isAdmin,
@@ -41,4 +41,4 @@ export {
 	admin,
 	user,
 	type UserRole as AccessControlUserRole
-} from '$lib/auth/access-control.js';
+} from '#lib/auth/access-control.js';

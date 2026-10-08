@@ -1,16 +1,16 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
-import { movies } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { movies } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import {
 	getAlternateTitles,
 	addUserAlternateTitle,
 	removeAlternateTitle
-} from '$lib/server/services/AlternateTitleService.js';
-import { ValidationError } from '$lib/errors';
-import { createChildLogger } from '$lib/logging';
+} from '#lib/server/services/AlternateTitleService.js';
+import { ValidationError } from '#lib/errors/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LibraryMovieAlternateTitlesApi', logDomain: 'scans' });
 

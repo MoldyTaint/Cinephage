@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
-import { toFriendlyDownloadClientError } from '$lib/downloadClients/errorMessages';
+import { getDownloadClientManager } from '#lib/server/downloadClients/DownloadClientManager.js';
+import { toFriendlyDownloadClientError } from '#lib/downloadClients/errorMessages.js';
 
 /**
  * POST /api/download-clients/[id]/test

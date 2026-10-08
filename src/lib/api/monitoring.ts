@@ -2,7 +2,7 @@ import type {
 	MonitoringSettingsUpdate,
 	CaptchaSolverSettingsUpdate,
 	CaptchaSolverTestRequest
-} from '$lib/validation/schemas.js';
+} from '#lib/validation/schemas.js';
 
 import { apiGet, apiPut, apiDelete, apiPost } from './client.js';
 

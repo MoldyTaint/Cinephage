@@ -1,11 +1,11 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
-import { rejectedReleases, movies, series } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { rejectedReleases, movies, series } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { grabService } from '$lib/server/downloads/GrabService.js';
-import { requireAuth } from '$lib/server/auth/authorization.js';
-import { createChildLogger } from '$lib/logging';
+import { grabService } from '#lib/server/downloads/GrabService.js';
+import { requireAuth } from '#lib/server/auth/authorization.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'ReportsRejectedOverride', logDomain: 'downloads' });
 

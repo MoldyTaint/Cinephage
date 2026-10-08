@@ -5,12 +5,12 @@
 import {
 	CINEPHAGE_STREAM_DEFINITION_ID,
 	indexerHasCategoriesForSearchType
-} from '$lib/server/indexers/types';
-import type { IndexerCapabilities, IndexerConfig } from '$lib/server/indexers/types';
+} from '#lib/server/indexers/types/index.js';
+import type { IndexerCapabilities, IndexerConfig } from '#lib/server/indexers/types/index.js';
 import {
 	isRuTrackerHost,
 	isRuTrackerIndexerName
-} from '$lib/server/indexers/search/russian-trackers.js';
+} from '#lib/server/indexers/search/russian-trackers.js';
 
 export const AUTO_GRAB_MIN_SCORE = 0;
 

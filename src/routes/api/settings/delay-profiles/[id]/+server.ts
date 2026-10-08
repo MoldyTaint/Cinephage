@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { delayProfileService } from '$lib/server/monitoring/specifications/DelaySpecification.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { delayProfileService } from '#lib/server/monitoring/specifications/DelaySpecification.js';
 import { z } from 'zod';
 
 const updateDelayProfileSchema = z.object({

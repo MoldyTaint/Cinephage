@@ -27,7 +27,7 @@ COPY data ./data
 COPY messages ./messages
 COPY project.inlang ./project.inlang
 COPY scripts/fix-tv-subtitle-paths.js ./scripts/fix-tv-subtitle-paths.js
-COPY server.js svelte.config.js tsconfig.json vite.config.ts ./
+COPY server.js tsconfig.json vite.config.ts ./
 
 ARG APP_VERSION=dev
 

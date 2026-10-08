@@ -11,10 +11,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { and, eq, ne } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { session } from '$lib/server/db/schema';
-import { createChildLogger } from '$lib/logging';
-import { parseOptionalBody } from '$lib/server/api/validate.js';
+import { db } from '#lib/server/db/index.js';
+import { session } from '#lib/server/db/schema.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { parseOptionalBody } from '#lib/server/api/validate.js';
 import { z } from 'zod';
 
 const logger = createChildLogger({ module: 'UserSessionsApi', logDomain: 'auth' });

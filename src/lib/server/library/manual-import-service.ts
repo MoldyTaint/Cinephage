@@ -2,38 +2,38 @@ import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { readdir, stat, unlink } from 'node:fs/promises';
 import { and, asc, eq, gt, inArray } from 'drizzle-orm';
-import { db } from '$lib/server/db/index.js';
-import { episodes, movies, rootFolders, series, unmatchedFiles } from '$lib/server/db/schema.js';
-import { tmdb } from '$lib/server/tmdb.js';
-import { createChildLogger } from '$lib/logging';
+import { db } from '#lib/server/db/index.js';
+import { episodes, movies, rootFolders, series, unmatchedFiles } from '#lib/server/db/schema.js';
+import { tmdb } from '#lib/server/tmdb.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
-import { parseRelease, extractExternalIds } from '$lib/server/indexers/parser/ReleaseParser.js';
-import { isVideoFile, mediaInfoService, MediaInfoService } from '$lib/server/library/media-info.js';
-import { unmatchedFileService } from '$lib/server/library/unmatched-file-service.js';
-import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
-import { resolveLocalizedTitlesForFormats } from '$lib/server/library/naming/localization.js';
+import { parseRelease, extractExternalIds } from '#lib/server/indexers/parser/ReleaseParser.js';
+import { isVideoFile, mediaInfoService, MediaInfoService } from '#lib/server/library/media-info.js';
+import { unmatchedFileService } from '#lib/server/library/unmatched-file-service.js';
+import { namingSettingsService } from '#lib/server/library/naming/NamingSettingsService.js';
+import { resolveLocalizedTitlesForFormats } from '#lib/server/library/naming/localization.js';
 import {
 	NamingService,
 	releaseToNamingInfo,
 	type MediaNamingInfo
-} from '$lib/server/library/naming/NamingService.js';
+} from '#lib/server/library/naming/NamingService.js';
 import {
 	ensureDirectory,
 	ImportMode,
 	transferFileWithMode,
 	hasSufficientDiskSpace,
 	removeEmptyDirectories
-} from '$lib/server/downloadClients/import/FileTransfer.js';
-import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
+} from '#lib/server/downloadClients/import/FileTransfer.js';
+import { getFileManagementSettings } from '#lib/server/settings/file-management.js';
 import {
 	validateRootFolder,
 	getAnimeSubtypeEnforcement,
 	type MediaType
-} from '$lib/server/library/LibraryAddService.js';
-import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
-import { getMediaParseStem } from '$lib/server/library/media-utils.js';
+} from '#lib/server/library/LibraryAddService.js';
+import { getLibraryEntityService } from '#lib/server/library/LibraryEntityService.js';
+import { isLikelyAnimeMedia } from '#lib/shared/anime-classification.js';
+import { getMediaParseStem } from '#lib/server/library/media-utils.js';
 import {
 	canonicalizeArticleTitle,
 	calculateMatchConfidence,
@@ -42,7 +42,7 @@ import {
 import {
 	extractSeasonFromPath,
 	resolveTvEpisodeIdentifier
-} from '$lib/server/library/tv-episode-resolver.js';
+} from '#lib/server/library/tv-episode-resolver.js';
 
 interface SourceMediaFile {
 	path: string;

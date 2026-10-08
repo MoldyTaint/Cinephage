@@ -21,7 +21,7 @@
 		getSyncStatusColor
 	} from './utils.js';
 	import StorageTile from './StorageTile.svelte';
-	import { BreakdownBar } from '$lib/components/ui';
+	import { BreakdownBar } from '#lib/components/ui/index.js';
 
 	type BreakdownItem = { label: string; count: number };
 

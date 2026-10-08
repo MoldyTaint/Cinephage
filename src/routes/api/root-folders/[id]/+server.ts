@@ -1,13 +1,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getRootFolderService } from '$lib/server/downloadClients/RootFolderService';
-import { rootFolderUpdateSchema } from '$lib/validation/schemas';
-import { assertFound, parseBody } from '$lib/server/api/validate';
-import { NotFoundError, isAppError } from '$lib/errors';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { downloadMonitor } from '$lib/server/downloadClients/monitoring/DownloadMonitorService.js';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
-import { invalidateRootFolderPathCache } from '$lib/server/filesystem/path-guard.js';
+import { getRootFolderService } from '#lib/server/downloadClients/RootFolderService.js';
+import { rootFolderUpdateSchema } from '#lib/validation/schemas.js';
+import { assertFound, parseBody } from '#lib/server/api/validate.js';
+import { NotFoundError, isAppError } from '#lib/errors/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { downloadMonitor } from '#lib/server/downloadClients/monitoring/DownloadMonitorService.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
+import { invalidateRootFolderPathCache } from '#lib/server/filesystem/path-guard.js';
 
 /**
  * GET /api/root-folders/[id]

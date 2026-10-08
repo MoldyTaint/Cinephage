@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { count } from 'drizzle-orm';
-import { db } from '$lib/server/db';
+import { db } from '#lib/server/db/index.js';
 import {
 	episodes,
 	episodeFiles,
@@ -8,7 +8,7 @@ import {
 	movies,
 	rootFolders,
 	series
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { namingSettingsService } from './NamingSettingsService.js';
 
 /**

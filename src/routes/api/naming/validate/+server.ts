@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { tokenRegistry } from '$lib/server/library/naming/tokens';
-import { TemplateEngine } from '$lib/server/library/naming/template';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { createChildLogger } from '$lib/logging';
+import { tokenRegistry } from '#lib/server/library/naming/tokens/index.js';
+import { TemplateEngine } from '#lib/server/library/naming/template/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'NamingValidateApi', logDomain: 'scans' });
 

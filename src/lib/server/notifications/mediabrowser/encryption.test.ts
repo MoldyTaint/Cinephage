@@ -15,12 +15,12 @@ import {
 	clearTestDb,
 	type TestDatabase
 } from '../../../../test/db-helper';
-import { mediaBrowserServers } from '$lib/server/db/schema';
+import { mediaBrowserServers } from '#lib/server/db/schema.js';
 import { sql } from 'drizzle-orm';
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	}
@@ -36,7 +36,7 @@ const mockLogger = vi.hoisted(() => ({
 	trace: vi.fn()
 }));
 
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: mockLogger,
 	createChildLogger: vi.fn(() => mockLogger),
 	createRequestLogger: vi.fn(() => mockLogger),
@@ -44,9 +44,9 @@ vi.mock('$lib/logging', () => ({
 }));
 
 const { getMediaBrowserManager } = await import('./MediaBrowserManager.js');
-const { decryptApiKey, encryptApiKey } = await import('$lib/server/crypto/apiKeyCrypto.js');
+const { decryptApiKey, encryptApiKey } = await import('#lib/server/crypto/apiKeyCrypto.js');
 const { decryptCredential, isEncryptedCredential } =
-	await import('$lib/server/crypto/credentialsCrypto.js');
+	await import('#lib/server/crypto/credentialsCrypto.js');
 
 const PLAINTEXT_KEY = '858b516c791c44959d079285a6c3428d';
 let serverId: string;

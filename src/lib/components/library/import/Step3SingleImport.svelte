@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { Check, Clock, Loader2 } from 'lucide-svelte';
 	import type { MediaType, DetectionGroup, MatchResult } from './types.js';
 

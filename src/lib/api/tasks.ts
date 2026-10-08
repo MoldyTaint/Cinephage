@@ -1,4 +1,4 @@
-import type { TaskHistoryEntry } from '$lib/types/task';
+import type { TaskHistoryEntry } from '#lib/types/task.js';
 
 import { apiGet, apiPost, apiPut } from './client.js';
 

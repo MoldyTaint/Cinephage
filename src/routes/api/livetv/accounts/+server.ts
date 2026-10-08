@@ -7,12 +7,12 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
-import { redactAccountSecrets } from '$lib/server/livetv/accountRedaction';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { createChildLogger } from '$lib/logging';
-import { liveTvAccountCreateSchema } from '$lib/server/validation/schemas.js';
-import { isAppError } from '$lib/errors';
+import { getLiveTvAccountManager } from '#lib/server/livetv/LiveTvAccountManager.js';
+import { redactAccountSecrets } from '#lib/server/livetv/accountRedaction.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { liveTvAccountCreateSchema } from '#lib/server/validation/schemas.js';
+import { isAppError } from '#lib/errors/index.js';
 
 const logger = createChildLogger({ module: 'LiveTvAccounts', logDomain: 'livetv' });
 

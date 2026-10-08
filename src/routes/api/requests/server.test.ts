@@ -22,12 +22,12 @@ import {
 	movies,
 	series,
 	episodes
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { createTestUser } from '../../../test/fixtures/auth.js';
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	}
@@ -42,14 +42,14 @@ const mockLogger = vi.hoisted(() => ({
 	fatal: vi.fn(),
 	trace: vi.fn()
 }));
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: mockLogger,
 	createChildLogger: vi.fn(() => mockLogger),
 	createRequestLogger: vi.fn(() => mockLogger),
 	runWithLogContext: vi.fn((_ctx: unknown, fn: () => unknown) => fn())
 }));
 
-vi.mock('$lib/server/library/LibraryAddService.js', () => ({
+vi.mock('#lib/server/library/LibraryAddService.js', () => ({
 	fetchMovieDetails: vi.fn(async () => ({
 		title: 'Endpoint Movie',
 		poster_path: null,
@@ -78,9 +78,9 @@ vi.mock('$lib/server/library/LibraryAddService.js', () => ({
 }));
 
 const addMovieToLibrary = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/library/add/add-movie.js', () => ({ addMovieToLibrary }));
-vi.mock('$lib/server/library/add/add-series.js', () => ({ addSeriesToLibrary: vi.fn() }));
-vi.mock('$lib/server/blocked-media/service.js', () => ({
+vi.mock('#lib/server/library/add/add-movie.js', () => ({ addMovieToLibrary }));
+vi.mock('#lib/server/library/add/add-series.js', () => ({ addSeriesToLibrary: vi.fn() }));
+vi.mock('#lib/server/blocked-media/service.js', () => ({
 	blockedMediaService: { isBlocked: vi.fn(async () => false) }
 }));
 
@@ -93,7 +93,7 @@ const { POST: POST_DECLINE } = await import('./[id]/decline/+server.js');
 const { POST: POST_FULFILL } = await import('./[id]/fulfill/+server.js');
 const { POST: POST_BULK } = await import('./bulk/+server.js');
 const { getRequestSettingsService } =
-	await import('$lib/server/requests/RequestSettingsService.js');
+	await import('#lib/server/requests/RequestSettingsService.js');
 
 // api-helper synthesizes these exact ids for auth:'user' / auth:'admin'.
 const VIEWER_ID = 'test-user-user';

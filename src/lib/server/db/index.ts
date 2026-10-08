@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 import { syncSchema } from './schema-sync';
@@ -98,7 +98,7 @@ export async function initializeDatabase(): Promise<void> {
 		runStartupMaintenance();
 
 		const { keywordBlocklistService } =
-			await import('$lib/server/settings/KeywordBlocklistService.js');
+			await import('#lib/server/settings/KeywordBlocklistService.js');
 		await keywordBlocklistService.seedDefaults();
 
 		initialized = true;

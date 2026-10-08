@@ -7,15 +7,15 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { parseBody } from '$lib/server/api/validate.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { getRequestService } from '$lib/server/requests/RequestService.js';
+import { parseBody } from '#lib/server/api/validate.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { getRequestService } from '#lib/server/requests/RequestService.js';
 import {
 	bulkRequestSchema,
 	requesterFromLocals,
 	toRequestErrorResponse
-} from '$lib/server/requests/http.js';
-import { RequestError } from '$lib/server/requests/types.js';
+} from '#lib/server/requests/http.js';
+import { RequestError } from '#lib/server/requests/types.js';
 
 const APPROVE_CONCURRENCY = 4;
 

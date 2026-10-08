@@ -1,4 +1,4 @@
-import { isSensitiveKeyName } from '$lib/shared/sensitiveSettings';
+import { isSensitiveKeyName } from '#lib/shared/sensitiveSettings.js';
 
 import {
 	decryptCredential,

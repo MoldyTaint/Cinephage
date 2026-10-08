@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { requireArrCompatEnabled } from '$lib/server/arr/requireArrCompatEnabled.js';
-import { buildMovieLookup } from '$lib/server/arr/movies.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { requireArrCompatEnabled } from '#lib/server/arr/requireArrCompatEnabled.js';
+import { buildMovieLookup } from '#lib/server/arr/movies.js';
 
 /** GET /api/radarr/api/v3/movie/lookup?term=... */
 export const GET: RequestHandler = async (event) => {

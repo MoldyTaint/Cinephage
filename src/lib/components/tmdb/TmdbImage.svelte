@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 
 	// TMDB's image base URL is static and hasn't changed in 10+ years
 	const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/';

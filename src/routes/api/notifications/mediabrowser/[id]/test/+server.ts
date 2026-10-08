@@ -4,10 +4,10 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getMediaBrowserManager } from '$lib/server/notifications/mediabrowser';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { getMediaBrowserManager } from '#lib/server/notifications/mediabrowser/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { z } from 'zod/v4';
-import { mediaBrowserServerTestSchema } from '$lib/validation/schemas.js';
+import { mediaBrowserServerTestSchema } from '#lib/validation/schemas.js';
 
 /**
  * POST /api/notifications/mediabrowser/:id/test

@@ -6,18 +6,18 @@
 		EpgCoverageTable,
 		EpgGuideGrid,
 		EpgSourcePickerModal
-	} from '$lib/components/livetv';
+	} from '#lib/components/livetv/index.js';
 	import type {
 		ChannelLineupItemWithDetails,
 		EpgStatus,
 		UpdateChannelRequest
-	} from '$lib/types/livetv';
-	import { createSSE } from '$lib/sse';
-	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
-	import { resolvePath } from '$lib/utils/routing';
-	import type { EpgStreamEvents } from '$lib/types/sse/events/livetv-epg-events.js';
-	import type { NowNextEntry } from '$lib/types/sse/events/livetv-channel-events.js';
-	import * as m from '$lib/paraglide/messages.js';
+	} from '#lib/types/livetv.js';
+	import { createSSE } from '#lib/sse/index.js';
+	import { layoutState, deriveMobileSseStatus } from '#lib/layout.svelte.js';
+	import { resolvePath } from '#lib/utils/routing.js';
+	import type { EpgStreamEvents } from '#lib/types/sse/events/livetv-epg-events.js';
+	import type { NowNextEntry } from '#lib/types/sse/events/livetv-channel-events.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import {
 		getLineup,
 		getEpgNow,
@@ -26,7 +26,7 @@
 		cancelEpgSync,
 		cancelEpgSyncForAccount,
 		updateLineupItem
-	} from '$lib/api';
+	} from '#lib/api/index.js';
 
 	type TabId = 'status' | 'coverage' | 'guide';
 

@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { X, Loader2, Globe, Lock, Zap } from 'lucide-svelte';
-	import type { IndexerDefinition, Indexer, IndexerFormData } from '$lib/types/indexer';
-	import { computeUIHints } from '$lib/types/indexer';
-	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
-	import { TestResult } from '$lib/components/ui/modal';
+	import type { IndexerDefinition, Indexer, IndexerFormData } from '#lib/types/indexer.js';
+	import { computeUIHints } from '#lib/types/indexer.js';
+	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
+	import { TestResult } from '#lib/components/ui/modal/index.js';
 	import IndexerDefinitionPicker from './IndexerDefinitionPicker.svelte';
 	import IndexerFormStreaming from './IndexerFormStreaming.svelte';
 	import IndexerFormRegular from './IndexerFormRegular.svelte';

@@ -9,15 +9,15 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db';
+import { db } from '#lib/server/db/index.js';
 import {
 	livetvChannels,
 	livetvAccounts,
 	livetvCategories,
 	epgPrograms
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { eq, like, sql, and, gt } from 'drizzle-orm';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LiveTvChannelsWithEpg', logDomain: 'livetv' });
 

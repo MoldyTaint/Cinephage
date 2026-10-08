@@ -16,11 +16,11 @@
  */
 
 import { eq } from 'drizzle-orm';
-import { db } from '$lib/server/db/index.js';
-import { user, userMediaServerLinks } from '$lib/server/db/schema.js';
-import { getMediaBrowserManager } from '$lib/server/notifications/mediabrowser/MediaBrowserManager.js';
-import { isHardReservedUsername, isValidUsernameFormat } from '$lib/auth/username-policy.js';
-import { createChildLogger } from '$lib/logging';
+import { db } from '#lib/server/db/index.js';
+import { user, userMediaServerLinks } from '#lib/server/db/schema.js';
+import { getMediaBrowserManager } from '#lib/server/notifications/mediabrowser/MediaBrowserManager.js';
+import { isHardReservedUsername, isValidUsernameFormat } from '#lib/auth/username-policy.js';
+import { createChildLogger } from '#lib/logging/index.js';
 import {
 	mediaServerLinkService,
 	serverTypeSupportsUserDirectory,

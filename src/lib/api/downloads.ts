@@ -1,5 +1,5 @@
-import type { GrabRequest } from '$lib/validation/schemas.js';
-import type { GrabResponse, QueueItem, QueueItemWithMedia, QueueStats } from '$lib/types/queue.js';
+import type { GrabRequest } from '#lib/validation/schemas.js';
+import type { GrabResponse, QueueItem, QueueItemWithMedia, QueueStats } from '#lib/types/queue.js';
 
 import { apiGet, apiPost, apiPatch, apiDelete, type ApiResponse } from './client.js';
 

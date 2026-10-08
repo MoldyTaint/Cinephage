@@ -1,7 +1,7 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
-	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
-	import ModalHeader from '$lib/components/ui/modal/ModalHeader.svelte';
+	import * as m from '#lib/paraglide/messages.js';
+	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
+	import ModalHeader from '#lib/components/ui/modal/ModalHeader.svelte';
 	import {
 		TrendingUp,
 		TrendingDown,
@@ -11,7 +11,7 @@
 		ChevronDown,
 		ChevronRight
 	} from 'lucide-svelte';
-	import type { FileScoreResponse } from '$lib/types/score';
+	import type { FileScoreResponse } from '#lib/types/score.js';
 
 	interface Props {
 		open: boolean;

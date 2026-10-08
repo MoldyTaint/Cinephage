@@ -1,5 +1,5 @@
 import { count, and, eq, notInArray } from 'drizzle-orm';
-import { storageItems } from '$lib/server/db/schema';
+import { storageItems } from '#lib/server/db/schema.js';
 import type { StorageInsightRule, RuleContext, InsightFinding } from '../types.js';
 
 /**

@@ -7,16 +7,16 @@ const getSeriesMock = vi.hoisted(() => vi.fn());
 const getMovieMock = vi.hoisted(() => vi.fn());
 const searchReleasesMock = vi.hoisted(() => vi.fn());
 
-vi.mock('$lib/api/library.js', () => ({
+vi.mock('#lib/api/library.js', () => ({
 	getSeries: getSeriesMock,
 	getMovie: getMovieMock
 }));
 
-vi.mock('$lib/api/indexers.js', () => ({
+vi.mock('#lib/api/indexers.js', () => ({
 	searchReleases: searchReleasesMock
 }));
 
-vi.mock('$lib/api/downloads.js', () => ({
+vi.mock('#lib/api/downloads.js', () => ({
 	grabRelease: vi.fn()
 }));
 

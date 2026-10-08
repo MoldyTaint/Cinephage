@@ -20,7 +20,7 @@
 import { readdir, realpath, stat } from 'fs/promises';
 import { existsSync } from 'node:fs';
 import { join, basename, extname, posix, relative } from 'path';
-import { db } from '$lib/server/db';
+import { db } from '#lib/server/db/index.js';
 import {
 	subtitles,
 	subtitleHistory,
@@ -30,11 +30,11 @@ import {
 	episodeFiles,
 	rootFolders,
 	series
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { eq, inArray } from 'drizzle-orm';
 import type { SubtitleFormat, LanguageCode } from '../types';
 import { randomUUID } from 'node:crypto';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 import {
 	resolveStoredSubtitlePaths,
 	toStoredRelativePath,
@@ -42,8 +42,8 @@ import {
 } from '../subtitle-paths';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
-import { normalizeLanguageCode } from '$lib/shared/languages';
-import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
+import { normalizeLanguageCode } from '#lib/shared/languages.js';
+import { normalizeLanguageTag } from '#lib/server/languages/normalize.js';
 import { LanguageSettingsService } from './LanguageSettingsService.js';
 
 /** Common subtitle file extensions */

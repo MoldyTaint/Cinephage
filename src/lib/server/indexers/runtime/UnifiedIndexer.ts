@@ -25,8 +25,8 @@ import type {
 } from '../types';
 import type { YamlDefinition } from '../schema/yamlDefinition';
 import { buildCapabilitiesFromYaml } from '../capabilities';
-import type { IndexerRecord } from '$lib/server/db/schema';
-import type { ProtocolSettings } from '$lib/server/indexers/types/index.js';
+import type { IndexerRecord } from '#lib/server/db/schema.js';
+import type { ProtocolSettings } from '#lib/server/indexers/types/index.js';
 import { TemplateEngine, createTemplateEngine } from '../engine/TemplateEngine';
 import { FilterEngine, createFilterEngine } from '../engine/FilterEngine';
 import { SelectorEngine, createSelectorEngine } from '../engine/SelectorEngine';
@@ -41,7 +41,7 @@ import { getPersistentStatusTracker } from '../status';
 import { getRateLimitRegistry } from '../ratelimit';
 import { getHostRateLimiter, type HostRateLimiter } from '../ratelimit/HostRateLimiter';
 import { DEFAULT_RATE_LIMIT, type RateLimitConfig } from '../ratelimit/types';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 import { IndexerHttp, createIndexerHttp } from '../http/IndexerHttp';
 import { DatabaseQueryExecutor, createDatabaseQueryExecutor } from './DatabaseQueryExecutor';
 import type { NewznabCapabilities } from '../newznab/types';
@@ -1073,7 +1073,7 @@ export class UnifiedIndexer implements IIndexer {
 
 			if (url.startsWith('magnet:')) {
 				const { extractInfoHashFromMagnet } =
-					await import('$lib/server/downloadClients/utils/torrentParser');
+					await import('#lib/server/downloadClients/utils/torrentParser.js');
 				const infoHash = await extractInfoHashFromMagnet(url);
 				return {
 					success: true,
@@ -1150,7 +1150,7 @@ export class UnifiedIndexer implements IIndexer {
 							'Resolved download URL to magnet'
 						);
 						const { extractInfoHashFromMagnet } =
-							await import('$lib/server/downloadClients/utils/torrentParser');
+							await import('#lib/server/downloadClients/utils/torrentParser.js');
 						const infoHash = await extractInfoHashFromMagnet(resolution.magnetUrl);
 						return {
 							success: true,
@@ -1180,7 +1180,7 @@ export class UnifiedIndexer implements IIndexer {
 						}
 
 						const { parseTorrentFile } =
-							await import('$lib/server/downloadClients/utils/torrentParser');
+							await import('#lib/server/downloadClients/utils/torrentParser.js');
 						const parseResult = await parseTorrentFile(resolution.torrentData);
 
 						if (!parseResult.success) {
@@ -1222,7 +1222,7 @@ export class UnifiedIndexer implements IIndexer {
 						// Check if the resolved URL is a magnet link
 						if (url.startsWith('magnet:')) {
 							const { extractInfoHashFromMagnet } =
-								await import('$lib/server/downloadClients/utils/torrentParser');
+								await import('#lib/server/downloadClients/utils/torrentParser.js');
 							const infoHash = await extractInfoHashFromMagnet(url);
 							return {
 								success: true,
@@ -1282,7 +1282,7 @@ export class UnifiedIndexer implements IIndexer {
 
 					if (location.startsWith('magnet:')) {
 						const { extractInfoHashFromMagnet } =
-							await import('$lib/server/downloadClients/utils/torrentParser');
+							await import('#lib/server/downloadClients/utils/torrentParser.js');
 						const infoHash = await extractInfoHashFromMagnet(location);
 						return {
 							success: true,
@@ -1317,7 +1317,7 @@ export class UnifiedIndexer implements IIndexer {
 				const isCloudflare = isCloudflareProtected(response.status, response.headers, _errorText);
 				if (isCloudflare || response.status === 403 || response.status === 503) {
 					this.log.info({ url: currentUrl }, 'Download blocked, retrying through browser');
-					const { getCaptchaSolver } = await import('$lib/server/captcha/CaptchaSolver');
+					const { getCaptchaSolver } = await import('#lib/server/captcha/CaptchaSolver.js');
 					const solver = getCaptchaSolver();
 					const browserResult = await solver.fetch({
 						url: currentUrl,
@@ -1340,7 +1340,7 @@ export class UnifiedIndexer implements IIndexer {
 						}
 
 						const { parseTorrentFile } =
-							await import('$lib/server/downloadClients/utils/torrentParser');
+							await import('#lib/server/downloadClients/utils/torrentParser.js');
 						const parseResult = await parseTorrentFile(data);
 
 						if (!parseResult.success) {
@@ -1391,7 +1391,8 @@ export class UnifiedIndexer implements IIndexer {
 			}
 
 			// For torrent, parse the file
-			const { parseTorrentFile } = await import('$lib/server/downloadClients/utils/torrentParser');
+			const { parseTorrentFile } =
+				await import('#lib/server/downloadClients/utils/torrentParser.js');
 			const parseResult = await parseTorrentFile(data);
 
 			if (!parseResult.success) {

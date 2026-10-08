@@ -4,20 +4,20 @@ import { apiKey } from '@better-auth/api-key';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { getRequestEvent } from '$app/server';
 import { APIError } from 'better-auth/api';
-import { logger } from '$lib/logging';
+import { logger } from '#lib/logging/index.js';
 import { getAuthSecret, getBaseURL } from './secret.js';
-import { getSharedSqliteConnection } from '$lib/server/db/connection.js';
+import { getSharedSqliteConnection } from '#lib/server/db/connection.js';
 import {
 	createBetterAuthTables,
 	createBetterAuthIndexes,
 	convergeApikeySchemaToV15
-} from '$lib/server/db/migration-helpers.js';
-import { getSystemSettingsService } from '$lib/server/settings/SystemSettingsService.js';
-import { ac, admin as adminRole, user as userRole } from '$lib/auth/access-control.js';
-import { isHardReservedUsername, isValidUsernameFormat } from '$lib/auth/username-policy.js';
+} from '#lib/server/db/migration-helpers.js';
+import { getSystemSettingsService } from '#lib/server/settings/SystemSettingsService.js';
+import { ac, admin as adminRole, user as userRole } from '#lib/auth/access-control.js';
+import { isHardReservedUsername, isValidUsernameFormat } from '#lib/auth/username-policy.js';
 import { ensureSoleUserIsAdminRecord, getAdminCount, getUserRoleById } from './admin-bootstrap.js';
 import { isSetupComplete, resetSetupCompleteCache, claimFirstUserBootstrap } from './setup.js';
-import { isLocalNetworkOrigin } from '$lib/server/utils/origin.js';
+import { isLocalNetworkOrigin } from '#lib/server/utils/origin.js';
 
 function getFirstForwardedHeaderValue(value: string | null): string | null {
 	if (!value) {

@@ -5,22 +5,22 @@
 		DownloadClientFormData,
 		DownloadClientImplementation,
 		ConnectionTestResult
-	} from '$lib/types/downloadClient';
-	import { FolderBrowser } from '$lib/components/library';
-	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
+	} from '#lib/types/downloadClient.js';
+	import { FolderBrowser } from '#lib/components/library/index.js';
+	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
 	import { clientDefinitions } from './forms/clientDefinitions';
 	import DownloadClientSettings from './forms/DownloadClientSettings.svelte';
 	import ClientFormFields from './ClientFormFields.svelte';
 	import DebridClientFields from './DebridClientFields.svelte';
 	import ClientSpecificOptions from './ClientSpecificOptions.svelte';
 	import ClientTestConnection from './ClientTestConnection.svelte';
-	import { toFriendlyDownloadClientError } from '$lib/downloadClients/errorMessages';
+	import { toFriendlyDownloadClientError } from '#lib/downloadClients/errorMessages.js';
 	import {
 		serializeDownloadClientForm,
 		type DownloadClientFormState,
 		type NntpServerFormData
 	} from './formSerializer.js';
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 
 	interface NntpServer {
 		id: string;

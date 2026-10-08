@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { Loader2, CheckCircle, XCircle, Trash2, FlaskConical } from 'lucide-svelte';
 
 	interface Props {

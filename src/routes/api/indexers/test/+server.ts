@@ -1,21 +1,21 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
-import { getNewznabCapabilitiesProvider } from '$lib/server/indexers/newznab/NewznabCapabilitiesProvider';
-import { indexerTestSchema } from '$lib/validation/schemas';
-import { mergeBlankSensitiveIndexerSettings } from '$lib/server/indexers/settingsSecrets';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { getIndexerManager } from '#lib/server/indexers/IndexerManager.js';
+import { getNewznabCapabilitiesProvider } from '#lib/server/indexers/newznab/NewznabCapabilitiesProvider.js';
+import { indexerTestSchema } from '#lib/validation/schemas.js';
+import { mergeBlankSensitiveIndexerSettings } from '#lib/server/indexers/settingsSecrets.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import {
 	getJackettConnection,
 	isIndexerFromJackett,
 	normalizeJackettUrl
-} from '$lib/server/indexers/jackett/JackettConnectionService.js';
+} from '#lib/server/indexers/jackett/JackettConnectionService.js';
 import {
 	fetchProwlarrIndexers,
 	getProwlarrConnection,
 	isIndexerFromConnection,
 	normalizeProwlarrUrl
-} from '$lib/server/indexers/prowlarr/ProwlarrConnectionService.js';
+} from '#lib/server/indexers/prowlarr/ProwlarrConnectionService.js';
 
 function redactSensitiveDetails(message: string): string {
 	return message

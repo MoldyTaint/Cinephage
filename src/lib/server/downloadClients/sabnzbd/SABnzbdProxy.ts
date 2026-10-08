@@ -8,7 +8,7 @@
  * - Implements exponential backoff for retries
  */
 
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
 import { randomUUID } from 'node:crypto';

@@ -15,15 +15,15 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { z } from 'zod';
-import { parseBody } from '$lib/server/api/validate.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { auth } from '$lib/server/auth/auth.js';
-import { mediaServerLinkService } from '$lib/server/mediaServerLink/MediaServerLinkService.js';
+import { parseBody } from '#lib/server/api/validate.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { auth } from '#lib/server/auth/auth.js';
+import { mediaServerLinkService } from '#lib/server/mediaServerLink/MediaServerLinkService.js';
 import {
 	mediaServerUserImportService,
 	MAX_IMPORT_BATCH,
 	type ImportedUserCreator
-} from '$lib/server/mediaServerLink/MediaServerUserImportService.js';
+} from '#lib/server/mediaServerLink/MediaServerUserImportService.js';
 
 const importSchema = z.object({
 	serverId: z.string().min(1),

@@ -1,11 +1,11 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { normalizeNamingConfig, normalizeNamingPresetSelection } from '$lib/naming/editor-state';
-import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService';
-import { DEFAULT_NAMING_CONFIG } from '$lib/server/library/naming/NamingService';
-import { namingSettingsUpdateSchema } from '$lib/validation/schemas';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { parseBody } from '$lib/server/api/validate.js';
+import { normalizeNamingConfig, normalizeNamingPresetSelection } from '#lib/naming/editor-state.js';
+import { namingSettingsService } from '#lib/server/library/naming/NamingSettingsService.js';
+import { DEFAULT_NAMING_CONFIG } from '#lib/server/library/naming/NamingService.js';
+import { namingSettingsUpdateSchema } from '#lib/validation/schemas.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { parseBody } from '#lib/server/api/validate.js';
 
 /**
  * GET /api/naming

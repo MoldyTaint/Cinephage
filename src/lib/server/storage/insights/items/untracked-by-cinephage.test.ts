@@ -5,12 +5,12 @@ import {
 	clearTestDb,
 	type TestDatabase
 } from '../../../../../test/db-helper.js';
-import { storageItems } from '$lib/server/db/schema';
+import { storageItems } from '#lib/server/db/schema.js';
 import { createStorageItem } from '../../../../../test/fixtures/index.js';
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	},
@@ -19,7 +19,7 @@ vi.mock('$lib/server/db', () => ({
 	},
 	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	},

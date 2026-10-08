@@ -8,11 +8,11 @@
 import {
 	recalculateMovieShortfall,
 	recalculateSeriesShortfall
-} from '$lib/server/languages/language-shortfall';
+} from '#lib/server/languages/language-shortfall.js';
 import { readdir, stat } from 'fs/promises';
 import { join, dirname, relative, basename } from 'path';
-import { db } from '$lib/server/db/index.js';
-import { todayDateString } from '$lib/utils/format.js';
+import { db } from '#lib/server/db/index.js';
+import { todayDateString } from '#lib/utils/format.js';
 import {
 	rootFolders,
 	movies,
@@ -24,17 +24,17 @@ import {
 	unmatchedFiles,
 	libraryScanHistory,
 	renameHistory
-} from '$lib/server/db/schema.js';
+} from '#lib/server/db/schema.js';
 import { eq, and, inArray, gte } from 'drizzle-orm';
 import { isVideoFile, mediaInfoService } from './media-info.js';
-import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
+import { ReleaseParser } from '#lib/server/indexers/parser/ReleaseParser.js';
 import { EventEmitter } from 'events';
-import { createChildLogger } from '$lib/logging';
-import { DOWNLOAD } from '$lib/config/constants';
+import { createChildLogger } from '#lib/logging/index.js';
+import { DOWNLOAD } from '#lib/config/constants.js';
 import {
 	findOverlappingRootFolder,
 	getRootFolderOverlapMessage
-} from '$lib/server/filesystem/root-folder-overlap.js';
+} from '#lib/server/filesystem/root-folder-overlap.js';
 import { libraryMediaEvents } from './LibraryMediaEvents.js';
 import { getMediaParseStem } from './media-utils.js';
 import { matchEpisodesByIdentifier, resolveTvEpisodeIdentifier } from './tv-episode-resolver.js';
@@ -447,7 +447,7 @@ export class DiskScanService extends EventEmitter {
 				blockedExtensions = JSON.parse(rootFolder.blockedVideoExtensions) as string[];
 			} else {
 				const { getBlockedVideoExtensions } =
-					await import('$lib/server/settings/blocked-extensions.js');
+					await import('#lib/server/settings/blocked-extensions.js');
 				const global = await getBlockedVideoExtensions();
 				blockedExtensions = global.extensions;
 			}

@@ -1,14 +1,14 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { db } from '$lib/server/db';
-import { settings } from '$lib/server/db/schema';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { db } from '#lib/server/db/index.js';
+import { settings } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { tmdbApiKeySchema } from '$lib/validation/schemas';
-import { tmdb } from '$lib/server/tmdb';
-import { encryptSettingValue } from '$lib/server/settings/secretSettings';
+import { tmdbApiKeySchema } from '#lib/validation/schemas.js';
+import { tmdb } from '#lib/server/tmdb.js';
+import { encryptSettingValue } from '#lib/server/settings/secretSettings.js';
 import { z } from 'zod';
-import { parseBody } from '$lib/server/api/validate.js';
+import { parseBody } from '#lib/server/api/validate.js';
 
 const tmdbSettingsSchema = z.object({
 	apiKey: z.string().optional().default('')

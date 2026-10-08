@@ -1,4 +1,4 @@
-import { db } from '$lib/server/db/index.js';
+import { db } from '#lib/server/db/index.js';
 import {
 	requests,
 	movies,
@@ -7,19 +7,19 @@ import {
 	episodes,
 	movieFiles,
 	rootFolders
-} from '$lib/server/db/schema.js';
+} from '#lib/server/db/schema.js';
 import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import {
 	fetchMovieDetails,
 	fetchSeriesDetails,
 	triggerMovieSearch,
 	triggerSeriesSearch
-} from '$lib/server/library/LibraryAddService.js';
-import { addMovieToLibrary } from '$lib/server/library/add/add-movie.js';
-import { addSeriesToLibrary } from '$lib/server/library/add/add-series.js';
-import { blockedMediaService } from '$lib/server/blocked-media/service.js';
-import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
-import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+} from '#lib/server/library/LibraryAddService.js';
+import { addMovieToLibrary } from '#lib/server/library/add/add-movie.js';
+import { addSeriesToLibrary } from '#lib/server/library/add/add-series.js';
+import { blockedMediaService } from '#lib/server/blocked-media/service.js';
+import { resolveMovieMultiQuality } from '#lib/server/quality/movie-buckets.js';
+import { isLikelyAnimeMedia } from '#lib/shared/anime-classification.js';
 import { getRequestSettingsService } from './RequestSettingsService.js';
 import { getUserRequestSettingsService } from './UserRequestSettingsService.js';
 import { getRequestNotificationService } from './RequestNotificationService.js';
@@ -34,7 +34,7 @@ import {
 	type RequesterContext,
 	type RequestStatus
 } from './types.js';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'RequestService', logDomain: 'system' });
 

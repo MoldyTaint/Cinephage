@@ -1,5 +1,5 @@
-import type { RenamePreviewItem, RenamePreviewResult } from '$lib/library/naming/types.js';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import type { RenamePreviewItem, RenamePreviewResult } from '#lib/library/naming/types.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
 
 interface MediaTypeCache {
 	result: RenamePreviewResult;

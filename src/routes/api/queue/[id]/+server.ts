@@ -1,20 +1,20 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db';
+import { db } from '#lib/server/db/index.js';
 import {
 	downloadQueue,
 	downloadHistory,
 	movies,
 	series,
 	downloadClients
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { and, desc, eq } from 'drizzle-orm';
-import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
-import { downloadMonitor } from '$lib/server/downloadClients/monitoring';
-import { upsertQueueTombstoneFromQueueItem } from '$lib/server/downloadClients/monitoring/QueueTombstoneService';
-import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
-import { createChildLogger } from '$lib/logging';
-import { requireAdminLocals } from '$lib/server/auth/authorization.js';
+import { getDownloadClientManager } from '#lib/server/downloadClients/DownloadClientManager.js';
+import { downloadMonitor } from '#lib/server/downloadClients/monitoring/index.js';
+import { upsertQueueTombstoneFromQueueItem } from '#lib/server/downloadClients/monitoring/QueueTombstoneService.js';
+import { acquisitionService } from '#lib/server/acquisition/AcquisitionService.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { requireAdminLocals } from '#lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'QueueItemApi', logDomain: 'downloads' });
 

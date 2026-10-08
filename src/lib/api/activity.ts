@@ -1,4 +1,4 @@
-import type { ActivitySummary, UnifiedActivity } from '$lib/types/activity.js';
+import type { ActivitySummary, UnifiedActivity } from '#lib/types/activity.js';
 
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
 

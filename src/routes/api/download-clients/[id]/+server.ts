@@ -1,10 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
-import { downloadClientUpdateSchemaForImplementation } from '$lib/validation/schemas';
-import { assertFound, parseBody } from '$lib/server/api/validate';
-import { NotFoundError } from '$lib/errors';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { getDownloadClientManager } from '#lib/server/downloadClients/DownloadClientManager.js';
+import { downloadClientUpdateSchemaForImplementation } from '#lib/validation/schemas.js';
+import { assertFound, parseBody } from '#lib/server/api/validate.js';
+import { NotFoundError } from '#lib/errors/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 
 /**
  * GET /api/download-clients/[id]

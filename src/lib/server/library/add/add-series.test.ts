@@ -12,11 +12,11 @@ import {
 	clearTestDb,
 	type TestDatabase
 } from '../../../../test/db-helper';
-import { series, seasons, episodes, rootFolders, libraries } from '$lib/server/db/schema';
+import { series, seasons, episodes, rootFolders, libraries } from '#lib/server/db/schema.js';
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	}
@@ -31,7 +31,7 @@ const mockLogger = vi.hoisted(() => ({
 	fatal: vi.fn(),
 	trace: vi.fn()
 }));
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: mockLogger,
 	createChildLogger: vi.fn(() => mockLogger),
 	createRequestLogger: vi.fn(() => mockLogger),
@@ -46,29 +46,29 @@ const libraryAddMock = vi.hoisted(() => ({
 	getEffectiveScoringProfileId: vi.fn(async () => null),
 	triggerSeriesSearch: vi.fn(async () => ({ triggered: true }))
 }));
-vi.mock('$lib/server/library/LibraryAddService.js', () => libraryAddMock);
+vi.mock('#lib/server/library/LibraryAddService.js', () => libraryAddMock);
 
-vi.mock('$lib/server/subtitles/services/LanguageProfileService.js', () => ({
+vi.mock('#lib/server/subtitles/services/LanguageProfileService.js', () => ({
 	getLanguageProfileService: () => ({ getProfile: vi.fn(async () => null) })
 }));
 
-vi.mock('$lib/server/services/AlternateTitleService.js', () => ({
+vi.mock('#lib/server/services/AlternateTitleService.js', () => ({
 	fetchAndStoreSeriesAlternateTitles: vi.fn(async () => undefined)
 }));
 
-vi.mock('$lib/server/library/LibraryEntityService.js', () => ({
+vi.mock('#lib/server/library/LibraryEntityService.js', () => ({
 	getLibraryEntityService: () => ({
 		resolveOwningLibraryForRootFolder: vi.fn(async () => ({ id: 'lib' }))
 	})
 }));
 
-vi.mock('$lib/server/library/naming/NamingSettingsService.js', () => ({
+vi.mock('#lib/server/library/naming/NamingSettingsService.js', () => ({
 	namingSettingsService: {
 		getConfigSync: () => ({ seriesFolderFormat: '{title}', episodeFileFormat: '{title}' })
 	}
 }));
 
-vi.mock('$lib/server/library/naming/NamingService.js', () => ({
+vi.mock('#lib/server/library/naming/NamingService.js', () => ({
 	NamingService: class {
 		generateSeriesFolderName() {
 			return 'Test Show (2020)';
@@ -76,13 +76,13 @@ vi.mock('$lib/server/library/naming/NamingService.js', () => ({
 	}
 }));
 
-vi.mock('$lib/server/library/naming/localization.js', () => ({
+vi.mock('#lib/server/library/naming/localization.js', () => ({
 	extractLanguageCodes: vi.fn(() => []),
 	resolveLocalizedTitles: vi.fn(async () => ({})),
 	resolveLocalizedTitlesForFormats: vi.fn(async () => ({}))
 }));
 
-vi.mock('$lib/server/metadata/EpisodeGroupService.js', () => ({
+vi.mock('#lib/server/metadata/EpisodeGroupService.js', () => ({
 	getEffectiveEpisodeGroup: vi.fn(async () => ({ group: null, selectedGroupId: null })),
 	buildSeasonsAndEpisodesFromGroup: vi.fn(() => ({ seasonValues: [], episodeValues: [] }))
 }));
@@ -92,10 +92,10 @@ const tmdbMock = vi.hoisted(() => ({
 		getSeason: vi.fn()
 	}
 }));
-vi.mock('$lib/server/tmdb.js', () => tmdbMock);
+vi.mock('#lib/server/tmdb.js', () => tmdbMock);
 
 const { addSeriesToLibrary } = await import('./add-series.js');
-const { ValidationError } = await import('$lib/errors');
+const { ValidationError } = await import('#lib/errors/index.js');
 
 const SEASONS = [
 	{ season_number: 1, episode_count: 2, name: 'S1', air_date: '2020-01-01' },

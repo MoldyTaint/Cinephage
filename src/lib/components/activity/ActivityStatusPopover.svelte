@@ -1,7 +1,7 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
-	import { resolvePath } from '$lib/utils/routing';
-	import { TASK_TYPE_LABELS, type UnifiedActivity } from '$lib/types/activity';
+	import * as m from '#lib/paraglide/messages.js';
+	import { resolvePath } from '#lib/utils/routing.js';
+	import { TASK_TYPE_LABELS, type UnifiedActivity } from '#lib/types/activity.js';
 	import {
 		statusConfig,
 		getStatusLabel,

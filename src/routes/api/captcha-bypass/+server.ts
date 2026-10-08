@@ -1,10 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
-import { captchaSolverSettingsService, getCaptchaSolver } from '$lib/server/captcha';
-import { createChildLogger } from '$lib/logging';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { resolveAppVersion } from '$lib/server/version.js';
+import { captchaSolverSettingsService, getCaptchaSolver } from '#lib/server/captcha/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { resolveAppVersion } from '#lib/server/version.js';
 
 const logger = createChildLogger({ module: 'CaptchaBypassApi', logDomain: 'indexers' });
 

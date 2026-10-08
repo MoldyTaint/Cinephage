@@ -1,21 +1,21 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { goto, invalidateAll } from '$app/navigation';
-	import { resolvePath } from '$lib/utils/routing';
+	import { resolvePath } from '#lib/utils/routing.js';
 	import { ShieldCheck, User, UserPlus, Users, ChevronRight } from 'lucide-svelte';
-	import { authClient } from '$lib/auth/client.js';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { formatDisplayDate } from '$lib/utils/format.js';
-	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
-	import { UserAvatar } from '$lib/components/ui';
-	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
-	import { MediaServerUserImportModal } from '$lib/components/users';
+	import { authClient } from '#lib/auth/client.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { formatDisplayDate } from '#lib/utils/format.js';
+	import { SettingsPage, SettingsSection } from '#lib/components/ui/settings/index.js';
+	import { UserAvatar } from '#lib/components/ui/index.js';
+	import { ModalWrapper, ModalHeader, ModalFooter } from '#lib/components/ui/modal/index.js';
+	import { MediaServerUserImportModal } from '#lib/components/users/index.js';
 	import {
 		isHardReservedUsername,
 		USERNAME_MAX_LENGTH,
 		USERNAME_MIN_LENGTH,
 		USERNAME_PATTERN
-	} from '$lib/auth/username-policy.js';
+	} from '#lib/auth/username-policy.js';
 
 	let { data } = $props();
 

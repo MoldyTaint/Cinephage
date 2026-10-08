@@ -6,9 +6,9 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getMediaBrowserManager } from '$lib/server/notifications/mediabrowser';
-import { mediaBrowserServerUpdateSchema } from '$lib/validation/schemas';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { getMediaBrowserManager } from '#lib/server/notifications/mediabrowser/index.js';
+import { mediaBrowserServerUpdateSchema } from '#lib/validation/schemas.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 
 /**
  * GET /api/notifications/mediabrowser/:id

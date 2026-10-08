@@ -1,16 +1,16 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
+import { db } from '#lib/server/db/index.js';
 import {
 	rejectedReleases,
 	importFailures,
 	renamingFailures,
 	unmatchedFiles,
 	downloadClients
-} from '$lib/server/db/schema.js';
+} from '#lib/server/db/schema.js';
 import { count, desc, asc, eq, ne, and, or, like, gt, inArray } from 'drizzle-orm';
-import { logger } from '$lib/logging';
-import { requireAdminLocals } from '$lib/server/auth/authorization.js';
+import { logger } from '#lib/logging/index.js';
+import { requireAdminLocals } from '#lib/server/auth/authorization.js';
 
 const VALID_TYPES = [
 	'rejected-releases',

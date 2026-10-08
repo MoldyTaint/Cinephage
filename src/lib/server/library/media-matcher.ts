@@ -6,8 +6,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { db } from '$lib/server/db/index.js';
-import { todayDateString } from '$lib/utils/format.js';
+import { db } from '#lib/server/db/index.js';
+import { todayDateString } from '#lib/utils/format.js';
 import {
 	unmatchedFiles,
 	movies,
@@ -18,16 +18,16 @@ import {
 	episodeFiles,
 	librarySettings,
 	rootFolders
-} from '$lib/server/db/schema.js';
+} from '#lib/server/db/schema.js';
 import { eq, and, gt, asc } from 'drizzle-orm';
-import { tmdb, type SearchResult } from '$lib/server/tmdb.js';
+import { tmdb, type SearchResult } from '#lib/server/tmdb.js';
 import { mediaInfoService } from './media-info.js';
 import { basename, dirname, extname, join, relative } from 'path';
-import { RootFolderConflictError } from '$lib/errors';
-import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
-import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
-import { logger, createChildLogger } from '$lib/logging/index.js';
-import { parseRelease, extractExternalIds } from '$lib/server/indexers/parser/ReleaseParser.js';
+import { RootFolderConflictError } from '#lib/errors/index.js';
+import { searchSubtitlesForNewMedia } from '#lib/server/subtitles/services/SubtitleImportService.js';
+import { monitoringScheduler } from '#lib/server/monitoring/MonitoringScheduler.js';
+import { logger, createChildLogger } from '#lib/logging/index.js';
+import { parseRelease, extractExternalIds } from '#lib/server/indexers/parser/ReleaseParser.js';
 import { getMediaParseStem } from './media-utils.js';
 import {
 	resolveTvEpisodeIdentifier,
@@ -35,8 +35,8 @@ import {
 	matchEpisodesByIdentifier
 } from './tv-episode-resolver.js';
 import { matchSpecialEpisodeByTitle } from './episode-title-matcher.js';
-import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+import { getLibraryEntityService } from '#lib/server/library/LibraryEntityService.js';
+import { isLikelyAnimeMedia } from '#lib/shared/anime-classification.js';
 import { canonicalizeArticleTitle, calculateMatchConfidence } from './title-matching.js';
 
 /**

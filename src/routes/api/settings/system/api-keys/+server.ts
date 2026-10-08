@@ -1,11 +1,11 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import {
 	ensureDefaultApiKeysForUser,
 	getManagedApiKeysForRequest
-} from '$lib/server/auth/index.js';
-import { createChildLogger } from '$lib/logging';
+} from '#lib/server/auth/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'ApiKeysApi', logDomain: 'auth' });
 

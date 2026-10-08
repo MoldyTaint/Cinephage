@@ -1,12 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db';
-import { user } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { user } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { locales } from '$lib/paraglide/runtime.js';
-import { createChildLogger } from '$lib/logging';
+import { locales } from '#lib/paraglide/runtime.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
-import { parseBody } from '$lib/server/api/validate.js';
+import { parseBody } from '#lib/server/api/validate.js';
 import { z } from 'zod';
 
 const logger = createChildLogger({ module: 'UserLanguageApi', logDomain: 'system' });

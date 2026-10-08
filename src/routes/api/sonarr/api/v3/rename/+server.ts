@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { requireArrCompatEnabled } from '$lib/server/arr/requireArrCompatEnabled.js';
-import { buildSeriesRename } from '$lib/server/arr/rename.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { requireArrCompatEnabled } from '#lib/server/arr/requireArrCompatEnabled.js';
+import { buildSeriesRename } from '#lib/server/arr/rename.js';
 
 /** GET /api/sonarr/api/v3/rename?seriesId=... */
 export const GET: RequestHandler = async (event) => {

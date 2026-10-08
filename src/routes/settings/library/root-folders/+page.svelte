@@ -1,26 +1,26 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Plus } from 'lucide-svelte';
-	import { SettingsPage } from '$lib/components/ui/settings';
+	import { SettingsPage } from '#lib/components/ui/settings/index.js';
 	import type { PageData } from './$types';
 	import type {
 		RootFolder,
 		RootFolderFormData,
 		PathValidationResult
-	} from '$lib/types/downloadClient';
-	import { RootFolderModal, RootFolderList } from '$lib/components/rootFolders';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import type { RootFolderCreate, RootFolderUpdate } from '$lib/validation/schemas.js';
+	} from '#lib/types/downloadClient.js';
+	import { RootFolderModal, RootFolderList } from '#lib/components/rootFolders/index.js';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import type { RootFolderCreate, RootFolderUpdate } from '#lib/validation/schemas.js';
 	import {
 		createRootFolder,
 		updateRootFolder,
 		deleteRootFolder,
 		updateLibraryClassificationSettings,
 		validateRootFolder
-	} from '$lib/api/settings.js';
+	} from '#lib/api/settings.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -43,10 +43,10 @@
 	let savingAnimeSubtype = $state(false);
 
 	async function clearEditQueryParam() {
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
 		if (!url.searchParams.has('edit')) return;
 		url.searchParams.delete('edit');
-		await goto(url.toString(), { replaceState: true, noScroll: true, keepFocus: true });
+		await goto(url.toString(), { replace: true, reset: false });
 	}
 
 	function openAddFolderModal() {

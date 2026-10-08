@@ -9,10 +9,10 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { strmService, getStreamingBaseUrl } from '$lib/server/streaming';
-import { getBaseUrl } from '$lib/server/streaming/url';
-import { createChildLogger } from '$lib/logging';
-import { requireAdminLocals } from '$lib/server/auth/authorization.js';
+import { strmService, getStreamingBaseUrl } from '#lib/server/streaming/index.js';
+import { getBaseUrl } from '#lib/server/streaming/url.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { requireAdminLocals } from '#lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'StrmUpdateAPI' });
 

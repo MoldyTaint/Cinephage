@@ -1,14 +1,14 @@
-import { getDiscoverResults, resolveWithOriginalLanguage } from '$lib/server/discover';
-import { contentFilterPipeline } from '$lib/server/filters/ContentFilterPipeline.js';
-import { enrichWithReleaseDates } from '$lib/server/release-enrichment.js';
-import { tmdb } from '$lib/server/tmdb';
-import { db } from '$lib/server/db/index.js';
-import { languageSettings } from '$lib/server/db/schema.js';
+import { getDiscoverResults, resolveWithOriginalLanguage } from '#lib/server/discover.js';
+import { contentFilterPipeline } from '#lib/server/filters/ContentFilterPipeline.js';
+import { enrichWithReleaseDates } from '#lib/server/release-enrichment.js';
+import { tmdb } from '#lib/server/tmdb.js';
+import { db } from '#lib/server/db/index.js';
+import { languageSettings } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'DiscoverApi', logDomain: 'system' });
 

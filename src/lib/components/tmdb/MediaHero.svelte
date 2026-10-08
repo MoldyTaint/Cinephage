@@ -1,13 +1,13 @@
 <script lang="ts">
-	import type { MovieDetails, TVShowDetails, ReleaseDate } from '$lib/types/tmdb';
+	import type { MovieDetails, TVShowDetails, ReleaseDate } from '#lib/types/tmdb.js';
 	import TmdbImage from './TmdbImage.svelte';
 	import CrewList from './CrewList.svelte';
 	import WatchProviders from './WatchProviders.svelte';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
-	import AddToLibraryModal from '$lib/components/library/AddToLibraryModal.svelte';
-	import RequestButton from '$lib/components/requests/RequestButton.svelte';
-	import RequestStatusBadge from '$lib/components/requests/RequestStatusBadge.svelte';
-	import { approveRequest, declineRequest } from '$lib/api/requests.js';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
+	import AddToLibraryModal from '#lib/components/library/AddToLibraryModal.svelte';
+	import RequestButton from '#lib/components/requests/RequestButton.svelte';
+	import RequestStatusBadge from '#lib/components/requests/RequestStatusBadge.svelte';
+	import { approveRequest, declineRequest } from '#lib/api/requests.js';
 	import { invalidateAll } from '$app/navigation';
 	import {
 		Plus,
@@ -24,20 +24,20 @@
 		CircleX
 	} from 'lucide-svelte';
 	import { fade } from 'svelte/transition';
-	import type { Video } from '$lib/types/tmdb';
-	import { formatCurrency, formatLanguage, formatDisplayDateShort } from '$lib/utils/format.js';
-	import { resolvePath } from '$lib/utils/routing';
+	import type { Video } from '#lib/types/tmdb.js';
+	import { formatCurrency, formatLanguage, formatDisplayDateShort } from '#lib/utils/format.js';
+	import { resolvePath } from '#lib/utils/routing.js';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
-	import { TMDB } from '$lib/config/constants.js';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { getLibraryStatus } from '$lib/api/library.js';
-	import { blockMedia } from '$lib/api/settings.js';
-	import * as m from '$lib/paraglide/messages.js';
-	import { extractReleaseDates } from '$lib/utils/extractReleaseDates.js';
-	import { getSmartReleaseLine } from '$lib/utils/smartReleaseLine.js';
-	import { formatReleaseLine } from '$lib/utils/releaseLineText.js';
-	import { releaseTypeLabel } from '$lib/utils/releaseTypeLabel.js';
+	import { TMDB } from '#lib/config/constants.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { getLibraryStatus } from '#lib/api/library.js';
+	import { blockMedia } from '#lib/api/settings.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { extractReleaseDates } from '#lib/utils/extractReleaseDates.js';
+	import { getSmartReleaseLine } from '#lib/utils/smartReleaseLine.js';
+	import { formatReleaseLine } from '#lib/utils/releaseLineText.js';
+	import { releaseTypeLabel } from '#lib/utils/releaseTypeLabel.js';
 
 	// Extended type that includes library status (added by enrichWithLibraryStatus)
 	type MediaDetailsWithLibraryStatus = (MovieDetails | TVShowDetails) & {

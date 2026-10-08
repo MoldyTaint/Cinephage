@@ -7,8 +7,8 @@
  */
 
 import { eq, inArray } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { indexerStatus, indexers } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { indexerStatus, indexers } from '#lib/server/db/schema.js';
 import {
 	type IndexerStatus,
 	type FailureRecord,
@@ -19,7 +19,7 @@ import {
 	nextUtcMidnight
 } from './types';
 import { BackoffCalculator } from './BackoffCalculator';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
 

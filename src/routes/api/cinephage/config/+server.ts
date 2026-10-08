@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { getCinephageSettingsService } from '$lib/server/cinephage/settings/CinephageSettingsService.js';
-import { cinephageSubsystemUpdateSchema } from '$lib/validation/schemas.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { getCinephageSettingsService } from '#lib/server/cinephage/settings/CinephageSettingsService.js';
+import { cinephageSubsystemUpdateSchema } from '#lib/validation/schemas.js';
 
 /**
  * PUT /api/cinephage/config

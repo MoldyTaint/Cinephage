@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
-import { languageProfileV2CreateSchema } from '$lib/validation/schemas';
-import { parseBody } from '$lib/server/api/validate.js';
+import { LanguageProfileService } from '#lib/server/subtitles/services/LanguageProfileService.js';
+import { languageProfileV2CreateSchema } from '#lib/validation/schemas.js';
+import { parseBody } from '#lib/server/api/validate.js';
 
 /**
  * GET /api/subtitles/language-profiles

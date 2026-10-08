@@ -1,19 +1,19 @@
-import { db } from '$lib/server/db/index.js';
+import { db } from '#lib/server/db/index.js';
 import {
 	blockedMedia,
 	movies,
 	series,
 	downloadQueue,
 	downloadHistory
-} from '$lib/server/db/schema.js';
+} from '#lib/server/db/schema.js';
 import { eq, and, count, desc, sql } from 'drizzle-orm';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 import { randomUUID } from 'node:crypto';
-import { invalidateBlockedCache } from '$lib/server/library/status.js';
-import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager.js';
-import { deleteAllAlternateTitles } from '$lib/server/services/index.js';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
-import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
+import { invalidateBlockedCache } from '#lib/server/library/status.js';
+import { getDownloadClientManager } from '#lib/server/downloadClients/DownloadClientManager.js';
+import { deleteAllAlternateTitles } from '#lib/server/services/index.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
+import { acquisitionService } from '#lib/server/acquisition/AcquisitionService.js';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 

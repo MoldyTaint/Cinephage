@@ -8,8 +8,8 @@
  * - Auto-grabs best releases
  */
 
-import { db } from '$lib/server/db/index.js';
-import { todayDateString } from '$lib/utils/format.js';
+import { db } from '#lib/server/db/index.js';
+import { todayDateString } from '#lib/utils/format.js';
 import {
 	movies,
 	movieFiles,
@@ -19,33 +19,33 @@ import {
 	scoringProfiles,
 	downloadQueue,
 	settings
-} from '$lib/server/db/schema.js';
+} from '#lib/server/db/schema.js';
 import { eq, and, lte, gte, inArray, isNotNull } from 'drizzle-orm';
-import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
+import { getIndexerManager } from '#lib/server/indexers/IndexerManager.js';
 import {
 	isRuTrackerHost,
 	isRuTrackerIndexerName
-} from '$lib/server/indexers/search/russian-trackers.js';
-import { AUTO_GRAB_MIN_SCORE } from '$lib/server/library/searchOnAdd/search-utils.js';
+} from '#lib/server/indexers/search/russian-trackers.js';
+import { AUTO_GRAB_MIN_SCORE } from '#lib/server/library/searchOnAdd/search-utils.js';
 
 import {
 	parseEpisodePointerFromGuid,
 	parseEpisodePointerFromTitle
-} from '$lib/server/downloads/episode-pointer.js';
-import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
-import { createChildLogger } from '$lib/logging/index.js';
-import type { SearchCriteria, EnhancedReleaseResult } from '$lib/server/indexers/types';
-import { scoreRelease, isUpgrade } from '$lib/server/scoring/scorer.js';
-import type { ScoringProfile } from '$lib/server/scoring/types.js';
-import { qualityFilter } from '$lib/server/quality';
-import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
-import { getFilledResolutions } from '$lib/server/quality/buckets.js';
-import type { Resolution } from '$lib/server/indexers/parser/types.js';
-import { TaskCancelledException } from '$lib/server/tasks/TaskCancelledException.js';
+} from '#lib/server/downloads/episode-pointer.js';
+import { ReleaseParser } from '#lib/server/indexers/parser/ReleaseParser.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import type { SearchCriteria, EnhancedReleaseResult } from '#lib/server/indexers/types/index.js';
+import { scoreRelease, isUpgrade } from '#lib/server/scoring/scorer.js';
+import type { ScoringProfile } from '#lib/server/scoring/types.js';
+import { qualityFilter } from '#lib/server/quality/index.js';
+import { resolveMovieMultiQuality } from '#lib/server/quality/movie-buckets.js';
+import { getFilledResolutions } from '#lib/server/quality/buckets.js';
+import type { Resolution } from '#lib/server/indexers/parser/types.js';
+import { TaskCancelledException } from '#lib/server/tasks/TaskCancelledException.js';
 import {
 	getMovieSearchTitles,
 	getSeriesSearchTitles
-} from '$lib/server/services/AlternateTitleService.js';
+} from '#lib/server/services/AlternateTitleService.js';
 
 // Specifications
 import {
@@ -3301,7 +3301,7 @@ export class MonitoringSearchService {
 		queueItemId?: string;
 		addedToQueue?: boolean;
 	}> {
-		const { grabService } = await import('$lib/server/downloads/GrabService.js');
+		const { grabService } = await import('#lib/server/downloads/GrabService.js');
 
 		let target;
 		if (options.movieId) {

@@ -1,8 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 
-import { env } from '$env/dynamic/private';
-import { logger } from '$lib/logging';
+import { readFileSync } from 'node:fs';
+import { logger } from '#lib/logging/index.js';
 import { getAuthSecret } from '../auth/secret.js';
 
 /**
@@ -39,7 +38,6 @@ interface MasterKey {
 	kid: string;
 	secret: string;
 }
-
 interface KeyCacheEntry {
 	key: Buffer;
 }
@@ -56,7 +54,7 @@ function readSecretFile(path: string): string {
 }
 
 function readEnvSecret(name: string): string | undefined {
-	const value = env[name]?.trim() || process.env[name]?.trim();
+	const value = process.env[name]?.trim();
 	return value || undefined;
 }
 

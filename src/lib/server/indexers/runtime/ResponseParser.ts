@@ -16,11 +16,11 @@ import { parseSize } from '../types';
 import { TemplateEngine } from '../engine/TemplateEngine';
 import { FilterEngine } from '../engine/FilterEngine';
 import { SelectorEngine, type JsonValue } from '../engine/SelectorEngine';
-import { createChildLogger } from '$lib/logging';
-import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { normalizeLanguageTag } from '#lib/server/languages/normalize.js';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
-import { extractInfoHash } from '$lib/server/downloadClients/utils/hashUtils';
+import { extractInfoHash } from '#lib/server/downloadClients/utils/hashUtils.js';
 
 export interface ParseResult {
 	releases: ReleaseResult[];

@@ -2,24 +2,24 @@
 	import { invalidateAll } from '$app/navigation';
 	import { Plus, Search } from 'lucide-svelte';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { getResponseErrorMessage } from '$lib/utils/http';
-	import { isBlankOrRedacted } from '$lib/shared/sensitiveSettings';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { getResponseErrorMessage } from '#lib/utils/http.js';
+	import { isBlankOrRedacted } from '#lib/shared/sensitiveSettings.js';
 	import type { PageData } from './$types';
 	import type {
 		MediaBrowserServerPublic,
 		MediaBrowserTestResult,
 		MediaBrowserPathMapping
-	} from '$lib/server/notifications/mediabrowser/types';
+	} from '#lib/server/notifications/mediabrowser/types.js';
 
 	import {
 		MediaBrowserBulkActions,
 		MediaBrowserModal,
 		MediaBrowserTable
-	} from '$lib/components/mediaBrowsers';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
-	import { SettingsPage } from '$lib/components/ui/settings';
-	import * as m from '$lib/paraglide/messages.js';
+	} from '#lib/components/mediaBrowsers/index.js';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
+	import { SettingsPage } from '#lib/components/ui/settings/index.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import {
 		createMediaBrowserNotification,
 		updateMediaBrowserNotification,
@@ -27,11 +27,11 @@
 		testMediaBrowserNotification,
 		testNewMediaBrowserNotification,
 		ApiError
-	} from '$lib/api';
+	} from '#lib/api/index.js';
 	import type {
 		MediaBrowserServerCreate,
 		MediaBrowserServerUpdate
-	} from '$lib/validation/schemas.js';
+	} from '#lib/validation/schemas.js';
 
 	interface MediaBrowserFormData {
 		name: string;

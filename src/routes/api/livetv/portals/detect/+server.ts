@@ -6,9 +6,9 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getStalkerPortalManager } from '$lib/server/livetv/stalker';
-import { stalkerPortalDetectSchema } from '$lib/validation/schemas';
-import { createChildLogger } from '$lib/logging';
+import { getStalkerPortalManager } from '#lib/server/livetv/stalker/index.js';
+import { stalkerPortalDetectSchema } from '#lib/validation/schemas.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LiveTvPortalDetect', logDomain: 'livetv' });
 

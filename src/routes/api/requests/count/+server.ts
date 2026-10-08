@@ -7,12 +7,12 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db';
-import { requests } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { requests } from '#lib/server/db/schema.js';
 import { eq, sql } from 'drizzle-orm';
-import { getRequestService } from '$lib/server/requests/RequestService.js';
-import { getRequestSettingsService } from '$lib/server/requests/RequestSettingsService.js';
-import { requesterFromLocals } from '$lib/server/requests/http.js';
+import { getRequestService } from '#lib/server/requests/RequestService.js';
+import { getRequestSettingsService } from '#lib/server/requests/RequestSettingsService.js';
+import { requesterFromLocals } from '#lib/server/requests/http.js';
 
 export const GET: RequestHandler = async (event) => {
 	const requester = requesterFromLocals(event.locals);

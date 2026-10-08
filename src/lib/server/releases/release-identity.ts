@@ -21,7 +21,7 @@
  * acquisition.
  */
 
-import { calculateTitleSimilarity } from '$lib/server/library/title-matching.js';
+import { calculateTitleSimilarity } from '#lib/server/library/title-matching.js';
 
 const LEADING_ARTICLES = new Set(['the', 'a', 'an']);
 

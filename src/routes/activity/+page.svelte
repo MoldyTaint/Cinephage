@@ -1,17 +1,17 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { onMount, untrack } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-	import { resolvePath } from '$lib/utils/routing';
-	import { createSSE } from '$lib/sse';
+	import { resolvePath } from '#lib/utils/routing.js';
+	import { createSSE } from '#lib/sse/index.js';
 	import {
 		getActivity,
 		getActivitySettings,
 		setRetentionDays,
 		deleteActivity,
 		purgeHistory as purgeHistoryApi
-	} from '$lib/api/activity.js';
-	import { ApiError } from '$lib/api/client.js';
+	} from '#lib/api/activity.js';
+	import { ApiError } from '#lib/api/client.js';
 	import {
 		pauseQueueItem,
 		resumeQueueItem,
@@ -19,26 +19,26 @@
 		retryQueueItem as retryQueueItemApi,
 		refreshQueue,
 		relinkOrphans
-	} from '$lib/api/downloads.js';
-	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
-	import ActivityTable from '$lib/components/activity/ActivityTable.svelte';
-	import ActivityDetailModal from '$lib/components/activity/ActivityDetailModal.svelte';
-	import ActivityFilters from '$lib/components/activity/ActivityFilters.svelte';
-	import ActiveFilters from '$lib/components/activity/ActiveFilters.svelte';
-	import QueueStatsCards from '$lib/components/activity/QueueStatsCards.svelte';
-	import LibraryImportJobsCard from '$lib/components/activity/LibraryImportJobsCard.svelte';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
+	} from '#lib/api/downloads.js';
+	import { layoutState, deriveMobileSseStatus } from '#lib/layout.svelte.js';
+	import ActivityTable from '#lib/components/activity/ActivityTable.svelte';
+	import ActivityDetailModal from '#lib/components/activity/ActivityDetailModal.svelte';
+	import ActivityFilters from '#lib/components/activity/ActivityFilters.svelte';
+	import ActiveFilters from '#lib/components/activity/ActiveFilters.svelte';
+	import QueueStatsCards from '#lib/components/activity/QueueStatsCards.svelte';
+	import LibraryImportJobsCard from '#lib/components/activity/LibraryImportJobsCard.svelte';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
 	import {
 		isActiveActivity,
 		type UnifiedActivity,
 		type ActivityFilters as FiltersType,
 		type ActivityStatus,
 		type ActivitySummary
-	} from '$lib/types/activity';
-	import type { ActivityStreamEvents } from '$lib/types/sse/events/activity-events.js';
+	} from '#lib/types/activity.js';
+	import type { ActivityStreamEvents } from '#lib/types/sse/events/activity-events.js';
 	import { Activity, Loader2 } from 'lucide-svelte';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { supportsQueuePauseResume } from '$lib/components/activity/activity-display-utils.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { supportsQueuePauseResume } from '#lib/components/activity/activity-display-utils.js';
 	import {
 		ACTIVITY_REFRESH_MIN_INTERVAL_MS,
 		type ActivityTab,

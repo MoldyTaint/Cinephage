@@ -1,15 +1,15 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { z } from 'zod';
-import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
+import { getIndexerManager } from '#lib/server/indexers/IndexerManager.js';
 import {
 	normalizeJackettUrl,
 	fetchJackettIndexers,
 	jackettIndexerUrl,
 	isIndexerFromJackett,
 	extractJackettIndexerId
-} from '$lib/server/indexers/jackett/JackettConnectionService.js';
+} from '#lib/server/indexers/jackett/JackettConnectionService.js';
 
 const requestSchema = z.object({
 	url: z.string().url('Jackett URL must be a valid URL'),

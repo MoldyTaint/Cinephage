@@ -8,8 +8,8 @@
 		FolderSync,
 		Languages
 	} from 'lucide-svelte';
-	import { SettingsTabNav } from '$lib/components/settings';
-	import * as m from '$lib/paraglide/messages.js';
+	import { SettingsTabNav } from '#lib/components/settings/index.js';
+	import * as m from '#lib/paraglide/messages.js';
 
 	let { children } = $props();
 

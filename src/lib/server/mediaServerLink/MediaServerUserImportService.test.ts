@@ -16,12 +16,12 @@ import {
 	clearTestDb,
 	type TestDatabase
 } from '../../../test/db-helper';
-import { mediaBrowserServers, user, userMediaServerLinks } from '$lib/server/db/schema';
+import { mediaBrowserServers, user, userMediaServerLinks } from '#lib/server/db/schema.js';
 import { createTestUser } from '../../../test/fixtures/auth.js';
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	}
@@ -37,7 +37,7 @@ const mockLogger = vi.hoisted(() => ({
 	trace: vi.fn()
 }));
 
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: mockLogger,
 	createChildLogger: vi.fn(() => mockLogger),
 	createRequestLogger: vi.fn(() => mockLogger),
@@ -45,7 +45,7 @@ vi.mock('$lib/logging', () => ({
 }));
 
 // The manager reads through the same db mock; hand back server records.
-vi.mock('$lib/server/notifications/mediabrowser/MediaBrowserManager.js', () => ({
+vi.mock('#lib/server/notifications/mediabrowser/MediaBrowserManager.js', () => ({
 	getMediaBrowserManager: () => ({
 		async getServers() {
 			return testDb.db.select().from(mediaBrowserServers).all();

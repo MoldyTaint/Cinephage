@@ -7,8 +7,8 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { workerManager } from '$lib/server/workers';
-import type { WorkerType } from '$lib/server/workers';
+import { workerManager } from '#lib/server/workers/index.js';
+import type { WorkerType } from '#lib/server/workers/index.js';
 
 export const GET: RequestHandler = async ({ url }) => {
 	const typeParam = url.searchParams.get('type') as WorkerType | null;

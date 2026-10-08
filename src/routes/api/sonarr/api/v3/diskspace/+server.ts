@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { requireArrCompatEnabled } from '$lib/server/arr/requireArrCompatEnabled.js';
-import { buildDiskSpace } from '$lib/server/arr/diskSpace.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { requireArrCompatEnabled } from '#lib/server/arr/requireArrCompatEnabled.js';
+import { buildDiskSpace } from '#lib/server/arr/diskSpace.js';
 
 /** GET /api/sonarr/api/v3/diskspace */
 export const GET: RequestHandler = async (event) => {

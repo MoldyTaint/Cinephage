@@ -23,13 +23,13 @@ import {
 	type AssrtSearchResponse,
 	type AssrtDetailResponse
 } from './types';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { extractFromZip } from '../mixins';
 import { languageSatisfies } from '../../requirement-matcher';
 import { ConfigurationError } from '../../errors/ProviderErrors';
-import { normalizeLanguageTag } from '$lib/server/languages/normalize.js';
+import { normalizeLanguageTag } from '#lib/server/languages/normalize.js';
 
 /**
  * Resolve an Assrt subtitle's language from its metadata list.

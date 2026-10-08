@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
-import { db } from '$lib/server/db';
-import { libraries } from '$lib/server/db/schema';
+import { getLanguageProfileService } from '#lib/server/subtitles/services/LanguageProfileService.js';
+import { db } from '#lib/server/db/index.js';
+import { libraries } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 
 /**

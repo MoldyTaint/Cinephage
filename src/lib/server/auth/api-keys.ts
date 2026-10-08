@@ -1,12 +1,12 @@
 import { and, eq, like, desc, asc, notInArray } from 'drizzle-orm';
-import { db } from '$lib/server/db/index.js';
-import { authApiKeys, user, userApiKeySecrets } from '$lib/server/db/schema.js';
-import { decryptApiKey } from '$lib/server/crypto/apiKeyCrypto.js';
+import { db } from '#lib/server/db/index.js';
+import { authApiKeys, user, userApiKeySecrets } from '#lib/server/db/schema.js';
+import { decryptApiKey } from '#lib/server/crypto/apiKeyCrypto.js';
 import {
 	decryptCredential,
 	encryptCredential,
 	isEncryptedCredential
-} from '$lib/server/crypto/credentialsCrypto.js';
+} from '#lib/server/crypto/credentialsCrypto.js';
 
 /** AAD purpose for recoverable API-key secrets at rest. */
 const USER_API_KEY_PURPOSE = 'user-api-key';

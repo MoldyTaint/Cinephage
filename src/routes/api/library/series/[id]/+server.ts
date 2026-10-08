@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { stat } from 'node:fs/promises';
 import { join, resolve, normalize } from 'node:path';
-import { db } from '$lib/server/db/index.js';
+import { db } from '#lib/server/db/index.js';
 import {
 	series,
 	seasons,
@@ -12,43 +12,43 @@ import {
 	downloadQueue,
 	rootFolders,
 	subtitles
-} from '$lib/server/db/schema.js';
+} from '#lib/server/db/schema.js';
 import { eq, inArray, and } from 'drizzle-orm';
-import { deleteDirectoryWithinRoot } from '$lib/server/filesystem/delete-helpers.js';
-import { todayDateString } from '$lib/utils/format.js';
-import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
-import { searchSubtitlesForMediaBatch } from '$lib/server/subtitles/services/SubtitleImportService.js';
-import { searchOnAdd } from '$lib/server/library/searchOnAdd.js';
-import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
-import { monitoringSearchService } from '$lib/server/monitoring/search/MonitoringSearchService.js';
-import { deleteAllAlternateTitles } from '$lib/server/services/index.js';
-import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager.js';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import { deleteDirectoryWithinRoot } from '#lib/server/filesystem/delete-helpers.js';
+import { todayDateString } from '#lib/utils/format.js';
+import { getLanguageProfileService } from '#lib/server/subtitles/services/LanguageProfileService.js';
+import { searchSubtitlesForMediaBatch } from '#lib/server/subtitles/services/SubtitleImportService.js';
+import { searchOnAdd } from '#lib/server/library/searchOnAdd.js';
+import { monitoringScheduler } from '#lib/server/monitoring/MonitoringScheduler.js';
+import { monitoringSearchService } from '#lib/server/monitoring/search/MonitoringSearchService.js';
+import { deleteAllAlternateTitles } from '#lib/server/services/index.js';
+import { getDownloadClientManager } from '#lib/server/downloadClients/DownloadClientManager.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
 import {
 	validateRootFolder,
 	getAnimeSubtypeEnforcement
-} from '$lib/server/library/LibraryAddService.js';
+} from '#lib/server/library/LibraryAddService.js';
 import {
 	deleteAllSeasonsAndEpisodes,
 	buildSeasonsAndEpisodesFromGroup,
 	getEffectiveEpisodeGroup
-} from '$lib/server/metadata/EpisodeGroupService.js';
-import { mediaMoveService } from '$lib/server/library/MediaMoveService.js';
-import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
-import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
-import { seriesUpdateSchema } from '$lib/validation/schemas.js';
-import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
-import { tmdb } from '$lib/server/tmdb.js';
-import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
-import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
-import { persistLinkedProviderTitleVariants } from '$lib/server/metadata/provider-resolution.js';
+} from '#lib/server/metadata/EpisodeGroupService.js';
+import { mediaMoveService } from '#lib/server/library/MediaMoveService.js';
+import { getLibraryEntityService } from '#lib/server/library/LibraryEntityService.js';
+import { getLibraryScheduler } from '#lib/server/library/library-scheduler.js';
+import { isLikelyAnimeMedia } from '#lib/shared/anime-classification.js';
+import { seriesUpdateSchema } from '#lib/validation/schemas.js';
+import { acquisitionService } from '#lib/server/acquisition/AcquisitionService.js';
+import { tmdb } from '#lib/server/tmdb.js';
+import { getMetadataProviderConfig } from '#lib/server/metadata/provider-settings.js';
+import { resolveMissingAnimeProviderRefs } from '#lib/server/metadata/provider-ref-resolver.js';
+import { persistLinkedProviderTitleVariants } from '#lib/server/metadata/provider-resolution.js';
 import {
 	refreshSeriesMetadata,
 	metadataLanguageToLegacy,
 	warnLegacyMetadataLanguage
-} from '$lib/server/metadata/metadata-refresh.js';
-import { createChildLogger } from '$lib/logging';
+} from '#lib/server/metadata/metadata-refresh.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LibrarySeriesByIdApi', logDomain: 'scans' });
 

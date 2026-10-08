@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import {
 	getJackettConnection,
 	fetchJackettIndexers,
@@ -8,8 +8,8 @@ import {
 	jackettIndexerUrl,
 	isIndexerFromJackett,
 	extractJackettIndexerId
-} from '$lib/server/indexers/jackett/JackettConnectionService.js';
-import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
+} from '#lib/server/indexers/jackett/JackettConnectionService.js';
+import { getIndexerManager } from '#lib/server/indexers/IndexerManager.js';
 
 /**
  * GET: fetch indexers from the stored Jackett connection.

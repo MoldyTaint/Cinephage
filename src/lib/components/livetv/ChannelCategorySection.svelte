@@ -15,8 +15,8 @@
 		ChannelCategory,
 		EpgProgram,
 		EpgProgramWithProgress
-	} from '$lib/types/livetv';
-	import * as m from '$lib/paraglide/messages.js';
+	} from '#lib/types/livetv.js';
+	import * as m from '#lib/paraglide/messages.js';
 
 	interface NowNextEntry {
 		now: EpgProgramWithProgress | null;

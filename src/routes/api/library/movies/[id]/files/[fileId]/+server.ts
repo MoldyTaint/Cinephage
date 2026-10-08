@@ -1,14 +1,14 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
-import { movies, movieFiles, rootFolders } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { movies, movieFiles, rootFolders } from '#lib/server/db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { rmdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
-import { deletePhysicalFile } from '$lib/server/downloadClients/import/FileTransfer.js';
-import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
-import { createChildLogger } from '$lib/logging';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
+import { deletePhysicalFile } from '#lib/server/downloadClients/import/FileTransfer.js';
+import { getFileManagementSettings } from '#lib/server/settings/file-management.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LibraryMovieFilesApi', logDomain: 'scans' });
 

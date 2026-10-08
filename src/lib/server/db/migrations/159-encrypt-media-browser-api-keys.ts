@@ -1,5 +1,5 @@
 import type { MigrationDefinition } from '../migration-helpers.js';
-import { encryptApiKey } from '$lib/server/crypto/apiKeyCrypto.js';
+import { encryptApiKey } from '#lib/server/crypto/apiKeyCrypto.js';
 
 /**
  * Version 159: encrypt media_browser_servers.api_key at rest.

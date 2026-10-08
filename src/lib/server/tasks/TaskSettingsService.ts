@@ -9,10 +9,10 @@
  * Replaces the key-value monitoring_settings approach with structured storage.
  */
 
-import { db } from '$lib/server/db/index.js';
-import { taskSettings, type TaskSettingsRecord } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { taskSettings, type TaskSettingsRecord } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 import { UNIFIED_TASK_DEFINITIONS } from './UnifiedTaskRegistry.js';

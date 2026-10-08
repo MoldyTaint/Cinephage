@@ -1,7 +1,7 @@
 import { realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-import { RootFolderService } from '$lib/server/downloadClients/RootFolderService.js';
+import { RootFolderService } from '#lib/server/downloadClients/RootFolderService.js';
 
 // Bases the browse/import surfaces may touch. Deliberately NOT '/': with the
 // filesystem root in this list every absolute path is "allowed" and the whole

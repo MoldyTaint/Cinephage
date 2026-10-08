@@ -1,11 +1,11 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db/index.js';
-import { importFailures, downloadQueue } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { importFailures, downloadQueue } from '#lib/server/db/schema.js';
 import { eq, or, and } from 'drizzle-orm';
-import { getImportService } from '$lib/server/downloadClients/import';
-import { createChildLogger } from '$lib/logging';
-import { requireAdminLocals } from '$lib/server/auth/authorization.js';
+import { getImportService } from '#lib/server/downloadClients/import/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { requireAdminLocals } from '#lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'ReportsImportFailuresRetry', logDomain: 'imports' });
 

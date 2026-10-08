@@ -7,8 +7,8 @@
  */
 
 import type { RequestHandler } from './$types.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { mediaServerLinkService } from '$lib/server/mediaServerLink/MediaServerLinkService.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { mediaServerLinkService } from '#lib/server/mediaServerLink/MediaServerLinkService.js';
 
 export const GET: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);

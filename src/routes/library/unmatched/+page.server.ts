@@ -1,5 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { requireAdminPage } from '$lib/server/auth/authorization.js';
+import { requireAdminPage } from '#lib/server/auth/authorization.js';
 
 /**
  * Server load function - minimal since data is loaded client-side

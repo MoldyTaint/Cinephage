@@ -3,24 +3,24 @@
  * Provides CRUD operations and sync with download clients.
  */
 
-import { db } from '$lib/server/db';
+import { db } from '#lib/server/db/index.js';
 import {
 	nntpServers,
 	type NntpServerRecord,
 	type NewNntpServerRecord
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { eq, asc } from 'drizzle-orm';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 import { randomUUID } from 'node:crypto';
 
 const logger = createChildLogger({ logDomain: 'streams' as const });
-import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
-import type { NntpServerCreate, NntpServerUpdate } from '$lib/validation/schemas';
+import { getDownloadClientManager } from '#lib/server/downloadClients/DownloadClientManager.js';
+import type { NntpServerCreate, NntpServerUpdate } from '#lib/validation/schemas.js';
 import {
 	decryptCredential,
 	encryptCredential,
 	isEncryptedCredential
-} from '$lib/server/crypto/credentialsCrypto';
+} from '#lib/server/crypto/credentialsCrypto.js';
 
 /** AAD purpose for NNTP credentials at rest. */
 const NNTP_CRED_PURPOSE = 'nntp-server';

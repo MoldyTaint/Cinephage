@@ -1,13 +1,13 @@
 import { EventEmitter } from 'events';
-import { createChildLogger } from '$lib/logging';
-import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import type { BackgroundService, ServiceStatus } from '#lib/server/services/background-service.js';
 import { LibraryJobService, libraryJobService } from './LibraryJobService.js';
 import type { LibraryJobType } from './types.js';
-import { diskScanService } from '$lib/server/library/disk-scan.js';
-import { librarySchedulerService } from '$lib/server/library/library-scheduler.js';
-import { mediaMatcherService } from '$lib/server/library/media-matcher.js';
-import type { MatchResult } from '$lib/server/library/media-matcher.js';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { diskScanService } from '#lib/server/library/disk-scan.js';
+import { librarySchedulerService } from '#lib/server/library/library-scheduler.js';
+import { mediaMatcherService } from '#lib/server/library/media-matcher.js';
+import type { MatchResult } from '#lib/server/library/media-matcher.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
 import type {
 	ExecuteManualImportRequest,
 	ExecuteManualImportResult

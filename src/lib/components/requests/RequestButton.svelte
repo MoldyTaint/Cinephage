@@ -1,8 +1,8 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { Clapperboard, X, Check } from 'lucide-svelte';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { listRequests, cancelRequest, type MediaRequest } from '$lib/api/requests.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { listRequests, cancelRequest, type MediaRequest } from '#lib/api/requests.js';
 	import RequestModal from './RequestModal.svelte';
 	import RequestStatusBadge from './RequestStatusBadge.svelte';
 

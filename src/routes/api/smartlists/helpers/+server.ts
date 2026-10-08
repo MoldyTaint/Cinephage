@@ -5,7 +5,7 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { tmdb } from '$lib/server/tmdb.js';
+import { tmdb } from '#lib/server/tmdb.js';
 
 export const GET: RequestHandler = async ({ url }) => {
 	const type = url.searchParams.get('type') as 'movie' | 'tv' | null;

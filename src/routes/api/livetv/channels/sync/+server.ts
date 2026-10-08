@@ -6,9 +6,9 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getLiveTvChannelService, getLiveTvAccountManager } from '$lib/server/livetv';
-import { liveTvEvents } from '$lib/server/livetv/LiveTvEvents';
-import { createChildLogger } from '$lib/logging';
+import { getLiveTvChannelService, getLiveTvAccountManager } from '#lib/server/livetv/index.js';
+import { liveTvEvents } from '#lib/server/livetv/LiveTvEvents.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LiveTvChannelsSync', logDomain: 'livetv' });
 

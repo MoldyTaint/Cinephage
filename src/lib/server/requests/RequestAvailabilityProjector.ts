@@ -1,10 +1,10 @@
-import { db } from '$lib/server/db';
-import { movies, series } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { movies, series } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
 import { getRequestService } from './RequestService.js';
 import { getRequestNotificationService } from './RequestNotificationService.js';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'RequestProjector', logDomain: 'system' });
 

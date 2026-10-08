@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { renamePreviewCache } from './RenamePreviewCache.js';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
-import type { RenamePreviewResult } from '$lib/library/naming/types.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
+import type { RenamePreviewResult } from '#lib/library/naming/types.js';
 
 function makeResult(overrides: Partial<RenamePreviewResult> = {}): RenamePreviewResult {
 	return {

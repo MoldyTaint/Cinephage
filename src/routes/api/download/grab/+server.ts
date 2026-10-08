@@ -1,16 +1,19 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAuth } from '$lib/server/auth/authorization.js';
-import { grabService } from '$lib/server/downloads/GrabService.js';
-import { parseBody } from '$lib/server/api/validate.js';
-import { grabRequestSchema, type GrabRequest as GrabRequestBody } from '$lib/validation/schemas.js';
-import type { GrabResponse } from '$lib/types/queue';
-import type { GrabRequest as ServiceGrabRequest } from '$lib/server/downloads/grab-types.js';
-import type { GrabTarget } from '$lib/server/filters/stages/grab/types.js';
-import { categoryMatchesSearchType, getCategoryContentType } from '$lib/server/indexers/types';
-import { logger } from '$lib/logging';
-import { isAppError } from '$lib/errors';
-import { getDefaultAcquisitionProtocol } from '$lib/server/settings/acquisition.js';
+import { requireAuth } from '#lib/server/auth/authorization.js';
+import { grabService } from '#lib/server/downloads/GrabService.js';
+import { parseBody } from '#lib/server/api/validate.js';
+import { grabRequestSchema, type GrabRequest as GrabRequestBody } from '#lib/validation/schemas.js';
+import type { GrabResponse } from '#lib/types/queue.js';
+import type { GrabRequest as ServiceGrabRequest } from '#lib/server/downloads/grab-types.js';
+import type { GrabTarget } from '#lib/server/filters/stages/grab/types.js';
+import {
+	categoryMatchesSearchType,
+	getCategoryContentType
+} from '#lib/server/indexers/types/index.js';
+import { logger } from '#lib/logging/index.js';
+import { isAppError } from '#lib/errors/index.js';
+import { getDefaultAcquisitionProtocol } from '#lib/server/settings/acquisition.js';
 
 export const POST: RequestHandler = async (event) => {
 	const authError = requireAuth(event);

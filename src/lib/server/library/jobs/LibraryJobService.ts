@@ -1,7 +1,7 @@
-import { db, sqlite } from '$lib/server/db/index.js';
-import { libraryJobs, unmatchedFiles } from '$lib/server/db/schema.js';
+import { db, sqlite } from '#lib/server/db/index.js';
+import { libraryJobs, unmatchedFiles } from '#lib/server/db/schema.js';
 import { eq, and, or, isNull, asc, desc, inArray, lt, sql } from 'drizzle-orm';
-import { NotFoundError, ValidationError } from '$lib/errors/index.js';
+import { NotFoundError, ValidationError } from '#lib/errors/index.js';
 import type { EnqueueLibraryJobInput, LibraryJobStatus, LibraryJobType } from './types.js';
 
 export interface BatchSummary {

@@ -11,7 +11,7 @@ import type { Browser, BrowserContext, Page, Cookie } from 'playwright-core';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
 import type { ProxyConfig } from '../types';

@@ -24,25 +24,25 @@ const mockLogger = vi.hoisted(() => ({
 	trace: vi.fn()
 }));
 
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: mockLogger,
 	createChildLogger: vi.fn(() => mockLogger),
 	createRequestLogger: vi.fn(() => mockLogger),
 	runWithLogContext: vi.fn((_ctx: unknown, fn: () => unknown) => fn())
 }));
 
-vi.mock('$lib/server/services/initializer.js', () => ({
+vi.mock('#lib/server/services/initializer.js', () => ({
 	ensureServicesInitialized: vi.fn().mockResolvedValue(undefined)
 }));
 
-vi.mock('$lib/server/services/shutdown.js', () => ({}));
+vi.mock('#lib/server/services/shutdown.js', () => ({}));
 
 const harness = await import('./auth-test-harness.js').then((m) =>
 	m.createAuthTestHarness({ withHooks: true })
 );
-const { db } = await import('$lib/server/db/index.js');
-const { user, authRateLimits } = await import('$lib/server/db/schema.js');
-const { ensureDefaultApiKeysForUser } = await import('$lib/server/auth/api-keys.js');
+const { db } = await import('#lib/server/db/index.js');
+const { user, authRateLimits } = await import('#lib/server/db/schema.js');
+const { ensureDefaultApiKeysForUser } = await import('#lib/server/auth/api-keys.js');
 
 const USERNAME = 'testcurator';
 const EMAIL = 'curator@test.local';

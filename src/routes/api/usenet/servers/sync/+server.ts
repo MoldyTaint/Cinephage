@@ -4,8 +4,8 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getNntpServerService } from '$lib/server/streaming/nzb/NntpServerService';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { getNntpServerService } from '#lib/server/streaming/nzb/NntpServerService.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 
 /**
  * POST /api/usenet/servers/sync

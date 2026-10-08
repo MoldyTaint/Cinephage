@@ -10,10 +10,10 @@ import {
 	UNIFIED_TASK_DEFINITIONS,
 	type UnifiedTask,
 	type UnifiedTaskDefinition
-} from '$lib/server/tasks/UnifiedTaskRegistry';
-import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler';
-import { taskHistoryService } from '$lib/server/tasks/TaskHistoryService';
-import { taskSettingsService } from '$lib/server/tasks/TaskSettingsService';
+} from '#lib/server/tasks/UnifiedTaskRegistry.js';
+import { monitoringScheduler } from '#lib/server/monitoring/MonitoringScheduler.js';
+import { taskHistoryService } from '#lib/server/tasks/TaskHistoryService.js';
+import { taskSettingsService } from '#lib/server/tasks/TaskSettingsService.js';
 
 /**
  * GET /api/tasks

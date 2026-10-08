@@ -1,11 +1,11 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { subtitleBlacklistSchema } from '$lib/validation/schemas';
-import { db } from '$lib/server/db';
-import { subtitleBlacklist, subtitles } from '$lib/server/db/schema';
+import { subtitleBlacklistSchema } from '#lib/validation/schemas.js';
+import { db } from '#lib/server/db/index.js';
+import { subtitleBlacklist, subtitles } from '#lib/server/db/schema.js';
 import { eq, and, desc } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { parseBody } from '$lib/server/api/validate.js';
+import { parseBody } from '#lib/server/api/validate.js';
 
 /**
  * GET /api/subtitles/blacklist

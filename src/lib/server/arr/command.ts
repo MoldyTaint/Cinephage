@@ -16,19 +16,19 @@
  * openapi.json.
  */
 
-import { createChildLogger } from '$lib/logging/index.js';
-import { monitoringSearchService } from '$lib/server/monitoring/search/MonitoringSearchService.js';
-import { diskScanService } from '$lib/server/library/disk-scan.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { monitoringSearchService } from '#lib/server/monitoring/search/MonitoringSearchService.js';
+import { diskScanService } from '#lib/server/library/disk-scan.js';
 import {
 	refreshMovieMetadata,
 	refreshSeriesMetadata
-} from '$lib/server/metadata/metadata-refresh.js';
-import { RenamePreviewService } from '$lib/server/library/naming/RenamePreviewService.js';
-import { db } from '$lib/server/db/index.js';
-import { movies, series, blocklist } from '$lib/server/db/schema.js';
+} from '#lib/server/metadata/metadata-refresh.js';
+import { RenamePreviewService } from '#lib/server/library/naming/RenamePreviewService.js';
+import { db } from '#lib/server/db/index.js';
+import { movies, series, blocklist } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { getEntityIdForArrId } from './ArrIdMappingService.js';
-import { searchOnAdd } from '$lib/server/library/searchOnAdd/index.js';
+import { searchOnAdd } from '#lib/server/library/searchOnAdd/index.js';
 import type { ArrAppName } from './systemStatus.js';
 
 const logger = createChildLogger({ module: 'ArrCompatCommand', logDomain: 'system' });

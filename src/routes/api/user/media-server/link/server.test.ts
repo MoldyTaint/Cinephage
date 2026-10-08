@@ -14,18 +14,18 @@ import {
 	clearTestDb,
 	type TestDatabase
 } from '../../../../../test/db-helper';
-import { user, userMediaServerLinks, mediaBrowserServers } from '$lib/server/db/schema';
+import { user, userMediaServerLinks, mediaBrowserServers } from '#lib/server/db/schema.js';
 import { callHandler } from '../../../../../test/api-helper';
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	}
 }));
 
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: {
 		info: vi.fn(),
 		warn: vi.fn(),
@@ -60,7 +60,7 @@ const serviceMock = vi.hoisted(() => ({
 	listServerUsers: vi.fn(async () => [])
 }));
 
-vi.mock('$lib/server/mediaServerLink/MediaServerLinkService.js', () => ({
+vi.mock('#lib/server/mediaServerLink/MediaServerLinkService.js', () => ({
 	mediaServerLinkService: serviceMock
 }));
 

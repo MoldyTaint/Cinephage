@@ -23,7 +23,7 @@ const mockLogger = vi.hoisted(() => ({
 	trace: vi.fn()
 }));
 
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: mockLogger,
 	createChildLogger: vi.fn(() => mockLogger),
 	createRequestLogger: vi.fn(() => mockLogger),
@@ -33,10 +33,10 @@ vi.mock('$lib/logging', () => ({
 const harness = await import('../../../test/auth-test-harness.js').then((m) =>
 	m.createAuthTestHarness({ withHooks: false })
 );
-const { db } = await import('$lib/server/db/index.js');
-const { user, session, authApiKeys, authRateLimits } = await import('$lib/server/db/schema.js');
+const { db } = await import('#lib/server/db/index.js');
+const { user, session, authApiKeys, authRateLimits } = await import('#lib/server/db/schema.js');
 const { ensureDefaultApiKeysForUser, getRecoverableApiKeyValue } =
-	await import('$lib/server/auth/api-keys.js');
+	await import('#lib/server/auth/api-keys.js');
 
 const USERNAME = 'testcurator';
 const EMAIL = 'curator@test.local';

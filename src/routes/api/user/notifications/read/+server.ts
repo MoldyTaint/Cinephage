@@ -5,8 +5,8 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { parseBody } from '$lib/server/api/validate.js';
-import { getRequestNotificationService } from '$lib/server/requests/RequestNotificationService.js';
+import { parseBody } from '#lib/server/api/validate.js';
+import { getRequestNotificationService } from '#lib/server/requests/RequestNotificationService.js';
 import { z } from 'zod';
 
 const markReadSchema = z.object({

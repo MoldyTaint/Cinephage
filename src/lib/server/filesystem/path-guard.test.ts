@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mockGetFolders = vi.fn<() => Promise<Array<{ id: string; path: string }>>>(async () => []);
 const mockRealpath = vi.fn<(input: string) => Promise<string>>(async (input: string) => input);
 
-vi.mock('$lib/server/downloadClients/RootFolderService.js', () => ({
+vi.mock('#lib/server/downloadClients/RootFolderService.js', () => ({
 	RootFolderService: class {
 		getFolders = mockGetFolders;
 	}

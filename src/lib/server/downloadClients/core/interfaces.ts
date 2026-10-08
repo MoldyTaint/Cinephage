@@ -3,7 +3,7 @@
  * Allows adding different client implementations (Transmission, Deluge, etc.)
  */
 
-import type { ConnectionTestResult } from '$lib/types/downloadClient';
+import type { ConnectionTestResult } from '#lib/types/downloadClient.js';
 export type { ConnectionTestResult };
 
 /**

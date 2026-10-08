@@ -6,9 +6,9 @@
 
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getUnifiedTaskById } from '$lib/server/tasks/UnifiedTaskRegistry';
-import { taskSettingsService } from '$lib/server/tasks/TaskSettingsService';
-import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler';
+import { getUnifiedTaskById } from '#lib/server/tasks/UnifiedTaskRegistry.js';
+import { taskSettingsService } from '#lib/server/tasks/TaskSettingsService.js';
+import { monitoringScheduler } from '#lib/server/monitoring/MonitoringScheduler.js';
 import { z } from 'zod';
 
 const bodySchema = z.object({

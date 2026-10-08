@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { subtitleProviderTestSchema } from '$lib/server/validation/schemas';
-import { getSubtitleProviderFactory } from '$lib/server/subtitles/providers/SubtitleProviderFactory';
-import { ensureProvidersRegistered } from '$lib/server/subtitles/providers/registry';
-import { parseBody } from '$lib/server/api/validate.js';
+import { subtitleProviderTestSchema } from '#lib/server/validation/schemas.js';
+import { getSubtitleProviderFactory } from '#lib/server/subtitles/providers/SubtitleProviderFactory.js';
+import { ensureProvidersRegistered } from '#lib/server/subtitles/providers/registry.js';
+import { parseBody } from '#lib/server/api/validate.js';
 
 /**
  * POST /api/subtitles/providers/test

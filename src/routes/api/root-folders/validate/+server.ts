@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getRootFolderService } from '$lib/server/downloadClients/RootFolderService';
+import { getRootFolderService } from '#lib/server/downloadClients/RootFolderService.js';
 import { z } from 'zod';
 
 const validatePathSchema = z.object({

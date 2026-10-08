@@ -10,7 +10,7 @@ import { EventEmitter } from 'events';
 import { randomUUID } from 'node:crypto';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { readdir, stat } from 'fs/promises';
-import { db } from '$lib/server/db';
+import { db } from '#lib/server/db/index.js';
 import {
 	downloadQueue,
 	downloadHistory,
@@ -19,13 +19,13 @@ import {
 	movies,
 	episodes,
 	stalledOrphanTracking
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { eq, and, or, inArray, not, notInArray, isNull, isNotNull, desc, sql } from 'drizzle-orm';
 import { getDownloadClientManager } from '../DownloadClientManager';
 import { joinCategoryPath, sanitizeCategorySegment } from '../core/client-utils.js';
 import { mapClientPathToLocal } from './PathMapping';
 import { resolveInfoHash } from '../utils/hashUtils';
-import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
+import { ReleaseParser } from '#lib/server/indexers/parser/ReleaseParser.js';
 import {
 	cleanupExpiredQueueTombstones,
 	extendQueueTombstonesFromDownloads,
@@ -33,14 +33,14 @@ import {
 	isQueueItemSuppressed,
 	upsertQueueTombstoneFromQueueItem
 } from './QueueTombstoneService';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
 
 const releaseParser = new ReleaseParser();
-import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
+import type { BackgroundService, ServiceStatus } from '#lib/server/services/background-service.js';
 import type { IDownloadClient, DownloadInfo } from '../core/interfaces';
-import type { DownloadClient } from '$lib/types/downloadClient';
+import type { DownloadClient } from '#lib/types/downloadClient.js';
 import {
 	isImportedQueueStatus,
 	POST_IMPORT_QUEUE_STATUSES,
@@ -49,10 +49,10 @@ import {
 	type QueueItem,
 	type QueueStats,
 	type QueueEvent
-} from '$lib/types/queue';
-import { parseEpisodePointerFromTitle } from '$lib/server/downloads/episode-pointer.js';
-import { activityStreamEvents } from '$lib/server/activity/ActivityStreamEvents.js';
-import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
+} from '#lib/types/queue.js';
+import { parseEpisodePointerFromTitle } from '#lib/server/downloads/episode-pointer.js';
+import { activityStreamEvents } from '#lib/server/activity/ActivityStreamEvents.js';
+import { acquisitionService } from '#lib/server/acquisition/AcquisitionService.js';
 
 // Import service is loaded lazily to avoid circular dependencies
 let importServiceInstance: import('../import').ImportService | null = null;
@@ -1067,7 +1067,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		// Blocklist the hash so it isn't immediately re-grabbed (permanent when configured).
 		try {
 			const { blocklistService } =
-				await import('$lib/server/monitoring/specifications/BlocklistSpecification.js');
+				await import('#lib/server/monitoring/specifications/BlocklistSpecification.js');
 			blocklistService.addToBlocklist(
 				{ title: download.name, infoHash: download.hash, protocol: 'torrent' },
 				{
@@ -3107,7 +3107,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			// A configured duration of 0 means a permanent ban (no expiry).
 			try {
 				const { blocklistService } =
-					await import('$lib/server/monitoring/specifications/BlocklistSpecification.js');
+					await import('#lib/server/monitoring/specifications/BlocklistSpecification.js');
 				await blocklistService.addToBlocklist(
 					{
 						title: item.title,
@@ -3256,9 +3256,9 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 			try {
 				const { resolveBlockedExtensionsForQueueItem } =
-					await import('$lib/server/settings/blocked-extensions.js');
+					await import('#lib/server/settings/blocked-extensions.js');
 				const { DANGEROUS_EXTENSIONS, EXECUTABLE_EXTENSIONS } =
-					await import('$lib/config/constants.js');
+					await import('#lib/config/constants.js');
 				const userBlocked = await resolveBlockedExtensionsForQueueItem({
 					movieId: item.movieId,
 					seriesId: item.seriesId
@@ -3365,7 +3365,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 
 				try {
 					const { blocklistService } =
-						await import('$lib/server/monitoring/specifications/BlocklistSpecification.js');
+						await import('#lib/server/monitoring/specifications/BlocklistSpecification.js');
 					await blocklistService.addToBlocklist(
 						{
 							title: item.title,

@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { Clock, Check } from 'lucide-svelte';
-	import type { DownloadClientDefinition } from '$lib/types/downloadClient';
+	import type { DownloadClientDefinition } from '#lib/types/downloadClient.js';
 	import NntpServerSettings from './forms/NntpServerSettings.svelte';
 	import DownloadClientSettings from './forms/DownloadClientSettings.svelte';
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 
 	interface Props {
 		maxConnections: number;

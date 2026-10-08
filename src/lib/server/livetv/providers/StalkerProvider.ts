@@ -5,10 +5,10 @@
  * Wraps the existing StalkerPortalClient to provide a unified provider interface.
  */
 
-import { db } from '$lib/server/db';
-import { livetvAccounts, livetvChannels, livetvCategories } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { livetvAccounts, livetvChannels, livetvCategories } from '#lib/server/db/schema.js';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 
 const logger = createChildLogger({ logDomain: 'livetv' as const });
@@ -25,7 +25,7 @@ import type {
 	EpgProgram,
 	LiveTvAccountTestResult,
 	StalkerChannelData
-} from '$lib/types/livetv';
+} from '#lib/types/livetv.js';
 import { StalkerPortalClient, type StalkerPortalConfig } from '../stalker/StalkerPortalClient';
 import { recordToAccount } from '../LiveTvAccountManager.js';
 import { decryptLivetvConfig, encryptLivetvConfig } from '../configCrypto';

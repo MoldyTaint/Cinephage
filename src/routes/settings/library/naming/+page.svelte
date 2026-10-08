@@ -21,24 +21,24 @@
 		X
 	} from 'lucide-svelte';
 	import type { PageData as GeneratedPageData } from './$types';
-	import { SettingsPage } from '$lib/components/ui/settings';
+	import { SettingsPage } from '#lib/components/ui/settings/index.js';
 	import {
 		NamingFormatField,
 		NamingAdvancedOptions,
 		NamingReviewPanel
-	} from '$lib/components/naming';
-	import { FormInput, FormSelect } from '$lib/components/ui/form';
-	import { ModalWrapper, ConfirmationModal } from '$lib/components/ui/modal';
-	import * as m from '$lib/paraglide/messages.js';
+	} from '#lib/components/naming/index.js';
+	import { FormInput, FormSelect } from '#lib/components/ui/form/index.js';
+	import { ModalWrapper, ConfirmationModal } from '#lib/components/ui/modal/index.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import {
 		createNormalizedNamingConfig,
 		getPresetLabelById,
 		normalizeNamingPresetSelection,
 		serializeNamingEditorState,
 		type NamingPresetSelection
-	} from '$lib/naming/editor-state';
-	import { buildConfigFromSetup, type NamingPreset } from '$lib/naming/setup-presets';
-	import type { NamingConfigUpdate } from '$lib/validation/schemas.js';
+	} from '#lib/naming/editor-state.js';
+	import { buildConfigFromSetup, type NamingPreset } from '#lib/naming/setup-presets.js';
+	import type { NamingConfigUpdate } from '#lib/validation/schemas.js';
 	import {
 		getNamingPresets,
 		getNamingPreset,
@@ -48,7 +48,7 @@
 		validateNamingFormats,
 		updateNamingConfig,
 		resetNamingConfig
-	} from '$lib/api/settings.js';
+	} from '#lib/api/settings.js';
 
 	interface ValidationResult {
 		valid: boolean;

@@ -1,14 +1,14 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { Loader2 } from 'lucide-svelte';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
-	import { ToggleSetting } from '$lib/components/ui/modal';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { SettingsPage, SettingsSection } from '#lib/components/ui/settings/index.js';
+	import { ToggleSetting } from '#lib/components/ui/modal/index.js';
 	import {
 		getRequestSettings,
 		saveRequestSettings,
 		type RequestSettings
-	} from '$lib/api/requests.js';
+	} from '#lib/api/requests.js';
 
 	let loading = $state(true);
 	let saving = $state(false);

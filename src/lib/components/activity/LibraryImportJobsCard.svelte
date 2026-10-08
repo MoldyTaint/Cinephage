@@ -1,17 +1,17 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import {
 		getImportBatchSummary,
 		getImportBatchJobs,
 		retryImportBatch,
 		dismissImportBatch,
 		cancelImportBatch
-	} from '$lib/api';
-	import { formatDuration } from '$lib/utils/format.js';
-	import { toasts } from '$lib/stores/toast.svelte';
+	} from '#lib/api/index.js';
+	import { formatDuration } from '#lib/utils/format.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { RotateCw, X, ChevronDown, ChevronUp, Ban } from 'lucide-svelte';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
 
 	interface Batch {
 		key: string;

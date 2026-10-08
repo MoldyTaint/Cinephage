@@ -8,17 +8,17 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
-import { redactAccountSecrets } from '$lib/server/livetv/accountRedaction';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { getEpgService, getEpgScheduler } from '$lib/server/livetv/epg';
-import { getEpgSyncState } from '$lib/server/livetv/epg/EpgSyncState';
-import { liveTvEvents } from '$lib/server/livetv/LiveTvEvents';
-import { createChildLogger } from '$lib/logging';
+import { getLiveTvAccountManager } from '#lib/server/livetv/LiveTvAccountManager.js';
+import { redactAccountSecrets } from '#lib/server/livetv/accountRedaction.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { getEpgService, getEpgScheduler } from '#lib/server/livetv/epg/index.js';
+import { getEpgSyncState } from '#lib/server/livetv/epg/EpgSyncState.js';
+import { liveTvEvents } from '#lib/server/livetv/LiveTvEvents.js';
+import { createChildLogger } from '#lib/logging/index.js';
 import { z } from 'zod';
-import { ValidationError } from '$lib/errors';
-import { REDACTED_VALUE } from '$lib/shared/sensitiveSettings';
-import { stalkerLanguageSchema } from '$lib/server/validation/schemas.js';
+import { ValidationError } from '#lib/errors/index.js';
+import { REDACTED_VALUE } from '#lib/shared/sensitiveSettings.js';
+import { stalkerLanguageSchema } from '#lib/server/validation/schemas.js';
 
 const logger = createChildLogger({ module: 'LiveTvAccountById', logDomain: 'livetv' });
 

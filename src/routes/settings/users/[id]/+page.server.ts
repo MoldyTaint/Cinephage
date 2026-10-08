@@ -1,11 +1,11 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { count, eq } from 'drizzle-orm';
-import { db } from '$lib/server/db/index.js';
-import { user } from '$lib/server/db/schema.js';
-import { requireAdminPage } from '$lib/server/auth/authorization.js';
-import { auth } from '$lib/server/auth/index.js';
-import { mediaServerLinkService } from '$lib/server/mediaServerLink/MediaServerLinkService.js';
+import { db } from '#lib/server/db/index.js';
+import { user } from '#lib/server/db/schema.js';
+import { requireAdminPage } from '#lib/server/auth/authorization.js';
+import { auth } from '#lib/server/auth/index.js';
+import { mediaServerLinkService } from '#lib/server/mediaServerLink/MediaServerLinkService.js';
 
 export const load: PageServerLoad = async ({ locals, params, request }) => {
 	requireAdminPage(locals);

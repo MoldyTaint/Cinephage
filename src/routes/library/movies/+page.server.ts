@@ -1,4 +1,4 @@
-import { db } from '$lib/server/db/index.js';
+import { db } from '#lib/server/db/index.js';
 import {
 	movies,
 	movieFiles,
@@ -6,16 +6,16 @@ import {
 	libraries,
 	scoringProfiles,
 	downloadQueue
-} from '$lib/server/db/schema.js';
+} from '#lib/server/db/schema.js';
 import { eq, and, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
-import type { LibraryMovie, MovieFile, QualityProfileSummary } from '$lib/types/library';
-import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
-import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService.js';
-import { requireAdminPage } from '$lib/server/auth/authorization.js';
-import { createChildLogger } from '$lib/logging';
+import type { LibraryMovie, MovieFile, QualityProfileSummary } from '#lib/types/library.js';
+import { getLibraryEntityService } from '#lib/server/library/LibraryEntityService.js';
+import { ACTIVE_DOWNLOAD_STATUSES } from '#lib/types/queue.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
+import { getLanguageSettingsService } from '#lib/server/subtitles/services/LanguageSettingsService.js';
+import { requireAdminPage } from '#lib/server/auth/authorization.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LibraryMoviesListPage', logDomain: 'scans' });
 

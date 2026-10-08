@@ -1,14 +1,14 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
-import { CINEPHAGE_STREAM_DEFINITION_ID } from '$lib/server/indexers/types';
-import { indexerUpdateSchema } from '$lib/validation/schemas';
-import { mergeBlankSensitiveIndexerSettings } from '$lib/server/indexers/settingsSecrets';
-import { createChildLogger } from '$lib/logging';
-import { assertFound, parseBody } from '$lib/server/api/validate';
-import { NotFoundError } from '$lib/errors';
-import { redactIndexer } from '$lib/server/utils/redaction.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { getIndexerManager } from '#lib/server/indexers/IndexerManager.js';
+import { CINEPHAGE_STREAM_DEFINITION_ID } from '#lib/server/indexers/types/index.js';
+import { indexerUpdateSchema } from '#lib/validation/schemas.js';
+import { mergeBlankSensitiveIndexerSettings } from '#lib/server/indexers/settingsSecrets.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { assertFound, parseBody } from '#lib/server/api/validate.js';
+import { NotFoundError } from '#lib/errors/index.js';
+import { redactIndexer } from '#lib/server/utils/redaction.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'IndexerAPI' });
 
@@ -122,7 +122,7 @@ export const PUT: RequestHandler = async (event) => {
 			);
 
 			// Run in background to not block the response
-			import('$lib/server/streaming')
+			import('#lib/server/streaming/index.js')
 				.then(async ({ strmService, getStreamingBaseUrl }) => {
 					const baseUrl = await getStreamingBaseUrl(newBaseUrl);
 					const result = await strmService.bulkUpdateStrmUrls(baseUrl);

@@ -6,9 +6,9 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
-import { createChildLogger } from '$lib/logging';
-import { toFriendlyLiveTvTestError } from '$lib/livetv/errorMessages';
+import { getLiveTvAccountManager } from '#lib/server/livetv/LiveTvAccountManager.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { toFriendlyLiveTvTestError } from '#lib/livetv/errorMessages.js';
 
 const logger = createChildLogger({ module: 'LiveTvAccountTest', logDomain: 'livetv' });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isActiveActivity, type UnifiedActivity } from '$lib/types/activity';
+import { isActiveActivity, type UnifiedActivity } from '#lib/types/activity.js';
 import { buildActivitySummary } from './activity-filters.js';
 import { mapQueueStatus, projectQueueActivity } from './projectors.js';
 import { mapFilterStatusToQueueStatuses } from './status-mappers.js';

@@ -5,12 +5,12 @@ import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../test
 import {
 	indexers as indexersTable,
 	indexerStatus as indexerStatusTable
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { isQuotaExceededMessage, nextUtcMidnight } from './types.js';
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	},
@@ -20,7 +20,7 @@ vi.mock('$lib/server/db', () => ({
 	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
 
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: {
 		info: vi.fn(),
 		error: vi.fn(),

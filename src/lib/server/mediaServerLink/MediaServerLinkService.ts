@@ -14,12 +14,12 @@
  */
 
 import { and, eq } from 'drizzle-orm';
-import { db } from '$lib/server/db/index.js';
-import { mediaBrowserServers, userMediaServerLinks } from '$lib/server/db/schema.js';
-import { getMediaBrowserManager } from '$lib/server/notifications/mediabrowser/MediaBrowserManager.js';
-import { MediaBrowserClient } from '$lib/server/notifications/mediabrowser/MediaBrowserClient.js';
-import type { MediaBrowserServerRecord } from '$lib/server/db/schema.js';
-import { createChildLogger } from '$lib/logging';
+import { db } from '#lib/server/db/index.js';
+import { mediaBrowserServers, userMediaServerLinks } from '#lib/server/db/schema.js';
+import { getMediaBrowserManager } from '#lib/server/notifications/mediabrowser/MediaBrowserManager.js';
+import { MediaBrowserClient } from '#lib/server/notifications/mediabrowser/MediaBrowserClient.js';
+import type { MediaBrowserServerRecord } from '#lib/server/db/schema.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'MediaServerLink', logDomain: 'auth' });
 

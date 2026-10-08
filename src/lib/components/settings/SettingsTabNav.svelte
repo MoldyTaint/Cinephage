@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { resolvePath } from '$lib/utils/routing';
+	import { resolvePath } from '#lib/utils/routing.js';
 	import { page } from '$app/state';
 	import { ChevronLeft, ChevronRight } from 'lucide-svelte';
 

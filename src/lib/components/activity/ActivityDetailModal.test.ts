@@ -2,9 +2,9 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import ActivityDetailModal from './ActivityDetailModal.svelte';
-import type { UnifiedActivity } from '$lib/types/activity';
+import type { UnifiedActivity } from '#lib/types/activity.js';
 
-vi.mock('$lib/paraglide/messages.js', () => {
+vi.mock('#lib/paraglide/messages.js', () => {
 	const message = (value: string) => () => value;
 	return {
 		action_cancel: message('Cancel'),

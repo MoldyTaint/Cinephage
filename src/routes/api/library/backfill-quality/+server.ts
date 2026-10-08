@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { backfillMissingQuality } from '$lib/server/library/quality-backfill.js';
-import { createChildLogger } from '$lib/logging';
+import { backfillMissingQuality } from '#lib/server/library/quality-backfill.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LibraryBackfillQualityApi', logDomain: 'scans' });
 

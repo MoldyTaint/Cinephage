@@ -1,8 +1,8 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
-	import { SettingsPage } from '$lib/components/ui/settings';
-	import LibraryOverview from '$lib/components/storage/LibraryOverview.svelte';
-	import { LibraryEditModal } from '$lib/components/libraries';
+	import * as m from '#lib/paraglide/messages.js';
+	import { SettingsPage } from '#lib/components/ui/settings/index.js';
+	import LibraryOverview from '#lib/components/storage/LibraryOverview.svelte';
+	import { LibraryEditModal } from '#lib/components/libraries/index.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();

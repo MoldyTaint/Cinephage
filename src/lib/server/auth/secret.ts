@@ -1,5 +1,4 @@
-import { env } from '$env/dynamic/private';
-import { getSharedSqliteConnection } from '$lib/server/db/connection.js';
+import { getSharedSqliteConnection } from '#lib/server/db/connection.js';
 
 const DEFAULT_BASE_URL = 'http://localhost:5173';
 const BUILD_TIME_PLACEHOLDER = 'build-time-placeholder-do-not-use-in-production';
@@ -46,18 +45,24 @@ function getConfiguredExternalUrl(): string | null {
  * encrypted API keys in the database permanently unrecoverable.
  */
 export function getAuthSecret(): string {
-	const secret = env.BETTER_AUTH_SECRET?.trim() || process.env.BETTER_AUTH_SECRET?.trim();
+	// Read process.env directly and stay live: every runtime we ship (dev
+	// server, adapter-node behind server.js + dotenv, vitest setup) populates
+	// it, and tests/orchestrators rotate it after module init. SvelteKit 3's
+	// declared $app/env/private bindings are captured at module load instead.
+	const secret = process.env.BETTER_AUTH_SECRET?.trim();
 	if (secret) {
 		return secret;
 	}
 
-	// During SSR build and vitest runs there is no runtime auth flow.
-	// Use a deterministic placeholder to keep imports from crashing in CI/tests.
-	// Production must never inherit build flags from the build environment:
-	// NODE_ENV=production always fails closed, whatever else is set.
+	// During vite builds and vitest runs there is no runtime auth flow.
+	// SvelteKit 3's post-build route analysis imports server modules (e.g. the
+	// better-auth instance below reads this at module scope), so the placeholder
+	// must also apply to build workers running under NODE_ENV=production —
+	// VITE_SSR_BUILD is only ever set by `npm run build`, never by the built
+	// server's runtime (server.js / systemd), which still fails closed here.
 	const isBuildOrTestContext =
 		process.env.VITE_SSR_BUILD || process.env.VITEST || process.env.NODE_ENV === 'test';
-	if (isBuildOrTestContext && process.env.NODE_ENV !== 'production') {
+	if (isBuildOrTestContext) {
 		return BUILD_TIME_PLACEHOLDER;
 	}
 

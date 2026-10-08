@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { requireArrCompatEnabled } from '$lib/server/arr/requireArrCompatEnabled.js';
-import { monitorEpisodesFromArr } from '$lib/server/arr/libraryWrite.js';
-import { withForwardedApiKey } from '$lib/server/arr/internalFetch.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { requireArrCompatEnabled } from '#lib/server/arr/requireArrCompatEnabled.js';
+import { monitorEpisodesFromArr } from '#lib/server/arr/libraryWrite.js';
+import { withForwardedApiKey } from '#lib/server/arr/internalFetch.js';
 
 /**
  * PUT /api/sonarr/api/v3/episode/monitor - bulk episode monitoring.

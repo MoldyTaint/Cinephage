@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { sql } from 'drizzle-orm';
-import { db } from '$lib/server/db';
+import { db } from '#lib/server/db/index.js';
 import {
 	episodeFiles,
 	libraries,
@@ -9,14 +9,14 @@ import {
 	movies,
 	rootFolders,
 	series
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import {
 	extractResolution,
 	extractVideoCodec,
 	extractHdrFormat,
 	extractAudioCodec,
 	extractContainer
-} from '$lib/server/storage/reconciliation/matchers.js';
+} from '#lib/server/storage/reconciliation/matchers.js';
 import { aggregateMovieRows } from './aggregate-movies.js';
 
 export type MediaExplorerItem = {

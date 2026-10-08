@@ -1,23 +1,23 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getSubtitleSearchService } from '$lib/server/subtitles/services/SubtitleSearchService';
-import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
-import { normalizeLanguageCode } from '$lib/shared/languages';
+import { getSubtitleSearchService } from '#lib/server/subtitles/services/SubtitleSearchService.js';
+import { LanguageProfileService } from '#lib/server/subtitles/services/LanguageProfileService.js';
+import { normalizeLanguageCode } from '#lib/shared/languages.js';
 import {
 	DEFAULT_MINIMUM_SCORE,
 	type EffectiveSubtitleRequirements
-} from '$lib/shared/language-profile';
+} from '#lib/shared/language-profile.js';
 import {
 	selectBestCandidate,
 	type CandidateRejectionReason,
 	type SearchResultLike
-} from '$lib/server/subtitles/acquisition';
-import { subtitleSearchSchema } from '$lib/validation/schemas';
-import { db } from '$lib/server/db';
-import { movies, episodes, series } from '$lib/server/db/schema';
+} from '#lib/server/subtitles/acquisition.js';
+import { subtitleSearchSchema } from '#lib/validation/schemas.js';
+import { db } from '#lib/server/db/index.js';
+import { movies, episodes, series } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import type { SubtitleSearchCriteria } from '$lib/server/subtitles/types';
-import { parseBody } from '$lib/server/api/validate.js';
+import type { SubtitleSearchCriteria } from '#lib/server/subtitles/types.js';
+import { parseBody } from '#lib/server/api/validate.js';
 
 /** Why no result would be auto-downloaded for the effective requirements. */
 interface RejectionSummary {

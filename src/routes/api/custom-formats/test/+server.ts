@@ -1,10 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { parseRelease, evaluateCondition } from '$lib/server/scoring';
-import type { FormatCondition } from '$lib/server/scoring';
-import { customFormatTestSchema } from '$lib/validation/schemas.js';
-import { logger } from '$lib/logging';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { parseRelease, evaluateCondition } from '#lib/server/scoring/index.js';
+import type { FormatCondition } from '#lib/server/scoring/index.js';
+import { customFormatTestSchema } from '#lib/validation/schemas.js';
+import { logger } from '#lib/logging/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 
 /**
  * POST /api/custom-formats/test

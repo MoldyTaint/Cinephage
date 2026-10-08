@@ -6,10 +6,10 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getNntpServerService } from '$lib/server/streaming/nzb/NntpServerService';
-import { getNntpManager } from '$lib/server/streaming/usenet/NntpManager';
-import { nntpServerUpdateSchema } from '$lib/validation/schemas';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { getNntpServerService } from '#lib/server/streaming/nzb/NntpServerService.js';
+import { getNntpManager } from '#lib/server/streaming/usenet/NntpManager.js';
+import { nntpServerUpdateSchema } from '#lib/validation/schemas.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 
 /**
  * GET /api/usenet/servers/:id

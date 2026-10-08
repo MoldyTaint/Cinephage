@@ -5,7 +5,7 @@
  */
 
 import { XMLParser } from 'fast-xml-parser';
-import type { ConnectionTestResult } from '$lib/types/downloadClient';
+import type { ConnectionTestResult } from '#lib/types/downloadClient.js';
 import type {
 	AddDownloadOptions,
 	DownloadClientConfig,
@@ -18,7 +18,7 @@ import {
 	extractInfoHashFromMagnet,
 	parseTorrentFile
 } from '../utils/torrentParser';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
 

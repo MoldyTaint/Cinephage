@@ -1,24 +1,24 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { Plus, Search } from 'lucide-svelte';
-	import { toasts } from '$lib/stores/toast.svelte';
+	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { toFriendlyDownloadClientError } from '$lib/downloadClients/errorMessages';
+	import { toFriendlyDownloadClientError } from '#lib/downloadClients/errorMessages.js';
 	import type { PageData } from './$types';
 	import type {
 		DownloadClientFormData,
 		ConnectionTestResult,
 		UnifiedClientItem
-	} from '$lib/types/downloadClient';
+	} from '#lib/types/downloadClient.js';
 	import {
 		DownloadClientBulkActions,
 		DownloadClientModal,
 		DownloadClientTable
-	} from '$lib/components/downloadClients';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
-	import { SettingsPage } from '$lib/components/ui/settings';
-	import * as m from '$lib/paraglide/messages.js';
-	import { isBlankOrRedacted } from '$lib/shared/sensitiveSettings';
+	} from '#lib/components/downloadClients/index.js';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
+	import { SettingsPage } from '#lib/components/ui/settings/index.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { isBlankOrRedacted } from '#lib/shared/sensitiveSettings.js';
 	import {
 		createDownloadClient,
 		updateDownloadClient,
@@ -27,12 +27,12 @@
 		testNewDownloadClient,
 		updateMonitoringSettings,
 		ApiError
-	} from '$lib/api';
+	} from '#lib/api/index.js';
 	import type {
 		DownloadClientCreate,
 		DownloadClientUpdate,
 		DownloadClientTest
-	} from '$lib/validation/schemas.js';
+	} from '#lib/validation/schemas.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -705,7 +705,7 @@
 <DownloadClientModal
 	open={modalOpen}
 	mode={modalMode}
-	client={editingClient as unknown as import('$lib/types/downloadClient').DownloadClient | null}
+	client={editingClient as unknown as import('#lib/types/downloadClient.js').DownloadClient | null}
 	{saving}
 	error={saveError}
 	stalledTimeoutMinutes={data.stalledDownloadTimeoutMinutes}

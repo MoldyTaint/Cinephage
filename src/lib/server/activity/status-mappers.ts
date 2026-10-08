@@ -1,4 +1,4 @@
-import type { ActivityFilters, ActivityStatus, ActivityScope } from '$lib/types/activity';
+import type { ActivityFilters, ActivityStatus, ActivityScope } from '#lib/types/activity.js';
 import type { MoveTaskRecord } from './types.js';
 
 export function mapFilterStatusToQueueStatuses(status: string): string[] | null {

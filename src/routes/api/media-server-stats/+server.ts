@@ -1,17 +1,17 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db';
+import { db } from '#lib/server/db/index.js';
 import {
 	mediaServerSyncedItems,
 	mediaServerSyncedRuns,
 	mediaBrowserServers
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { sql, desc, eq, and, or, isNull } from 'drizzle-orm';
 import type {
 	StatsSummary,
 	AggregatedMediaItem,
 	ServerSyncStatus
-} from '$lib/server/mediaServerStats/types.js';
+} from '#lib/server/mediaServerStats/types.js';
 
 /**
  * Matches the (tmdbId, tvdbId, title) identifying key aggregateItems() groups by.

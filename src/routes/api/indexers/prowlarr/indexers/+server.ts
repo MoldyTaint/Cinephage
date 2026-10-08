@@ -1,14 +1,14 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import {
 	getProwlarrConnection,
 	fetchProwlarrIndexers,
 	normalizeProwlarrUrl,
 	isIndexerFromConnection,
 	getProwlarrId
-} from '$lib/server/indexers/prowlarr/ProwlarrConnectionService.js';
-import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
+} from '#lib/server/indexers/prowlarr/ProwlarrConnectionService.js';
+import { getIndexerManager } from '#lib/server/indexers/IndexerManager.js';
 
 /**
  * GET - fetch indexers from Prowlarr using the stored connection's API key.

@@ -5,7 +5,7 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { presetService } from '$lib/server/smartlists/presets/PresetService.js';
+import { presetService } from '#lib/server/smartlists/presets/PresetService.js';
 
 export const GET: RequestHandler = async () => {
 	try {

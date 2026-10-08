@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invalidateAll, goto } from '$app/navigation';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
 	import {
 		Plus,
 		List,
@@ -16,9 +16,9 @@
 		ExternalLink
 	} from 'lucide-svelte';
 	import type { PageData } from './$types';
-	import * as m from '$lib/paraglide/messages.js';
-	import { refreshSmartList, deleteSmartList, updateSmartList } from '$lib/api';
-	import { formatDisplayDate } from '$lib/utils/format.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { refreshSmartList, deleteSmartList, updateSmartList } from '#lib/api/index.js';
+	import { formatDisplayDate } from '#lib/utils/format.js';
 
 	let { data }: { data: PageData } = $props();
 

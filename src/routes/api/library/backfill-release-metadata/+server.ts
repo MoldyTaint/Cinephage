@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
-import { backfillReleaseMetadata } from '$lib/server/library/release-metadata-backfill.js';
-import { createChildLogger } from '$lib/logging';
+import { backfillReleaseMetadata } from '#lib/server/library/release-metadata-backfill.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({
 	module: 'LibraryBackfillReleaseMetadataApi',

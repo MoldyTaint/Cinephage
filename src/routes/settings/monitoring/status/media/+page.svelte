@@ -2,12 +2,12 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { Search, HardDrive, Film, Tv, X, SlidersHorizontal, ChevronDown } from 'lucide-svelte';
-	import { SettingsPage } from '$lib/components/ui/settings';
-	import { MediaExplorerTable } from '$lib/components/status';
-	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.ts';
-	import { formatBytes } from '$lib/utils/format';
+	import { SettingsPage } from '#lib/components/ui/settings/index.js';
+	import { MediaExplorerTable } from '#lib/components/status/index.js';
+	import { createProgressiveRenderer } from '#lib/utils/progressive-render.svelte.ts';
+	import { formatBytes } from '#lib/utils/format.js';
 	import type { PageData } from './$types';
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -45,13 +45,13 @@
 	);
 
 	function updateUrlParam(key: string, value: string) {
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
 		if (value === 'all' || (key === 'sort' && value === 'title-asc')) {
 			url.searchParams.delete(key);
 		} else {
 			url.searchParams.set(key, value);
 		}
-		goto(url.pathname + url.search, { keepFocus: true, noScroll: true });
+		goto(url.pathname + url.search, { reset: false });
 	}
 
 	function handleSortChange(sort: string) {
@@ -60,7 +60,7 @@
 
 	function handleClearAll() {
 		searchQuery = '';
-		goto(page.url.pathname, { keepFocus: true, noScroll: true });
+		goto(page.url.pathname, { reset: false });
 	}
 </script>
 

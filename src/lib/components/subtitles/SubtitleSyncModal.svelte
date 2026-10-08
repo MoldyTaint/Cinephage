@@ -11,8 +11,8 @@
 		XCircle
 	} from 'lucide-svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
-	import { formatDisplayDateShort } from '$lib/utils/format.js';
+	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
+	import { formatDisplayDateShort } from '#lib/utils/format.js';
 
 	interface SubtitleItem {
 		id: string;

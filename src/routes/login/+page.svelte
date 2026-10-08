@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { User, Lock, AlertCircle, Eye, EyeOff } from 'lucide-svelte';
-	import { authClient } from '$lib/auth/client.js';
-	import { ensureVersionPrefix } from '$lib/version.js';
-	import * as m from '$lib/paraglide/messages.js';
+	import { authClient } from '#lib/auth/client.js';
+	import { ensureVersionPrefix } from '#lib/version.js';
+	import * as m from '#lib/paraglide/messages.js';
 
 	const GITHUB_URL = 'https://github.com/MoldyTaint/Cinephage';
 	const DISCORD_URL = 'https://discord.gg/scGCBTSWEt';

@@ -11,12 +11,12 @@ import {
 	clearTestDb,
 	type TestDatabase
 } from '../../../test/db-helper';
-import { user, movies, series, episodes, requests } from '$lib/server/db/schema';
+import { user, movies, series, episodes, requests } from '#lib/server/db/schema.js';
 import { createTestUser } from '../../../test/fixtures/auth.js';
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	}

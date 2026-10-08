@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { requireArrCompatEnabled } from '$lib/server/arr/requireArrCompatEnabled.js';
-import { buildRadarrCalendar } from '$lib/server/arr/calendar.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { requireArrCompatEnabled } from '#lib/server/arr/requireArrCompatEnabled.js';
+import { buildRadarrCalendar } from '#lib/server/arr/calendar.js';
 
 /** GET /api/radarr/api/v3/calendar */
 export const GET: RequestHandler = async (event) => {

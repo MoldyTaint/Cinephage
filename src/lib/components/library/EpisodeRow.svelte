@@ -18,13 +18,13 @@
 	import QualityBadge from './QualityBadge.svelte';
 	import AutoSearchStatus from './AutoSearchStatus.svelte';
 	import SubtitleRequirementBadge from './SubtitleRequirementBadge.svelte';
-	import { SubtitleDisplay } from '$lib/components/subtitles';
-	import SubtitlePopover from '$lib/components/subtitles/SubtitlePopover.svelte';
-	import { normalizeLanguageCode } from '$lib/shared/languages';
-	import type { EpisodeSubtitleCounts } from '$lib/shared/language-profile.js';
-	import type { SubtitleRequirementProgress } from '$lib/utils/subtitle-status-display.js';
-	import * as m from '$lib/paraglide/messages.js';
-	import { formatBytes, getFileName, formatDisplayDate } from '$lib/utils/format.js';
+	import { SubtitleDisplay } from '#lib/components/subtitles/index.js';
+	import SubtitlePopover from '#lib/components/subtitles/SubtitlePopover.svelte';
+	import { normalizeLanguageCode } from '#lib/shared/languages.js';
+	import type { EpisodeSubtitleCounts } from '#lib/shared/language-profile.js';
+	import type { SubtitleRequirementProgress } from '#lib/utils/subtitle-status-display.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { formatBytes, getFileName, formatDisplayDate } from '#lib/utils/format.js';
 
 	interface EpisodeFile {
 		id: string;

@@ -13,10 +13,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { and, eq } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { session as sessionTable } from '$lib/server/db/schema';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { auth } from '$lib/server/auth/index.js';
+import { db } from '#lib/server/db/index.js';
+import { session as sessionTable } from '#lib/server/db/schema.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { auth } from '#lib/server/auth/index.js';
 
 export const POST: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);

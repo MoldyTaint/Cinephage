@@ -6,10 +6,10 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getSmartListService } from '$lib/server/smartlists/index.js';
+import { getSmartListService } from '#lib/server/smartlists/index.js';
 import { z } from 'zod';
-import { smartListItemsActionSchema } from '$lib/validation/schemas.js';
-import { getBlockedTmdbIdSet } from '$lib/server/library/status.js';
+import { smartListItemsActionSchema } from '#lib/validation/schemas.js';
+import { getBlockedTmdbIdSet } from '#lib/server/library/status.js';
 
 export const GET: RequestHandler = async ({ params, url }) => {
 	const service = getSmartListService();

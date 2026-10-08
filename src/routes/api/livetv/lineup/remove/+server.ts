@@ -6,10 +6,10 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { channelLineupService } from '$lib/server/livetv/lineup';
-import { ValidationError } from '$lib/errors';
-import { createChildLogger } from '$lib/logging';
-import type { RemoveFromLineupRequest } from '$lib/types/livetv';
+import { channelLineupService } from '#lib/server/livetv/lineup/index.js';
+import { ValidationError } from '#lib/errors/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import type { RemoveFromLineupRequest } from '#lib/types/livetv.js';
 
 const logger = createChildLogger({ module: 'LiveTvLineupRemove', logDomain: 'livetv' });
 

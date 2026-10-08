@@ -8,8 +8,8 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { db } from '#lib/server/db/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { sql } from 'drizzle-orm';
 
 export const GET: RequestHandler = async (event) => {

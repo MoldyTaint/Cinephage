@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { getCinephageCore } from '$lib/server/cinephage/core/CinephageCore.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { getCinephageCore } from '#lib/server/cinephage/core/CinephageCore.js';
 
 /**
  * POST /api/cinephage/test

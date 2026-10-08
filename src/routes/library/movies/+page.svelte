@@ -2,17 +2,17 @@
 	import { page } from '$app/state';
 	import { goto, beforeNavigate, afterNavigate, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { resolvePath } from '$lib/utils/routing';
+	import { resolvePath } from '#lib/utils/routing.js';
 	import { SvelteSet } from 'svelte/reactivity';
-	import LibraryMediaCard from '$lib/components/library/LibraryMediaCard.svelte';
-	import LibraryMediaTable from '$lib/components/library/LibraryMediaTable.svelte';
-	import LibraryDrawer from '$lib/components/library/LibraryDrawer.svelte';
-	import LibraryBulkActionBar from '$lib/components/library/LibraryBulkActionBar.svelte';
-	import BulkQualityProfileModal from '$lib/components/library/BulkQualityProfileModal.svelte';
-	import BulkLanguageProfileModal from '$lib/components/library/BulkLanguageProfileModal.svelte';
-	import BulkDeleteModal from '$lib/components/library/BulkDeleteModal.svelte';
-	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
-	import { MediaSearchModal } from '$lib/components/search';
+	import LibraryMediaCard from '#lib/components/library/LibraryMediaCard.svelte';
+	import LibraryMediaTable from '#lib/components/library/LibraryMediaTable.svelte';
+	import LibraryDrawer from '#lib/components/library/LibraryDrawer.svelte';
+	import LibraryBulkActionBar from '#lib/components/library/LibraryBulkActionBar.svelte';
+	import BulkQualityProfileModal from '#lib/components/library/BulkQualityProfileModal.svelte';
+	import BulkLanguageProfileModal from '#lib/components/library/BulkLanguageProfileModal.svelte';
+	import BulkDeleteModal from '#lib/components/library/BulkDeleteModal.svelte';
+	import DeleteConfirmationModal from '#lib/components/ui/modal/DeleteConfirmationModal.svelte';
+	import { MediaSearchModal } from '#lib/components/search/index.js';
 	import {
 		Clapperboard,
 		X,
@@ -30,21 +30,21 @@
 		Captions,
 		Loader2
 	} from 'lucide-svelte';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { viewPreferences } from '$lib/stores/view-preferences.svelte';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { viewPreferences } from '#lib/stores/view-preferences.svelte.js';
 	import { enhance } from '$app/forms';
 	import {
 		batchMovies,
 		batchDeleteMovieFiles,
 		updateMovie,
 		deleteMovie
-	} from '$lib/api/library.js';
-	import { ApiError } from '$lib/api/client.js';
-	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
-	import { createSubtitleProgress } from '$lib/stores/subtitleProgress.svelte';
-	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
-	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
-	import * as m from '$lib/paraglide/messages.js';
+	} from '#lib/api/library.js';
+	import { ApiError } from '#lib/api/client.js';
+	import { createSearchProgress } from '#lib/stores/searchProgress.svelte.js';
+	import { createSubtitleProgress } from '#lib/stores/subtitleProgress.svelte.js';
+	import { getPrimaryAutoSearchIssue } from '#lib/utils/autoSearchIssues.js';
+	import { createProgressiveRenderer } from '#lib/utils/progressive-render.svelte.js';
+	import * as m from '#lib/paraglide/messages.js';
 
 	let { data } = $props();
 
@@ -53,7 +53,9 @@
 
 	const SCROLL_KEY = 'cinephage:library:movies:scrollY';
 
-	beforeNavigate(({ to }) => {
+	beforeNavigate(({ to, shallow, type }) => {
+		if (shallow && type === 'goto') return;
+
 		try {
 			if (to?.url.pathname.startsWith('/library/movie/')) {
 				localStorage.setItem(SCROLL_KEY, String(window.scrollY));
@@ -65,7 +67,9 @@
 		}
 	});
 
-	afterNavigate(({ from }) => {
+	afterNavigate(({ from, shallow, type }) => {
+		if (shallow && type === 'goto') return;
+
 		try {
 			if (from?.url.pathname.startsWith('/library/movie/')) {
 				const saved = localStorage.getItem(SCROLL_KEY);
@@ -558,7 +562,7 @@
 	]);
 
 	function updateUrlParam(key: string, value: string) {
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
 		const query = searchQuery.trim();
 		if (query) url.searchParams.set('q', query);
 		else url.searchParams.delete('q');
@@ -573,17 +577,17 @@
 		} else {
 			url.searchParams.set(key, value);
 		}
-		goto(resolvePath(url.pathname + url.search), { keepFocus: true, noScroll: true });
+		goto(resolvePath(url.pathname + url.search), { reset: false });
 	}
 
 	function clearFilters() {
 		searchQuery = '';
-		const url = new URL(resolve('/library/movies'), page.url.origin);
+		const url = new URL(resolve('library/movies'), page.url.origin);
 		if (data.libraryScope?.isSubLibraryScope && data.libraryScope?.selected?.slug) {
 			url.searchParams.set('library', data.libraryScope.selected.slug);
 		}
 		url.searchParams.delete('q');
-		goto(resolvePath(url.pathname + url.search), { keepFocus: true, noScroll: true });
+		goto(resolvePath(url.pathname + url.search), { reset: false });
 	}
 
 	function handleMonitorAll() {
@@ -625,10 +629,7 @@
 	const bulkHasActiveDownloads = $derived(bulkActiveDownloadCount > 0);
 </script>
 
-<svelte:head>
-	<title>{m.library_movies_pageTitle()}</title>
-</svelte:head>
-
+<svelte:head><title>{m.library_movies_pageTitle()}</title></svelte:head>
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="min-h-screen bg-base-100 pb-20">
@@ -825,7 +826,7 @@
 						stroke-linejoin="round"
 						stroke-width="2"
 						d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-					/>
+					></path>
 				</svg>
 				<span>{data.error}</span>
 			</div>
@@ -838,9 +839,10 @@
 					<p class="mt-2">{m.library_movies_tryDifferentSearch()}</p>
 				</div>
 				<div class="mt-6 flex gap-3">
-					<button class="btn btn-ghost" onclick={() => (searchQuery = '')}>
-						{m.library_movies_clearSearchBtn()}
-					</button>
+					<button class="btn btn-ghost" onclick={() => (searchQuery = '')}
+						>{m.library_movies_clearSearchBtn()}</button
+					>
+
 					<a
 						href={resolvePath(`/discover?type=movie&q=${encodeURIComponent(searchQuery)}`)}
 						class="btn btn-primary"
@@ -897,7 +899,7 @@
 												fill-rule="evenodd"
 												d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
 												clip-rule="evenodd"
-											/>
+											></path>
 										</svg>
 										<div class="flex min-w-0 flex-1 items-center gap-2">
 											<h3 class="min-w-0 truncate text-lg font-semibold">

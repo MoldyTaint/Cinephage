@@ -1,14 +1,14 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { untrack } from 'svelte';
 	import { Search, X, Clapperboard, Tv, Check, Loader2, ChevronRight } from 'lucide-svelte';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
-	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
-	import { getFileName } from '$lib/utils/format.js';
-	import { searchTmdb } from '$lib/api/discover.js';
-	import { matchUnmatched } from '$lib/api/library.js';
-	import { extractSearchYear } from '$lib/utils/search-query.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
+	import TmdbImage from '#lib/components/tmdb/TmdbImage.svelte';
+	import { getFileName } from '#lib/utils/format.js';
+	import { searchTmdb } from '#lib/api/discover.js';
+	import { matchUnmatched } from '#lib/api/library.js';
+	import { extractSearchYear } from '#lib/utils/search-query.js';
 
 	interface UnmatchedFile {
 		id: string;

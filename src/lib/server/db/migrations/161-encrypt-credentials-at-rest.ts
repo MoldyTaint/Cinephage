@@ -1,11 +1,11 @@
 import type Database from 'better-sqlite3';
 import type { MigrationDefinition } from '../migration-helpers.js';
 import { tableExists } from '../migration-helpers.js';
-import { createChildLogger } from '$lib/logging';
-import { encryptRecordSecrets, SECRET_FIELD_SPECS } from '$lib/server/crypto/secretFields';
-import { encryptCredential, isEncryptedCredential } from '$lib/server/crypto/credentialsCrypto';
-import { decryptApiKey } from '$lib/server/crypto/apiKeyCrypto.js';
-import { decryptDebridToken } from '$lib/server/crypto/debridTokenCrypto.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { encryptRecordSecrets, SECRET_FIELD_SPECS } from '#lib/server/crypto/secretFields.js';
+import { encryptCredential, isEncryptedCredential } from '#lib/server/crypto/credentialsCrypto.js';
+import { decryptApiKey } from '#lib/server/crypto/apiKeyCrypto.js';
+import { decryptDebridToken } from '#lib/server/crypto/debridTokenCrypto.js';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 

@@ -5,11 +5,11 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getNntpServerService } from '$lib/server/streaming/nzb/NntpServerService';
-import { getNntpManager } from '$lib/server/streaming/usenet/NntpManager';
-import { nntpServerCreateSchema } from '$lib/validation/schemas';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { parseBody } from '$lib/server/api/validate.js';
+import { getNntpServerService } from '#lib/server/streaming/nzb/NntpServerService.js';
+import { getNntpManager } from '#lib/server/streaming/usenet/NntpManager.js';
+import { nntpServerCreateSchema } from '#lib/validation/schemas.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { parseBody } from '#lib/server/api/validate.js';
 
 /**
  * GET /api/usenet/servers

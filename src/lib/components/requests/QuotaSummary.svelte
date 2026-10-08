@@ -1,7 +1,7 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { Film, Tv } from 'lucide-svelte';
-	import type { QuotaStatus } from '$lib/api/requests.js';
+	import type { QuotaStatus } from '#lib/api/requests.js';
 
 	let {
 		quota,

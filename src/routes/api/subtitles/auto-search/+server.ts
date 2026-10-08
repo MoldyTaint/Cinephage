@@ -1,19 +1,19 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db';
-import { movies, episodes, series } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { movies, episodes, series } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { subtitleRequirementSchema } from '$lib/validation/schemas.js';
-import { createChildLogger } from '$lib/logging';
-import { parseBody, assertFound } from '$lib/server/api/validate.js';
+import { subtitleRequirementSchema } from '#lib/validation/schemas.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { parseBody, assertFound } from '#lib/server/api/validate.js';
 import {
 	autoSearchEpisode,
 	autoSearchMovie,
 	summarizeAutoSearchReason,
 	type AutoSearchItemResult,
 	type AutoSearchReason
-} from '$lib/server/subtitles/auto-search.js';
+} from '#lib/server/subtitles/auto-search.js';
 
 const logger = createChildLogger({ module: 'SubtitleAutoSearchApi', logDomain: 'subtitles' });
 

@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, within } from '@testing-library/svelte';
 import LanguageProfilesManager from './languages/LanguageProfilesManager.svelte';
-import type { SubtitleRequirement } from '$lib/shared/language-profile';
+import type { SubtitleRequirement } from '#lib/shared/language-profile.js';
 
 const {
 	createLanguageProfile,
@@ -20,7 +20,7 @@ const {
 
 vi.mock('$app/navigation', () => ({ invalidateAll }));
 
-vi.mock('$lib/api', () => ({
+vi.mock('#lib/api/index.js', () => ({
 	createLanguageProfile,
 	updateLanguageProfile,
 	deleteLanguageProfile,
@@ -28,7 +28,7 @@ vi.mock('$lib/api', () => ({
 	ApiError: class ApiError extends Error {}
 }));
 
-vi.mock('$lib/stores/toast.svelte', () => ({
+vi.mock('#lib/stores/toast.svelte.js', () => ({
 	toasts: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 }));
 

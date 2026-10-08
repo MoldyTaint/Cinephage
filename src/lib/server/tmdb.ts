@@ -1,8 +1,8 @@
 import { db } from './db';
 import { languageSettings, settings } from './db/schema';
 import { eq } from 'drizzle-orm';
-import { normalizeMetadataLocale, normalizeRegionCode } from '$lib/server/languages/normalize.js';
-import { decryptSettingValue } from '$lib/server/settings/secretSettings';
+import { normalizeMetadataLocale, normalizeRegionCode } from '#lib/server/languages/normalize.js';
+import { decryptSettingValue } from '#lib/server/settings/secretSettings.js';
 import type {
 	GlobalTmdbFilters,
 	MovieDetails,
@@ -14,9 +14,9 @@ import type {
 	PersonDetails,
 	PersonCombinedCredits,
 	ReleaseDatesResponse
-} from '$lib/types/tmdb';
-import { TMDB } from '$lib/config/constants';
-import { createChildLogger } from '$lib/logging';
+} from '#lib/types/tmdb.js';
+import { TMDB } from '#lib/config/constants.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 import { tmdbCache, getCacheKey } from './tmdb-cache';
@@ -248,7 +248,7 @@ export const tmdb = {
 					// Apply globally blocked keywords as without_keywords for discover paths
 					if (path.includes('/discover/') && !skipKeywordBlocklist) {
 						const { keywordBlocklistService } =
-							await import('$lib/server/settings/KeywordBlocklistService.js');
+							await import('#lib/server/settings/KeywordBlocklistService.js');
 						const blockedIds = await keywordBlocklistService.getBlockedKeywordIds();
 						if (blockedIds.length > 0) {
 							const existing = url.searchParams.get('without_keywords');

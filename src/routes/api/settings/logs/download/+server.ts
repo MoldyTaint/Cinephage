@@ -1,11 +1,11 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 
-import type { CapturedLogFilters } from '$lib/logging/log-capture';
-import { logger } from '$lib/logging';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { logHistoryService } from '$lib/server/logging/log-history.js';
-import { logDownloadQuerySchema } from '$lib/validation/schemas.js';
+import type { CapturedLogFilters } from '#lib/logging/log-capture.js';
+import { logger } from '#lib/logging/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { logHistoryService } from '#lib/server/logging/log-history.js';
+import { logDownloadQuerySchema } from '#lib/validation/schemas.js';
 
 function toFilters(query: {
 	level?: CapturedLogFilters['level'];

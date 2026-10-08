@@ -1,5 +1,5 @@
-import { db } from '$lib/server/db/index.js';
-import { requestNotifications, user } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { requestNotifications, user } from '#lib/server/db/schema.js';
 import { and, desc, eq, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { requestStreamEvents } from './RequestStreamEvents.js';
 

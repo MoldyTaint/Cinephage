@@ -9,8 +9,8 @@ import type {
 	ActivityFilters as FiltersType,
 	ActivityStatus,
 	UnifiedActivity
-} from '$lib/types/activity';
-import { isActiveActivity } from '$lib/types/activity';
+} from '#lib/types/activity.js';
+import { isActiveActivity } from '#lib/types/activity.js';
 import {
 	ACTIVE_TAB_STATUSES,
 	BASE_FILTERS,

@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
-import { unmatchedFiles } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { unmatchedFiles } from '#lib/server/db/schema.js';
 import { inArray } from 'drizzle-orm';
-import { mediaMatcherService } from '$lib/server/library/media-matcher.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { logger, createChildLogger } from '$lib/logging';
+import { mediaMatcherService } from '#lib/server/library/media-matcher.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { logger, createChildLogger } from '#lib/logging/index.js';
 
 /**
  * POST /api/library/unmatched/force-match-all

@@ -1,8 +1,8 @@
 import type { PageServerLoad } from './$types';
 import { asc, count, eq } from 'drizzle-orm';
-import { db } from '$lib/server/db/index.js';
-import { session, user, userMediaServerLinks } from '$lib/server/db/schema.js';
-import { requireAdminPage } from '$lib/server/auth/authorization.js';
+import { db } from '#lib/server/db/index.js';
+import { session, user, userMediaServerLinks } from '#lib/server/db/schema.js';
+import { requireAdminPage } from '#lib/server/auth/authorization.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	requireAdminPage(locals);

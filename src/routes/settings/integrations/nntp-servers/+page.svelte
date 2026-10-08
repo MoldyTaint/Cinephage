@@ -2,23 +2,23 @@
 	import { invalidateAll } from '$app/navigation';
 	import { Plus, Search } from 'lucide-svelte';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { toasts } from '$lib/stores/toast.svelte';
+	import { toasts } from '#lib/stores/toast.svelte.js';
 	import type { PageData } from './$types';
 	import {
 		NntpServerBulkActions,
 		NntpServerModal,
 		NntpServerTable
-	} from '$lib/components/nntpServers';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
-	import { SettingsPage } from '$lib/components/ui/settings';
-	import * as m from '$lib/paraglide/messages.js';
+	} from '#lib/components/nntpServers/index.js';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
+	import { SettingsPage } from '#lib/components/ui/settings/index.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import {
 		createUsenetServer,
 		updateUsenetServer,
 		deleteUsenetServer,
 		testUsenetServer,
 		ApiError
-	} from '$lib/api';
+	} from '#lib/api/index.js';
 
 	interface NntpServer {
 		id: string;

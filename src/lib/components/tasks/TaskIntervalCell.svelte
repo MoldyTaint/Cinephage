@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { setTaskInterval } from '$lib/api/tasks.js';
+	import type { UnifiedTask } from '#lib/server/tasks/UnifiedTaskRegistry.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { setTaskInterval } from '#lib/api/tasks.js';
 
 	interface Props {
 		task: UnifiedTask;

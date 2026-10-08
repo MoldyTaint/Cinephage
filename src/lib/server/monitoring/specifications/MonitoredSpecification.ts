@@ -6,8 +6,8 @@
  * - Episode is monitored if series.monitored AND season.monitored AND episode.monitored
  */
 
-import { db } from '$lib/server/db/index.js';
-import { seasons } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { seasons } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import type {
 	IMonitoringSpecification,

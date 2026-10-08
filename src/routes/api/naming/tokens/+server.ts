@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import {
 	buildTokensResponse,
 	TOKEN_CATEGORIES
-} from '$lib/server/library/naming/token-reference.js';
+} from '#lib/server/library/naming/token-reference.js';
 
 /**
  * GET /api/naming/tokens

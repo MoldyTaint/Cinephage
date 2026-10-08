@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
-import { toUIDefinition } from '$lib/server/indexers/loader';
+import { getIndexerManager } from '#lib/server/indexers/IndexerManager.js';
+import { toUIDefinition } from '#lib/server/indexers/loader/index.js';
 
 /**
  * GET /api/indexers/definitions/:id

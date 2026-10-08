@@ -1,8 +1,8 @@
 import type { RequestHandler } from './$types.js';
 import { json } from '@sveltejs/kit';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { createSSEStream } from '$lib/server/sse';
-import { libraryJobService } from '$lib/server/library/jobs/LibraryJobService.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { createSSEStream } from '#lib/server/sse.js';
+import { libraryJobService } from '#lib/server/library/jobs/LibraryJobService.js';
 
 export const GET: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);

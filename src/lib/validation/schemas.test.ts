@@ -12,7 +12,7 @@ import {
 	movieUpdateSchema,
 	addMovieSchema
 } from './schemas.js';
-import { subtitleProviderUpdateSchema } from '$lib/server/validation/schemas.js';
+import { subtitleProviderUpdateSchema } from '#lib/server/validation/schemas.js';
 
 describe('logDownloadQuerySchema', () => {
 	it('accepts export requests up to the supported 5000 row cap', () => {

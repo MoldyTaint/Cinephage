@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3';
 import { count, eq } from 'drizzle-orm';
-import { db } from '$lib/server/db/index.js';
-import { user } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { user } from '#lib/server/db/schema.js';
 
 function tableExists(sqlite: Database.Database, tableName: string): boolean {
 	return !!sqlite

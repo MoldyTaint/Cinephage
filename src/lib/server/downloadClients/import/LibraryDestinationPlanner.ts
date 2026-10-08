@@ -1,10 +1,10 @@
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
-import { resolveLocalizedTitlesForFormats } from '$lib/server/library/naming/localization.js';
+import { ReleaseParser } from '#lib/server/indexers/parser/ReleaseParser.js';
+import { resolveLocalizedTitlesForFormats } from '#lib/server/library/naming/localization.js';
 import {
 	releaseToNamingInfo,
 	type MediaNamingInfo
-} from '$lib/server/library/naming/NamingService';
+} from '#lib/server/library/naming/NamingService.js';
 
 interface NamingBoundary {
 	generateMovieFileName(info: MediaNamingInfo): string;

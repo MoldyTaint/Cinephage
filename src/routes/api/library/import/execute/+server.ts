@@ -1,12 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { manualImportSchema } from '$lib/validation/schemas.js';
-import { manualImportService } from '$lib/server/library/manual-import-service.js';
-import { libraryJobService } from '$lib/server/library/jobs/LibraryJobService.js';
-import { isPathAllowed, isPathInsideManagedRoot } from '$lib/server/filesystem/path-guard.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
-import { createChildLogger } from '$lib/logging';
+import { manualImportSchema } from '#lib/validation/schemas.js';
+import { manualImportService } from '#lib/server/library/manual-import-service.js';
+import { libraryJobService } from '#lib/server/library/jobs/LibraryJobService.js';
+import { isPathAllowed, isPathInsideManagedRoot } from '#lib/server/filesystem/path-guard.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LibraryImportExecuteApi', logDomain: 'scans' });
 

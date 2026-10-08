@@ -14,10 +14,10 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { parseBody } from '$lib/server/api/validate.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { parseBody } from '#lib/server/api/validate.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { z } from 'zod';
-import { mediaServerLinkService } from '$lib/server/mediaServerLink/MediaServerLinkService.js';
+import { mediaServerLinkService } from '#lib/server/mediaServerLink/MediaServerLinkService.js';
 
 const adminLinkSchema = z.object({
 	serverId: z.string().min(1),

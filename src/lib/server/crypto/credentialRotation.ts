@@ -1,5 +1,5 @@
-import { getSharedSqliteConnection } from '$lib/server/db/connection.js';
-import { createChildLogger } from '$lib/logging';
+import { getSharedSqliteConnection } from '#lib/server/db/connection.js';
+import { createChildLogger } from '#lib/logging/index.js';
 import { decryptCredential, encryptCredential, isEncryptedCredential } from './credentialsCrypto';
 import { decryptRecordSecrets, encryptRecordSecrets, SECRET_FIELD_SPECS } from './secretFields';
 import { decryptApiKey } from './apiKeyCrypto.js';

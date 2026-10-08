@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../test/db-helper';
-import { isEncryptedCredential, decryptCredential } from '$lib/server/crypto/credentialsCrypto';
-import { encryptApiKey } from '$lib/server/crypto/apiKeyCrypto';
-import { encryptDebridToken } from '$lib/server/crypto/debridTokenCrypto';
+import { isEncryptedCredential, decryptCredential } from '#lib/server/crypto/credentialsCrypto.js';
+import { encryptApiKey } from '#lib/server/crypto/apiKeyCrypto.js';
+import { encryptDebridToken } from '#lib/server/crypto/debridTokenCrypto.js';
 
 /**
  * Migration 161: everything in the secret-field registry is enveloped in

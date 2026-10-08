@@ -2,16 +2,16 @@
  * Search On Add — Series search logic
  */
 
-import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
-import { evaluateIndexerSearchAvailability } from '$lib/server/indexers/search/availability';
-import { grabService } from '$lib/server/downloads/GrabService.js';
-import { db } from '$lib/server/db/index.js';
-import { episodes } from '$lib/server/db/schema.js';
+import { getIndexerManager } from '#lib/server/indexers/IndexerManager.js';
+import { evaluateIndexerSearchAvailability } from '#lib/server/indexers/search/availability.js';
+import { grabService } from '#lib/server/downloads/GrabService.js';
+import { db } from '#lib/server/db/index.js';
+import { episodes } from '#lib/server/db/schema.js';
 import { and, eq, ne } from 'drizzle-orm';
 import type { SearchForSeriesParams, GrabResult, SearchCriteria } from './types.js';
 import type { AltTitleRefresher } from './alt-titles.js';
 import { AUTO_GRAB_MIN_SCORE } from './search-utils.js';
-import { createChildLogger } from '$lib/logging/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'SearchSeries', logDomain: 'scans' });
 

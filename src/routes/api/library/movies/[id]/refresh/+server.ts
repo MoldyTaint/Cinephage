@@ -7,22 +7,22 @@
 
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db/index.js';
-import { movies } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { movies } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { tmdb } from '$lib/server/tmdb.js';
+import { tmdb } from '#lib/server/tmdb.js';
 import {
 	enrichAnimeMetadata,
 	persistEnrichmentTitleVariants
-} from '$lib/server/metadata/provider-resolution.js';
-import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
-import { resolveLanguage } from '$lib/server/metadata/metadata-refresh.js';
-import { createChildLogger } from '$lib/logging';
+} from '#lib/server/metadata/provider-resolution.js';
+import { isLikelyAnimeMedia } from '#lib/shared/anime-classification.js';
+import { resolveLanguage } from '#lib/server/metadata/metadata-refresh.js';
+import { createChildLogger } from '#lib/logging/index.js';
 import {
 	startRefresh,
 	stopRefresh,
 	isMovieRefreshing
-} from '$lib/server/library/ActiveSearchTracker.js';
+} from '#lib/server/library/ActiveSearchTracker.js';
 
 const logger = createChildLogger({ module: 'LibraryMovieRefreshApi', logDomain: 'scans' });
 

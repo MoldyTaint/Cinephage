@@ -1,11 +1,11 @@
 import type { LayoutServerLoad } from './$types';
-import { db } from '$lib/server/db';
+import { db } from '#lib/server/db/index.js';
 import {
 	mediaServerSyncedItems,
 	mediaServerSyncedRuns,
 	mediaBrowserServers,
 	storageInsights
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { desc, sql } from 'drizzle-orm';
 
 export const load: LayoutServerLoad = async ({ parent }) => {

@@ -1,11 +1,11 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import type { PageData } from './$types';
 	import { onMount } from 'svelte';
 	import { Loader2, Check, X, RotateCcw, BadgeCheck, Inbox, Clock, Trash2 } from 'lucide-svelte';
-	import { toasts } from '$lib/stores/toast.svelte';
+	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { formatDisplayDateShort } from '$lib/utils/format.js';
+	import { formatDisplayDateShort } from '#lib/utils/format.js';
 	import {
 		listRequests,
 		getRequestCounts,
@@ -18,11 +18,11 @@
 		bulkRequestAction,
 		type MediaRequest,
 		type RequestCountResponse
-	} from '$lib/api/requests.js';
-	import RequestStatusBadge from '$lib/components/requests/RequestStatusBadge.svelte';
-	import QuotaSummary from '$lib/components/requests/QuotaSummary.svelte';
-	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
-	import { ModalHeader, ModalFooter, ConfirmationModal } from '$lib/components/ui/modal';
+	} from '#lib/api/requests.js';
+	import RequestStatusBadge from '#lib/components/requests/RequestStatusBadge.svelte';
+	import QuotaSummary from '#lib/components/requests/QuotaSummary.svelte';
+	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
+	import { ModalHeader, ModalFooter, ConfirmationModal } from '#lib/components/ui/modal/index.js';
 
 	let { data }: { data: PageData } = $props();
 	const isAdmin = $derived(data.role === 'admin');

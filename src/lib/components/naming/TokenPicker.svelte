@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import {
 		Search,
 		Copy,
@@ -13,8 +13,8 @@
 		Zap,
 		Check
 	} from 'lucide-svelte';
-	import { copyToClipboard } from '$lib/utils/clipboard';
-	import { toasts } from '$lib/stores/toast.svelte';
+	import { copyToClipboard } from '#lib/utils/clipboard.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
 
 	interface Token {
 		token: string;

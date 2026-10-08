@@ -6,8 +6,8 @@
  */
 
 import { getStreamingIndexerSettings } from './settings';
-import { logger } from '$lib/logging';
-import { isTrustedOrigin } from '$lib/server/utils/origin';
+import { logger } from '#lib/logging/index.js';
+import { isTrustedOrigin } from '#lib/server/utils/origin.js';
 
 // Cache the database baseUrl to avoid repeated DB queries on every request
 let cachedBaseUrl: string | null = null;

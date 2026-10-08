@@ -1,9 +1,9 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { requireArrCompatEnabled } from '$lib/server/arr/requireArrCompatEnabled.js';
-import { buildEpisodesForSeries, buildEpisodesByArrIds } from '$lib/server/arr/episodes.js';
-import { getEntityIdForArrId } from '$lib/server/arr/ArrIdMappingService.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { requireArrCompatEnabled } from '#lib/server/arr/requireArrCompatEnabled.js';
+import { buildEpisodesForSeries, buildEpisodesByArrIds } from '#lib/server/arr/episodes.js';
+import { getEntityIdForArrId } from '#lib/server/arr/ArrIdMappingService.js';
 
 /**
  * GET /api/sonarr/api/v3/episode

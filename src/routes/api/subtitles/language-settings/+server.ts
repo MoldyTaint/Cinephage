@@ -1,10 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService';
-import { languageSettingsUpdateSchema } from '$lib/server/validation/schemas';
-import { parseBody } from '$lib/server/api/validate.js';
-import { tmdb } from '$lib/server/tmdb.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { getLanguageSettingsService } from '#lib/server/subtitles/services/LanguageSettingsService.js';
+import { languageSettingsUpdateSchema } from '#lib/server/validation/schemas.js';
+import { parseBody } from '#lib/server/api/validate.js';
+import { tmdb } from '#lib/server/tmdb.js';
 
 /**
  * GET /api/subtitles/language-settings

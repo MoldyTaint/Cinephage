@@ -6,7 +6,7 @@
  */
 
 import type { Page } from 'playwright-core';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
 import type {

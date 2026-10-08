@@ -1,13 +1,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
+import { getDownloadClientManager } from '#lib/server/downloadClients/DownloadClientManager.js';
 import {
 	downloadClientCreateSchema,
 	type DownloadClientCreateDiscriminated
-} from '$lib/validation/schemas';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { parseBody } from '$lib/server/api/validate.js';
-import type { DownloadClientInput } from '$lib/types/downloadClient';
+} from '#lib/validation/schemas.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { parseBody } from '#lib/server/api/validate.js';
+import type { DownloadClientInput } from '#lib/types/downloadClient.js';
 
 /**
  * GET /api/download-clients

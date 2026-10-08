@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import {
 		AlertCircle,
 		Check,
@@ -10,7 +10,7 @@
 		Image,
 		Download
 	} from 'lucide-svelte';
-	import { getPosterUrl } from '$lib/utils/poster-url.js';
+	import { getPosterUrl } from '#lib/utils/poster-url.js';
 
 	interface PreviewItem {
 		id: number;

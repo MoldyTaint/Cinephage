@@ -1,6 +1,6 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
-	import { browser } from '$app/environment';
+	import * as m from '#lib/paraglide/messages.js';
+	import { browser } from '$app/env';
 	import {
 		User,
 		Lock,
@@ -19,15 +19,15 @@
 		ShieldCheck,
 		Globe
 	} from 'lucide-svelte';
-	import { authClient } from '$lib/auth/client.js';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { ApiError, apiGet, apiPost, apiPut, apiDelete } from '$lib/api/client.js';
-	import { getRequestCounts, type RequestCountResponse } from '$lib/api/requests.js';
-	import QuotaSummary from '$lib/components/requests/QuotaSummary.svelte';
+	import { authClient } from '#lib/auth/client.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { ApiError, apiGet, apiPost, apiPut, apiDelete } from '#lib/api/client.js';
+	import { getRequestCounts, type RequestCountResponse } from '#lib/api/requests.js';
+	import QuotaSummary from '#lib/components/requests/QuotaSummary.svelte';
 	import { invalidateAll } from '$app/navigation';
-	import { formatDisplayDate } from '$lib/utils/format.js';
-	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
-	import { LanguageSelector, UserAvatar } from '$lib/components/ui';
+	import { formatDisplayDate } from '#lib/utils/format.js';
+	import { SettingsPage, SettingsSection } from '#lib/components/ui/settings/index.js';
+	import { LanguageSelector, UserAvatar } from '#lib/components/ui/index.js';
 
 	type OwnSession = {
 		id: string;
@@ -44,6 +44,7 @@
 	let requestCounts = $state<RequestCountResponse | null>(null);
 	$effect(() => {
 		if (!browser || data.user?.role === 'admin') return;
+
 		void getRequestCounts()
 			.then((counts) => (requestCounts = counts))
 			.catch(() => undefined);
@@ -370,9 +371,10 @@
 							{/if}
 							{m.action_save()}
 						</button>
-						<button class="btn btn-ghost btn-sm" onclick={() => (editingName = false)}>
-							{m.action_cancel()}
-						</button>
+
+						<button class="btn btn-ghost btn-sm" onclick={() => (editingName = false)}
+							>{m.action_cancel()}</button
+						>
 					</div>
 				{:else}
 					<div class="flex items-center gap-2">
@@ -580,7 +582,7 @@
 				disabled={saving || !passwordsValid || !passwordsMatch}
 			>
 				{#if saving}
-					<span class="loading loading-spinner">&#8203;</span>
+					<span class="loading loading-spinner"></span>
 					{m.common_saving()}
 				{:else if saved}
 					<Check class="h-4 w-4" />

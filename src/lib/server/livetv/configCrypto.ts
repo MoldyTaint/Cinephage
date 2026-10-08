@@ -2,7 +2,7 @@ import {
 	encryptSecretJsonValues,
 	decryptSecretJsonValues,
 	isAtRestSecretKeyName
-} from '$lib/server/crypto/secretFields';
+} from '#lib/server/crypto/secretFields.js';
 
 /**
  * At-rest encryption for LiveTV provider config JSONs (stalker/xstream/m3u).

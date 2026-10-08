@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { tmdb } from '$lib/server/tmdb';
-import { enrichWithLibraryStatus, filterBlockedMedia } from '$lib/server/library/status';
-import { createChildLogger } from '$lib/logging';
-import type { PersonCastCredit, PersonCrewCredit } from '$lib/types/tmdb';
+import { tmdb } from '#lib/server/tmdb.js';
+import { enrichWithLibraryStatus, filterBlockedMedia } from '#lib/server/library/status.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import type { PersonCastCredit, PersonCrewCredit } from '#lib/types/tmdb.js';
 
 const PAGE_SIZE = 20;
 

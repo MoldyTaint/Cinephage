@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { redactAccountSecrets } from './accountRedaction';
 import { recordToAccount } from './LiveTvAccountManager';
-import type { LivetvAccountRecord } from '$lib/server/db/schema';
+import type { LivetvAccountRecord } from '#lib/server/db/schema.js';
 
 function baseRecord(overrides: Partial<LivetvAccountRecord> = {}): LivetvAccountRecord {
 	return {

@@ -9,9 +9,9 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getUnifiedTaskById } from '$lib/server/tasks/UnifiedTaskRegistry';
-import { taskHistoryService } from '$lib/server/tasks/TaskHistoryService';
-import { createChildLogger } from '$lib/logging';
+import { getUnifiedTaskById } from '#lib/server/tasks/UnifiedTaskRegistry.js';
+import { taskHistoryService } from '#lib/server/tasks/TaskHistoryService.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'TaskCancelAPI' });
 

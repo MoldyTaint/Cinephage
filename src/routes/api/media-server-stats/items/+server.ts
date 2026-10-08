@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db';
-import { mediaBrowserServers, mediaServerSyncedItems } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { mediaBrowserServers, mediaServerSyncedItems } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import type { AggregatedMediaItem } from '$lib/server/mediaServerStats/types.js';
+import type { AggregatedMediaItem } from '#lib/server/mediaServerStats/types.js';
 
 const VALID_SORT_FIELDS = ['playCount', 'fileSize', 'title', 'lastPlayedDate'] as const;
 type SortField = (typeof VALID_SORT_FIELDS)[number];

@@ -1,9 +1,10 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
-	import { MAX_BULK_IMPORT_JOBS } from '$lib/shared/bulk-import.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { MAX_BULK_IMPORT_JOBS } from '#lib/shared/bulk-import.js';
 	import { beforeNavigate, goto } from '$app/navigation';
+	import type { ReadonlyURLSearchParams } from '$app/state';
 	import { page } from '$app/state';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
 	import {
 		Step1PathSelector,
 		DetectionGroupList,
@@ -11,8 +12,8 @@
 		Step3MultiImport,
 		Step3SingleImport,
 		Step4Completion
-	} from '$lib/components/library/import/index.js';
-	import { resolvePath } from '$lib/utils/routing';
+	} from '#lib/components/library/import/index.js';
+	import { resolvePath } from '#lib/utils/routing.js';
 	import {
 		getRootFolders,
 		getLibraryClassificationSettings,
@@ -24,22 +25,22 @@
 		getBulkImportProgress,
 		getLibraryJob,
 		type BulkImportJob
-	} from '$lib/api';
-	import { searchTmdb as searchTmdbApi } from '$lib/api';
-	import { getTmdb } from '$lib/api/discover.js';
-	import { browseFilesystem } from '$lib/api';
-	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
-	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
-	import { toasts } from '$lib/stores/toast.svelte';
+	} from '#lib/api/index.js';
+	import { searchTmdb as searchTmdbApi } from '#lib/api/index.js';
+	import { getTmdb } from '#lib/api/discover.js';
+	import { browseFilesystem } from '#lib/api/index.js';
+	import { sortRootFoldersForMediaType } from '#lib/utils/root-folders.js';
+	import { isLikelyAnimeMedia } from '#lib/shared/anime-classification.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
 	import type {
 		MediaType,
 		MatchResult,
 		DetectionGroup,
 		DetectionSection,
 		TvSeasonSection
-	} from '$lib/components/library/import/types.js';
-	import type { ManualImportRequest } from '$lib/validation/schemas.js';
-	import { getFileManagementSettings } from '$lib/api/settings.js';
+	} from '#lib/components/library/import/types.js';
+	import type { ManualImportRequest } from '#lib/validation/schemas.js';
+	import { getFileManagementSettings } from '#lib/api/settings.js';
 	import { SvelteSet } from 'svelte/reactivity';
 
 	type WizardStep = 1 | 2 | 3 | 4;
@@ -374,6 +375,7 @@
 	const activeReviewTvSection = $derived.by(() => {
 		if (reviewTvSections.length === 0) return null;
 		if (!reviewSelectedSeriesSectionId) return reviewTvSections[0];
+
 		return (
 			reviewTvSections.find((section) => section.id === reviewSelectedSeriesSectionId) ??
 			reviewTvSections[0]
@@ -385,6 +387,7 @@
 		if (!reviewSelectedSeasonSectionKey) {
 			return activeReviewTvSection.seasonSections[0];
 		}
+
 		return (
 			activeReviewTvSection.seasonSections.find(
 				(seasonSection) => seasonSection.key === reviewSelectedSeasonSectionKey
@@ -409,6 +412,7 @@
 	const activeImportTvSection = $derived.by(() => {
 		if (importTvSections.length === 0) return null;
 		if (!importSelectedSeriesSectionId) return importTvSections[0];
+
 		return (
 			importTvSections.find((section) => section.id === importSelectedSeriesSectionId) ??
 			importTvSections[0]
@@ -420,6 +424,7 @@
 		if (!importSelectedSeasonSectionKey) {
 			return activeImportTvSection.seasonSections[0];
 		}
+
 		return (
 			activeImportTvSection.seasonSections.find(
 				(seasonSection) => seasonSection.key === importSelectedSeasonSectionKey
@@ -448,11 +453,14 @@
 		if (destinationLibrariesForType.length === 1) return true;
 		return selectedRootFolder.length > 0;
 	});
+
 	const hasActiveImportSession = $derived.by(
 		() => Boolean(detection) && (step === 2 || step === 3 || (executingImport && !bulkProgress))
 	);
 
 	beforeNavigate((navigation) => {
+		if (navigation.shallow && navigation.type === 'goto') return;
+
 		if (bypassNavigationGuard || !hasActiveImportSession) {
 			return;
 		}
@@ -844,7 +852,9 @@
 		}
 	}
 
-	function parseImportContext(searchParams: URLSearchParams): ImportRouteContext | null {
+	function parseImportContext(
+		searchParams: URLSearchParams | ReadonlyURLSearchParams
+	): ImportRouteContext | null {
 		const mediaType = searchParams.get('mediaType');
 		if (mediaType !== 'movie' && mediaType !== 'tv') {
 			return null;
@@ -1135,6 +1145,7 @@
 			if (libDefault !== 0) return libDefault;
 			const folderDefault = Number(Boolean(b.isDefaultFolder)) - Number(Boolean(a.isDefaultFolder));
 			if (folderDefault !== 0) return folderDefault;
+
 			return (
 				a.name.localeCompare(b.name) ||
 				(a.defaultRootFolderPath ?? '').localeCompare(b.defaultRootFolderPath ?? '')
@@ -1734,8 +1745,8 @@
 		if (!state.selectedMatch) {
 			throw new Error(`No match selected for "${group.displayName}"`);
 		}
-		const resolvedImportTarget = state.selectedMatch.inLibrary ? 'existing' : state.importTarget;
 
+		const resolvedImportTarget = state.selectedMatch.inLibrary ? 'existing' : state.importTarget;
 		const librariesForType = getAvailableDestinationLibrariesForType(
 			state.selectedMediaType,
 			state.selectedMatch
@@ -1752,11 +1763,18 @@
 			// user saw at submit time instead of re-reading global settings at
 			// execution time.
 			preferHardlink: state.preferHardlink,
+
 			...(resolvedImportTarget === 'new'
-				? { rootFolderId: state.selectedRootFolder || librariesForType[0]?.id }
+				? {
+						rootFolderId: state.selectedRootFolder || librariesForType[0]?.id
+					}
 				: {}),
+
 			...(state.selectedMediaType === 'tv' && !isBatchTv
-				? { seasonNumber: state.seasonNumber, episodeNumber: state.episodeNumber }
+				? {
+						seasonNumber: state.seasonNumber,
+						episodeNumber: state.episodeNumber
+					}
 				: {}),
 			...(state.selectedMediaType === 'tv' && isBatchTv && state.batchSeasonOverride !== null
 				? { seasonNumber: state.batchSeasonOverride }
@@ -1773,8 +1791,10 @@
 		if (!activeGroup) return;
 		searchQuery = '';
 		const state = getGroupState(activeGroup);
+
 		matchCandidates =
 			state.matchCandidates.length > 0 ? state.matchCandidates : (activeGroup.matches ?? []);
+
 		if (selectedMatch && !matchCandidates.some((match) => match.tmdbId === selectedMatch?.tmdbId)) {
 			selectedMatch = matchCandidates[0] ?? null;
 		}
@@ -2201,6 +2221,7 @@
 			void (async () => {
 				try {
 					const response = await getLibraryJob(jobId);
+
 					const job = (
 						response as
 							| {

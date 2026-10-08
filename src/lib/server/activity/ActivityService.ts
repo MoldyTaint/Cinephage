@@ -1,4 +1,4 @@
-import { db } from '$lib/server/db';
+import { db } from '#lib/server/db/index.js';
 import {
 	downloadQueue,
 	downloadHistory,
@@ -8,11 +8,11 @@ import {
 	series,
 	episodes,
 	settings
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { and, desc, gte, inArray, eq, lte, lt, sql, count, or } from 'drizzle-orm';
-import { upsertQueueTombstoneFromQueueItem } from '$lib/server/downloadClients/monitoring/QueueTombstoneService';
-import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
-import { createChildLogger } from '$lib/logging';
+import { upsertQueueTombstoneFromQueueItem } from '#lib/server/downloadClients/monitoring/QueueTombstoneService.js';
+import { getDownloadClientManager } from '#lib/server/downloadClients/DownloadClientManager.js';
+import { createChildLogger } from '#lib/logging/index.js';
 import type { SQL } from 'drizzle-orm';
 import {
 	ActivityDeduplicationService,
@@ -35,7 +35,7 @@ import {
 	type ActivitySortOptions,
 	type ActivityScope,
 	type ActivitySummary
-} from '$lib/types/activity';
+} from '#lib/types/activity.js';
 import type {
 	DownloadQueueRecord,
 	DownloadHistoryRecord,
@@ -43,7 +43,7 @@ import type {
 	MoveTaskRecord
 } from './types';
 import { projectQueueActivity } from './projectors';
-import { parseMoveTaskId } from '$lib/server/library/MediaMoveService.js';
+import { parseMoveTaskId } from '#lib/server/library/MediaMoveService.js';
 import {
 	mapFilterStatusToQueueStatuses,
 	mapFilterStatusToHistoryStatuses,

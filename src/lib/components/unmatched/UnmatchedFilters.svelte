@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import {
 		Clapperboard,
 		Tv,
@@ -10,8 +10,8 @@
 		RefreshCw,
 		Zap
 	} from 'lucide-svelte';
-	import { unmatchedFilesStore } from '$lib/stores/unmatched-files.svelte.js';
-	import { toasts } from '$lib/stores/toast.svelte';
+	import { unmatchedFilesStore } from '#lib/stores/unmatched-files.svelte.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
 
 	let filter = $derived(unmatchedFilesStore.filters.mediaType || 'all');
 	let viewMode = $derived(unmatchedFilesStore.viewMode);

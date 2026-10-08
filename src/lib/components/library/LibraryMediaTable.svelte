@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
-	import type { LibraryMovie, LibrarySeries } from '$lib/types/library';
+	import type { LibraryMovie, LibrarySeries } from '#lib/types/library.js';
 	import { Clapperboard, Tv } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
-	import { resolvePath } from '$lib/utils/routing';
-	import type { MediaType } from '$lib/utils/media-type';
+	import { resolvePath } from '#lib/utils/routing.js';
+	import type { MediaType } from '#lib/utils/media-type.js';
 	import LibraryMediaMobileCard from './LibraryMediaMobileCard.svelte';
 	import LibraryMediaTableRow from './LibraryMediaTableRow.svelte';
 	import LibraryMediaTableHeader from './LibraryMediaTableHeader.svelte';

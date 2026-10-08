@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import {
 		Calendar,
 		ChevronLeft,
@@ -15,14 +15,14 @@
 		Info
 	} from 'lucide-svelte';
 	import { SvelteMap } from 'svelte/reactivity';
-	import { getLocale } from '$lib/paraglide/runtime.js';
-	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
-	import AddToLibraryModal from '$lib/components/library/AddToLibraryModal.svelte';
-	import type { CalendarDay, CalendarMovieItem } from '$lib/server/calendar/queries.js';
-	import type { CalendarPreferences } from '$lib/validation/schemas.js';
-	import { getCalendar } from '$lib/api';
-	import { apiPut } from '$lib/api/client.js';
-	import { toasts } from '$lib/stores/toast.svelte';
+	import { getLocale } from '#lib/paraglide/runtime.js';
+	import TmdbImage from '#lib/components/tmdb/TmdbImage.svelte';
+	import AddToLibraryModal from '#lib/components/library/AddToLibraryModal.svelte';
+	import type { CalendarDay, CalendarMovieItem } from '#lib/server/calendar/queries.js';
+	import type { CalendarPreferences } from '#lib/validation/schemas.js';
+	import { getCalendar } from '#lib/api/index.js';
+	import { apiPut } from '#lib/api/client.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
 
 	let { data } = $props();
 

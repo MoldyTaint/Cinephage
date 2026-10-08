@@ -1,10 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
-import { indexerCreateSchema } from '$lib/validation/schemas';
-import { redactIndexer } from '$lib/server/utils/redaction.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { parseBody } from '$lib/server/api/validate.js';
+import { getIndexerManager } from '#lib/server/indexers/IndexerManager.js';
+import { indexerCreateSchema } from '#lib/validation/schemas.js';
+import { redactIndexer } from '#lib/server/utils/redaction.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { parseBody } from '#lib/server/api/validate.js';
 
 /**
  * GET /api/indexers

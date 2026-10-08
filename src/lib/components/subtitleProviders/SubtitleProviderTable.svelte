@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import {
 		ChevronUp,
 		ChevronDown,
@@ -14,8 +14,8 @@
 	} from 'lucide-svelte';
 	import SubtitleProviderRow from './SubtitleProviderRow.svelte';
 	import SubtitleProviderStatusBadge from './SubtitleProviderStatusBadge.svelte';
-	import type { SubtitleProviderConfig } from '$lib/server/subtitles/types';
-	import type { ProviderDefinition } from '$lib/server/subtitles/providers/interfaces';
+	import type { SubtitleProviderConfig } from '#lib/server/subtitles/types.js';
+	import type { ProviderDefinition } from '#lib/server/subtitles/providers/interfaces.js';
 
 	interface SubtitleProviderWithDefinition extends SubtitleProviderConfig {
 		definitionName?: string;

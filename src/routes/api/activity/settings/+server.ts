@@ -5,9 +5,9 @@ import {
 	activityStreamEvents,
 	DEFAULT_ACTIVITY_RETENTION_DAYS,
 	MAX_ACTIVITY_RETENTION_DAYS
-} from '$lib/server/activity';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { createChildLogger } from '$lib/logging';
+} from '#lib/server/activity/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { createChildLogger } from '#lib/logging/index.js';
 import { z } from 'zod';
 
 const logger = createChildLogger({ module: 'ActivitySettingsApi', logDomain: 'monitoring' });

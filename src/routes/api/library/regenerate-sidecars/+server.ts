@@ -10,9 +10,9 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { regenerateSidecars } from '$lib/server/library/sidecar/regenerateSidecars.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { createChildLogger } from '$lib/logging';
+import { regenerateSidecars } from '#lib/server/library/sidecar/regenerateSidecars.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'RegenerateSidecarsApi', logDomain: 'imports' });
 

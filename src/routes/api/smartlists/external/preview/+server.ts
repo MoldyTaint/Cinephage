@@ -6,13 +6,13 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { providerRegistry } from '$lib/server/smartlists/providers/ProviderRegistry.js';
-import { externalIdResolver } from '$lib/server/smartlists/ExternalIdResolver.js';
-import { presetService } from '$lib/server/smartlists/presets/PresetService.js';
-import { createChildLogger } from '$lib/logging';
+import { providerRegistry } from '#lib/server/smartlists/providers/ProviderRegistry.js';
+import { externalIdResolver } from '#lib/server/smartlists/ExternalIdResolver.js';
+import { presetService } from '#lib/server/smartlists/presets/PresetService.js';
+import { createChildLogger } from '#lib/logging/index.js';
 import { z } from 'zod';
-import { smartListExternalPreviewSchema } from '$lib/validation/schemas.js';
-import { contentFilterPipeline } from '$lib/server/filters/ContentFilterPipeline.js';
+import { smartListExternalPreviewSchema } from '#lib/validation/schemas.js';
+import { contentFilterPipeline } from '#lib/server/filters/ContentFilterPipeline.js';
 
 const logger = createChildLogger({
 	module: 'SmartListsExternalPreviewApi',

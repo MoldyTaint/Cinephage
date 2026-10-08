@@ -1,25 +1,28 @@
 import type { AnySQLiteColumn, AnySQLiteTable, SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { getTableColumns } from 'drizzle-orm';
 
-import { ValidationError } from '$lib/errors';
-import { logger } from '$lib/logging';
+import { ValidationError } from '#lib/errors/index.js';
+import { logger } from '#lib/logging/index.js';
 import {
 	decryptBackupPayload,
 	encryptBackupPayload,
 	type EncryptedBackupPayload
-} from '$lib/server/crypto/backupCrypto.js';
-import { decryptDebridToken } from '$lib/server/crypto/debridTokenCrypto.js';
-import { decryptApiKey } from '$lib/server/crypto/apiKeyCrypto.js';
+} from '#lib/server/crypto/backupCrypto.js';
+import { decryptDebridToken } from '#lib/server/crypto/debridTokenCrypto.js';
+import { decryptApiKey } from '#lib/server/crypto/apiKeyCrypto.js';
 import {
 	decryptCredential,
 	encryptCredential,
 	isEncryptedCredential,
 	parseCredentialEnvelope
-} from '$lib/server/crypto/credentialsCrypto.js';
-import { encryptRecordSecrets, findSecretFieldSpecByAlias } from '$lib/server/crypto/secretFields';
-import { db } from '$lib/server/db';
-import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
-import { getCookieStore } from '$lib/server/indexers/auth/CookieStore.js';
+} from '#lib/server/crypto/credentialsCrypto.js';
+import {
+	encryptRecordSecrets,
+	findSecretFieldSpecByAlias
+} from '#lib/server/crypto/secretFields.js';
+import { db } from '#lib/server/db/index.js';
+import { namingSettingsService } from '#lib/server/library/naming/NamingSettingsService.js';
+import { getCookieStore } from '#lib/server/indexers/auth/CookieStore.js';
 import {
 	captchaSolverSettings,
 	channelCategories,
@@ -48,7 +51,7 @@ import {
 	subtitleProviders,
 	taskSettings,
 	indexerStatus
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 
 export interface ConfigurationBackupFile {
 	format: 'cinephage-config-backup';
@@ -1013,7 +1016,7 @@ export class ConfigurationBackupService {
 			// previews reflect the restored formats.
 			namingSettingsService.invalidateCache();
 			const { renamePreviewCache } =
-				await import('$lib/server/library/naming/RenamePreviewCache.js');
+				await import('#lib/server/library/naming/RenamePreviewCache.js');
 			renamePreviewCache.invalidateAll();
 		}
 

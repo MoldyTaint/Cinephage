@@ -4,10 +4,10 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { nntpServerTestSchema } from '$lib/validation/schemas';
-import { testNntpConnection } from '$lib/server/streaming/nzb/NntpTestUtils';
-import { logger } from '$lib/logging';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { nntpServerTestSchema } from '#lib/validation/schemas.js';
+import { testNntpConnection } from '#lib/server/streaming/nzb/NntpTestUtils.js';
+import { logger } from '#lib/logging/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 
 /**
  * POST /api/usenet/servers/test

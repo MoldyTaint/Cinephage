@@ -1,13 +1,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
-import { movies, movieFiles, rootFolders } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { movies, movieFiles, rootFolders } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { addMovieSchema } from '$lib/validation/schemas.js';
-import { addMovieToLibrary } from '$lib/server/library/add/add-movie.js';
-import { ValidationError, isAppError } from '$lib/errors';
-import { requireAuth } from '$lib/server/auth/authorization.js';
-import { createChildLogger } from '$lib/logging';
+import { addMovieSchema } from '#lib/validation/schemas.js';
+import { addMovieToLibrary } from '#lib/server/library/add/add-movie.js';
+import { ValidationError, isAppError } from '#lib/errors/index.js';
+import { requireAuth } from '#lib/server/auth/authorization.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LibraryMoviesApi', logDomain: 'scans' });
 

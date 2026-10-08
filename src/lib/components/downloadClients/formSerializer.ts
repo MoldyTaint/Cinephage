@@ -4,8 +4,8 @@ import type {
 	DownloadClientMountMode,
 	DownloadPriority,
 	DownloadInitialState
-} from '$lib/types/downloadClient';
-import { isBlankOrRedacted } from '$lib/shared/sensitiveSettings';
+} from '#lib/types/downloadClient.js';
+import { isBlankOrRedacted } from '#lib/shared/sensitiveSettings.js';
 
 export interface NntpServerFormData {
 	name: string;

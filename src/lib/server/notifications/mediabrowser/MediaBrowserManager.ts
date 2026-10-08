@@ -3,20 +3,20 @@
  * Provides CRUD operations and connection testing.
  */
 
-import { db } from '$lib/server/db';
-import { decryptApiKey } from '$lib/server/crypto/apiKeyCrypto.js';
+import { db } from '#lib/server/db/index.js';
+import { decryptApiKey } from '#lib/server/crypto/apiKeyCrypto.js';
 import {
 	decryptCredential,
 	encryptCredential,
 	isEncryptedCredential
-} from '$lib/server/crypto/credentialsCrypto.js';
+} from '#lib/server/crypto/credentialsCrypto.js';
 import {
 	mediaBrowserServers,
 	mediaServerSyncedItems,
 	type MediaBrowserServerRecord
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { eq, and, asc } from 'drizzle-orm';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 import { randomUUID } from 'node:crypto';

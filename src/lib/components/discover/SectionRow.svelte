@@ -1,12 +1,12 @@
 <script lang="ts" generics="T extends { id: number }">
-	import MediaCard from '$lib/components/tmdb/MediaCard.svelte';
-	import type { TmdbMediaItem } from '$lib/types/tmdb';
-	import { toasts } from '$lib/stores/toast.svelte';
+	import MediaCard from '#lib/components/tmdb/MediaCard.svelte';
+	import type { TmdbMediaItem } from '#lib/types/tmdb.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { type Snippet } from 'svelte';
 	import { fade } from 'svelte/transition';
-	import { resolvePath } from '$lib/utils/routing';
-	import { getTmdb } from '$lib/api/discover.js';
-	import * as m from '$lib/paraglide/messages.js';
+	import { resolvePath } from '#lib/utils/routing.js';
+	import { getTmdb } from '#lib/api/discover.js';
+	import * as m from '#lib/paraglide/messages.js';
 
 	let { title, items, link, endpoint, cardSnippet, onAddToLibrary, itemClass, excludeInLibrary } =
 		$props<{

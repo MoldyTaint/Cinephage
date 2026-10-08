@@ -1,18 +1,18 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db';
-import { customFormats } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { customFormats } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import {
 	customFormatSchema,
 	customFormatUpdateSchema,
 	customFormatDeleteSchema
-} from '$lib/validation/schemas.js';
-import { ALL_FORMATS } from '$lib/server/scoring';
-import { invalidateFormatCache } from '$lib/server/scoring/formats/registry.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { parseBody } from '$lib/server/api/validate.js';
-import { ValidationError, NotFoundError, AppError } from '$lib/errors';
+} from '#lib/validation/schemas.js';
+import { ALL_FORMATS } from '#lib/server/scoring/index.js';
+import { invalidateFormatCache } from '#lib/server/scoring/formats/registry.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { parseBody } from '#lib/server/api/validate.js';
+import { ValidationError, NotFoundError, AppError } from '#lib/errors/index.js';
 
 const BUILT_IN_IDS = new Set(ALL_FORMATS.map((f) => f.id));
 

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { TMDB } from '$lib/config/constants.js';
+import { TMDB } from '#lib/config/constants.js';
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -831,8 +831,8 @@ import {
 	canonicalizeLanguageTag,
 	isValidLanguageCode,
 	type LanguageTag
-} from '$lib/shared/languages';
-import { CAPTURED_LOG_LEVELS, CAPTURED_LOG_DOMAINS } from '$lib/logging/log-capture';
+} from '#lib/shared/languages.js';
+import { CAPTURED_LOG_LEVELS, CAPTURED_LOG_DOMAINS } from '#lib/logging/log-capture.js';
 
 /**
  * Schema for validating a language code
@@ -1071,7 +1071,7 @@ export type {
 	LanguageSettingsValues,
 	LanguageSettingsUpdateInput,
 	LiveTvAccountCreate
-} from '$lib/server/validation/schemas.js';
+} from '#lib/server/validation/schemas.js';
 export type SubtitleSearchRequest = z.infer<typeof subtitleSearchSchema>;
 export type SubtitleDownloadRequest = z.infer<typeof subtitleDownloadSchema>;
 export type SubtitleSyncRequest = z.infer<typeof subtitleSyncSchema>;

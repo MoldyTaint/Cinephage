@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import {
 		Clock,
 		Hourglass,
@@ -9,7 +9,7 @@
 		Ban,
 		PackageCheck
 	} from 'lucide-svelte';
-	import type { RequestStatus } from '$lib/api/requests.js';
+	import type { RequestStatus } from '#lib/api/requests.js';
 
 	let { status, size = 'sm' }: { status: RequestStatus; size?: 'xs' | 'sm' } = $props();
 

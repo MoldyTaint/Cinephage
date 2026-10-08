@@ -1,16 +1,16 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { FolderSync } from 'lucide-svelte';
-	import FolderBrowser from '$lib/components/library/FolderBrowser.svelte';
-	import TagInput from '$lib/components/ui/TagInput.svelte';
-	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
-	import * as m from '$lib/paraglide/messages.js';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { updateFileManagementSettings, updateSidecarSettings } from '$lib/api/settings.js';
+	import FolderBrowser from '#lib/components/library/FolderBrowser.svelte';
+	import TagInput from '#lib/components/ui/TagInput.svelte';
+	import { SettingsPage, SettingsSection } from '#lib/components/ui/settings/index.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { updateFileManagementSettings, updateSidecarSettings } from '#lib/api/settings.js';
 	import { invalidateAll } from '$app/navigation';
 	import type { PageData } from './$types';
-	import type { ImportMethod } from '$lib/validation/schemas.js';
-	import { DANGEROUS_EXTENSIONS, EXECUTABLE_EXTENSIONS } from '$lib/config/constants.js';
+	import type { ImportMethod } from '#lib/validation/schemas.js';
+	import { DANGEROUS_EXTENSIONS, EXECUTABLE_EXTENSIONS } from '#lib/config/constants.js';
 
 	const BLOCKED_EXTS = new Set<string>([
 		...(DANGEROUS_EXTENSIONS as readonly string[]),

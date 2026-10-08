@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getSubtitleSyncService } from '$lib/server/subtitles/services/SubtitleSyncService';
-import { subtitleSyncSchema } from '$lib/validation/schemas';
-import { parseBody } from '$lib/server/api/validate.js';
+import { getSubtitleSyncService } from '#lib/server/subtitles/services/SubtitleSyncService.js';
+import { subtitleSyncSchema } from '#lib/validation/schemas.js';
+import { parseBody } from '#lib/server/api/validate.js';
 
 /**
  * POST /api/subtitles/sync

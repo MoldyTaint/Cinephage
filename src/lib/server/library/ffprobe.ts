@@ -9,7 +9,7 @@
 
 import { spawn } from 'child_process';
 import { access } from 'fs/promises';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 

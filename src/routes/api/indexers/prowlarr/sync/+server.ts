@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { syncProwlarrIndexers } from '$lib/server/indexers/prowlarr/ProwlarrConnectionService.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { syncProwlarrIndexers } from '#lib/server/indexers/prowlarr/ProwlarrConnectionService.js';
 
 /** POST - trigger an immediate Prowlarr sync */
 export const POST: RequestHandler = async (event) => {

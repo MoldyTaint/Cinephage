@@ -20,27 +20,27 @@ const searchForMovie = vi.fn().mockResolvedValue(undefined);
 const searchForSeries = vi.fn().mockResolvedValue(undefined);
 const searchForEpisode = vi.fn().mockResolvedValue(undefined);
 
-vi.mock('$lib/logging/index.js', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	createChildLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() })
 }));
-vi.mock('$lib/server/monitoring/search/MonitoringSearchService.js', () => ({
+vi.mock('#lib/server/monitoring/search/MonitoringSearchService.js', () => ({
 	monitoringSearchService: { searchMissingMovies, searchMissingEpisodes, searchForUpgrades }
 }));
-vi.mock('$lib/server/library/disk-scan.js', () => ({
+vi.mock('#lib/server/library/disk-scan.js', () => ({
 	diskScanService: { scanRootFolder }
 }));
-vi.mock('$lib/server/metadata/metadata-refresh.js', () => ({
+vi.mock('#lib/server/metadata/metadata-refresh.js', () => ({
 	refreshMovieMetadata,
 	refreshSeriesMetadata
 }));
-vi.mock('$lib/server/library/naming/RenamePreviewService.js', () => ({
+vi.mock('#lib/server/library/naming/RenamePreviewService.js', () => ({
 	RenamePreviewService: class {
 		previewMovie = previewMovie;
 		previewSeries = previewSeries;
 		executeRenames = executeRenames;
 	}
 }));
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	db: {
 		delete: dbDelete,
 		select: () => ({
@@ -53,7 +53,7 @@ vi.mock('$lib/server/db/index.js', () => ({
 	}
 }));
 vi.mock('./ArrIdMappingService.js', () => ({ getEntityIdForArrId }));
-vi.mock('$lib/server/library/searchOnAdd/index.js', () => ({
+vi.mock('#lib/server/library/searchOnAdd/index.js', () => ({
 	searchOnAdd: { searchForMovie, searchForSeries, searchForEpisode }
 }));
 

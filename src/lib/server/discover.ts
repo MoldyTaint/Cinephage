@@ -1,8 +1,8 @@
-import { tmdb } from '$lib/server/tmdb';
-import type { Movie, TVShow, PaginatedResponse } from '$lib/types/tmdb';
-import { GENRE_MAPPINGS, SEARCH } from '$lib/config/constants';
-import { hasActiveDiscoverFilters } from '$lib/utils/discoverParams';
-import { normalizeTmdbLanguage } from '$lib/server/languages/normalize.js';
+import { tmdb } from '#lib/server/tmdb.js';
+import type { Movie, TVShow, PaginatedResponse } from '#lib/types/tmdb.js';
+import { GENRE_MAPPINGS, SEARCH } from '#lib/config/constants.js';
+import { hasActiveDiscoverFilters } from '#lib/utils/discoverParams.js';
+import { normalizeTmdbLanguage } from '#lib/server/languages/normalize.js';
 
 /**
  * Maps movie genre IDs to TV genre IDs or vice versa.

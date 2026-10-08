@@ -1,6 +1,6 @@
 import { writeFile, mkdir, readdir, stat, rm } from 'fs/promises';
 import { join } from 'path';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'system' as const });
 import { EventEmitter } from 'node:events';

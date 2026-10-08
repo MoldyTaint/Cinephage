@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types';
-import { auth } from '$lib/server/auth/auth.js';
+import { auth } from '#lib/server/auth/auth.js';
 
 /**
  * Better Auth's catch-all endpoint — its documented SvelteKit mounting point.

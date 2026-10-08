@@ -1,10 +1,10 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
-	import type { MovieFile } from '$lib/types/library';
+	import * as m from '#lib/paraglide/messages.js';
+	import type { MovieFile } from '#lib/types/library.js';
 	import FileCard from './FileCard.svelte';
 	import { FileX, Search } from 'lucide-svelte';
-	import { formatBytes } from '$lib/utils/format.js';
-	import type { SubtitleRequirementProgress } from '$lib/utils/subtitle-status-display.js';
+	import { formatBytes } from '#lib/utils/format.js';
+	import type { SubtitleRequirementProgress } from '#lib/utils/subtitle-status-display.js';
 
 	interface Subtitle {
 		id: string;

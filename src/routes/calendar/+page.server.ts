@@ -1,9 +1,9 @@
 import type { PageServerLoad } from './$types';
-import { getCalendarData } from '$lib/server/calendar/queries.js';
-import { getUserPreference } from '$lib/server/preferences/user-preferences.js';
-import { calendarPreferencesSchema } from '$lib/validation/schemas.js';
-import { tmdb } from '$lib/server/tmdb.js';
-import { createChildLogger } from '$lib/logging';
+import { getCalendarData } from '#lib/server/calendar/queries.js';
+import { getUserPreference } from '#lib/server/preferences/user-preferences.js';
+import { calendarPreferencesSchema } from '#lib/validation/schemas.js';
+import { tmdb } from '#lib/server/tmdb.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'CalendarPage', logDomain: 'system' });
 

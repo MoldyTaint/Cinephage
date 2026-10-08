@@ -1,18 +1,22 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import { beforeNavigate } from '$app/navigation';
-	import { base } from '$app/paths';
-	import { storeLibraryReturnTo } from '$lib/utils/libraryReturnNavigation';
+	import { resolve } from '$app/paths';
+	import { storeLibraryReturnTo } from '#lib/utils/libraryReturnNavigation.js';
 
 	let { children } = $props<{ children: import('svelte').Snippet }>();
 
 	function stripBase(pathname: string): string {
+		// resolve('') yields the base path without a leading slash (empty when no base).
+		const base = resolve('');
 		if (!base) return pathname;
-		if (pathname === base) return '/';
-		return pathname.startsWith(`${base}/`) ? pathname.slice(base.length) : pathname;
+		const prefixed = `/${base}`;
+		if (pathname === prefixed) return '/';
+		return pathname.startsWith(prefixed) ? pathname.slice(prefixed.length) : pathname;
 	}
 
-	beforeNavigate(({ from, to }) => {
+	beforeNavigate(({ from, to, shallow, type }) => {
+		if (shallow && type === 'goto') return;
 		if (!browser || !from || !to) return;
 
 		const currentPath = stripBase(window.location.pathname);

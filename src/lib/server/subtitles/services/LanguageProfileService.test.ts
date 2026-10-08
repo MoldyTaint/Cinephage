@@ -10,13 +10,13 @@ import {
 	rootFolders,
 	series,
 	subtitles
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import type { LanguageProfile } from './LanguageProfileService';
 import type { SubtitleStatus } from '../types';
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	},
@@ -1326,7 +1326,7 @@ describe('countProfileUsage (delete impact preview)', () => {
 			series: seriesTable,
 			libraries: librariesTable,
 			smartLists: smartListsTable
-		} = await import('$lib/server/db/schema.js');
+		} = await import('#lib/server/db/schema.js');
 
 		await testDb.db.insert(librariesTable).values({
 			id: 'lib-usage',

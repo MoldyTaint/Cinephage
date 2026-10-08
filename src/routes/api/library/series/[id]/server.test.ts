@@ -1,11 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../../test/db-helper';
 import { api } from '../../../../../test/api-helper';
-import { languageProfiles, libraries, rootFolders, series } from '$lib/server/db/schema.js';
+import { languageProfiles, libraries, rootFolders, series } from '#lib/server/db/schema.js';
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	},
@@ -15,14 +15,14 @@ vi.mock('$lib/server/db/index.js', () => ({
 	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
 
-vi.mock('$lib/server/tmdb.js', () => ({
+vi.mock('#lib/server/tmdb.js', () => ({
 	tmdb: {
 		getTVShow: vi.fn().mockResolvedValue({ id: 1, name: 'TMDB Show', seasons: [] }),
 		getSeason: vi.fn().mockResolvedValue({ episodes: [] })
 	}
 }));
 
-vi.mock('$lib/server/subtitles/services/SubtitleImportService.js', () => ({
+vi.mock('#lib/server/subtitles/services/SubtitleImportService.js', () => ({
 	searchSubtitlesForNewMedia: vi.fn().mockResolvedValue(undefined),
 	searchSubtitlesForMediaBatch: vi.fn().mockResolvedValue(undefined)
 }));
@@ -30,7 +30,7 @@ vi.mock('$lib/server/subtitles/services/SubtitleImportService.js', () => ({
 const { GET, PATCH } = await import('./+server');
 const { eq } = await import('drizzle-orm');
 const { LanguageSettingsService } =
-	await import('$lib/server/subtitles/services/LanguageSettingsService.js');
+	await import('#lib/server/subtitles/services/LanguageSettingsService.js');
 
 const LANGUAGE_PROFILE_ID = 'b0000000-0000-4000-8000-000000000001';
 const OTHER_PROFILE_ID = 'b0000000-0000-4000-8000-000000000002';

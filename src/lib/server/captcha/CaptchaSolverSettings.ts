@@ -4,17 +4,17 @@
  * Database-backed configuration for the Camoufox-based captcha solving system.
  */
 
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
-import { db } from '$lib/server/db';
-import { captchaSolverSettings } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { captchaSolverSettings } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { DEFAULT_CONFIG, type CaptchaSolverConfig, type ProxyConfig } from './types';
 import {
 	decryptCaptchaSettingValue,
 	encryptCaptchaSettingValue
-} from '$lib/server/settings/secretSettings';
+} from '#lib/server/settings/secretSettings.js';
 
 /**
  * Database key to config property mapping

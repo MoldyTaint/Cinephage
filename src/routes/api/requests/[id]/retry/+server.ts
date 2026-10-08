@@ -4,10 +4,10 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { getRequestService } from '$lib/server/requests/RequestService.js';
-import { toRequestErrorResponse } from '$lib/server/requests/http.js';
-import { requesterFromLocals } from '$lib/server/requests/http.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { getRequestService } from '#lib/server/requests/RequestService.js';
+import { toRequestErrorResponse } from '#lib/server/requests/http.js';
+import { requesterFromLocals } from '#lib/server/requests/http.js';
 
 export const POST: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);

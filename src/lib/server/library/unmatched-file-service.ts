@@ -6,15 +6,15 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { db } from '$lib/server/db/index.js';
-import { unmatchedFiles, rootFolders } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { unmatchedFiles, rootFolders } from '#lib/server/db/schema.js';
 import { eq, and, sql, desc, asc } from 'drizzle-orm';
 import { dirname, basename } from 'path';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 import { mediaMatcherService } from './media-matcher.js';
-import { parseRelease } from '$lib/server/indexers/parser/ReleaseParser.js';
+import { parseRelease } from '#lib/server/indexers/parser/ReleaseParser.js';
 import { getMediaParseStem } from './media-utils.js';
 import { resolveTvEpisodeIdentifier } from './tv-episode-resolver.js';
 import type {
@@ -27,7 +27,7 @@ import type {
 	BatchMatchResult,
 	ProcessResult,
 	UnmatchedReason
-} from '$lib/types/unmatched.js';
+} from '#lib/types/unmatched.js';
 
 interface ListOptions {
 	filters?: UnmatchedFilters;

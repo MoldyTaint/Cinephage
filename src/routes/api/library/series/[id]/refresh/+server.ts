@@ -10,30 +10,30 @@
 
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { createSSEOperationStream } from '$lib/server/sse';
-import { db } from '$lib/server/db/index.js';
-import { series, seasons, episodes, episodeFiles } from '$lib/server/db/schema.js';
+import { createSSEOperationStream } from '#lib/server/sse.js';
+import { db } from '#lib/server/db/index.js';
+import { series, seasons, episodes, episodeFiles } from '#lib/server/db/schema.js';
 import { eq, inArray } from 'drizzle-orm';
-import { tmdb } from '$lib/server/tmdb.js';
-import { todayDateString } from '$lib/utils/format.js';
+import { tmdb } from '#lib/server/tmdb.js';
+import { todayDateString } from '#lib/utils/format.js';
 import {
 	enrichAnimeMetadata,
 	persistEnrichmentTitleVariants
-} from '$lib/server/metadata/provider-resolution.js';
+} from '#lib/server/metadata/provider-resolution.js';
 import {
 	getEffectiveEpisodeGroup,
 	buildSeasonsAndEpisodesFromGroup,
 	deleteAllSeasonsAndEpisodes
-} from '$lib/server/metadata/EpisodeGroupService.js';
-import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
-import { resolveLanguage } from '$lib/server/metadata/metadata-refresh.js';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
-import { createChildLogger } from '$lib/logging';
+} from '#lib/server/metadata/EpisodeGroupService.js';
+import { isLikelyAnimeMedia } from '#lib/shared/anime-classification.js';
+import { resolveLanguage } from '#lib/server/metadata/metadata-refresh.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '#lib/logging/index.js';
 import {
 	startRefresh,
 	stopRefresh,
 	isSeriesRefreshing
-} from '$lib/server/library/ActiveSearchTracker.js';
+} from '#lib/server/library/ActiveSearchTracker.js';
 
 const logger = createChildLogger({ module: 'LibrarySeriesRefreshApi', logDomain: 'scans' });
 

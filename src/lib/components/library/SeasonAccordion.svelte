@@ -13,9 +13,9 @@
 	} from 'lucide-svelte';
 	import EpisodeRow from './EpisodeRow.svelte';
 	import AutoSearchStatus from './AutoSearchStatus.svelte';
-	import { formatBytes, todayDateString } from '$lib/utils/format.js';
-	import { calculateEpisodeStats } from '$lib/utils/episode-stats.svelte';
-	import * as m from '$lib/paraglide/messages.js';
+	import { formatBytes, todayDateString } from '#lib/utils/format.js';
+	import { calculateEpisodeStats } from '#lib/utils/episode-stats.svelte.js';
+	import * as m from '#lib/paraglide/messages.js';
 
 	interface Subtitle {
 		id: string;

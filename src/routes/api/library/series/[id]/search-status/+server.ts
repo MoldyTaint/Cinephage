@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { isSeriesSearching } from '$lib/server/library/ActiveSearchTracker.js';
+import { isSeriesSearching } from '#lib/server/library/ActiveSearchTracker.js';
 
 /**
  * GET /api/library/series/[id]/search-status

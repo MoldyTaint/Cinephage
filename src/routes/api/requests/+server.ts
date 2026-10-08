@@ -13,18 +13,18 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
-import { user } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { user } from '#lib/server/db/schema.js';
 import { inArray } from 'drizzle-orm';
-import { parseBody } from '$lib/server/api/validate.js';
-import { getRequestService } from '$lib/server/requests/RequestService.js';
+import { parseBody } from '#lib/server/api/validate.js';
+import { getRequestService } from '#lib/server/requests/RequestService.js';
 import {
 	createRequestSchema,
 	toRequestErrorResponse,
 	requesterFromLocals
-} from '$lib/server/requests/http.js';
-import type { RequestRecord } from '$lib/server/db/schema.js';
-import type { RequestStatus } from '$lib/server/requests/types.js';
+} from '#lib/server/requests/http.js';
+import type { RequestRecord } from '#lib/server/db/schema.js';
+import type { RequestStatus } from '#lib/server/requests/types.js';
 
 const FILTER_TO_STATUSES: Record<string, RequestStatus[]> = {
 	all: [],

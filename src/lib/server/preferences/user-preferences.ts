@@ -10,11 +10,11 @@
 
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '$lib/server/db/index.js';
-import { userPreferences } from '$lib/server/db/schema.js';
-import { calendarPreferencesSchema } from '$lib/validation/schemas.js';
-import { themes } from '$lib/themes.js';
-import { createChildLogger } from '$lib/logging';
+import { db } from '#lib/server/db/index.js';
+import { userPreferences } from '#lib/server/db/schema.js';
+import { calendarPreferencesSchema } from '#lib/validation/schemas.js';
+import { themes } from '#lib/themes.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'UserPreferences', logDomain: 'system' });
 

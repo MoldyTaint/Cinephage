@@ -1,18 +1,18 @@
 <script lang="ts">
-	import type { TmdbMediaItem } from '$lib/types/tmdb';
+	import type { TmdbMediaItem } from '#lib/types/tmdb.js';
 	import {
 		getMediaTitle,
 		getMediaDate,
 		getMediaPoster,
 		getMediaLink,
 		getMediaTypeLabel
-	} from '$lib/types/tmdb-guards';
-	import { resolvePath } from '$lib/utils/routing';
+	} from '#lib/types/tmdb-guards.js';
+	import { resolvePath } from '#lib/utils/routing.js';
 	import TmdbImage from './TmdbImage.svelte';
 	import { Check, Clock, Plus, Clapperboard } from 'lucide-svelte';
-	import * as m from '$lib/paraglide/messages.js';
-	import { getSmartReleaseLine } from '$lib/utils/smartReleaseLine.js';
-	import { formatReleaseLine } from '$lib/utils/releaseLineText.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { getSmartReleaseLine } from '#lib/utils/smartReleaseLine.js';
+	import { formatReleaseLine } from '#lib/utils/releaseLineText.js';
 
 	// Extended type that includes library status (added by enrichWithLibraryStatus)
 	// and request state (added by annotateRequestState).

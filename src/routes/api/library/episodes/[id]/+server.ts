@@ -1,16 +1,16 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
-import { episodes, episodeFiles, series, seasons, rootFolders } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { episodes, episodeFiles, series, seasons, rootFolders } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { unlink, rmdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
-import { searchOnAdd } from '$lib/server/library/searchOnAdd.js';
-import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
-import { createChildLogger } from '$lib/logging';
-import { episodeUpdateSchema } from '$lib/validation/schemas';
-import { parseBody } from '$lib/server/api/validate.js';
+import { searchOnAdd } from '#lib/server/library/searchOnAdd.js';
+import { monitoringScheduler } from '#lib/server/monitoring/MonitoringScheduler.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { episodeUpdateSchema } from '#lib/validation/schemas.js';
+import { parseBody } from '#lib/server/api/validate.js';
 
 const logger = createChildLogger({ module: 'LibraryEpisodeByIdApi', logDomain: 'scans' });
 

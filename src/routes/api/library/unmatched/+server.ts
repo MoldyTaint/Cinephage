@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { unmatchedFileService } from '$lib/server/library/unmatched-file-service.js';
-import { libraryJobService } from '$lib/server/library/jobs/LibraryJobService.js';
-import type { UnmatchedFilters } from '$lib/types/unmatched.js';
-import { createChildLogger } from '$lib/logging';
+import { unmatchedFileService } from '#lib/server/library/unmatched-file-service.js';
+import { libraryJobService } from '#lib/server/library/jobs/LibraryJobService.js';
+import type { UnmatchedFilters } from '#lib/types/unmatched.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LibraryUnmatchedApi', logDomain: 'scans' });
 

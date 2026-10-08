@@ -1,12 +1,12 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db/index.js';
-import { renamingFailures, movieFiles, episodeFiles } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { renamingFailures, movieFiles, episodeFiles } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { rename, mkdir, access } from 'fs/promises';
 import { dirname, basename } from 'path';
-import { createChildLogger } from '$lib/logging';
-import { requireAdminLocals } from '$lib/server/auth/authorization.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { requireAdminLocals } from '#lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'ReportsRenamingFailuresRetry', logDomain: 'scans' });
 

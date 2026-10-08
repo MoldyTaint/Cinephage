@@ -5,7 +5,7 @@ import type {
 	AggregatedSearchResult
 } from '../types';
 import { createTestDb, destroyTestDb, type TestDatabase } from '../../../../test/db-helper';
-import { movies, movieFiles, rootFolders } from '$lib/server/db/schema';
+import { movies, movieFiles, rootFolders } from '#lib/server/db/schema.js';
 
 const mockGetMovieExternalIds = vi.fn();
 const mockGetTvExternalIds = vi.fn();
@@ -15,7 +15,7 @@ const mockRecordSuccess = vi.hoisted(() => vi.fn());
 const mockRecordError = vi.hoisted(() => vi.fn());
 const mockAcquireRateLimit = vi.hoisted(() => vi.fn());
 
-vi.mock('$lib/server/tmdb', () => ({
+vi.mock('#lib/server/tmdb.js', () => ({
 	tmdb: {
 		getMovieExternalIds: (...args: unknown[]) => mockGetMovieExternalIds(...args),
 		getTvExternalIds: (...args: unknown[]) => mockGetTvExternalIds(...args)
@@ -43,7 +43,7 @@ vi.mock('./SubtitleScoringService', () => ({
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	},

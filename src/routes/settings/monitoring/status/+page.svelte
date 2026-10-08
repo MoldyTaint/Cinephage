@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import {
 		HardDrive,
 		RefreshCw,
@@ -10,37 +10,37 @@
 		Monitor,
 		Search
 	} from 'lucide-svelte';
-	import { SettingsPage } from '$lib/components/ui/settings';
-	import { StorageDashboard, InsightCard } from '$lib/components/storage';
+	import { SettingsPage } from '#lib/components/ui/settings/index.js';
+	import { StorageDashboard, InsightCard } from '#lib/components/storage/index.js';
 	import {
 		severityBadgeClass,
 		insightTypeLabel,
 		dismissInsight
-	} from '$lib/components/storage/utils.js';
-	import { getInsightItems, type InsightItem } from '$lib/api/storage.js';
-	import { layoutState } from '$lib/layout.svelte';
+	} from '#lib/components/storage/utils.js';
+	import { getInsightItems, type InsightItem } from '#lib/api/storage.js';
+	import { layoutState } from '#lib/layout.svelte.js';
 	import { invalidateAll } from '$app/navigation';
-	import { toasts } from '$lib/stores/toast.svelte';
+	import { toasts } from '#lib/stores/toast.svelte.js';
 	import {
 		scanLibrary,
 		batchMovies,
 		batchSeries,
 		deleteMovie,
 		deleteSeries
-	} from '$lib/api/library.js';
-	import { syncMediaServerStats } from '$lib/api/settings.js';
-	import { apiDelete } from '$lib/api/client.js';
-	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
-	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
-	import { MediaSearchModal } from '$lib/components/search';
+	} from '#lib/api/library.js';
+	import { syncMediaServerStats } from '#lib/api/settings.js';
+	import { apiDelete } from '#lib/api/client.js';
+	import { createSearchProgress } from '#lib/stores/searchProgress.svelte.js';
+	import { getPrimaryAutoSearchIssue } from '#lib/utils/autoSearchIssues.js';
+	import { MediaSearchModal } from '#lib/components/search/index.js';
 	import {
 		getHistoryRetention,
 		saveHistoryRetention,
 		getStorageForecast,
 		type HistoryRetentionSettings,
 		type StorageForecast
-	} from '$lib/api/history-retention.js';
-	import { formatBytes } from '$lib/utils/format.js';
+	} from '#lib/api/history-retention.js';
+	import { formatBytes } from '#lib/utils/format.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();

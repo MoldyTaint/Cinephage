@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, isNull, like, sql } from 'drizzle-orm';
-import { db } from '$lib/server/db/index.js';
+import { db } from '#lib/server/db/index.js';
 import {
 	acquisitionIntents,
 	acquisitionReservations,
 	downloadQueue,
 	movies
-} from '$lib/server/db/schema.js';
+} from '#lib/server/db/schema.js';
 import { computeMovieQualitySlot } from './slot-keys.js';
-import type { Resolution } from '$lib/server/indexers/parser/types.js';
-import { createChildLogger } from '$lib/logging';
+import type { Resolution } from '#lib/server/indexers/parser/types.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'AcquisitionService', logDomain: 'downloads' });
 

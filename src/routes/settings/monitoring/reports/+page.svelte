@@ -19,11 +19,11 @@
 		Unlink,
 		X
 	} from 'lucide-svelte';
-	import * as m from '$lib/paraglide/messages.js';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import MatchFileModal from '$lib/components/library/MatchFileModal.svelte';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
-	import { copyToClipboard } from '$lib/utils/clipboard';
+	import * as m from '#lib/paraglide/messages.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import MatchFileModal from '#lib/components/library/MatchFileModal.svelte';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
+	import { copyToClipboard } from '#lib/utils/clipboard.js';
 
 	let { data } = $props();
 
@@ -140,7 +140,7 @@
 		dateFilter = '';
 		mediaTypeFilter = '';
 		renamingFileTypeFilter = '';
-		goto(`?tab=${tabId}`, { replaceState: true });
+		goto(`?tab=${tabId}`, { replace: true });
 	}
 
 	function applyStatCard(card: 'all' | '24h' | 'no_match' | 'parse_failed' | 'unresolved') {

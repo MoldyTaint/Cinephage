@@ -13,7 +13,7 @@
  */
 
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { requireArrCompatEnabled } from './requireArrCompatEnabled.js';
 
 export const emptyListSkeleton: RequestHandler = async (event) => {

@@ -8,10 +8,10 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { channelLineupService } from '$lib/server/livetv/lineup';
-import { ValidationError } from '$lib/errors';
-import { createChildLogger } from '$lib/logging';
-import { updateChannelSchema } from '$lib/validation/schemas.js';
+import { channelLineupService } from '#lib/server/livetv/lineup/index.js';
+import { ValidationError } from '#lib/errors/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { updateChannelSchema } from '#lib/validation/schemas.js';
 
 const logger = createChildLogger({ module: 'LiveTvLineupById', logDomain: 'livetv' });
 

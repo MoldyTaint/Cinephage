@@ -8,8 +8,8 @@
  * the edit form prefills them and they double as account identifiers.
  */
 
-import { REDACTED_VALUE } from '$lib/shared/sensitiveSettings';
-import type { LiveTvAccount } from '$lib/types/livetv';
+import { REDACTED_VALUE } from '#lib/shared/sensitiveSettings.js';
+import type { LiveTvAccount } from '#lib/types/livetv.js';
 
 function redact(value: string | undefined): string | undefined {
 	return value ? REDACTED_VALUE : value;

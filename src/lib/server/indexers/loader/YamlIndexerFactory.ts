@@ -8,11 +8,11 @@
 
 import type { IIndexer, IIndexerFactory, IndexerConfig } from '../types';
 import type { YamlDefinition } from '../schema/yamlDefinition';
-import type { IndexerRecord } from '$lib/server/db/schema';
+import type { IndexerRecord } from '#lib/server/db/schema.js';
 import { UnifiedIndexer } from '../runtime/UnifiedIndexer';
 import { YamlDefinitionLoader, getYamlDefinitionLoader } from './YamlDefinitionLoader';
 import { yamlToUnifiedDefinition } from './types';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 import {
 	DEFAULT_CAPABILITIES,
 	getNewznabCapabilitiesProvider

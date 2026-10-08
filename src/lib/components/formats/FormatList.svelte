@@ -1,8 +1,8 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
-	import type { UICustomFormat, FormatCategory } from '$lib/types/format';
-	import { FORMAT_CATEGORY_LABELS, FORMAT_CATEGORY_ORDER } from '$lib/types/format';
+	import type { UICustomFormat, FormatCategory } from '#lib/types/format.js';
+	import { FORMAT_CATEGORY_LABELS, FORMAT_CATEGORY_ORDER } from '#lib/types/format.js';
 	import {
 		Search,
 		Filter,

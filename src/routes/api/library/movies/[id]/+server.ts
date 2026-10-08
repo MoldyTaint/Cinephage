@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { stat } from 'node:fs/promises';
 import { join, resolve, normalize } from 'node:path';
-import { db } from '$lib/server/db/index.js';
+import { db } from '#lib/server/db/index.js';
 import {
 	downloadHistory,
 	downloadQueue,
@@ -10,41 +10,41 @@ import {
 	movieFiles,
 	rootFolders,
 	subtitles
-} from '$lib/server/db/schema.js';
+} from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { mediaInfoService } from '$lib/server/library/index.js';
-import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
-import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
-import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
-import { monitoringSearchService } from '$lib/server/monitoring/search/MonitoringSearchService.js';
-import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager.js';
-import { deleteAllAlternateTitles } from '$lib/server/services/index.js';
-import { deleteDirectoryWithinRoot } from '$lib/server/filesystem/delete-helpers.js';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
-import { tmdb } from '$lib/server/tmdb.js';
-import { movieUpdateSchema } from '$lib/validation/schemas';
-import { parseBody } from '$lib/server/api/validate.js';
-import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
+import { mediaInfoService } from '#lib/server/library/index.js';
+import { getLanguageProfileService } from '#lib/server/subtitles/services/LanguageProfileService.js';
+import { searchSubtitlesForNewMedia } from '#lib/server/subtitles/services/SubtitleImportService.js';
+import { monitoringScheduler } from '#lib/server/monitoring/MonitoringScheduler.js';
+import { monitoringSearchService } from '#lib/server/monitoring/search/MonitoringSearchService.js';
+import { getDownloadClientManager } from '#lib/server/downloadClients/DownloadClientManager.js';
+import { deleteAllAlternateTitles } from '#lib/server/services/index.js';
+import { deleteDirectoryWithinRoot } from '#lib/server/filesystem/delete-helpers.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
+import { tmdb } from '#lib/server/tmdb.js';
+import { movieUpdateSchema } from '#lib/validation/schemas.js';
+import { parseBody } from '#lib/server/api/validate.js';
+import { acquisitionService } from '#lib/server/acquisition/AcquisitionService.js';
 import {
 	validateRootFolder,
 	getAnimeSubtypeEnforcement
-} from '$lib/server/library/LibraryAddService.js';
-import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
-import { mediaMoveService } from '$lib/server/library/MediaMoveService.js';
-import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-import { getLibraryScheduler } from '$lib/server/library/library-scheduler.js';
-import { getMetadataProviderConfig } from '$lib/server/metadata/provider-settings.js';
-import { resolveMissingAnimeProviderRefs } from '$lib/server/metadata/provider-ref-resolver.js';
-import { persistLinkedProviderTitleVariants } from '$lib/server/metadata/provider-resolution.js';
-import { importService } from '$lib/server/downloadClients/import/index.js';
-import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
-import { redundantFileIds } from '$lib/server/quality/buckets.js';
-import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
+} from '#lib/server/library/LibraryAddService.js';
+import { isLikelyAnimeMedia } from '#lib/shared/anime-classification.js';
+import { mediaMoveService } from '#lib/server/library/MediaMoveService.js';
+import { getLibraryEntityService } from '#lib/server/library/LibraryEntityService.js';
+import { getLibraryScheduler } from '#lib/server/library/library-scheduler.js';
+import { getMetadataProviderConfig } from '#lib/server/metadata/provider-settings.js';
+import { resolveMissingAnimeProviderRefs } from '#lib/server/metadata/provider-ref-resolver.js';
+import { persistLinkedProviderTitleVariants } from '#lib/server/metadata/provider-resolution.js';
+import { importService } from '#lib/server/downloadClients/import/index.js';
+import { getFileManagementSettings } from '#lib/server/settings/file-management.js';
+import { redundantFileIds } from '#lib/server/quality/buckets.js';
+import { resolveMovieMultiQuality } from '#lib/server/quality/movie-buckets.js';
 import {
 	refreshMovieMetadata,
 	metadataLanguageToLegacy,
 	warnLegacyMetadataLanguage
-} from '$lib/server/metadata/metadata-refresh.js';
+} from '#lib/server/metadata/metadata-refresh.js';
 
 function isAnimeMovieSignal(input: {
 	rootFolderPath: string | null;
@@ -815,7 +815,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 };
 
 // Import for static method access
-import { MediaInfoService } from '$lib/server/library/index.js';
-import { createChildLogger } from '$lib/logging';
+import { MediaInfoService } from '#lib/server/library/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LibraryMovieByIdApi', logDomain: 'scans' });

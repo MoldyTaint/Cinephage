@@ -10,7 +10,7 @@ import type {
 	episodes,
 	episodeFiles,
 	scoringProfiles
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 
 /**
  * Result of a specification evaluation

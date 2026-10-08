@@ -10,9 +10,9 @@
 	 * chain (spec: per-item language customization, 2026-09-14).
 	 */
 	import { untrack } from 'svelte';
-	import { m } from '$lib/paraglide/messages';
-	import { requirementKey, type SubtitleRequirement } from '$lib/shared/language-profile.js';
-	import { ALL_LANGUAGE_OPTIONS, getLanguageName } from '$lib/shared/languages.js';
+	import { m } from '#lib/paraglide/messages.js';
+	import { requirementKey, type SubtitleRequirement } from '#lib/shared/language-profile.js';
+	import { ALL_LANGUAGE_OPTIONS, getLanguageName } from '#lib/shared/languages.js';
 
 	interface Props {
 		/** Effective requirements in force (override or profile chain). */

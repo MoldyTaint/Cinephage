@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, type TestDatabase } from '../../../../test/db-helper';
 import { eq } from 'drizzle-orm';
-import { languageProfiles, movies, series } from '$lib/server/db/schema';
+import { languageProfiles, movies, series } from '#lib/server/db/schema.js';
 import type { StreamSource } from '../types';
 
 /**
@@ -14,7 +14,7 @@ const testDb: TestDatabase = createTestDb();
 /** When true, every access to the mocked db throws (helper must never propagate). */
 let failDbLookups = false;
 
-vi.mock('$lib/server/db', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		if (failDbLookups) {
 			throw new Error('db unavailable');
@@ -29,7 +29,7 @@ vi.mock('$lib/server/db', () => ({
 
 const getStreamsMock = vi.fn();
 
-vi.mock('$lib/server/cinephage/modules/library-streaming/LibraryStreamingModule', () => ({
+vi.mock('#lib/server/cinephage/modules/library-streaming/LibraryStreamingModule.js', () => ({
 	getLibraryStreamingModule: () => ({
 		getStreams: getStreamsMock
 	})

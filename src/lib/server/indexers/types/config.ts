@@ -11,7 +11,7 @@ import type {
 	UsenetProtocolSettings,
 	StreamingProtocolSettings
 } from './protocol';
-import type { NewznabCategory } from '$lib/server/indexers/newznab/types';
+import type { NewznabCategory } from '#lib/server/indexers/newznab/types.js';
 
 // =============================================================================
 // INDEXER CONFIG

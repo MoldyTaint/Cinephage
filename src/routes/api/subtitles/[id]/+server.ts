@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getSubtitleDownloadService } from '$lib/server/subtitles/services/SubtitleDownloadService';
+import { getSubtitleDownloadService } from '#lib/server/subtitles/services/SubtitleDownloadService.js';
 
 /**
  * DELETE /api/subtitles/[id]

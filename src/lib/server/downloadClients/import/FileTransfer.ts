@@ -30,13 +30,13 @@ import {
 import { createReadStream, createWriteStream } from 'fs';
 import { pipeline } from 'stream/promises';
 import { join, dirname, basename, extname, resolve } from 'path';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 import {
 	VIDEO_EXTENSIONS,
 	isVideoFile as isBaseVideoFile,
 	DANGEROUS_EXTENSIONS,
 	EXECUTABLE_EXTENSIONS
-} from '$lib/config/constants.js';
+} from '#lib/config/constants.js';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
 

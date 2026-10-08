@@ -12,13 +12,13 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { RenamePreviewService } from '$lib/server/library/naming/RenamePreviewService';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { parseBody } from '$lib/server/api/validate.js';
-import { diskScanService } from '$lib/server/library/disk-scan.js';
+import { RenamePreviewService } from '#lib/server/library/naming/RenamePreviewService.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { parseBody } from '#lib/server/api/validate.js';
+import { diskScanService } from '#lib/server/library/disk-scan.js';
 import { z } from 'zod';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
-import { createChildLogger } from '$lib/logging';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'RenameReorganizeApi', logDomain: 'scans' });
 

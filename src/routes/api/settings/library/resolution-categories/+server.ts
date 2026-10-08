@@ -9,9 +9,9 @@
 
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { z } from 'zod';
-import * as svc from '$lib/server/library/resolution/ResolutionCategoryService.js';
+import * as svc from '#lib/server/library/resolution/ResolutionCategoryService.js';
 
 const createSchema = z.object({
 	label: z.string().min(1),

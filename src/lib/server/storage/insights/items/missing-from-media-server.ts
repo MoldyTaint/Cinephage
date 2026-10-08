@@ -1,4 +1,4 @@
-import { storageItems, movies, series, episodeFiles } from '$lib/server/db/schema';
+import { storageItems, movies, series, episodeFiles } from '#lib/server/db/schema.js';
 import { eq, notInArray, and, count, inArray } from 'drizzle-orm';
 import type { InsightItemResolver } from './types.js';
 

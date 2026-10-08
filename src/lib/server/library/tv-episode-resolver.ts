@@ -1,7 +1,7 @@
 import { basename, dirname, resolve } from 'node:path';
 import { getMediaParseStem } from './media-utils.js';
-import { parseRelease } from '$lib/server/indexers/parser/ReleaseParser.js';
-import type { ParsedRelease } from '$lib/server/indexers/parser/types.js';
+import { parseRelease } from '#lib/server/indexers/parser/ReleaseParser.js';
+import type { ParsedRelease } from '#lib/server/indexers/parser/types.js';
 
 export type SeriesType = 'standard' | 'anime' | 'daily';
 

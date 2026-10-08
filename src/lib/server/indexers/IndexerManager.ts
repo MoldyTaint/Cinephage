@@ -5,8 +5,8 @@
  * Handles definition loading, indexer creation, and search orchestration.
  */
 
-import { db } from '$lib/server/db';
-import { indexers as indexersTable } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { indexers as indexersTable } from '#lib/server/db/schema.js';
 import {
 	type TorrentProtocolSettings,
 	type UsenetProtocolSettings,
@@ -14,8 +14,11 @@ import {
 } from './types/index.js';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { createChildLogger } from '$lib/logging';
-import { decryptSecretJsonValues, encryptSecretJsonValues } from '$lib/server/crypto/secretFields';
+import { createChildLogger } from '#lib/logging/index.js';
+import {
+	decryptSecretJsonValues,
+	encryptSecretJsonValues
+} from '#lib/server/crypto/secretFields.js';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
 
@@ -58,8 +61,8 @@ import { getPersistentStatusTracker } from './status';
 import { getRateLimitRegistry } from './ratelimit';
 import { cleanupIndexerCookies } from './http/IndexerHttp';
 import { CINEPHAGE_STREAM_DEFINITION_ID } from './types';
-import { getCinephageModuleRegistry } from '$lib/server/cinephage/registry/CinephageModuleRegistry.js';
-import type { CinephageModule } from '$lib/server/cinephage/modules/types.js';
+import { getCinephageModuleRegistry } from '#lib/server/cinephage/registry/CinephageModuleRegistry.js';
+import type { CinephageModule } from '#lib/server/cinephage/modules/types.js';
 
 /** Manager options */
 export interface IndexerManagerOptions {

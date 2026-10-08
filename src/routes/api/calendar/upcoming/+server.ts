@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
-import { getUpcomingItems } from '$lib/server/calendar/queries.js';
-import { getUserPreference } from '$lib/server/preferences/user-preferences.js';
+import { getUpcomingItems } from '#lib/server/calendar/queries.js';
+import { getUserPreference } from '#lib/server/preferences/user-preferences.js';
 
 const upcomingQuerySchema = z.object({
 	limit: z.coerce.number().int().min(1).max(20).default(7)

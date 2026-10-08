@@ -1,7 +1,7 @@
 import { json, type RequestEvent } from '@sveltejs/kit';
-import { getSubtitleScannerService } from '$lib/server/subtitles/services/SubtitleScannerService';
-import { subtitleScanSchema } from '$lib/validation/schemas';
-import { parseOptionalBody } from '$lib/server/api/validate.js';
+import { getSubtitleScannerService } from '#lib/server/subtitles/services/SubtitleScannerService.js';
+import { subtitleScanSchema } from '#lib/validation/schemas.js';
+import { parseOptionalBody } from '#lib/server/api/validate.js';
 
 type RequestHandler = (event: RequestEvent) => Promise<Response>;
 

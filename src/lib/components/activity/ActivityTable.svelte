@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
-	import * as m from '$lib/paraglide/messages.js';
-	import { isImportFailedActivity, type UnifiedActivity } from '$lib/types/activity';
+	import * as m from '#lib/paraglide/messages.js';
+	import { isImportFailedActivity, type UnifiedActivity } from '#lib/types/activity.js';
 	import { Loader2, Minus } from 'lucide-svelte';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { createProgressiveRenderer } from '#lib/utils/progressive-render.svelte.js';
 	import ActivityTableHeader from './ActivityTableHeader.svelte';
 	import ActivityRow from './ActivityRow.svelte';
 	import ActivityMobileCard from './ActivityMobileCard.svelte';

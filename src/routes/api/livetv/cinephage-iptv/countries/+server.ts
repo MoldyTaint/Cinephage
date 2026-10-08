@@ -6,9 +6,9 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { createChildLogger } from '$lib/logging';
-import { getStreamingIndexerSettings } from '$lib/server/streaming/settings.js';
-import { getCinephageCore } from '$lib/server/cinephage/core/CinephageCore.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { getStreamingIndexerSettings } from '#lib/server/streaming/settings.js';
+import { getCinephageCore } from '#lib/server/cinephage/core/CinephageCore.js';
 
 const logger = createChildLogger({ module: 'LiveTvCinephageIptvCountries', logDomain: 'livetv' });
 

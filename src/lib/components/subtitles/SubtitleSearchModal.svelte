@@ -2,9 +2,9 @@
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { X, Search, Loader2, RefreshCw, Captions, AlertTriangle, Info } from 'lucide-svelte';
 	import SubtitleSearchResultRow from './SubtitleSearchResultRow.svelte';
-	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
-	import { searchSubtitles, downloadSubtitle, getSubtitleProviders } from '$lib/api/subtitles.js';
-	import { ALL_LANGUAGE_OPTIONS, getLanguageName } from '$lib/shared/languages.js';
+	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
+	import { searchSubtitles, downloadSubtitle, getSubtitleProviders } from '#lib/api/subtitles.js';
+	import { ALL_LANGUAGE_OPTIONS, getLanguageName } from '#lib/shared/languages.js';
 
 	interface SubtitleResult {
 		providerId: string;

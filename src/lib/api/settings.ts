@@ -22,27 +22,27 @@ import type {
 	LibraryClassificationUpdate,
 	BackupImport,
 	FileManagementSettings
-} from '$lib/validation/schemas.js';
+} from '#lib/validation/schemas.js';
 
 import type {
 	RootFolder,
 	PathValidationResult,
 	DownloadClient,
 	ConnectionTestResult
-} from '$lib/types/downloadClient.js';
+} from '#lib/types/downloadClient.js';
 import type {
 	NamingConfigShape,
 	NamingPreset,
 	NamingServerPreset,
 	NamingStylePreset,
 	NamingDetailPreset
-} from '$lib/naming/setup-presets.js';
+} from '#lib/naming/setup-presets.js';
 import type {
 	RenamePreviewResult,
 	RenameExecuteResult,
 	ReorganizeBatchResult
-} from '$lib/library/naming/types.js';
-import type { CapturedLogEntry, CapturedLogLevel } from '$lib/logging/log-capture.js';
+} from '#lib/library/naming/types.js';
+import type { CapturedLogEntry, CapturedLogLevel } from '#lib/logging/log-capture.js';
 
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
 

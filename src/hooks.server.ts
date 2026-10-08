@@ -1,27 +1,26 @@
-import type { Handle } from '@sveltejs/kit';
 import { json, redirect } from '@sveltejs/kit';
-import { sequence } from '@sveltejs/kit/hooks';
+import { sequence, type Handle } from '@sveltejs/kit/hooks';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 
-import { AUTH_BASE_PATH } from '$lib/auth/config.js';
-import { createRequestLogger, runWithLogContext } from '$lib/logging';
-import { isAppError } from '$lib/errors';
-import { paraglideMiddleware } from '$lib/paraglide/server.js';
-import { auth, isSetupComplete, repairCurrentUserAdminRole } from '$lib/server/auth/index.js';
-import { db } from '$lib/server/db/index.js';
-import { user } from '$lib/server/db/schema.js';
-import { checkApiRateLimit, applyRateLimitHeaders } from '$lib/server/rate-limit.js';
-import { SECURITY_HEADERS, BASE_SECURITY_HEADERS } from '$lib/server/security/headers.js';
+import { AUTH_BASE_PATH } from '#lib/auth/config.js';
+import { createRequestLogger, runWithLogContext } from '#lib/logging/index.js';
+import { isAppError } from '#lib/errors/index.js';
+import { paraglideMiddleware } from '#lib/paraglide/server.js';
+import { auth, isSetupComplete, repairCurrentUserAdminRole } from '#lib/server/auth/index.js';
+import { db } from '#lib/server/db/index.js';
+import { user } from '#lib/server/db/schema.js';
+import { checkApiRateLimit, applyRateLimitHeaders } from '#lib/server/rate-limit.js';
+import { SECURITY_HEADERS, BASE_SECURITY_HEADERS } from '#lib/server/security/headers.js';
 import {
 	createSupportId,
 	setAuthenticatedLocals,
 	clearAuthenticatedLocals
-} from '$lib/server/auth/session-helpers.js';
-import { ensureServicesInitialized } from '$lib/server/services/initializer.js';
-import '$lib/server/services/shutdown.js';
-import { handleError } from '$lib/server/hooks/error-handler.js';
-import { isTrustedOrigin } from '$lib/server/utils/origin.js';
+} from '#lib/server/auth/session-helpers.js';
+import { ensureServicesInitialized } from '#lib/server/services/initializer.js';
+import '#lib/server/services/shutdown.js';
+import { handleError } from '#lib/server/hooks/error-handler.js';
+import { isTrustedOrigin } from '#lib/server/utils/origin.js';
 
 export { handleError };
 
@@ -63,10 +62,14 @@ const csrfGuard: Handle = ({ event, resolve }) => {
 
 const localeHandler: Handle = async ({ event, resolve }) => {
 	return paraglideMiddleware(event.request, async ({ request, locale }) => {
-		event.request = request;
-		return resolve(event, {
-			transformPageChunk: ({ html }) => html.replace('%sveltekit.lang%', locale)
-		});
+		// event.request is readonly in SvelteKit 3; resolve against a copy
+		// carrying paraglide's locale-aware request instead.
+		return resolve(
+			{ ...event, request },
+			{
+				transformPageChunk: ({ html }) => html.replace('%sveltekit.lang%', locale)
+			}
+		);
 	});
 };
 
@@ -315,13 +318,7 @@ const customHandler: Handle = async ({ event, resolve }) => {
 							session.user.role !== 'admin' &&
 							(await repairCurrentUserAdminRole(session.user.id))
 						) {
-							session = {
-								...session,
-								user: {
-									...session.user,
-									role: 'admin'
-								}
-							};
+							session = { ...session, user: { ...session.user, role: 'admin' } };
 						}
 
 						setAuthenticatedLocals(event, session, apiKey);
@@ -516,6 +513,7 @@ const customHandler: Handle = async ({ event, resolve }) => {
 									}
 								);
 							}
+
 							throw redirect(302, '/login');
 						}
 					}

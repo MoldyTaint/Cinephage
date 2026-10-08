@@ -1,13 +1,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { z } from 'zod';
-import { getIndexerManager } from '$lib/server/indexers/IndexerManager.js';
+import { getIndexerManager } from '#lib/server/indexers/IndexerManager.js';
 import {
 	normalizeProwlarrUrl,
 	isIndexerFromConnection,
 	getProwlarrId
-} from '$lib/server/indexers/prowlarr/ProwlarrConnectionService.js';
+} from '#lib/server/indexers/prowlarr/ProwlarrConnectionService.js';
 
 const requestSchema = z.object({
 	url: z.string().url('Prowlarr URL must be a valid URL'),

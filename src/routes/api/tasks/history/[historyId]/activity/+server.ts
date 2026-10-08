@@ -7,10 +7,10 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db/index.js';
-import { monitoringHistory, movies, series, episodes } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { monitoringHistory, movies, series, episodes } from '#lib/server/db/schema.js';
 import { eq, desc } from 'drizzle-orm';
-import { createChildLogger } from '$lib/logging/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'TaskHistoryActivityApi', logDomain: 'monitoring' });
 

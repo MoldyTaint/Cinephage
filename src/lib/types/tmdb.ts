@@ -446,6 +446,6 @@ export interface GlobalTmdbFilters {
 
 /**
  * Union type for items returned from TMDB search/discover endpoints.
- * Use type guards from '$lib/types/tmdb-guards' to narrow the type.
+ * Use type guards from '#lib/types/tmdb-guards.js' to narrow the type.
  */
 export type TmdbMediaItem = Movie | TVShow | Person;

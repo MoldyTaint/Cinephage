@@ -5,7 +5,7 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getSmartListService } from '$lib/server/smartlists/index.js';
+import { getSmartListService } from '#lib/server/smartlists/index.js';
 
 export const POST: RequestHandler = async ({ params }) => {
 	const service = getSmartListService();

@@ -11,17 +11,17 @@
  * - Provides grace period after startup before any automated tasks run
  */
 
-import { db } from '$lib/server/db/index.js';
-import { monitoringSettings } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { monitoringSettings } from '#lib/server/db/schema.js';
 import { EventEmitter } from 'events';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'monitoring' as const });
-import { taskHistoryService } from '$lib/server/tasks/TaskHistoryService.js';
-import { taskSettingsService } from '$lib/server/tasks/TaskSettingsService.js';
-import type { TaskExecutionContext } from '$lib/server/tasks/TaskExecutionContext.js';
-import { TaskCancelledException } from '$lib/server/tasks/TaskCancelledException.js';
-import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
+import { taskHistoryService } from '#lib/server/tasks/TaskHistoryService.js';
+import { taskSettingsService } from '#lib/server/tasks/TaskSettingsService.js';
+import type { TaskExecutionContext } from '#lib/server/tasks/TaskExecutionContext.js';
+import { TaskCancelledException } from '#lib/server/tasks/TaskCancelledException.js';
+import type { BackgroundService, ServiceStatus } from '#lib/server/services/background-service.js';
 
 /**
  * Default intervals in hours for each task type

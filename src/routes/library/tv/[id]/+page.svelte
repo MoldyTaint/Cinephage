@@ -6,19 +6,19 @@
 		SeasonAccordion,
 		SeriesEditModal,
 		RenamePreviewModal
-	} from '$lib/components/library';
-	import { TVSeriesSidebar, BulkActionBar } from '$lib/components/library/tv';
-	import { MediaSearchModal } from '$lib/components/search';
-	import { SubtitleSearchModal } from '$lib/components/subtitles';
-	import SubtitleSyncModal from '$lib/components/subtitles/SubtitleSyncModal.svelte';
-	import SubtitleRequirementsSection from '$lib/components/subtitles/SubtitleRequirementsSection.svelte';
-	import { deriveSeriesSubtitleProgress } from '$lib/utils/subtitle-status-display.js';
-	import type { SubtitleRequirement } from '$lib/shared/language-profile.js';
-	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
-	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { todayDateString } from '$lib/utils/format.js';
-	import { autoSearchSubtitles, syncSubtitle, deleteSubtitle } from '$lib/api/subtitles.js';
+	} from '#lib/components/library/index.js';
+	import { TVSeriesSidebar, BulkActionBar } from '#lib/components/library/tv/index.js';
+	import { MediaSearchModal } from '#lib/components/search/index.js';
+	import { SubtitleSearchModal } from '#lib/components/subtitles/index.js';
+	import SubtitleSyncModal from '#lib/components/subtitles/SubtitleSyncModal.svelte';
+	import SubtitleRequirementsSection from '#lib/components/subtitles/SubtitleRequirementsSection.svelte';
+	import { deriveSeriesSubtitleProgress } from '#lib/utils/subtitle-status-display.js';
+	import type { SubtitleRequirement } from '#lib/shared/language-profile.js';
+	import DeleteConfirmationModal from '#lib/components/ui/modal/DeleteConfirmationModal.svelte';
+	import { ModalWrapper, ModalHeader, ModalFooter } from '#lib/components/ui/modal/index.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { todayDateString } from '#lib/utils/format.js';
+	import { autoSearchSubtitles, syncSubtitle, deleteSubtitle } from '#lib/api/subtitles.js';
 	import {
 		updateSeries,
 		getSeries,
@@ -27,24 +27,24 @@
 		deleteEpisode,
 		updateSeason,
 		updateEpisode
-	} from '$lib/api/library.js';
-	import { apiPostStream } from '$lib/api';
-	import type { SeriesEditData } from '$lib/components/library/SeriesEditModal.svelte';
-	import type { SearchMode } from '$lib/components/search/InteractiveSearchModal.svelte';
+	} from '#lib/api/library.js';
+	import { apiPostStream } from '#lib/api/index.js';
+	import type { SeriesEditData } from '#lib/components/library/SeriesEditModal.svelte';
+	import type { SearchMode } from '#lib/components/search/InteractiveSearchModal.svelte';
 	import { CheckSquare, FileEdit, RefreshCw, X } from 'lucide-svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { goto, invalidateAll } from '$app/navigation';
-	import { resolvePath } from '$lib/utils/routing';
-	import { getLibraryDetailBackHref } from '$lib/utils/libraryReturnNavigation';
-	import { createDynamicSSE } from '$lib/sse';
-	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
-	import { createSubtitleProgress } from '$lib/stores/subtitleProgress.svelte';
-	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
-	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
-	import * as m from '$lib/paraglide/messages.js';
-	import { calculateEpisodeStats } from '$lib/utils/episode-stats.svelte';
-	import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
+	import { resolvePath } from '#lib/utils/routing.js';
+	import { getLibraryDetailBackHref } from '#lib/utils/libraryReturnNavigation.js';
+	import { createDynamicSSE } from '#lib/sse/index.js';
+	import { createSearchProgress } from '#lib/stores/searchProgress.svelte.js';
+	import { createSubtitleProgress } from '#lib/stores/subtitleProgress.svelte.js';
+	import { getPrimaryAutoSearchIssue } from '#lib/utils/autoSearchIssues.js';
+	import { layoutState, deriveMobileSseStatus } from '#lib/layout.svelte.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { calculateEpisodeStats } from '#lib/utils/episode-stats.svelte.js';
+	import { ACTIVE_DOWNLOAD_STATUSES } from '#lib/types/queue.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -595,7 +595,7 @@
 	function handleEditClose() {
 		isEditModalOpen = false;
 		if (page.url.searchParams.get('edit') === '1') {
-			goto(page.url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
+			goto(page.url.pathname, { replace: true, reset: false });
 		}
 	}
 

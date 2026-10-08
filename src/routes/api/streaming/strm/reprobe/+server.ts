@@ -9,14 +9,14 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db';
-import { movieFiles, movies, episodeFiles, series, rootFolders } from '$lib/server/db/schema';
-import { mediaInfoService } from '$lib/server/library/media-info';
-import { createChildLogger } from '$lib/logging';
+import { db } from '#lib/server/db/index.js';
+import { movieFiles, movies, episodeFiles, series, rootFolders } from '#lib/server/db/schema.js';
+import { mediaInfoService } from '#lib/server/library/media-info.js';
+import { createChildLogger } from '#lib/logging/index.js';
 import { and, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'StrmReprobeAPI' });
 

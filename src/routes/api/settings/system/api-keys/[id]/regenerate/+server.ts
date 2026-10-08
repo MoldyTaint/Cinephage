@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
-import { regenerateRecoverableApiKey } from '$lib/server/auth/index.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { regenerateRecoverableApiKey } from '#lib/server/auth/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'ApiKeysRegenerateApi', logDomain: 'auth' });
 

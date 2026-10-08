@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { SvelteSet } from 'svelte/reactivity';
-	import * as m from '$lib/paraglide/messages.js';
-	import { executeRename, reorganizeFolderBatch } from '$lib/api/settings.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { executeRename, reorganizeFolderBatch } from '#lib/api/settings.js';
 	import {
 		RefreshCw,
 		CheckCircle,
@@ -24,8 +24,8 @@
 		RenamePreviewResult,
 		RenameExecuteResult,
 		RenameStreamEvent
-	} from '$lib/library/naming/types.js';
-	import { chunkFileIds } from '$lib/library/naming/batch-rename';
+	} from '#lib/library/naming/types.js';
+	import { chunkFileIds } from '#lib/library/naming/batch-rename.js';
 
 	// State
 	let loading = $state(true);

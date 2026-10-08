@@ -9,7 +9,7 @@ import { createTestDb, destroyTestDb, type TestDatabase } from '../../../test/db
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	},
@@ -30,7 +30,7 @@ const {
 	episodeFiles,
 	unmatchedFiles,
 	renameHistory
-} = await import('$lib/server/db/schema.js');
+} = await import('#lib/server/db/schema.js');
 
 const emptyRoot = await mkdtemp(join(tmpdir(), 'cinephage-empty-root-'));
 const missingRoot = join(tmpdir(), 'cinephage-missing-root-does-not-exist');

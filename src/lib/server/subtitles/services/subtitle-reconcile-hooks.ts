@@ -23,10 +23,10 @@
  * problem can never fail a library scan or watcher cycle.
  */
 
-import { db } from '$lib/server/db/index.js';
-import { movies, series, episodeFiles } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { movies, series, episodeFiles } from '#lib/server/db/schema.js';
 import { and, eq } from 'drizzle-orm';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 import { getSubtitleScannerService } from './SubtitleScannerService';
 
 const logger = createChildLogger({ logDomain: 'subtitles' as const });

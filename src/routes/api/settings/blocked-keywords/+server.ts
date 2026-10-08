@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { keywordBlocklistService } from '$lib/server/settings/KeywordBlocklistService.js';
-import { addBlockedKeywordSchema, removeBlockedKeywordSchema } from '$lib/validation/schemas.js';
-import { tmdbCache } from '$lib/server/tmdb-cache.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { keywordBlocklistService } from '#lib/server/settings/KeywordBlocklistService.js';
+import { addBlockedKeywordSchema, removeBlockedKeywordSchema } from '#lib/validation/schemas.js';
+import { tmdbCache } from '#lib/server/tmdb-cache.js';
 
 export const GET: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);

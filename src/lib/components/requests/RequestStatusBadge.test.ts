@@ -2,7 +2,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/svelte';
 import RequestStatusBadge from './RequestStatusBadge.svelte';
-import type { RequestStatus } from '$lib/api/requests.js';
+import type { RequestStatus } from '#lib/api/requests.js';
 
 describe('RequestStatusBadge', () => {
 	afterEach(() => cleanup());

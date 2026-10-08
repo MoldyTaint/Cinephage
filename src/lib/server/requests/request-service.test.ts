@@ -27,12 +27,12 @@ import {
 	seasons,
 	episodes,
 	rootFolders
-} from '$lib/server/db/schema.js';
+} from '#lib/server/db/schema.js';
 import { createTestUser } from '../../../test/fixtures/auth.js';
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	}
@@ -48,7 +48,7 @@ const mockLogger = vi.hoisted(() => ({
 	trace: vi.fn()
 }));
 
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: mockLogger,
 	createChildLogger: vi.fn(() => mockLogger),
 	createRequestLogger: vi.fn(() => mockLogger),
@@ -82,7 +82,7 @@ const addSeriesToLibrary = vi.hoisted(() => vi.fn());
 const triggerMovieSearch = vi.hoisted(() => vi.fn(async () => ({ triggered: true })));
 const triggerSeriesSearch = vi.hoisted(() => vi.fn(async () => ({ triggered: true })));
 
-vi.mock('$lib/server/library/LibraryAddService.js', () => ({
+vi.mock('#lib/server/library/LibraryAddService.js', () => ({
 	fetchMovieDetails: vi.fn(async () => movieDetails),
 	fetchSeriesDetails: vi.fn(async () => seriesDetails),
 	fetchMovieExternalIds: vi.fn(async () => ({ imdbId: 'tt0000001' })),
@@ -94,17 +94,17 @@ vi.mock('$lib/server/library/LibraryAddService.js', () => ({
 	triggerSeriesSearch
 }));
 
-vi.mock('$lib/server/library/add/add-movie.js', () => ({ addMovieToLibrary }));
-vi.mock('$lib/server/library/add/add-series.js', () => ({ addSeriesToLibrary }));
-vi.mock('$lib/server/blocked-media/service.js', () => ({
+vi.mock('#lib/server/library/add/add-movie.js', () => ({ addMovieToLibrary }));
+vi.mock('#lib/server/library/add/add-series.js', () => ({ addSeriesToLibrary }));
+vi.mock('#lib/server/blocked-media/service.js', () => ({
 	blockedMediaService: { isBlocked: vi.fn(async () => false) }
 }));
-vi.mock('$lib/server/library/LibraryEntityService.js', () => ({
+vi.mock('#lib/server/library/LibraryEntityService.js', () => ({
 	getLibraryEntityService: vi.fn(() => ({
 		resolveOwningLibraryForRootFolder: vi.fn(async () => ({ id: 'lib-1' }))
 	}))
 }));
-vi.mock('$lib/server/library/naming/NamingSettingsService.js', () => ({
+vi.mock('#lib/server/library/naming/NamingSettingsService.js', () => ({
 	namingSettingsService: { getConfigSync: () => ({ movieFolderFormat: '{title}' }) }
 }));
 
@@ -241,7 +241,7 @@ describe('create validation order', () => {
 	});
 
 	it('rejects blocked media', async () => {
-		const { blockedMediaService } = await import('$lib/server/blocked-media/service.js');
+		const { blockedMediaService } = await import('#lib/server/blocked-media/service.js');
 		vi.mocked(blockedMediaService.isBlocked).mockResolvedValueOnce(true);
 		await expect(
 			getRequestService().create(viewer(), { mediaType: 'movie', tmdbId: 42 })
@@ -648,7 +648,7 @@ describe('approve', () => {
 		const svc = getRequestService();
 		const created = await svc.create(viewer(), { mediaType: 'series', tmdbId: 77, seasons: [1] });
 
-		const { fetchSeriesDetails } = await import('$lib/server/library/LibraryAddService.js');
+		const { fetchSeriesDetails } = await import('#lib/server/library/LibraryAddService.js');
 		vi.mocked(fetchSeriesDetails).mockResolvedValue({
 			...seriesDetails,
 			seasons: [{ season_number: 2, episode_count: 2 }]

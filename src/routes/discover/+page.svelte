@@ -1,28 +1,28 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { page } from '$app/state';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { resolvePath } from '$lib/utils/routing';
-	import type { TmdbMediaItem } from '$lib/types/tmdb';
+	import { resolvePath } from '#lib/utils/routing.js';
+	import type { TmdbMediaItem } from '#lib/types/tmdb.js';
 	import { tick } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
-	import MediaCard from '$lib/components/tmdb/MediaCard.svelte';
-	import FilterDrawer from '$lib/components/discover/FilterDrawer.svelte';
-	import SectionRow from '$lib/components/discover/SectionRow.svelte';
-	import AddToLibraryModal from '$lib/components/library/AddToLibraryModal.svelte';
-	import TmdbConfigRequired from '$lib/components/ui/TmdbConfigRequired.svelte';
-	import { UI } from '$lib/config/constants';
+	import MediaCard from '#lib/components/tmdb/MediaCard.svelte';
+	import FilterDrawer from '#lib/components/discover/FilterDrawer.svelte';
+	import SectionRow from '#lib/components/discover/SectionRow.svelte';
+	import AddToLibraryModal from '#lib/components/library/AddToLibraryModal.svelte';
+	import TmdbConfigRequired from '#lib/components/ui/TmdbConfigRequired.svelte';
+	import { UI } from '#lib/config/constants.js';
 	import {
 		parseProviderIds,
 		parseGenreIds,
 		parseKeywordIds,
 		extractYear
-	} from '$lib/utils/discoverParams';
+	} from '#lib/utils/discoverParams.js';
 	import { Search, Eye, EyeOff, X, Loader2, Bug } from 'lucide-svelte';
-	import { getMediaTypeLabel } from '$lib/types/tmdb-guards';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { searchTmdb, getDiscover, getDiscoverUnfiltered } from '$lib/api';
+	import { getMediaTypeLabel } from '#lib/types/tmdb-guards.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { searchTmdb, getDiscover, getDiscoverUnfiltered } from '#lib/api/index.js';
 
 	let { data } = $props();
 
@@ -254,7 +254,7 @@
 	);
 
 	function updateFilter(key: string, value: string | null) {
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
 		if (value) {
 			url.searchParams.set(key, value);
 		} else {
@@ -264,19 +264,19 @@
 		if (key !== 'page') {
 			url.searchParams.set('page', '1');
 		}
-		goto(resolvePath(url.pathname + url.search), { keepFocus: true });
+		goto(resolvePath(url.pathname + url.search), { reset: false });
 	}
 
 	function updateYear(min: string, max: string) {
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
+
 		if (min) url.searchParams.set('primary_release_date.gte', `${min}-01-01`);
 		else url.searchParams.delete('primary_release_date.gte');
-
 		if (max) url.searchParams.set('primary_release_date.lte', `${max}-12-31`);
 		else url.searchParams.delete('primary_release_date.lte');
 
 		url.searchParams.set('page', '1');
-		goto(resolvePath(url.pathname + url.search), { keepFocus: true });
+		goto(resolvePath(url.pathname + url.search), { reset: false });
 	}
 
 	function toggleProvider(providerId: number) {
@@ -325,7 +325,7 @@
 	let isFilterOpen = $state(false);
 
 	function resetFilters() {
-		goto(resolve('/discover'));
+		goto(resolve('discover'));
 	}
 
 	function applyFilters() {
@@ -466,6 +466,7 @@
 			const newData = (await getDiscover(params)) as unknown as {
 				results: Array<{ id: number; media_type?: string | null }>;
 			};
+
 			if (!newData.results || newData.results.length === 0) return;
 
 			// Filter out duplicates based on ID and media_type
@@ -642,7 +643,7 @@
 							stroke-linejoin="round"
 							stroke-width="2"
 							d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-						/>
+						></path>
 					</svg>
 					{m.discover_filtersButton()}
 				</button>
@@ -707,8 +708,8 @@
 						stroke-linejoin="round"
 						stroke-width="2"
 						d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-					/></svg
-				>
+					></path>
+				</svg>
 				<span>{data.error}</span>
 			</div>
 		{:else if isSearchMode}
@@ -852,7 +853,7 @@
 								stroke-linejoin="round"
 								stroke-width="1"
 								d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-							/>
+							></path>
 						</svg>
 						<p class="text-2xl font-bold">{m.discover_noResultsFound()}</p>
 						<p class="mt-2">{m.discover_noGridResultsHint()}</p>

@@ -12,7 +12,7 @@
  * throughout the codebase with a single, reliable HTTP layer.
  */
 
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 import { isCloudflareProtected, CloudflareProtectedError } from './CloudflareDetection';
 import {
 	RetryPolicy,
@@ -23,8 +23,8 @@ import {
 } from './RetryPolicy';
 import { getRateLimitRegistry, getHostRateLimiter } from '../ratelimit';
 import { DEFAULT_RATE_LIMIT, type RateLimitConfig } from '../ratelimit/types';
-import { captchaSolverSettingsService, getCaptchaSolver } from '$lib/server/captcha';
-import { CloudflareBypassError } from '$lib/errors';
+import { captchaSolverSettingsService, getCaptchaSolver } from '#lib/server/captcha/index.js';
+import { CloudflareBypassError } from '#lib/errors/index.js';
 import { CookieStore } from '../auth/CookieStore';
 import { decodeBuffer } from './EncodingUtils';
 

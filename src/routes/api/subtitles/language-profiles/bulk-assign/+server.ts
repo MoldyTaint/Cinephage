@@ -1,14 +1,14 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
-import { db } from '$lib/server/db';
-import { movies, series, episodes, libraries } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { movies, series, episodes, libraries } from '#lib/server/db/schema.js';
 import { inArray, and, eq } from 'drizzle-orm';
-import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService';
-import { searchSubtitlesForMediaBatch } from '$lib/server/subtitles/services/SubtitleImportService';
-import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler';
-import { createChildLogger } from '$lib/logging';
-import { parseBody, assertFound } from '$lib/server/api/validate.js';
+import { LanguageProfileService } from '#lib/server/subtitles/services/LanguageProfileService.js';
+import { searchSubtitlesForMediaBatch } from '#lib/server/subtitles/services/SubtitleImportService.js';
+import { monitoringScheduler } from '#lib/server/monitoring/MonitoringScheduler.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { parseBody, assertFound } from '#lib/server/api/validate.js';
 
 const logger = createChildLogger({
 	module: 'SubtitleLanguageProfileBulkAssignApi',

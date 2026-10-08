@@ -1,19 +1,19 @@
-import { tmdb } from '$lib/server/tmdb';
-import { getDiscoverResults, resolveWithOriginalLanguage } from '$lib/server/discover';
-import { contentFilterPipeline } from '$lib/server/filters/ContentFilterPipeline.js';
-import type { WatchProvider } from '$lib/types/tmdb';
-import type { TmdbCertificationsResponse } from '$lib/server/tmdb';
-import { createChildLogger } from '$lib/logging';
+import { tmdb } from '#lib/server/tmdb.js';
+import { getDiscoverResults, resolveWithOriginalLanguage } from '#lib/server/discover.js';
+import { contentFilterPipeline } from '#lib/server/filters/ContentFilterPipeline.js';
+import type { WatchProvider } from '#lib/types/tmdb.js';
+import type { TmdbCertificationsResponse } from '#lib/server/tmdb.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 import {
 	parseDiscoverParams,
 	isDefaultView as checkDefaultView,
 	hasActiveDiscoverFilters
-} from '$lib/utils/discoverParams';
-import { TMDB } from '$lib/config/constants.js';
-import { enrichWithReleaseDates } from '$lib/server/release-enrichment.js';
-import { db } from '$lib/server/db';
-import { languageSettings } from '$lib/server/db/schema';
+} from '#lib/utils/discoverParams.js';
+import { TMDB } from '#lib/config/constants.js';
+import { enrichWithReleaseDates } from '#lib/server/release-enrichment.js';
+import { db } from '#lib/server/db/index.js';
+import { languageSettings } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 
 import type { PageServerLoad } from './$types';

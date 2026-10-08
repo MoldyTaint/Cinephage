@@ -5,16 +5,16 @@
  * Loads and saves naming preferences from the namingSettings table.
  */
 
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 import {
 	DEFAULT_NAMING_PRESET_SELECTION,
 	normalizeNamingPresetSelection,
 	type NamingPresetSelection
-} from '$lib/naming/editor-state';
-import { db } from '$lib/server/db';
-import { namingSettings } from '$lib/server/db/schema';
+} from '#lib/naming/editor-state.js';
+import { db } from '#lib/server/db/index.js';
+import { namingSettings } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { DEFAULT_NAMING_CONFIG, type NamingConfig } from './NamingService';
 

@@ -8,9 +8,9 @@
 
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
-import { librarySettings } from '$lib/server/db/schema.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { db } from '#lib/server/db/index.js';
+import { librarySettings } from '#lib/server/db/schema.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { z } from 'zod';
 
 const DEFAULTS = { fileHistoryDays: 30, libraryHistoryDays: 365, scanHistoryDays: 30 };

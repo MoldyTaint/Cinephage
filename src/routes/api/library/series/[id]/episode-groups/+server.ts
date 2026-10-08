@@ -5,14 +5,14 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
-import { series } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { series } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 import {
 	fetchEpisodeGroups,
 	buildEpisodeGroupInfoList
-} from '$lib/server/metadata/EpisodeGroupService.js';
+} from '#lib/server/metadata/EpisodeGroupService.js';
 
 const logger = createChildLogger({ module: 'LibrarySeriesEpisodeGroupsApi', logDomain: 'scans' });
 

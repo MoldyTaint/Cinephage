@@ -1,10 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
-import { renamingFailures } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { renamingFailures } from '#lib/server/db/schema.js';
 import { count, eq, ne, and, gt, or } from 'drizzle-orm';
-import { createChildLogger } from '$lib/logging';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'ReportsRenamingFailuresStats', logDomain: 'scans' });
 

@@ -1,10 +1,10 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { requireArrCompatEnabled } from '$lib/server/arr/requireArrCompatEnabled.js';
-import { buildSeriesByArrId } from '$lib/server/arr/series.js';
-import { updateSeriesFromArr, deleteSeriesFromArr } from '$lib/server/arr/libraryWrite.js';
-import { withForwardedApiKey } from '$lib/server/arr/internalFetch.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { requireArrCompatEnabled } from '#lib/server/arr/requireArrCompatEnabled.js';
+import { buildSeriesByArrId } from '#lib/server/arr/series.js';
+import { updateSeriesFromArr, deleteSeriesFromArr } from '#lib/server/arr/libraryWrite.js';
+import { withForwardedApiKey } from '#lib/server/arr/internalFetch.js';
 
 /** GET /api/sonarr/api/v3/series/{id} */
 export const GET: RequestHandler = async (event) => {

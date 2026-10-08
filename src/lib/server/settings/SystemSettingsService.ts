@@ -1,5 +1,5 @@
-import { db } from '$lib/server/db';
-import { settings } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { settings } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 
 const SETTINGS_KEY_EXTERNAL_URL = 'external_url';

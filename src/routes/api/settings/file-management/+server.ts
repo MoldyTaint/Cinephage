@@ -1,14 +1,14 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { fileManagementSchema } from '$lib/validation/schemas.js';
-import { parseBody } from '$lib/server/api/validate.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { fileManagementSchema } from '#lib/validation/schemas.js';
+import { parseBody } from '#lib/server/api/validate.js';
 import {
 	getFileManagementSettings,
 	setFileManagementSettings,
 	invalidateFileManagementCache
-} from '$lib/server/settings/file-management.js';
-import { getRootFolderService } from '$lib/server/downloadClients/RootFolderService.js';
+} from '#lib/server/settings/file-management.js';
+import { getRootFolderService } from '#lib/server/downloadClients/RootFolderService.js';
 
 export const GET: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);

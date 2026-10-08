@@ -1,8 +1,8 @@
 <script lang="ts">
-	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
-	import KeywordSelector from '$lib/components/smartlists/KeywordSelector.svelte';
-	import type { WatchProvider } from '$lib/types/tmdb';
-	import * as m from '$lib/paraglide/messages.js';
+	import TmdbImage from '#lib/components/tmdb/TmdbImage.svelte';
+	import KeywordSelector from '#lib/components/smartlists/KeywordSelector.svelte';
+	import type { WatchProvider } from '#lib/types/tmdb.js';
+	import * as m from '#lib/paraglide/messages.js';
 
 	let {
 		type,

@@ -2,10 +2,10 @@
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import { invalidateAll } from '$app/navigation';
 	import { goto } from '$app/navigation';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { formatDisplayDateShort } from '$lib/utils/format.js';
-	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
-	import ModalHeader from '$lib/components/ui/modal/ModalHeader.svelte';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { formatDisplayDateShort } from '#lib/utils/format.js';
+	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
+	import ModalHeader from '#lib/components/ui/modal/ModalHeader.svelte';
 	import {
 		ArrowLeft,
 		RefreshCw,
@@ -25,8 +25,8 @@
 		Database
 	} from 'lucide-svelte';
 	import type { PageData } from './$types';
-	import * as m from '$lib/paraglide/messages.js';
-	import { refreshSmartList, addSmartListItems } from '$lib/api';
+	import * as m from '#lib/paraglide/messages.js';
+	import { refreshSmartList, addSmartListItems } from '#lib/api/index.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -244,10 +244,9 @@
 			if (current === queryString) return;
 		}
 		goto(`/smartlists/${data.list.id}${queryString ? '?' + queryString : ''}`, {
-			invalidateAll: true,
-			keepFocus: options?.keepFocus ?? false,
-			noScroll: options?.keepFocus ?? false,
-			replaceState: options?.replaceState ?? false
+			refreshAll: true,
+			reset: !(options?.keepFocus ?? false),
+			replace: options?.replaceState ?? false
 		});
 	}
 

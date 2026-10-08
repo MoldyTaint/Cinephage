@@ -10,12 +10,12 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { parseBody } from '$lib/server/api/validate.js';
+import { parseBody } from '#lib/server/api/validate.js';
 import {
 	getUserPreference,
 	isPreferenceKey,
 	setUserPreference
-} from '$lib/server/preferences/user-preferences.js';
+} from '#lib/server/preferences/user-preferences.js';
 import { z } from 'zod';
 
 const putSchema = z.object({ value: z.unknown() });

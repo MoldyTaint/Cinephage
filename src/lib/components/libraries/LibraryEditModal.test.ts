@@ -22,17 +22,17 @@ const { createLibrary, updateLibrary, getScoringProfiles, getLanguageProfiles, i
 
 vi.mock('$app/navigation', () => ({ invalidateAll }));
 
-vi.mock('$lib/api/settings.js', () => ({
+vi.mock('#lib/api/settings.js', () => ({
 	createLibrary,
 	updateLibrary,
 	getScoringProfiles
 }));
 
-vi.mock('$lib/api/subtitles.js', () => ({
+vi.mock('#lib/api/subtitles.js', () => ({
 	getLanguageProfiles
 }));
 
-vi.mock('$lib/stores/toast.svelte', () => ({
+vi.mock('#lib/stores/toast.svelte.js', () => ({
 	toasts: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
 }));
 

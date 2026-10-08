@@ -1,7 +1,7 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
-	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
-	import InsightsPanel from '$lib/components/storage/InsightsPanel.svelte';
+	import * as m from '#lib/paraglide/messages.js';
+	import { SettingsPage, SettingsSection } from '#lib/components/ui/settings/index.js';
+	import InsightsPanel from '#lib/components/storage/InsightsPanel.svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();

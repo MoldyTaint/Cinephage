@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { rotateCredentials } from '$lib/server/crypto/credentialRotation';
-import { createChildLogger } from '$lib/logging';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { rotateCredentials } from '#lib/server/crypto/credentialRotation.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({
 	module: 'SettingsSystemRotateCredentials',

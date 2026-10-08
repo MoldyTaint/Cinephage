@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { blocklistService } from '$lib/server/monitoring/specifications/BlocklistSpecification.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { addToBlocklistSchema, updateBlocklistExpirySchema } from '$lib/validation/schemas.js';
+import { blocklistService } from '#lib/server/monitoring/specifications/BlocklistSpecification.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { addToBlocklistSchema, updateBlocklistExpirySchema } from '#lib/validation/schemas.js';
 import { z } from 'zod';
 
 export const GET: RequestHandler = async (event) => {

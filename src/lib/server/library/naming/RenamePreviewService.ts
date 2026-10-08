@@ -5,7 +5,7 @@
  * Allows users to see what would change before applying renames.
  */
 
-import { db } from '$lib/server/db';
+import { db } from '#lib/server/db/index.js';
 import {
 	movies,
 	movieFiles,
@@ -16,28 +16,28 @@ import {
 	rootFolders,
 	renameHistory,
 	renamingFailures
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { and, eq, inArray } from 'drizzle-orm';
 import { extname, join, dirname, basename, resolve } from 'path';
-import { createChildLogger, getRequestId } from '$lib/logging';
-import { todayDateString } from '$lib/utils/format.js';
+import { createChildLogger, getRequestId } from '#lib/logging/index.js';
+import { todayDateString } from '#lib/utils/format.js';
 import { randomUUID } from 'node:crypto';
 
 import { NamingService, type MediaNamingInfo } from './NamingService';
 import { namingSettingsService } from './NamingSettingsService';
 import { libraryOperationLock } from '../library-operation-lock.js';
 import { diskScanService } from '../disk-scan.js';
-import { moveFile, fileExists } from '$lib/server/downloadClients/import/FileTransfer';
-import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
+import { moveFile, fileExists } from '#lib/server/downloadClients/import/FileTransfer.js';
+import { ReleaseParser } from '#lib/server/indexers/parser/ReleaseParser.js';
 import { rename, stat, readdir, rmdir, mkdir } from 'node:fs/promises';
 import { chooseBestParsedRelease, resolveAudioLanguages } from './preview-metadata';
 import { extractLanguageCodes, resolveLocalizedTitles } from './localization';
 import {
 	getMediaBrowserManager,
 	getMediaBrowserNotifier
-} from '$lib/server/notifications/mediabrowser';
-import { syncSubtitleRowsForRenames } from '$lib/server/subtitles/subtitle-rename-sync';
-import { isSubtitleExtension } from '$lib/server/subtitles/subtitle-content';
+} from '#lib/server/notifications/mediabrowser/index.js';
+import { syncSubtitleRowsForRenames } from '#lib/server/subtitles/subtitle-rename-sync.js';
+import { isSubtitleExtension } from '#lib/server/subtitles/subtitle-content.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 
@@ -45,8 +45,8 @@ const logger = createChildLogger({ logDomain: 'scans' as const });
 // requests are not starved while processing large libraries.
 const PREVIEW_BATCH_SIZE = 500;
 
-export type { RenameStreamEvent } from '$lib/library/naming/types.js';
-import type { RenameStreamEvent } from '$lib/library/naming/types.js';
+export type { RenameStreamEvent } from '#lib/library/naming/types.js';
+import type { RenameStreamEvent } from '#lib/library/naming/types.js';
 
 // Number of media groups to process concurrently during rename execution.
 // Bounds open file handles and OS I/O queue depth.
@@ -56,7 +56,7 @@ function yieldToEventLoop(): Promise<void> {
 	return new Promise<void>((resolve) => setImmediate(resolve));
 }
 
-// Types are defined in $lib/library/naming/types.ts (outside the server
+// Types are defined in #lib/library/naming/types.ts (outside the server
 // bundle) so .svelte files can import them without pulling server code
 // into the client. Re-exported here for server-internal consumers.
 export type {
@@ -66,13 +66,13 @@ export type {
 	RenameExecuteResult,
 	ReorganizeRequestItem,
 	ReorganizeBatchResult
-} from '$lib/library/naming/types.js';
+} from '#lib/library/naming/types.js';
 
 import type {
 	RenamePreviewItem,
 	RenamePreviewResult,
 	RenameExecuteResult
-} from '$lib/library/naming/types.js';
+} from '#lib/library/naming/types.js';
 
 /**
  * Create an empty preview result

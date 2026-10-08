@@ -1,6 +1,6 @@
-import { createIndexerHttp } from '$lib/server/indexers/http';
-import type { IndexerHttp } from '$lib/server/indexers/http';
-import { createChildLogger } from '$lib/logging';
+import { createIndexerHttp } from '#lib/server/indexers/http/index.js';
+import type { IndexerHttp } from '#lib/server/indexers/http/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
 import type { CinephageSettingsService } from '../settings/CinephageSettingsService.js';
 import { getCinephageSettingsService } from '../settings/CinephageSettingsService.js';
 import { getServerIdentity, type CinephageServerIdentity } from './version.js';

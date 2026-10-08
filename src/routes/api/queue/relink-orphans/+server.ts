@@ -12,8 +12,8 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { downloadMonitor } from '$lib/server/downloadClients/monitoring';
-import { createChildLogger } from '$lib/logging';
+import { downloadMonitor } from '#lib/server/downloadClients/monitoring/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'QueueRelinkOrphansApi', logDomain: 'downloads' });
 

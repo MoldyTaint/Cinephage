@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
-import { getCalendarData } from '$lib/server/calendar/queries.js';
+import { getCalendarData } from '#lib/server/calendar/queries.js';
 
 const calendarQuerySchema = z.object({
 	month: z

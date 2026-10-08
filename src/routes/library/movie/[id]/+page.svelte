@@ -1,36 +1,36 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import type { LibraryMovie, MovieFile } from '$lib/types/library';
+	import type { LibraryMovie, MovieFile } from '#lib/types/library.js';
 	import {
 		LibraryMovieHeader,
 		MovieFilesTab,
 		MovieEditModal,
 		RenamePreviewModal,
 		ScoreDetailModal
-	} from '$lib/components/library';
-	import type { FileScoreResponse } from '$lib/types/score';
-	import { MediaSearchModal } from '$lib/components/search';
-	import { SubtitleSearchModal } from '$lib/components/subtitles';
-	import SubtitleSyncModal from '$lib/components/subtitles/SubtitleSyncModal.svelte';
-	import SubtitleRequirementsSection from '$lib/components/subtitles/SubtitleRequirementsSection.svelte';
-	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
+	} from '#lib/components/library/index.js';
+	import type { FileScoreResponse } from '#lib/types/score.js';
+	import { MediaSearchModal } from '#lib/components/search/index.js';
+	import { SubtitleSearchModal } from '#lib/components/subtitles/index.js';
+	import SubtitleSyncModal from '#lib/components/subtitles/SubtitleSyncModal.svelte';
+	import SubtitleRequirementsSection from '#lib/components/subtitles/SubtitleRequirementsSection.svelte';
+	import DeleteConfirmationModal from '#lib/components/ui/modal/DeleteConfirmationModal.svelte';
 	import {
 		ConfirmationModal,
 		ModalWrapper,
 		ModalHeader,
 		ModalFooter
-	} from '$lib/components/ui/modal';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { autoSearchSubtitles, syncSubtitle } from '$lib/api/subtitles.js';
+	} from '#lib/components/ui/modal/index.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { autoSearchSubtitles, syncSubtitle } from '#lib/api/subtitles.js';
 	import {
 		getMovie,
 		updateMovie,
 		deleteMovie,
 		deleteMovieFile,
 		getMovieScore
-	} from '$lib/api/library.js';
-	import { apiGetStream } from '$lib/api';
-	import type { MovieEditData } from '$lib/components/library/MovieEditModal.svelte';
+	} from '#lib/api/library.js';
+	import { apiGetStream } from '#lib/api/index.js';
+	import type { MovieEditData } from '#lib/components/library/MovieEditModal.svelte';
 	import {
 		FileEdit,
 		Loader2,
@@ -45,16 +45,16 @@
 	} from 'lucide-svelte';
 	import { page } from '$app/state';
 	import { goto, invalidateAll } from '$app/navigation';
-	import { resolvePath } from '$lib/utils/routing';
-	import { getLibraryDetailBackHref } from '$lib/utils/libraryReturnNavigation';
-	import { deriveSubtitleProgress } from '$lib/utils/subtitle-status-display.js';
-	import { requirementKey, type SubtitleRequirement } from '$lib/shared/language-profile.js';
-	import { createDynamicSSE } from '$lib/sse';
-	import { getFileName } from '$lib/utils/format.js';
-	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
-	import * as m from '$lib/paraglide/messages.js';
-	import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
-	import { createSubtitleProgress } from '$lib/stores/subtitleProgress.svelte';
+	import { resolvePath } from '#lib/utils/routing.js';
+	import { getLibraryDetailBackHref } from '#lib/utils/libraryReturnNavigation.js';
+	import { deriveSubtitleProgress } from '#lib/utils/subtitle-status-display.js';
+	import { requirementKey, type SubtitleRequirement } from '#lib/shared/language-profile.js';
+	import { createDynamicSSE } from '#lib/sse/index.js';
+	import { getFileName } from '#lib/utils/format.js';
+	import { layoutState, deriveMobileSseStatus } from '#lib/layout.svelte.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { ACTIVE_DOWNLOAD_STATUSES } from '#lib/types/queue.js';
+	import { createSubtitleProgress } from '#lib/stores/subtitleProgress.svelte.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -476,8 +476,8 @@
 		isSearchModalOpen = true;
 	}
 
-	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
-	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
+	import { createSearchProgress } from '#lib/stores/searchProgress.svelte.js';
+	import { getPrimaryAutoSearchIssue } from '#lib/utils/autoSearchIssues.js';
 
 	// Per-item subtitle requirement override (details-page editing).
 	let savingRequirements = $state(false);
@@ -586,7 +586,7 @@
 	function handleEditClose() {
 		isEditModalOpen = false;
 		if (page.url.searchParams.get('edit') === '1') {
-			goto(page.url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
+			goto(page.url.pathname, { replace: true, reset: false });
 		}
 	}
 

@@ -1,19 +1,24 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { Plus, X, ArrowUp, ArrowDown, Flag, Info } from 'lucide-svelte';
-	import { getResponseErrorMessage } from '$lib/utils/http';
-	import { ALL_LANGUAGE_OPTIONS } from '$lib/shared/languages';
-	import { requirementKey } from '$lib/shared/language-profile.js';
+	import { getResponseErrorMessage } from '#lib/utils/http.js';
+	import { ALL_LANGUAGE_OPTIONS } from '#lib/shared/languages.js';
+	import { requirementKey } from '#lib/shared/language-profile.js';
 	import type {
 		LanguageProfileV2,
 		SubtitleAccessibility,
 		SubtitleRequirement,
 		SubtitleVariant
-	} from '$lib/shared/language-profile.js';
+	} from '#lib/shared/language-profile.js';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { ModalWrapper, ModalHeader, ModalFooter, SectionHeader } from '$lib/components/ui/modal';
-	import * as m from '$lib/paraglide/messages.js';
-	import { createLanguageProfile, updateLanguageProfile, ApiError } from '$lib/api';
+	import {
+		ModalWrapper,
+		ModalHeader,
+		ModalFooter,
+		SectionHeader
+	} from '#lib/components/ui/modal/index.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { createLanguageProfile, updateLanguageProfile, ApiError } from '#lib/api/index.js';
 	import { variantLabel, accessibilityLabel } from './labels';
 
 	/** Server-load profile row: v2 shape plus timestamps. */

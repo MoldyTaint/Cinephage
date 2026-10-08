@@ -1,10 +1,10 @@
-import { db } from '$lib/server/db';
-import { settings as settingsTable } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { settings as settingsTable } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { getIndexerManager } from '$lib/server/indexers/IndexerManager';
-import { getPersistentStatusTracker } from '$lib/server/indexers/status';
-import { createChildLogger } from '$lib/logging';
-import { decryptSettingValue, encryptSettingValue } from '$lib/server/settings/secretSettings';
+import { getIndexerManager } from '#lib/server/indexers/IndexerManager.js';
+import { getPersistentStatusTracker } from '#lib/server/indexers/status/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { decryptSettingValue, encryptSettingValue } from '#lib/server/settings/secretSettings.js';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
 

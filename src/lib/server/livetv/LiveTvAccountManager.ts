@@ -6,18 +6,18 @@
  */
 
 import { and, eq, inArray, lte, sql } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { epgPrograms, livetvAccounts, type LivetvAccountRecord } from '$lib/server/db/schema';
-import { createChildLogger } from '$lib/logging';
-import { toFriendlyLiveTvTestError } from '$lib/livetv/errorMessages';
+import { db } from '#lib/server/db/index.js';
+import { epgPrograms, livetvAccounts, type LivetvAccountRecord } from '#lib/server/db/schema.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { toFriendlyLiveTvTestError } from '#lib/livetv/errorMessages.js';
 import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { getProvider, getProviderForAccount } from './providers';
 import { probeStalkerEndpoint } from './stalker/StalkerPortalClient';
-import { normalizeTmdbLanguage } from '$lib/server/languages/normalize.js';
+import { normalizeTmdbLanguage } from '#lib/server/languages/normalize.js';
 import { liveTvEvents } from './LiveTvEvents';
 import { decryptLivetvConfig, encryptLivetvConfig } from './configCrypto';
-import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
-import { ExternalServiceError } from '$lib/errors';
+import type { BackgroundService, ServiceStatus } from '#lib/server/services/background-service.js';
+import { ExternalServiceError } from '#lib/errors/index.js';
 import type {
 	LiveTvAccount,
 	LiveTvAccountInput,
@@ -28,7 +28,7 @@ import type {
 	XstreamConfig,
 	M3uConfig,
 	CinephageIptvConfig
-} from '$lib/types/livetv';
+} from '#lib/types/livetv.js';
 
 const logger = createChildLogger({ module: 'LiveTvAccountManager' });
 

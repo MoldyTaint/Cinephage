@@ -12,10 +12,10 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { createChildLogger } from '$lib/logging';
-import { parseBody } from '$lib/server/api/validate.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { parseBody } from '#lib/server/api/validate.js';
 import { z } from 'zod';
-import { mediaServerLinkService } from '$lib/server/mediaServerLink/MediaServerLinkService.js';
+import { mediaServerLinkService } from '#lib/server/mediaServerLink/MediaServerLinkService.js';
 
 const logger = createChildLogger({ module: 'UserMediaServerLinkApi', logDomain: 'auth' });
 

@@ -1,12 +1,12 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types.js';
-import { requireAdmin, requireAuth } from '$lib/server/auth/authorization.js';
-import { parseBody } from '$lib/server/api/validate.js';
-import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-import { libraryCreateSchema, libraryMediaTypeSchema } from '$lib/validation/schemas.js';
-import { isAppError } from '$lib/errors';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
+import { requireAdmin, requireAuth } from '#lib/server/auth/authorization.js';
+import { parseBody } from '#lib/server/api/validate.js';
+import { getLibraryEntityService } from '#lib/server/library/LibraryEntityService.js';
+import { libraryCreateSchema, libraryMediaTypeSchema } from '#lib/validation/schemas.js';
+import { isAppError } from '#lib/errors/index.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
 
 const listSchema = z.object({
 	mediaType: libraryMediaTypeSchema.optional(),

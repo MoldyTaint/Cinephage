@@ -17,12 +17,12 @@ import { clearLocalizationCaches } from './localization';
 import { namingSettingsService } from './NamingSettingsService';
 import { libraryOperationLock } from '../library-operation-lock';
 import { diskScanService } from '../disk-scan.js';
-import * as schema from '$lib/server/db/schema';
+import * as schema from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 
 const testDb = createTestDb();
 
-vi.mock('$lib/server/db', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	},
@@ -34,8 +34,8 @@ vi.mock('$lib/server/db', () => ({
 
 const tmdbFetch = vi.hoisted(() => vi.fn());
 
-vi.mock('$lib/server/tmdb', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('$lib/server/tmdb')>();
+vi.mock('#lib/server/tmdb.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/server/tmdb.js')>();
 	return { ...actual, tmdb: { ...actual.tmdb, fetch: tmdbFetch } };
 });
 
@@ -44,7 +44,7 @@ const notifierMocks = vi.hoisted(() => ({
 	deleteMediaItemByTmdb: vi.fn().mockResolvedValue(1)
 }));
 
-vi.mock('$lib/server/notifications/mediabrowser', () => ({
+vi.mock('#lib/server/notifications/mediabrowser/index.js', () => ({
 	getMediaBrowserNotifier: () => ({ queueUpdate: notifierMocks.queueUpdate }),
 	getMediaBrowserManager: () => ({ deleteMediaItemByTmdb: notifierMocks.deleteMediaItemByTmdb })
 }));
@@ -52,7 +52,7 @@ vi.mock('$lib/server/notifications/mediabrowser', () => ({
 const mockedMoveFile = vi.fn();
 const mockedFileExists = vi.fn();
 
-vi.mock('$lib/server/downloadClients/import/FileTransfer', () => ({
+vi.mock('#lib/server/downloadClients/import/FileTransfer.js', () => ({
 	get moveFile() {
 		return mockedMoveFile;
 	},

@@ -10,11 +10,11 @@ import {
 } from 'drizzle-orm/sqlite-core';
 import { relations, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import type { ProtocolSettings } from '$lib/server/indexers/types/index.js';
-import type { NewznabCategory } from '$lib/server/indexers/newznab/types.js';
-import type { DesiredQuality } from '$lib/types/library.js';
-import type { AudioPreference, SubtitleRequirement } from '$lib/shared/language-profile.js';
-import type { EpgLocalizedText } from '$lib/types/livetv.js';
+import type { ProtocolSettings } from '#lib/server/indexers/types/index.js';
+import type { NewznabCategory } from '#lib/server/indexers/newznab/types.js';
+import type { DesiredQuality } from '#lib/types/library.js';
+import type { AudioPreference, SubtitleRequirement } from '#lib/shared/language-profile.js';
+import type { EpgLocalizedText } from '#lib/types/livetv.js';
 
 // ============================================================================
 // Better Auth Tables
@@ -1970,7 +1970,7 @@ export const monitoringHistory = sqliteTable(
 
 /**
  * Language Profile (v2) - Persisted row shape for the combined
- * audio + subtitle preference model (see $lib/shared/language-profile).
+ * audio + subtitle preference model (see #lib/shared/language-profile).
  */
 export interface LanguageProfileRow {
 	id: string;

@@ -16,7 +16,7 @@ const seriesOriginalByTmdbId: Record<number, string> = {
 	7777: 'ko'
 };
 
-vi.mock('$lib/server/db', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	},
@@ -26,7 +26,7 @@ vi.mock('$lib/server/db', () => ({
 	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
 
-vi.mock('$lib/server/tmdb.js', () => ({
+vi.mock('#lib/server/tmdb.js', () => ({
 	tmdb: {
 		fetch: vi.fn(async (url: string) => {
 			fetchCalls.push(url);
@@ -105,9 +105,9 @@ const {
 	resolveLanguageForFetch,
 	metadataLanguageToLegacy
 } = await import('./metadata-refresh.js');
-const { tmdb } = await import('$lib/server/tmdb.js');
+const { tmdb } = await import('#lib/server/tmdb.js');
 const mockFetch = tmdb.fetch as unknown as ReturnType<typeof vi.fn>;
-const { movies, series, episodes } = await import('$lib/server/db/schema.js');
+const { movies, series, episodes } = await import('#lib/server/db/schema.js');
 
 testDb.db
 	.insert(series)

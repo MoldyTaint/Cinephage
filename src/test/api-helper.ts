@@ -7,8 +7,8 @@
 
 import { json, type RequestEvent, type RequestHandler } from '@sveltejs/kit';
 
-import { isAppError } from '$lib/errors';
-import { logger } from '$lib/logging';
+import { isAppError } from '#lib/errors/index.js';
+import { logger } from '#lib/logging/index.js';
 
 type AnyRequestHandler = RequestHandler<any, any>;
 type TestAuthMode = 'admin' | 'user' | false;
@@ -122,7 +122,7 @@ export function createRequestEvent(
 			set: () => {},
 			delete: () => {},
 			serialize: () => ''
-		} as RequestEvent['cookies'],
+		} as unknown as RequestEvent['cookies'],
 		fetch: globalThis.fetch,
 		getClientAddress: () => '127.0.0.1',
 		setHeaders: () => {},

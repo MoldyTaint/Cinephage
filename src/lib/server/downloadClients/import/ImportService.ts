@@ -12,8 +12,8 @@ import { EventEmitter } from 'events';
 import { stat } from 'fs/promises';
 import { join, basename, dirname, extname, resolve } from 'path';
 import { randomUUID } from 'node:crypto';
-import { db } from '$lib/server/db';
-import { eventBuffer } from '$lib/server/sse/EventBuffer.js';
+import { db } from '#lib/server/db/index.js';
+import { eventBuffer } from '#lib/server/sse/EventBuffer.js';
 import {
 	downloadQueue,
 	downloadHistory,
@@ -27,13 +27,13 @@ import {
 	downloadClients,
 	importFailures,
 	importOperations
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import { eq, and, or, inArray, gte } from 'drizzle-orm';
 import { downloadMonitor } from '../monitoring/DownloadMonitorService';
-import { resolveMovieMultiQuality } from '$lib/server/quality/movie-buckets.js';
+import { resolveMovieMultiQuality } from '#lib/server/quality/movie-buckets.js';
 import { computeMovieReplacement, computeEpisodeReplacement } from './replacement.js';
-import { normalizeFilename } from '$lib/server/library/duplicates/DuplicateDetectionService.js';
-import type { Resolution } from '$lib/server/indexers/parser/types.js';
+import { normalizeFilename } from '#lib/server/library/duplicates/DuplicateDetectionService.js';
+import type { Resolution } from '#lib/server/indexers/parser/types.js';
 import {
 	transferFileWithMode,
 	findVideoFiles,
@@ -52,44 +52,44 @@ import { getDownloadClientManager } from '../DownloadClientManager';
 import { joinCategoryPath } from '../core/client-utils.js';
 import { unlink, rm, writeFile } from 'fs/promises';
 import { unlinkSync } from 'node:fs';
-import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser';
-import { mediaInfoService, MediaInfoService } from '$lib/server/library/media-info';
+import { ReleaseParser } from '#lib/server/indexers/parser/ReleaseParser.js';
+import { mediaInfoService, MediaInfoService } from '#lib/server/library/media-info.js';
 import {
 	recalculateMovieShortfall,
 	recalculateShortfallForEpisode
-} from '$lib/server/languages/language-shortfall';
+} from '#lib/server/languages/language-shortfall.js';
 import {
 	NamingService,
 	releaseToNamingInfo,
 	type MediaNamingInfo
-} from '$lib/server/library/naming/NamingService';
-import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService';
-import { resolveAudioLanguages } from '$lib/server/library/naming/preview-metadata.js';
-import { resolveLocalizedTitlesForFormats } from '$lib/server/library/naming/localization.js';
-import { createChildLogger, runWithLogContext } from '$lib/logging';
-import { todayDateString } from '$lib/utils/format.js';
+} from '#lib/server/library/naming/NamingService.js';
+import { namingSettingsService } from '#lib/server/library/naming/NamingSettingsService.js';
+import { resolveAudioLanguages } from '#lib/server/library/naming/preview-metadata.js';
+import { resolveLocalizedTitlesForFormats } from '#lib/server/library/naming/localization.js';
+import { createChildLogger, runWithLogContext } from '#lib/logging/index.js';
+import { todayDateString } from '#lib/utils/format.js';
 import {
 	DOWNLOAD,
 	EXCLUDED_FILE_PATTERNS,
 	DANGEROUS_EXTENSIONS,
 	EXECUTABLE_EXTENSIONS
-} from '$lib/config/constants';
-import { ImportWorker, workerManager } from '$lib/server/workers';
-import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.js';
-import { getFileManagementSettings } from '$lib/server/settings/file-management.js';
-import { searchSubtitlesForNewMedia } from '$lib/server/subtitles/services/SubtitleImportService.js';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
-import { getMediaBrowserNotifier } from '$lib/server/notifications/mediabrowser';
-import { notifyMovieDownload, notifySeriesDownload } from '$lib/server/arr/notifications.js';
-import { getOrAssignArrId } from '$lib/server/arr/ArrIdMappingService.js';
-import { getSidecarSettings } from '$lib/server/library/sidecar/sidecarSettings.js';
+} from '#lib/config/constants.js';
+import { ImportWorker, workerManager } from '#lib/server/workers/index.js';
+import { monitoringScheduler } from '#lib/server/monitoring/MonitoringScheduler.js';
+import { getFileManagementSettings } from '#lib/server/settings/file-management.js';
+import { searchSubtitlesForNewMedia } from '#lib/server/subtitles/services/SubtitleImportService.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
+import { getMediaBrowserNotifier } from '#lib/server/notifications/mediabrowser/index.js';
+import { notifyMovieDownload, notifySeriesDownload } from '#lib/server/arr/notifications.js';
+import { getOrAssignArrId } from '#lib/server/arr/ArrIdMappingService.js';
+import { getSidecarSettings } from '#lib/server/library/sidecar/sidecarSettings.js';
 import {
 	buildMovieNfo,
 	buildSeriesNfo,
 	buildSeasonNfo,
 	buildEpisodeNfo,
 	nfoPathFor
-} from '$lib/server/library/sidecar/NfoGenerator.js';
+} from '#lib/server/library/sidecar/NfoGenerator.js';
 import {
 	downloadSidecarImage,
 	shouldWriteSidecar,
@@ -98,15 +98,15 @@ import {
 	seriesArtworkPaths,
 	seasonArtworkPath,
 	folderOf
-} from '$lib/server/library/sidecar/SidecarImageService.js';
-import { getMediaParseStem } from '$lib/server/library/media-utils.js';
+} from '#lib/server/library/sidecar/SidecarImageService.js';
+import { getMediaParseStem } from '#lib/server/library/media-utils.js';
 import {
 	matchEpisodesByIdentifier,
 	matchEpisodesFromQueueContext as matchEpisodesFromQueueContextShared,
 	resolveEpisodeIdentifierWithFallback as resolveEpisodeIdentifierWithFallbackShared,
 	type ResolvedTvEpisodeIdentifier
-} from '$lib/server/library/tv-episode-resolver.js';
-import { isImportedQueueStatus, type QueueStatus } from '$lib/types/queue';
+} from '#lib/server/library/tv-episode-resolver.js';
+import { isImportedQueueStatus, type QueueStatus } from '#lib/types/queue.js';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
 
@@ -2761,7 +2761,7 @@ export class ImportService extends EventEmitter {
 
 		if (blockedExtensions.length === 0) {
 			const { getBlockedVideoExtensions } =
-				await import('$lib/server/settings/blocked-extensions.js');
+				await import('#lib/server/settings/blocked-extensions.js');
 			const global = await getBlockedVideoExtensions();
 			blockedExtensions = global.extensions;
 		}
@@ -2791,7 +2791,7 @@ export class ImportService extends EventEmitter {
 
 		try {
 			const { blocklistService } =
-				await import('$lib/server/monitoring/specifications/BlocklistSpecification.js');
+				await import('#lib/server/monitoring/specifications/BlocklistSpecification.js');
 			await blocklistService.addToBlocklist(
 				{
 					title: queueItem.title,

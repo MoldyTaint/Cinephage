@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { getSystemSettingsService } from '$lib/server/settings/SystemSettingsService.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { getSystemSettingsService } from '#lib/server/settings/SystemSettingsService.js';
 import { z } from 'zod';
 
 const logger = createChildLogger({ module: 'ExternalUrlSettingsApi', logDomain: 'system' });

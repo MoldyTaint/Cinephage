@@ -1,10 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
-import { movies, rootFolders, series } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { movies, rootFolders, series } from '#lib/server/db/schema.js';
 import { sql } from 'drizzle-orm';
-import type { LibraryIssue, RootFolderOption } from '$lib/types/unmatched.js';
-import { createChildLogger } from '$lib/logging';
+import type { LibraryIssue, RootFolderOption } from '#lib/types/unmatched.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LibraryUnmatchedIssuesApi', logDomain: 'scans' });
 

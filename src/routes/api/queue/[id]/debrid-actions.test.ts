@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 	buildTorrentRecoveryPath: vi.fn()
 }));
 
-vi.mock('$lib/server/db', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	db: {
 		select: vi.fn(() => ({
 			from: vi.fn(() => ({
@@ -30,7 +30,7 @@ vi.mock('$lib/server/db', () => ({
 	}
 }));
 
-vi.mock('$lib/server/downloadClients/monitoring', () => ({
+vi.mock('#lib/server/downloadClients/monitoring/index.js', () => ({
 	downloadMonitor: {
 		pauseDownload: mocks.pauseDownload,
 		resumeDownload: mocks.resumeDownload
@@ -39,24 +39,24 @@ vi.mock('$lib/server/downloadClients/monitoring', () => ({
 	buildTorrentRecoveryPath: mocks.buildTorrentRecoveryPath
 }));
 
-vi.mock('$lib/server/downloadClients/DownloadClientManager', () => ({
+vi.mock('#lib/server/downloadClients/DownloadClientManager.js', () => ({
 	getDownloadClientManager: () => ({
 		getClientInstance: mocks.getClientInstance,
 		getClient: vi.fn()
 	})
 }));
 
-vi.mock('$lib/server/downloads/handlers/DebridHandler.js', () => ({
+vi.mock('#lib/server/downloads/handlers/DebridHandler.js', () => ({
 	DebridHandler: class {
 		retry = mocks.debridRetry;
 	}
 }));
 
-vi.mock('$lib/server/downloadClients/import', () => ({
+vi.mock('#lib/server/downloadClients/import/index.js', () => ({
 	getImportService: vi.fn()
 }));
 
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	createChildLogger: () => ({
 		info: vi.fn(),
 		warn: vi.fn(),

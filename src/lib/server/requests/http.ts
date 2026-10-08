@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
-import { isAppError } from '$lib/errors';
-import { createChildLogger } from '$lib/logging';
+import { isAppError } from '#lib/errors/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
 import { RequestError, type RequesterContext } from './types.js';
 
 const logger = createChildLogger({ module: 'RequestHttp', logDomain: 'system' });

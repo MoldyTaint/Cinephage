@@ -1,18 +1,18 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
-	import { SettingsPage } from '$lib/components/ui/settings';
-	import RootFolderOverview from '$lib/components/storage/RootFolderOverview.svelte';
-	import { RootFolderModal } from '$lib/components/rootFolders';
-	import { validateRootFolder, updateRootFolder } from '$lib/api/settings.js';
-	import { scanLibrary } from '$lib/api/library.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { SettingsPage } from '#lib/components/ui/settings/index.js';
+	import RootFolderOverview from '#lib/components/storage/RootFolderOverview.svelte';
+	import { RootFolderModal } from '#lib/components/rootFolders/index.js';
+	import { validateRootFolder, updateRootFolder } from '#lib/api/settings.js';
+	import { scanLibrary } from '#lib/api/library.js';
 	import { invalidateAll } from '$app/navigation';
-	import { toasts } from '$lib/stores/toast.svelte';
+	import { toasts } from '#lib/stores/toast.svelte.js';
 	import type {
 		RootFolder,
 		RootFolderFormData,
 		PathValidationResult
-	} from '$lib/types/downloadClient';
-	import type { RootFolderUpdate } from '$lib/validation/schemas.js';
+	} from '#lib/types/downloadClient.js';
+	import type { RootFolderUpdate } from '#lib/validation/schemas.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();

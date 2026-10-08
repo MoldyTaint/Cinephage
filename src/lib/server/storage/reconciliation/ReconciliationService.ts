@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import type { ServiceStatus, BackgroundService } from '$lib/server/services/background-service.js';
-import { db } from '$lib/server/db';
+import type { ServiceStatus, BackgroundService } from '#lib/server/services/background-service.js';
+import { db } from '#lib/server/db/index.js';
 import {
 	episodeFiles,
 	episodes,
@@ -11,8 +11,8 @@ import {
 	series,
 	storageItemServerLinks,
 	storageItems
-} from '$lib/server/db/schema';
-import { createChildLogger } from '$lib/logging';
+} from '#lib/server/db/schema.js';
+import { createChildLogger } from '#lib/logging/index.js';
 import { logicalKey } from './matchers.js';
 import type { ReconcileResult } from '../types.js';
 
@@ -110,14 +110,14 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 		// Track the combined Promise so stop() can await completion before detaching,
 		// preventing orphaned listeners if stop() is called while imports are in-flight.
 		this.attachPromise = Promise.all([
-			import('$lib/server/library/library-scheduler.js')
+			import('#lib/server/library/library-scheduler.js')
 				.then(({ getLibraryScheduler }) => {
 					getLibraryScheduler().on('scanComplete', this.handleScanComplete);
 				})
 				.catch((e) => {
 					logger.error('[ReconciliationService] failed to subscribe to scanComplete', e);
 				}),
-			import('$lib/server/mediaServerStats/MediaServerStatsSyncService.js')
+			import('#lib/server/mediaServerStats/MediaServerStatsSyncService.js')
 				.then(({ getMediaServerStatsSyncService }) => {
 					getMediaServerStatsSyncService().on('syncComplete', this.handleSyncComplete);
 				})
@@ -126,7 +126,7 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 				}),
 			// Subscribe to library data mutations triggered by downloads/imports (NOT
 			// disk scans, those are handled by scanComplete with a proper rootFolderId).
-			import('$lib/server/library/LibraryMediaEvents.js')
+			import('#lib/server/library/LibraryMediaEvents.js')
 				.then(({ libraryMediaEvents }) => {
 					libraryMediaEvents.onLibraryDataChanged(this.handleLibraryDataChanged);
 				})
@@ -139,21 +139,21 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 	private detachListeners(): void {
 		if (!this.listenersAttached) return;
 		this.listenersAttached = false;
-		void import('$lib/server/library/library-scheduler.js')
+		void import('#lib/server/library/library-scheduler.js')
 			.then(({ getLibraryScheduler }) => {
 				getLibraryScheduler().off('scanComplete', this.handleScanComplete);
 			})
 			.catch((e) => {
 				logger.error('[ReconciliationService] failed to unsubscribe from scanComplete', e);
 			});
-		void import('$lib/server/mediaServerStats/MediaServerStatsSyncService.js')
+		void import('#lib/server/mediaServerStats/MediaServerStatsSyncService.js')
 			.then(({ getMediaServerStatsSyncService }) => {
 				getMediaServerStatsSyncService().off('syncComplete', this.handleSyncComplete);
 			})
 			.catch((e) => {
 				logger.error('[ReconciliationService] failed to unsubscribe from syncComplete', e);
 			});
-		void import('$lib/server/library/LibraryMediaEvents.js')
+		void import('#lib/server/library/LibraryMediaEvents.js')
 			.then(({ libraryMediaEvents }) => {
 				libraryMediaEvents.offLibraryDataChanged(this.handleLibraryDataChanged);
 			})

@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db';
-import { downloadHistory, movies, series } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { downloadHistory, movies, series } from '#lib/server/db/schema.js';
 import { eq, desc, and, isNotNull, isNull, inArray } from 'drizzle-orm';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'QueueHistoryApi', logDomain: 'downloads' });
 

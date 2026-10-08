@@ -7,9 +7,9 @@
 
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { createChildLogger } from '$lib/logging';
-import { getUsenetStreamService } from '$lib/server/streaming/usenet/UsenetStreamService';
-import { getNzbMountManager } from '$lib/server/streaming/nzb/NzbMountManager';
+import { createChildLogger } from '#lib/logging/index.js';
+import { getUsenetStreamService } from '#lib/server/streaming/usenet/UsenetStreamService.js';
+import { getNzbMountManager } from '#lib/server/streaming/nzb/NzbMountManager.js';
 
 const logger = createChildLogger({ module: 'UsenetMountCheckApi', logDomain: 'streams' });
 

@@ -2,17 +2,17 @@
 	import { page } from '$app/state';
 	import { goto, beforeNavigate, afterNavigate, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { resolvePath } from '$lib/utils/routing';
+	import { resolvePath } from '#lib/utils/routing.js';
 	import { SvelteSet } from 'svelte/reactivity';
-	import LibraryMediaCard from '$lib/components/library/LibraryMediaCard.svelte';
-	import LibraryMediaTable from '$lib/components/library/LibraryMediaTable.svelte';
-	import LibraryDrawer from '$lib/components/library/LibraryDrawer.svelte';
-	import LibraryBulkActionBar from '$lib/components/library/LibraryBulkActionBar.svelte';
-	import BulkLanguageProfileModal from '$lib/components/library/BulkLanguageProfileModal.svelte';
-	import BulkQualityProfileModal from '$lib/components/library/BulkQualityProfileModal.svelte';
-	import BulkDeleteModal from '$lib/components/library/BulkDeleteModal.svelte';
-	import DeleteConfirmationModal from '$lib/components/ui/modal/DeleteConfirmationModal.svelte';
-	import { MediaSearchModal } from '$lib/components/search';
+	import LibraryMediaCard from '#lib/components/library/LibraryMediaCard.svelte';
+	import LibraryMediaTable from '#lib/components/library/LibraryMediaTable.svelte';
+	import LibraryDrawer from '#lib/components/library/LibraryDrawer.svelte';
+	import LibraryBulkActionBar from '#lib/components/library/LibraryBulkActionBar.svelte';
+	import BulkLanguageProfileModal from '#lib/components/library/BulkLanguageProfileModal.svelte';
+	import BulkQualityProfileModal from '#lib/components/library/BulkQualityProfileModal.svelte';
+	import BulkDeleteModal from '#lib/components/library/BulkDeleteModal.svelte';
+	import DeleteConfirmationModal from '#lib/components/ui/modal/DeleteConfirmationModal.svelte';
+	import { MediaSearchModal } from '#lib/components/search/index.js';
 	import {
 		Tv,
 		X,
@@ -26,21 +26,21 @@
 		EyeOff,
 		ChevronDown
 	} from 'lucide-svelte';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { viewPreferences } from '$lib/stores/view-preferences.svelte';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { viewPreferences } from '#lib/stores/view-preferences.svelte.js';
 	import { enhance } from '$app/forms';
 	import {
 		batchSeries,
 		batchDeleteSeriesFiles,
 		updateSeries,
 		deleteSeries
-	} from '$lib/api/library.js';
-	import { ApiError } from '$lib/api/client.js';
-	import { createSearchProgress } from '$lib/stores/searchProgress.svelte';
-	import { getPrimaryAutoSearchIssue } from '$lib/utils/autoSearchIssues';
-	import { createProgressiveRenderer } from '$lib/utils/progressive-render.svelte.js';
-	import * as m from '$lib/paraglide/messages.js';
-	import { seriesStatusFilterOptions } from '$lib/utils/format-status.js';
+	} from '#lib/api/library.js';
+	import { ApiError } from '#lib/api/client.js';
+	import { createSearchProgress } from '#lib/stores/searchProgress.svelte.js';
+	import { getPrimaryAutoSearchIssue } from '#lib/utils/autoSearchIssues.js';
+	import { createProgressiveRenderer } from '#lib/utils/progressive-render.svelte.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { seriesStatusFilterOptions } from '#lib/utils/format-status.js';
 
 	let { data } = $props();
 
@@ -49,7 +49,9 @@
 
 	const SCROLL_KEY = 'cinephage:library:tv:scrollY';
 
-	beforeNavigate(({ to }) => {
+	beforeNavigate(({ to, shallow, type }) => {
+		if (shallow && type === 'goto') return;
+
 		try {
 			if (to?.url.pathname.startsWith('/library/tv/')) {
 				localStorage.setItem(SCROLL_KEY, String(window.scrollY));
@@ -61,7 +63,9 @@
 		}
 	});
 
-	afterNavigate(({ from }) => {
+	afterNavigate(({ from, shallow, type }) => {
+		if (shallow && type === 'goto') return;
+
 		try {
 			if (from?.url.pathname.startsWith('/library/tv/')) {
 				const saved = localStorage.getItem(SCROLL_KEY);
@@ -498,7 +502,7 @@
 	]);
 
 	function updateUrlParam(key: string, value: string) {
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
 		const query = searchQuery.trim();
 		if (query) url.searchParams.set('q', query);
 		else url.searchParams.delete('q');
@@ -513,17 +517,17 @@
 		} else {
 			url.searchParams.set(key, value);
 		}
-		goto(resolvePath(url.pathname + url.search), { keepFocus: true, noScroll: true });
+		goto(resolvePath(url.pathname + url.search), { reset: false });
 	}
 
 	function clearFilters() {
 		searchQuery = '';
-		const url = new URL(resolve('/library/tv'), page.url.origin);
+		const url = new URL(resolve('library/tv'), page.url.origin);
 		if (data.libraryScope?.isSubLibraryScope && data.libraryScope?.selected?.slug) {
 			url.searchParams.set('library', data.libraryScope.selected.slug);
 		}
 		url.searchParams.delete('q');
-		goto(resolvePath(url.pathname + url.search), { keepFocus: true, noScroll: true });
+		goto(resolvePath(url.pathname + url.search), { reset: false });
 	}
 
 	function handleMonitorAll() {
@@ -567,10 +571,7 @@
 	const bulkHasActiveDownloads = $derived(bulkActiveDownloadCount > 0);
 </script>
 
-<svelte:head>
-	<title>{m.library_tv_pageTitle()}</title>
-</svelte:head>
-
+<svelte:head><title>{m.library_tv_pageTitle()}</title></svelte:head>
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="min-h-screen bg-base-100 pb-20">
@@ -641,11 +642,11 @@
 							class="menu dropdown-content z-50 mt-2 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl"
 						>
 							<li>
-								<button onclick={handleMonitorAll}>
-									<Eye class="h-4 w-4" />
-									{m.library_tv_monitorAll()}
-								</button>
+								<button onclick={handleMonitorAll}
+									><Eye class="h-4 w-4" />{m.library_tv_monitorAll()}</button
+								>
 							</li>
+
 							<li>
 								<button onclick={handleUnmonitorAll}>
 									<EyeOff class="h-4 w-4" />
@@ -746,7 +747,7 @@
 						stroke-linejoin="round"
 						stroke-width="2"
 						d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-					/>
+					></path>
 				</svg>
 				<span>{data.error}</span>
 			</div>
@@ -759,9 +760,10 @@
 					<p class="mt-2">{m.library_tv_tryDifferentSearch()}</p>
 				</div>
 				<div class="mt-6 flex gap-3">
-					<button class="btn btn-ghost" onclick={() => (searchQuery = '')}>
-						{m.library_tv_clearSearchBtn()}
-					</button>
+					<button class="btn btn-ghost" onclick={() => (searchQuery = '')}
+						>{m.library_tv_clearSearchBtn()}</button
+					>
+
 					<a
 						href={resolvePath(`/discover?type=tv&q=${encodeURIComponent(searchQuery)}`)}
 						class="btn btn-primary"

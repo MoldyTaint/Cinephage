@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireArrCompatEnabled } from '$lib/server/arr/requireArrCompatEnabled.js';
+import { requireArrCompatEnabled } from '#lib/server/arr/requireArrCompatEnabled.js';
 
 /**
  * GET /api/sonarr/ping

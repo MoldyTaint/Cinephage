@@ -1,13 +1,13 @@
-import { db } from '$lib/server/db/index.js';
-import { movies } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { movies } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
-import { buildMovieFolderName } from '$lib/server/library/naming/naming-helpers.js';
-import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
+import { getLanguageProfileService } from '#lib/server/subtitles/services/LanguageProfileService.js';
+import { buildMovieFolderName } from '#lib/server/library/naming/naming-helpers.js';
+import { namingSettingsService } from '#lib/server/library/naming/NamingSettingsService.js';
 import {
 	extractLanguageCodes,
 	resolveLocalizedTitles
-} from '$lib/server/library/naming/localization.js';
+} from '#lib/server/library/naming/localization.js';
 import {
 	validateRootFolder,
 	getAnimeSubtypeEnforcement,
@@ -15,14 +15,14 @@ import {
 	fetchMovieDetails,
 	fetchMovieExternalIds,
 	triggerMovieSearch
-} from '$lib/server/library/LibraryAddService.js';
-import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
-import { fetchAndStoreMovieAlternateTitles } from '$lib/server/services/AlternateTitleService.js';
-import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
-import { ValidationError } from '$lib/errors';
-import type { AddMovieRequest } from '$lib/validation/schemas.js';
-import { createChildLogger } from '$lib/logging';
+} from '#lib/server/library/LibraryAddService.js';
+import { isLikelyAnimeMedia } from '#lib/shared/anime-classification.js';
+import { fetchAndStoreMovieAlternateTitles } from '#lib/server/services/AlternateTitleService.js';
+import { getLibraryEntityService } from '#lib/server/library/LibraryEntityService.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
+import { ValidationError } from '#lib/errors/index.js';
+import type { AddMovieRequest } from '#lib/validation/schemas.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'MovieAdd', logDomain: 'scans' });
 

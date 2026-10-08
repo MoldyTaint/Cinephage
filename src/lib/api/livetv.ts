@@ -5,7 +5,7 @@ import type {
 	UpdateChannel,
 	AddBackupLink,
 	ChannelCategoryForm
-} from '$lib/validation/schemas.js';
+} from '#lib/validation/schemas.js';
 import type {
 	AccountSyncStatus,
 	CachedChannel,
@@ -19,7 +19,7 @@ import type {
 	LiveTvAccount,
 	LiveTvAccountTestResult,
 	LiveTvCategory
-} from '$lib/types/livetv.js';
+} from '#lib/types/livetv.js';
 
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
 

@@ -1,11 +1,11 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { invalidateAll } from '$app/navigation';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { Loader2, RefreshCw, Server, ShieldCheck } from 'lucide-svelte';
-	import { apiGet, apiPost } from '$lib/api/client.js';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
+	import { apiGet, apiPost } from '#lib/api/client.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { ModalWrapper, ModalHeader, ModalFooter } from '#lib/components/ui/modal/index.js';
 	import MediaServerImportResults from './MediaServerImportResults.svelte';
 
 	// Local mirrors of the API shapes; server types must not cross the

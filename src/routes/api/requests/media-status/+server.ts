@@ -9,10 +9,10 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
-import { episodes, movies, requests, series } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { episodes, movies, requests, series } from '#lib/server/db/schema.js';
 import { and, eq, inArray } from 'drizzle-orm';
-import { ACTIVE_REQUEST_STATUSES } from '$lib/server/requests/types.js';
+import { ACTIVE_REQUEST_STATUSES } from '#lib/server/requests/types.js';
 
 export const GET: RequestHandler = async (event) => {
 	if (!event.locals.user) {

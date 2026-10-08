@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { requireArrCompatEnabled } from '$lib/server/arr/requireArrCompatEnabled.js';
-import { searchReleasesForMovie, grabRelease } from '$lib/server/arr/release.js';
-import { withForwardedApiKey } from '$lib/server/arr/internalFetch.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { requireArrCompatEnabled } from '#lib/server/arr/requireArrCompatEnabled.js';
+import { searchReleasesForMovie, grabRelease } from '#lib/server/arr/release.js';
+import { withForwardedApiKey } from '#lib/server/arr/internalFetch.js';
 
 /** GET /api/radarr/api/v3/release?movieId=... */
 export const GET: RequestHandler = async (event) => {

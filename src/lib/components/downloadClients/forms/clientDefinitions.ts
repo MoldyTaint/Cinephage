@@ -1,4 +1,4 @@
-import type { DownloadClientDefinition } from '$lib/types/downloadClient';
+import type { DownloadClientDefinition } from '#lib/types/downloadClient.js';
 
 /**
  * Available download client definitions.

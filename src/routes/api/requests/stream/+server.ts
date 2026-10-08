@@ -7,12 +7,12 @@
  */
 
 import type { RequestHandler } from './$types';
-import { createSSEStream } from '$lib/server/sse';
+import { createSSEStream } from '#lib/server/sse.js';
 import {
 	requestStreamEvents,
 	type RequestRefreshPayload
-} from '$lib/server/requests/RequestStreamEvents.js';
-import { requesterFromLocals } from '$lib/server/requests/http.js';
+} from '#lib/server/requests/RequestStreamEvents.js';
+import { requesterFromLocals } from '#lib/server/requests/http.js';
 
 export const GET: RequestHandler = async (event) => {
 	const requester = requesterFromLocals(event.locals);

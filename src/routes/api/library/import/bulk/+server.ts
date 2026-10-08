@@ -2,12 +2,12 @@ import { json } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
 import type { RequestHandler } from './$types.js';
 import { z } from 'zod';
-import { manualImportSchema } from '$lib/validation/schemas.js';
-import { libraryJobService } from '$lib/server/library/jobs/LibraryJobService.js';
-import { isPathAllowed, isPathInsideManagedRoot } from '$lib/server/filesystem/path-guard.js';
-import { MAX_BULK_IMPORT_JOBS } from '$lib/shared/bulk-import.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { createChildLogger } from '$lib/logging';
+import { manualImportSchema } from '#lib/validation/schemas.js';
+import { libraryJobService } from '#lib/server/library/jobs/LibraryJobService.js';
+import { isPathAllowed, isPathInsideManagedRoot } from '#lib/server/filesystem/path-guard.js';
+import { MAX_BULK_IMPORT_JOBS } from '#lib/shared/bulk-import.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LibraryImportBulkApi', logDomain: 'scans' });
 

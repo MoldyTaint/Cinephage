@@ -6,15 +6,15 @@
 
 import { randomUUID } from 'node:crypto';
 import { eq, lt, and, sql } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { nzbStreamMounts } from '$lib/server/db/schema';
-import { createChildLogger } from '$lib/logging';
-import { parseNzb } from '$lib/server/streaming/usenet/NzbParser';
-import { encryptCredential } from '$lib/server/crypto/credentialsCrypto';
+import { db } from '#lib/server/db/index.js';
+import { nzbStreamMounts } from '#lib/server/db/schema.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { parseNzb } from '#lib/server/streaming/usenet/NzbParser.js';
+import { encryptCredential } from '#lib/server/crypto/credentialsCrypto.js';
 
 const logger = createChildLogger({ logDomain: 'streams' as const });
-import type { NzbFile } from '$lib/server/streaming/usenet/types';
-import { getSegmentCacheService } from '$lib/server/streaming/usenet/SegmentCacheService';
+import type { NzbFile } from '#lib/server/streaming/usenet/types.js';
+import { getSegmentCacheService } from '#lib/server/streaming/usenet/SegmentCacheService.js';
 
 /**
  * Mount status values.

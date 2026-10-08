@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import * as m from '$lib/paraglide/messages.js';
-	import type { ActivityFilters, FilterOptions } from '$lib/types/activity';
+	import * as m from '#lib/paraglide/messages.js';
+	import type { ActivityFilters, FilterOptions } from '#lib/types/activity.js';
 	import {
 		Filter,
 		X,
@@ -16,7 +16,7 @@
 		ChevronDown,
 		ChevronUp
 	} from 'lucide-svelte';
-	import { toDateString } from '$lib/utils/format.js';
+	import { toDateString } from '#lib/utils/format.js';
 
 	interface Props {
 		filters: ActivityFilters;

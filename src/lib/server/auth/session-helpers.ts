@@ -1,6 +1,6 @@
-import type { Handle } from '@sveltejs/kit';
+import type { Handle } from '@sveltejs/kit/hooks';
 import { randomUUID } from 'node:crypto';
-import { cookieName, locales } from '$lib/paraglide/runtime.js';
+import { cookieName, locales } from '#lib/paraglide/runtime.js';
 import type { AuthSessionRecord, AuthSessionUser } from './auth.js';
 
 function createSupportId(): string {
@@ -26,7 +26,7 @@ async function resolveAccountTheme(userId: string): Promise<string | null> {
 
 	let value: string | null = null;
 	try {
-		const { getUserPreference } = await import('$lib/server/preferences/user-preferences.js');
+		const { getUserPreference } = await import('#lib/server/preferences/user-preferences.js');
 		const preference = await getUserPreference(userId, 'theme');
 		value = typeof preference === 'string' ? preference : null;
 	} catch {

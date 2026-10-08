@@ -6,7 +6,7 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { getRequestNotificationService } from '$lib/server/requests/RequestNotificationService.js';
+import { getRequestNotificationService } from '#lib/server/requests/RequestNotificationService.js';
 
 export const GET: RequestHandler = async (event) => {
 	if (!event.locals.user) {

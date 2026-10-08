@@ -8,15 +8,15 @@ import type {
 	SubtitleProviderTest,
 	SubtitleProviderUpdate,
 	SubtitleBatchAutoSearchRequest
-} from '$lib/validation/schemas.js';
+} from '#lib/validation/schemas.js';
 import type {
 	LanguageProfileV2,
 	SubtitleAccessibility,
 	SubtitleVariant
-} from '$lib/shared/language-profile.js';
+} from '#lib/shared/language-profile.js';
 
 import { apiGet, apiPost, apiPut, apiDelete } from './client.js';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 
 // ============================================================================
 // RESPONSE TYPES
@@ -270,7 +270,11 @@ export interface SubtitleScanResultItem {
 /** Response of POST /api/subtitles/scan, spread by scan scope. */
 export type SubtitleScanResponse =
 	| ({ type: 'movie' | 'series' } & SubtitleScanResultItem)
-	| { type: 'all'; movies: SubtitleScanResultItem; series: SubtitleScanResultItem };
+	| {
+			type: 'all';
+			movies: SubtitleScanResultItem;
+			series: SubtitleScanResultItem;
+	  };
 
 /** One blacklisted provider subtitle row. */
 export interface SubtitleBlacklistItem {

@@ -1,12 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { parseBody } from '$lib/server/api/validate.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { parseBody } from '#lib/server/api/validate.js';
 import {
 	getDefaultAcquisitionProtocol,
 	setDefaultAcquisitionProtocol
-} from '$lib/server/settings/acquisition.js';
+} from '#lib/server/settings/acquisition.js';
 
 const schema = z.object({ defaultAcquisitionProtocol: z.enum(['torrent', 'debrid']) });
 

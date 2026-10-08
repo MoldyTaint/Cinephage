@@ -1,10 +1,10 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { Loader2, ChevronDown, Clapperboard, Info, X, Check } from 'lucide-svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
-	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
-	import { toasts } from '$lib/stores/toast.svelte';
+	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
+	import TmdbImage from '#lib/components/tmdb/TmdbImage.svelte';
+	import { toasts } from '#lib/stores/toast.svelte.js';
 	import {
 		createRequest,
 		getRequestCounts,
@@ -12,8 +12,8 @@
 		type RequestCountResponse,
 		type RequestEpisodeEntry,
 		type RequestMediaStatus
-	} from '$lib/api/requests.js';
-	import { getTmdb } from '$lib/api/discover.js';
+	} from '#lib/api/requests.js';
+	import { getTmdb } from '#lib/api/discover.js';
 	import QuotaSummary from './QuotaSummary.svelte';
 
 	interface Props {

@@ -1,12 +1,12 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { SvelteSet } from 'svelte/reactivity';
-	import type { MovieFile } from '$lib/types/library';
+	import type { MovieFile } from '#lib/types/library.js';
 	import QualityBadge from './QualityBadge.svelte';
 	import MediaInfoPopover from './MediaInfoPopover.svelte';
 	import SubtitleRequirementBadge from './SubtitleRequirementBadge.svelte';
-	import { SubtitleDisplay } from '$lib/components/subtitles';
-	import type { SubtitleRequirementProgress } from '$lib/utils/subtitle-status-display.js';
+	import { SubtitleDisplay } from '#lib/components/subtitles/index.js';
+	import type { SubtitleRequirementProgress } from '#lib/utils/subtitle-status-display.js';
 	import {
 		File,
 		Trash2,
@@ -17,8 +17,8 @@
 		Download,
 		Loader2
 	} from 'lucide-svelte';
-	import { normalizeLanguageCode } from '$lib/shared/languages';
-	import { formatBytes, getFileName, formatDisplayDateShort } from '$lib/utils/format.js';
+	import { normalizeLanguageCode } from '#lib/shared/languages.js';
+	import { formatBytes, getFileName, formatDisplayDateShort } from '#lib/utils/format.js';
 
 	interface Subtitle {
 		id: string;

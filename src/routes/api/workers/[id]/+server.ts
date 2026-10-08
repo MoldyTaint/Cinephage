@@ -7,7 +7,7 @@
 
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { workerManager } from '$lib/server/workers';
+import { workerManager } from '#lib/server/workers/index.js';
 
 export const GET: RequestHandler = async ({ params, url }) => {
 	const { id } = params;
@@ -16,7 +16,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	const worker = workerManager.get(id);
 
 	if (!worker) {
-		throw error(404, { message: 'Worker not found' });
+		throw error(404, 'Worker not found');
 	}
 
 	return json({
@@ -32,7 +32,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 	const worker = workerManager.get(id);
 
 	if (!worker) {
-		throw error(404, { message: 'Worker not found' });
+		throw error(404, 'Worker not found');
 	}
 
 	if (worker.isActive && !force) {

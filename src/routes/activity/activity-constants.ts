@@ -5,7 +5,7 @@
  * composables, and sub-components without pulling in Svelte-specific code.
  */
 
-import type { ActivityFilters as FiltersType } from '$lib/types/activity';
+import type { ActivityFilters as FiltersType } from '#lib/types/activity.js';
 
 // ── Tab type ──────────────────────────────────────────────────────────
 export type ActivityTab = 'active' | 'history';

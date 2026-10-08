@@ -1,4 +1,4 @@
-import type { UnifiedActivity } from '$lib/types/activity';
+import type { UnifiedActivity } from '#lib/types/activity.js';
 import type { MonitoringHistoryRecord } from './types';
 
 type QueueMediaInfo = Pick<

@@ -1,15 +1,15 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
+import { db } from '#lib/server/db/index.js';
 import {
 	rejectedReleases,
 	importFailures,
 	renamingFailures,
 	unmatchedFiles
-} from '$lib/server/db/schema.js';
+} from '#lib/server/db/schema.js';
 import { count, ne } from 'drizzle-orm';
-import { createChildLogger } from '$lib/logging';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 
 // Cross-cutting summary across all four report types - not tied to one pipeline stage.
 const logger = createChildLogger({ module: 'ReportsSummary', logDomain: 'system' });

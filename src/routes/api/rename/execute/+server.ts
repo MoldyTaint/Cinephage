@@ -1,14 +1,14 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { RenamePreviewService } from '$lib/server/library/naming/RenamePreviewService';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { parseBody } from '$lib/server/api/validate.js';
-import { ValidationError } from '$lib/errors';
-import { diskScanService } from '$lib/server/library/disk-scan.js';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
-import { renamePreviewCache } from '$lib/server/library/naming/RenamePreviewCache.js';
-import { renameExecuteSchema } from '$lib/server/library/naming/rename-execute-schema.js';
-import { createChildLogger } from '$lib/logging';
+import { RenamePreviewService } from '#lib/server/library/naming/RenamePreviewService.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { parseBody } from '#lib/server/api/validate.js';
+import { ValidationError } from '#lib/errors/index.js';
+import { diskScanService } from '#lib/server/library/disk-scan.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
+import { renamePreviewCache } from '#lib/server/library/naming/RenamePreviewCache.js';
+import { renameExecuteSchema } from '#lib/server/library/naming/rename-execute-schema.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'RenameExecuteApi', logDomain: 'scans' });
 

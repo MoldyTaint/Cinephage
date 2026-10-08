@@ -3,7 +3,7 @@
  *
  * Typed client for library-level settings that are not per-library-entity
  * (scan scheduler config, watcher, auto-match). Per-library-entity settings
- * go through $lib/api/settings.ts (libraries CRUD).
+ * go through #lib/api/settings.ts (libraries CRUD).
  */
 
 import { apiGet, apiPut } from './client.js';

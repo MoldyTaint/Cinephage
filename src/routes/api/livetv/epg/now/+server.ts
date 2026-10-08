@@ -9,10 +9,10 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getEpgService } from '$lib/server/livetv/epg';
-import { channelLineupService } from '$lib/server/livetv/lineup';
-import { createChildLogger } from '$lib/logging';
-import type { EpgProgram, EpgProgramWithProgress } from '$lib/types/livetv';
+import { getEpgService } from '#lib/server/livetv/epg/index.js';
+import { channelLineupService } from '#lib/server/livetv/lineup/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import type { EpgProgram, EpgProgramWithProgress } from '#lib/types/livetv.js';
 
 const logger = createChildLogger({ module: 'LiveTvEpgNow', logDomain: 'livetv' });
 

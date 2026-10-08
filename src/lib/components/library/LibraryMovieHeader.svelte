@@ -1,18 +1,18 @@
 <script lang="ts">
-	import type { LibraryMovie } from '$lib/types/library';
-	import type { MovieDetails, ReleaseDate } from '$lib/types/tmdb';
-	import { getBestQualityFromFiles, displayTitle } from '$lib/types/library';
-	import { pickBestMovieFile } from '$lib/shared/best-file.js';
-	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
-	import CrewList from '$lib/components/tmdb/CrewList.svelte';
-	import WatchProviders from '$lib/components/tmdb/WatchProviders.svelte';
+	import type { LibraryMovie } from '#lib/types/library.js';
+	import type { MovieDetails, ReleaseDate } from '#lib/types/tmdb.js';
+	import { getBestQualityFromFiles, displayTitle } from '#lib/types/library.js';
+	import { pickBestMovieFile } from '#lib/shared/best-file.js';
+	import TmdbImage from '#lib/components/tmdb/TmdbImage.svelte';
+	import CrewList from '#lib/components/tmdb/CrewList.svelte';
+	import WatchProviders from '#lib/components/tmdb/WatchProviders.svelte';
 	import MonitorToggle from './MonitorToggle.svelte';
 	import StatusIndicator from './StatusIndicator.svelte';
 	import QualityBadge from './QualityBadge.svelte';
 	import ScoreBadge from './ScoreBadge.svelte';
 	import SubtitleRequirementBadge from './SubtitleRequirementBadge.svelte';
-	import type { SubtitleRequirementProgress } from '$lib/utils/subtitle-status-display.js';
-	import { getMovieAvailabilityLevel } from '$lib/utils/movieAvailability';
+	import type { SubtitleRequirementProgress } from '#lib/utils/subtitle-status-display.js';
+	import { getMovieAvailabilityLevel } from '#lib/utils/movieAvailability.js';
 	import {
 		Search,
 		Download,
@@ -28,17 +28,17 @@
 		Eye,
 		EyeOff
 	} from 'lucide-svelte';
-	import * as m from '$lib/paraglide/messages.js';
-	import { formatBytes, formatLanguage, formatDisplayDateShort } from '$lib/utils/format.js';
-	import { resolvePath } from '$lib/utils/routing.js';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { blockMedia } from '$lib/api/settings.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { formatBytes, formatLanguage, formatDisplayDateShort } from '#lib/utils/format.js';
+	import { resolvePath } from '#lib/utils/routing.js';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { blockMedia } from '#lib/api/settings.js';
 	import { SvelteMap } from 'svelte/reactivity';
-	import { TMDB } from '$lib/config/constants.js';
-	import { extractReleaseDates } from '$lib/utils/extractReleaseDates.js';
-	import { getSmartReleaseLine } from '$lib/utils/smartReleaseLine.js';
-	import { formatReleaseLine } from '$lib/utils/releaseLineText.js';
+	import { TMDB } from '#lib/config/constants.js';
+	import { extractReleaseDates } from '#lib/utils/extractReleaseDates.js';
+	import { getSmartReleaseLine } from '#lib/utils/smartReleaseLine.js';
+	import { formatReleaseLine } from '#lib/utils/releaseLineText.js';
 
 	const SOURCE_LABELS: Record<string, string> = {
 		bluray: 'Bluray',

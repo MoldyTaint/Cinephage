@@ -16,23 +16,23 @@ export type {
 	TorrentProtocolSettings,
 	UsenetProtocolSettings,
 	StreamingProtocolSettings
-} from '$lib/server/indexers/types';
+} from '#lib/server/indexers/types/index.js';
 
 // Definition types
 export type {
 	SettingField,
 	IndexerCapabilities as ServerIndexerCapabilities,
 	BaseIndexerDefinition
-} from '$lib/server/indexers/types';
+} from '#lib/server/indexers/types/index.js';
 
 // Loader types (for UI components)
-export type { UIDefinitionSetting as DefinitionSetting } from '$lib/server/indexers/loader/types';
+export type { UIDefinitionSetting as DefinitionSetting } from '#lib/server/indexers/loader/types.js';
 
 // Config types
 export type {
 	IndexerConfig,
 	IndexerStatus as ServerIndexerStatus
-} from '$lib/server/indexers/types';
+} from '#lib/server/indexers/types/index.js';
 
 // =============================================================================
 // UI-SPECIFIC TYPES
@@ -80,8 +80,8 @@ export interface IndexerUIHints {
 	isStreaming: boolean;
 }
 
-import type { IndexerAccessType, IndexerProtocol } from '$lib/server/indexers/types';
-import type { UIDefinitionSetting } from '$lib/server/indexers/loader/types';
+import type { IndexerAccessType, IndexerProtocol } from '#lib/server/indexers/types/index.js';
+import type { UIDefinitionSetting } from '#lib/server/indexers/loader/types.js';
 
 /**
  * Simplified indexer definition from /api/indexers/definitions

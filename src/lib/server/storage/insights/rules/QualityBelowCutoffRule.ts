@@ -1,5 +1,11 @@
 import { sql } from 'drizzle-orm';
-import { episodeFiles, movieFiles, movies, scoringProfiles, series } from '$lib/server/db/schema';
+import {
+	episodeFiles,
+	movieFiles,
+	movies,
+	scoringProfiles,
+	series
+} from '#lib/server/db/schema.js';
 import type { StorageInsightRule, RuleContext, InsightFinding } from '../types.js';
 
 /**

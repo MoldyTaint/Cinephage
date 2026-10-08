@@ -10,8 +10,8 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { getRequestService } from '$lib/server/requests/RequestService.js';
-import { toRequestErrorResponse, requesterFromLocals } from '$lib/server/requests/http.js';
+import { getRequestService } from '#lib/server/requests/RequestService.js';
+import { toRequestErrorResponse, requesterFromLocals } from '#lib/server/requests/http.js';
 
 export const DELETE: RequestHandler = async (event) => {
 	const requester = requesterFromLocals(event.locals);

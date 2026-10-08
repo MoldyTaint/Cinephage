@@ -4,7 +4,7 @@
  * Types for managing quality profiles
  */
 
-import type { Resolution } from '$lib/server/scoring/types';
+import type { Resolution } from '#lib/server/scoring/types.js';
 
 // =============================================================================
 // Scoring Profile Types

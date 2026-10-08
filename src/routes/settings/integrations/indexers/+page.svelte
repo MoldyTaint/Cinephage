@@ -8,21 +8,27 @@
 		IndexerFilters as IIndexerFilters,
 		IndexerSort,
 		IndexerFormData
-	} from '$lib/types/indexer';
+	} from '#lib/types/indexer.js';
 
-	import IndexerTable from '$lib/components/indexers/IndexerTable.svelte';
-	import IndexerFilters from '$lib/components/indexers/IndexerFilters.svelte';
-	import IndexerBulkActions from '$lib/components/indexers/IndexerBulkActions.svelte';
-	import IndexerModal from '$lib/components/indexers/IndexerModal.svelte';
-	import ProwlarrImportModal from '$lib/components/indexers/ProwlarrImportModal.svelte';
-	import JackettImportModal from '$lib/components/indexers/JackettImportModal.svelte';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { getResponseErrorMessage } from '$lib/utils/http';
+	import IndexerTable from '#lib/components/indexers/IndexerTable.svelte';
+	import IndexerFilters from '#lib/components/indexers/IndexerFilters.svelte';
+	import IndexerBulkActions from '#lib/components/indexers/IndexerBulkActions.svelte';
+	import IndexerModal from '#lib/components/indexers/IndexerModal.svelte';
+	import ProwlarrImportModal from '#lib/components/indexers/ProwlarrImportModal.svelte';
+	import JackettImportModal from '#lib/components/indexers/JackettImportModal.svelte';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { getResponseErrorMessage } from '#lib/utils/http.js';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
-	import { SettingsPage } from '$lib/components/ui/settings';
-	import * as m from '$lib/paraglide/messages.js';
-	import { createIndexer, updateIndexer, deleteIndexer, testIndexer, ApiError } from '$lib/api';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
+	import { SettingsPage } from '#lib/components/ui/settings/index.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import {
+		createIndexer,
+		updateIndexer,
+		deleteIndexer,
+		testIndexer,
+		ApiError
+	} from '#lib/api/index.js';
 
 	let { data }: { data: PageData } = $props();
 

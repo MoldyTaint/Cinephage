@@ -1,14 +1,14 @@
-import { tmdb } from '$lib/server/tmdb';
+import { tmdb } from '#lib/server/tmdb.js';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { createChildLogger } from '$lib/logging';
-import { isAppError, getErrorMessage } from '$lib/errors';
+import { createChildLogger } from '#lib/logging/index.js';
+import { isAppError, getErrorMessage } from '#lib/errors/index.js';
 import {
 	enrichWithLibraryStatus,
 	filterBlockedMedia,
 	annotateRequestState
-} from '$lib/server/library/status';
-import { enrichWithReleaseDates } from '$lib/server/release-enrichment.js';
+} from '#lib/server/library/status.js';
+import { enrichWithReleaseDates } from '#lib/server/release-enrichment.js';
 
 /**
  * Determine media type from TMDB endpoint path for library status enrichment

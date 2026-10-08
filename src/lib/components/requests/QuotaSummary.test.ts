@@ -2,7 +2,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/svelte';
 import QuotaSummary from './QuotaSummary.svelte';
-import type { QuotaStatus } from '$lib/api/requests.js';
+import type { QuotaStatus } from '#lib/api/requests.js';
 
 function quota(overrides: Partial<QuotaStatus> = {}): QuotaStatus {
 	return { days: null, limit: null, used: 0, remaining: null, restricted: false, ...overrides };

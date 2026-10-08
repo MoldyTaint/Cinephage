@@ -2,21 +2,21 @@
 	import { invalidateAll } from '$app/navigation';
 	import { Plus, Search } from 'lucide-svelte';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { getResponseErrorMessage } from '$lib/utils/http';
+	import { getResponseErrorMessage } from '#lib/utils/http.js';
 	import type { PageData } from './$types';
-	import type { SubtitleProviderConfig } from '$lib/server/subtitles/types';
-	import type { ProviderDefinition } from '$lib/server/subtitles/providers/interfaces';
+	import type { SubtitleProviderConfig } from '#lib/server/subtitles/types.js';
+	import type { ProviderDefinition } from '#lib/server/subtitles/providers/interfaces.js';
 
 	import {
 		SubtitleProviderTable,
 		SubtitleProviderModal,
 		SubtitleProviderBulkActions
-	} from '$lib/components/subtitleProviders';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
-	import { SettingsPage } from '$lib/components/ui/settings';
-	import * as m from '$lib/paraglide/messages.js';
-	import { isBlankOrRedacted } from '$lib/shared/sensitiveSettings';
+	} from '#lib/components/subtitleProviders/index.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
+	import { SettingsPage } from '#lib/components/ui/settings/index.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { isBlankOrRedacted } from '#lib/shared/sensitiveSettings.js';
 	import {
 		createSubtitleProvider,
 		updateSubtitleProvider,
@@ -24,8 +24,8 @@
 		testSubtitleProvider,
 		reorderSubtitleProviders,
 		ApiError
-	} from '$lib/api';
-	import type { SubtitleProviderImplementation } from '$lib/validation/schemas.js';
+	} from '#lib/api/index.js';
+	import type { SubtitleProviderImplementation } from '#lib/validation/schemas.js';
 
 	interface SubtitleProviderFormData {
 		name: string;

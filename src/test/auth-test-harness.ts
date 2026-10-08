@@ -13,7 +13,7 @@ import type { RequestEvent } from '@sveltejs/kit';
  * schema latch order, single-admin database hooks) so the auth layer can be
  * refactored safely.
  *
- * Must be created before any static import touches `$lib/server/**`: the auth
+ * Must be created before any static import touches `#lib/server/**`: the auth
  * module opens its database connection at import time, so the temp DATA_DIR
  * env vars have to be in place first. Call `createAuthTestHarness()` from a
  * top-level `await` in the test file, after its `vi.mock` calls.
@@ -100,9 +100,9 @@ export async function createAuthTestHarness(options: {
 	// Import order mirrors production boot: auth.js creates the Better Auth
 	// tables before betterAuth() is constructed, then schema-sync adds the
 	// application tables (settings, userApiKeySecrets, ...).
-	const { auth } = await import('$lib/server/auth/auth.js');
-	const dbModule = await import('$lib/server/db/index.js');
-	const { syncSchema } = await import('$lib/server/db/schema-sync.js');
+	const { auth } = await import('#lib/server/auth/auth.js');
+	const dbModule = await import('#lib/server/db/index.js');
+	const { syncSchema } = await import('#lib/server/db/schema-sync.js');
 	syncSchema(dbModule.sqlite);
 
 	let handle: AuthTestHarness['handle'] = null;

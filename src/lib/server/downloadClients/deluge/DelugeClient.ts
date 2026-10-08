@@ -5,7 +5,7 @@
  * https://deluge.readthedocs.io/en/latest/reference/webapi.html
  */
 
-import type { ConnectionTestResult } from '$lib/types/downloadClient';
+import type { ConnectionTestResult } from '#lib/types/downloadClient.js';
 import type {
 	AddDownloadOptions,
 	DownloadClientConfig,
@@ -18,7 +18,7 @@ import {
 	extractInfoHashFromMagnet,
 	parseTorrentFile
 } from '../utils/torrentParser';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'imports' as const });
 

@@ -1,7 +1,7 @@
-import * as m from '$lib/paraglide/messages.js';
-import { formatDisplayDate } from '$lib/utils/format.js';
+import * as m from '#lib/paraglide/messages.js';
+import { formatDisplayDate } from '#lib/utils/format.js';
 
-export { formatBytes } from '$lib/utils/format.js';
+export { formatBytes } from '#lib/utils/format.js';
 
 export type InsightSeverity = 'info' | 'warning' | 'critical';
 

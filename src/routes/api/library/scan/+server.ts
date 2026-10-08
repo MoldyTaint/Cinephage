@@ -1,13 +1,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
-import { libraryScanHistory, rootFolders } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { libraryScanHistory, rootFolders } from '#lib/server/db/schema.js';
 import { eq, desc } from 'drizzle-orm';
-import { libraryJobService } from '$lib/server/library/jobs/LibraryJobService.js';
-import { diskScanService } from '$lib/server/library/index.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { parseOptionalBody } from '$lib/server/api/validate.js';
-import { libraryScanSchema } from '$lib/validation/schemas';
+import { libraryJobService } from '#lib/server/library/jobs/LibraryJobService.js';
+import { diskScanService } from '#lib/server/library/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { parseOptionalBody } from '#lib/server/api/validate.js';
+import { libraryScanSchema } from '#lib/validation/schemas.js';
 
 /**
  * GET /api/library/scan

@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import type { FilterBlock } from '../schema/yamlDefinition';
 import type { TemplateEngine } from './TemplateEngine';
 import { createSafeRegex, safeMatch, safeReplace } from './safeRegex';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 import { parse as dateParse } from 'date-format-parse';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });

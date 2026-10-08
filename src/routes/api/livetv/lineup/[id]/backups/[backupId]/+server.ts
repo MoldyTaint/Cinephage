@@ -5,8 +5,8 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { channelLineupService } from '$lib/server/livetv/lineup/ChannelLineupService';
-import { createChildLogger } from '$lib/logging';
+import { channelLineupService } from '#lib/server/livetv/lineup/ChannelLineupService.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LiveTvLineupBackupById', logDomain: 'livetv' });
 

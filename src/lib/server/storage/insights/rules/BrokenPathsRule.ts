@@ -8,7 +8,7 @@ import {
 	rootFolders,
 	series,
 	storageItems
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 import type { StorageInsightRule, RuleContext, InsightFinding } from '../types.js';
 
 const YIELD_INTERVAL = 500;

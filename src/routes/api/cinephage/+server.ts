@@ -1,10 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { getCinephageSettingsService } from '$lib/server/cinephage/settings/CinephageSettingsService.js';
-import { getCinephageCore } from '$lib/server/cinephage/core/CinephageCore.js';
-import { getCinephageModuleRegistry } from '$lib/server/cinephage/registry/CinephageModuleRegistry.js';
-import { LibraryStreamingModule } from '$lib/server/cinephage/modules/library-streaming/LibraryStreamingModule.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { getCinephageSettingsService } from '#lib/server/cinephage/settings/CinephageSettingsService.js';
+import { getCinephageCore } from '#lib/server/cinephage/core/CinephageCore.js';
+import { getCinephageModuleRegistry } from '#lib/server/cinephage/registry/CinephageModuleRegistry.js';
+import { LibraryStreamingModule } from '#lib/server/cinephage/modules/library-streaming/LibraryStreamingModule.js';
 
 /**
  * Static module metadata for the UI. Mirrors the metadata declared on each

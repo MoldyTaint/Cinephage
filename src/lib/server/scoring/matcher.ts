@@ -6,8 +6,8 @@
  * optional conditions use OR logic (at least one must match).
  */
 
-import { languageMatches } from '$lib/server/languages/audio-preference';
-import { createSafeRegex } from '$lib/server/indexers/engine/safeRegex.js';
+import { languageMatches } from '#lib/server/languages/audio-preference.js';
+import { createSafeRegex } from '#lib/server/indexers/engine/safeRegex.js';
 import type {
 	CustomFormat,
 	FormatCondition,

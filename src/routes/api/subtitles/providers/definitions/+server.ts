@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getSubtitleProviderFactory } from '$lib/server/subtitles/providers/SubtitleProviderFactory';
-import { ensureProvidersRegistered } from '$lib/server/subtitles/providers/registry';
+import { getSubtitleProviderFactory } from '#lib/server/subtitles/providers/SubtitleProviderFactory.js';
+import { ensureProvidersRegistered } from '#lib/server/subtitles/providers/registry.js';
 
 /**
  * GET /api/subtitles/providers/definitions

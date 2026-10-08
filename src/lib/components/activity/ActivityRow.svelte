@@ -1,9 +1,9 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
-	import { TASK_TYPE_LABELS, type UnifiedActivity } from '$lib/types/activity';
+	import * as m from '#lib/paraglide/messages.js';
+	import { TASK_TYPE_LABELS, type UnifiedActivity } from '#lib/types/activity.js';
 	import { Clapperboard, Tv, ChevronDown, ChevronUp } from 'lucide-svelte';
-	import { getMediaLink, canLinkToMedia } from '$lib/utils/media-link.js';
-	import { formatBytes } from '$lib/utils/format.js';
+	import { getMediaLink, canLinkToMedia } from '#lib/utils/media-link.js';
+	import { formatBytes } from '#lib/utils/format.js';
 	import {
 		statusConfig,
 		getCompactProgressLabel,

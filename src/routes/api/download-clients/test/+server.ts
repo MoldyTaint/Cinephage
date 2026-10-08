@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
-import { downloadClientImplementationSchema } from '$lib/validation/schemas';
-import { toFriendlyDownloadClientError } from '$lib/downloadClients/errorMessages';
+import { getDownloadClientManager } from '#lib/server/downloadClients/DownloadClientManager.js';
+import { downloadClientImplementationSchema } from '#lib/validation/schemas.js';
+import { toFriendlyDownloadClientError } from '#lib/downloadClients/errorMessages.js';
 import { z } from 'zod';
 
 const downloadClientTestWithIdSchema = z.object({

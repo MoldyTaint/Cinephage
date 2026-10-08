@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { activityService, activityStreamEvents } from '$lib/server/activity';
-import { createChildLogger } from '$lib/logging';
-import type { ActivityFilters, ActivitySortOptions, ActivityScope } from '$lib/types/activity';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { activityService, activityStreamEvents } from '#lib/server/activity/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import type { ActivityFilters, ActivitySortOptions, ActivityScope } from '#lib/types/activity.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { z } from 'zod';
 
 const logger = createChildLogger({ module: 'ActivityApi', logDomain: 'monitoring' });

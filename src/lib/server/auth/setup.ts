@@ -1,6 +1,6 @@
 import { redirect, type RequestEvent } from '@sveltejs/kit';
 import { sql } from 'drizzle-orm';
-import { db } from '$lib/server/db/index.js';
+import { db } from '#lib/server/db/index.js';
 
 /**
  * Check if admin setup is complete.

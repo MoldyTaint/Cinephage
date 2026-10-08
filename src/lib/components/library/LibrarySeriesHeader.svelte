@@ -1,12 +1,12 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
-	import type { TVShowDetails } from '$lib/types/tmdb';
-	import { displayTitle } from '$lib/types/library';
-	import TmdbImage from '$lib/components/tmdb/TmdbImage.svelte';
+	import * as m from '#lib/paraglide/messages.js';
+	import type { TVShowDetails } from '#lib/types/tmdb.js';
+	import { displayTitle } from '#lib/types/library.js';
+	import TmdbImage from '#lib/components/tmdb/TmdbImage.svelte';
 	import SubtitleRequirementBadge from './SubtitleRequirementBadge.svelte';
-	import type { SubtitleRequirementProgress } from '$lib/utils/subtitle-status-display.js';
-	import CrewList from '$lib/components/tmdb/CrewList.svelte';
-	import WatchProviders from '$lib/components/tmdb/WatchProviders.svelte';
+	import type { SubtitleRequirementProgress } from '#lib/utils/subtitle-status-display.js';
+	import CrewList from '#lib/components/tmdb/CrewList.svelte';
+	import WatchProviders from '#lib/components/tmdb/WatchProviders.svelte';
 	import MonitorToggle from './MonitorToggle.svelte';
 	import {
 		Settings,
@@ -29,13 +29,13 @@
 		formatDisplayDateShort,
 		getStatusColor,
 		formatBytes
-	} from '$lib/utils/format.js';
-	import { formatSeriesStatus } from '$lib/utils/format-status.js';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { blockMedia } from '$lib/api/settings.js';
-	import { TMDB } from '$lib/config/constants.js';
-	import { resolvePath } from '$lib/utils/routing.js';
+	} from '#lib/utils/format.js';
+	import { formatSeriesStatus } from '#lib/utils/format-status.js';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { blockMedia } from '#lib/api/settings.js';
+	import { TMDB } from '#lib/config/constants.js';
+	import { resolvePath } from '#lib/utils/routing.js';
 
 	interface SeriesData {
 		tmdbId: number;

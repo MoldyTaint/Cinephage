@@ -1,6 +1,6 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
-	import type { MediaInfo } from '$lib/types/library';
+	import * as m from '#lib/paraglide/messages.js';
+	import type { MediaInfo } from '#lib/types/library.js';
 	import { Info, Monitor, Volume2, Captions, Clock } from 'lucide-svelte';
 
 	interface Props {

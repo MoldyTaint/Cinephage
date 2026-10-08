@@ -6,12 +6,12 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getSmartListService } from '$lib/server/smartlists/index.js';
-import { db } from '$lib/server/db/index.js';
-import { rootFolders } from '$lib/server/db/schema.js';
-import { smartListCreateSchema } from '$lib/validation/schemas.js';
+import { getSmartListService } from '#lib/server/smartlists/index.js';
+import { db } from '#lib/server/db/index.js';
+import { rootFolders } from '#lib/server/db/schema.js';
+import { smartListCreateSchema } from '#lib/validation/schemas.js';
 import { eq } from 'drizzle-orm';
-import { parseBody } from '$lib/server/api/validate.js';
+import { parseBody } from '#lib/server/api/validate.js';
 
 export const GET: RequestHandler = async () => {
 	const service = getSmartListService();

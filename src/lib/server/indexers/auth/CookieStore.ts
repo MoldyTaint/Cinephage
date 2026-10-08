@@ -8,15 +8,15 @@
  * - Database persistence across server restarts (NEW!)
  */
 
-import { createChildLogger } from '$lib/logging';
-import { db } from '$lib/server/db';
-import { indexerStatus } from '$lib/server/db/schema';
+import { createChildLogger } from '#lib/logging/index.js';
+import { db } from '#lib/server/db/index.js';
+import { indexerStatus } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import {
 	decryptCredential,
 	encryptCredential,
 	isEncryptedCredential
-} from '$lib/server/crypto/credentialsCrypto';
+} from '#lib/server/crypto/credentialsCrypto.js';
 
 /** AAD purpose for the encrypted indexer session-cookie blob. */
 const INDEXER_COOKIES_PURPOSE = 'indexer-cookies';

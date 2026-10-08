@@ -1,11 +1,11 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { tmdb } from '$lib/server/tmdb';
-import { contentFilterPipeline } from '$lib/server/filters/ContentFilterPipeline.js';
-import { enrichWithReleaseDates } from '$lib/server/release-enrichment.js';
+import { tmdb } from '#lib/server/tmdb.js';
+import { contentFilterPipeline } from '#lib/server/filters/ContentFilterPipeline.js';
+import { enrichWithReleaseDates } from '#lib/server/release-enrichment.js';
 import { z } from 'zod';
-import { createChildLogger } from '$lib/logging';
-import { extractSearchYear } from '$lib/utils/search-query.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { extractSearchYear } from '#lib/utils/search-query.js';
 
 const logger = createChildLogger({ module: 'DiscoverSearchApi', logDomain: 'system' });
 

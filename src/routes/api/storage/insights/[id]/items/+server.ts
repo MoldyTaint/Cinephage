@@ -1,10 +1,10 @@
 import { json, error } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
-import { db } from '$lib/server/db';
-import { storageInsights } from '$lib/server/db/schema';
-import { requireAuth } from '$lib/server/auth/authorization.js';
-import { getInsightItemResolver } from '$lib/server/storage/insights/items/registry.js';
-import type { InsightType } from '$lib/server/storage/insights/types.js';
+import { db } from '#lib/server/db/index.js';
+import { storageInsights } from '#lib/server/db/schema.js';
+import { requireAuth } from '#lib/server/auth/authorization.js';
+import { getInsightItemResolver } from '#lib/server/storage/insights/items/registry.js';
+import type { InsightType } from '#lib/server/storage/insights/types.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async (event) => {

@@ -1,8 +1,8 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { requireArrCompatEnabled } from '$lib/server/arr/requireArrCompatEnabled.js';
-import { getCommand } from '$lib/server/arr/command.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { requireArrCompatEnabled } from '#lib/server/arr/requireArrCompatEnabled.js';
+import { getCommand } from '#lib/server/arr/command.js';
 
 /** GET /api/sonarr/api/v3/command/{id} - a client polls this to confirm a
  * command it submitted actually ran. Returning real status (rather than a

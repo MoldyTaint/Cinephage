@@ -14,13 +14,13 @@ import {
 	clearTestDb,
 	type TestDatabase
 } from '../../../../test/db-helper';
-import { session, user } from '$lib/server/db/schema';
+import { session, user } from '#lib/server/db/schema.js';
 import { createTestSession, createTestUser } from '../../../../test/fixtures/auth.js';
 import { callHandler } from '../../../../test/api-helper';
 
 const testDb: TestDatabase = createTestDb();
 
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	}
@@ -36,7 +36,7 @@ const mockLogger = vi.hoisted(() => ({
 	trace: vi.fn()
 }));
 
-vi.mock('$lib/logging', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: mockLogger,
 	createChildLogger: vi.fn(() => mockLogger),
 	createRequestLogger: vi.fn(() => mockLogger),

@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { fade, fly } from 'svelte/transition';
 	import FilterPanel from './FilterPanel.svelte';
-	import type { WatchProvider } from '$lib/types/tmdb';
-	import * as m from '$lib/paraglide/messages.js';
+	import type { WatchProvider } from '#lib/types/tmdb.js';
+	import * as m from '#lib/paraglide/messages.js';
 
 	let {
 		isOpen = $bindable(false),

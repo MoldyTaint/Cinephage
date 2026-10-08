@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { Activity, AlertTriangle, Download, Pause, Upload } from 'lucide-svelte';
 	import type {
 		QueueCardStats,

@@ -1,31 +1,10 @@
 {
-	"extends": "./.svelte-kit/tsconfig.json",
+	"extends": "$app/tsconfig",
 	"compilerOptions": {
-		"allowImportingTsExtensions": true,
-		"allowJs": true,
-		"checkJs": true,
-		"esModuleInterop": true,
-		"forceConsistentCasingInFileNames": true,
-		"resolveJsonModule": true,
-		"skipLibCheck": true,
 		"sourceMap": true,
 		"strict": true,
-		"moduleResolution": "bundler",
-		// The generated paraglide tree (~24MB of non-TS files under src/) trips
-		// svelte-check's 20MB non-TS program budget, which silently disables the
-		// language service and makes the whole check vacuous (0 errors, always).
 		"disableSizeLimit": true
 	},
-	// Path aliases are handled by https://svelte.dev/docs/kit/configuration#alias
-	// except $lib which is handled by https://svelte.dev/docs/kit/configuration#files
-	//
-	// To make changes to top-level options such as include and exclude, we recommend extending
-	// the generated config; see https://svelte.dev/docs/kit/configuration#typescript
-	//
-	// include/exclude are declared here (not left to the generated config) because
-	// svelte-check's overlay rebasing assumes specs are relative to this file's
-	// directory; specs inherited from .svelte-kit/tsconfig.json resolve one level
-	// too high and the typecheck silently matches nothing.
 	"include": [
 		".svelte-kit/ambient.d.ts",
 		".svelte-kit/env.d.ts",
@@ -37,9 +16,5 @@
 		"./src/**/*.ts",
 		"./src/**/*.svelte"
 	],
-	// svelte-check walks the whole workspace regardless of include; Inspiration/
-	// holds vendored third-party reference projects whose vite configs fail to
-	// load (ERR_MODULE_NOT_FOUND noise that can mask real output). Declaring
-	// exclude here replaces the generated list, so node_modules is restated.
 	"exclude": ["node_modules/**", "Inspiration/**"]
 }

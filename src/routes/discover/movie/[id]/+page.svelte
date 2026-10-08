@@ -1,9 +1,9 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import type { PageData } from './$types';
-	import MediaHero from '$lib/components/tmdb/MediaHero.svelte';
-	import PersonCard from '$lib/components/tmdb/PersonCard.svelte';
-	import SectionRow from '$lib/components/discover/SectionRow.svelte';
+	import MediaHero from '#lib/components/tmdb/MediaHero.svelte';
+	import PersonCard from '#lib/components/tmdb/PersonCard.svelte';
+	import SectionRow from '#lib/components/discover/SectionRow.svelte';
 	import { ArrowLeft } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();

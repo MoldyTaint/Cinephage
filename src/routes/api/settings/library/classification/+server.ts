@@ -1,12 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin, requireAuth } from '$lib/server/auth/authorization.js';
-import { getRootFolderService } from '$lib/server/downloadClients/RootFolderService.js';
+import { requireAdmin, requireAuth } from '#lib/server/auth/authorization.js';
+import { getRootFolderService } from '#lib/server/downloadClients/RootFolderService.js';
 import {
 	getEffectiveAnimeRootFolderEnforcement,
 	setAnimeRootFolderEnforcement
-} from '$lib/server/library/anime-root-enforcement-settings.js';
-import { libraryClassificationUpdateSchema } from '$lib/validation/schemas.js';
+} from '#lib/server/library/anime-root-enforcement-settings.js';
+import { libraryClassificationUpdateSchema } from '#lib/validation/schemas.js';
 
 export const GET: RequestHandler = async (event) => {
 	const authError = requireAuth(event);

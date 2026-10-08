@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 
-import { logger } from '$lib/logging';
+import { logger } from '#lib/logging/index.js';
 
 const clientErrorReportSchema = z.object({
 	supportId: z.string().min(1).max(100),

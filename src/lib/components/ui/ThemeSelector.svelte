@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
-	import { theme } from '$lib/theme.svelte';
-	import { themes } from '$lib/themes';
+	import { browser } from '$app/env';
+	import { theme } from '#lib/theme.svelte.js';
+	import { themes } from '#lib/themes.js';
 	import { Palette, Check } from 'lucide-svelte';
-	import * as m from '$lib/paraglide/messages.js';
-	import { apiPut } from '$lib/api/client.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { apiPut } from '#lib/api/client.js';
 
 	let { class: className = 'dropdown-end', showLabel = true, triggerId = '' } = $props();
 	let isOpen = $state(false);

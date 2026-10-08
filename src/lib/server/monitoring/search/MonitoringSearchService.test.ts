@@ -54,7 +54,7 @@ const {
 });
 
 // Mock the database
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	db: {
 		query: {
 			episodes: { findMany: findManyEpisodesMock },
@@ -73,7 +73,7 @@ vi.mock('$lib/server/db/index.js', () => ({
 }));
 
 // Mock logger
-vi.mock('$lib/logging/index.js', () => ({
+vi.mock('#lib/logging/index.js', () => ({
 	logger: {
 		info: vi.fn(),
 		warn: vi.fn(),
@@ -114,14 +114,14 @@ vi.mock('../specifications/index.js', () => ({
 }));
 
 // Mock IndexerManager — return no search results to keep things simple
-vi.mock('$lib/server/indexers/IndexerManager.js', () => ({
+vi.mock('#lib/server/indexers/IndexerManager.js', () => ({
 	getIndexerManager: vi.fn(async () => ({
 		searchAll: searchAllMock,
 		searchEnhanced: searchEnhancedMock
 	}))
 }));
 
-vi.mock('$lib/server/downloads/episode-pointer.js', () => ({
+vi.mock('#lib/server/downloads/episode-pointer.js', () => ({
 	parseEpisodePointerFromGuid: vi.fn(),
 	parseEpisodePointerFromTitle: vi.fn((title: string | undefined) => {
 		if (typeof title !== 'string') return null;
@@ -136,7 +136,7 @@ vi.mock('$lib/server/downloads/episode-pointer.js', () => ({
 }));
 
 // Mock GrabService
-vi.mock('$lib/server/downloads/GrabService.js', () => ({
+vi.mock('#lib/server/downloads/GrabService.js', () => ({
 	grabService: {
 		grab: vi.fn().mockResolvedValue({
 			success: true,
@@ -160,20 +160,20 @@ vi.mock('$lib/server/downloads/GrabService.js', () => ({
 }));
 
 // Mock ReleaseParser
-vi.mock('$lib/server/indexers/parser/ReleaseParser.js', () => ({
+vi.mock('#lib/server/indexers/parser/ReleaseParser.js', () => ({
 	ReleaseParser: class {
 		parse = vi.fn();
 	}
 }));
 
 // Mock scorer
-vi.mock('$lib/server/scoring/scorer.js', () => ({
+vi.mock('#lib/server/scoring/scorer.js', () => ({
 	scoreRelease: vi.fn().mockReturnValue({ totalScore: 1000, breakdown: {} }),
 	isUpgrade: vi.fn().mockReturnValue({ isUpgrade: false, reason: 'test' })
 }));
 
 // Mock quality filter
-vi.mock('$lib/server/quality', () => ({
+vi.mock('#lib/server/quality/index.js', () => ({
 	qualityFilter: {
 		getProfile: qualityGetProfileMock,
 		getDefaultScoringProfile: qualityGetDefaultScoringProfileMock
@@ -181,13 +181,13 @@ vi.mock('$lib/server/quality', () => ({
 }));
 
 // Mock AlternateTitleService
-vi.mock('$lib/server/services/AlternateTitleService.js', () => ({
+vi.mock('#lib/server/services/AlternateTitleService.js', () => ({
 	getMovieSearchTitles: vi.fn().mockResolvedValue([]),
 	getSeriesSearchTitles: vi.fn().mockResolvedValue([])
 }));
 
 // Mock TaskCancelledException
-vi.mock('$lib/server/tasks/TaskCancelledException.js', () => ({
+vi.mock('#lib/server/tasks/TaskCancelledException.js', () => ({
 	TaskCancelledException: class TaskCancelledException extends Error {
 		constructor(msg: string) {
 			super(msg);

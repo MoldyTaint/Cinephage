@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { GripVertical, Pencil, Trash2, Tv, Loader2, Info } from 'lucide-svelte';
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import type {
 		ChannelLineupItemWithDetails,
 		EpgProgram,
 		EpgProgramWithProgress
-	} from '$lib/types/livetv';
+	} from '#lib/types/livetv.js';
 
 	interface NowNextEntry {
 		now: EpgProgramWithProgress | null;

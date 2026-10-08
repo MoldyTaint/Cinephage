@@ -1,22 +1,22 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db';
-import { downloadQueue, downloadClients } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { downloadQueue, downloadClients } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager';
-import { getImportService } from '$lib/server/downloadClients/import';
+import { getDownloadClientManager } from '#lib/server/downloadClients/DownloadClientManager.js';
+import { getImportService } from '#lib/server/downloadClients/import/index.js';
 import {
 	getContentPath,
 	buildTorrentRecoveryPath,
 	isSafeRecoveryCandidate
-} from '$lib/server/downloadClients/monitoring';
-import type { DownloadInfo } from '$lib/server/downloadClients/core/interfaces';
-import { createChildLogger } from '$lib/logging';
-import { redactUrl } from '$lib/server/utils/urlSecurity';
-import { matchesImportError } from '$lib/types/activity.js';
-import { DebridHandler } from '$lib/server/downloads/handlers/DebridHandler.js';
-import { acquisitionService } from '$lib/server/acquisition/AcquisitionService.js';
-import { requireAdminLocals } from '$lib/server/auth/authorization.js';
+} from '#lib/server/downloadClients/monitoring/index.js';
+import type { DownloadInfo } from '#lib/server/downloadClients/core/interfaces.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { redactUrl } from '#lib/server/utils/urlSecurity.js';
+import { matchesImportError } from '#lib/types/activity.js';
+import { DebridHandler } from '#lib/server/downloads/handlers/DebridHandler.js';
+import { acquisitionService } from '#lib/server/acquisition/AcquisitionService.js';
+import { requireAdminLocals } from '#lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'QueueRetryApi', logDomain: 'downloads' });
 

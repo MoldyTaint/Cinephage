@@ -27,7 +27,7 @@ import {
 	scoringProfiles,
 	seasons,
 	series
-} from '$lib/server/db/schema';
+} from '#lib/server/db/schema.js';
 
 const testDb: TestDatabase = createTestDb();
 const SOURCE_AUTH_SECRET = 'acceptance-source-auth-secret-with-at-least-32-characters';
@@ -35,7 +35,7 @@ const BACKUP_PASSPHRASE = 'acceptance-portable-backup-passphrase';
 const FILE_BYTES = 'hello world';
 const FILE_SIZE = FILE_BYTES.length;
 
-vi.mock('$lib/server/db', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	},
@@ -45,7 +45,7 @@ vi.mock('$lib/server/db', () => ({
 	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
 
-vi.mock('$lib/server/db/index.js', () => ({
+vi.mock('#lib/server/db/index.js', () => ({
 	get db() {
 		return testDb.db;
 	},
@@ -55,8 +55,8 @@ vi.mock('$lib/server/db/index.js', () => ({
 	initializeDatabase: vi.fn().mockResolvedValue(undefined)
 }));
 
-vi.mock('$lib/config/constants', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('$lib/config/constants')>();
+vi.mock('#lib/config/constants.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/config/constants.js')>();
 	return {
 		...actual,
 		DOWNLOAD: { ...actual.DOWNLOAD, MIN_IMPORT_SIZE_BYTES: 1 }
@@ -70,12 +70,12 @@ const grabRoute = await import('./download/grab/+server');
 const activityRoute = await import('./activity/+server');
 const backupRoute = await import('./settings/system/backup/+server');
 const { resetDownloadClientManager } =
-	await import('$lib/server/downloadClients/DownloadClientManager');
+	await import('#lib/server/downloadClients/DownloadClientManager.js');
 const { getDebridPollService, resetDebridPollService } =
-	await import('$lib/server/downloadClients/debrid/DebridPollService');
-const { qualityFilter } = await import('$lib/server/quality/QualityFilter');
-const { decryptBackupPayload } = await import('$lib/server/crypto/backupCrypto');
-const { decryptCredential } = await import('$lib/server/crypto/credentialsCrypto');
+	await import('#lib/server/downloadClients/debrid/DebridPollService.js');
+const { qualityFilter } = await import('#lib/server/quality/QualityFilter.js');
+const { decryptBackupPayload } = await import('#lib/server/crypto/backupCrypto.js');
+const { decryptCredential } = await import('#lib/server/crypto/credentialsCrypto.js');
 
 type Provider = 'realdebrid' | 'torbox';
 

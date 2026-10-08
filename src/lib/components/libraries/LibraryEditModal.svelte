@@ -1,14 +1,14 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { AlertCircle } from 'lucide-svelte';
 	import { onMount } from 'svelte';
-	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
-	import { toasts } from '$lib/stores/toast.svelte';
+	import { ModalWrapper, ModalHeader, ModalFooter } from '#lib/components/ui/modal/index.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { invalidateAll } from '$app/navigation';
-	import { createLibrary, updateLibrary, getScoringProfiles } from '$lib/api/settings.js';
-	import { getLanguageProfiles } from '$lib/api/subtitles.js';
-	import type { LibraryCreate, LibraryUpdate } from '$lib/validation/schemas.js';
-	import type { RootFolderMediaType, RootFolderMediaSubType } from '$lib/types/downloadClient';
+	import { createLibrary, updateLibrary, getScoringProfiles } from '#lib/api/settings.js';
+	import { getLanguageProfiles } from '#lib/api/subtitles.js';
+	import type { LibraryCreate, LibraryUpdate } from '#lib/validation/schemas.js';
+	import type { RootFolderMediaType, RootFolderMediaSubType } from '#lib/types/downloadClient.js';
 
 	type LibraryRootFolderRef = {
 		id: string;

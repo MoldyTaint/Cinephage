@@ -58,25 +58,25 @@ import { extractLanguages } from '../parser/patterns/language';
 import {
 	rankLanguageEvidenceSet,
 	type EffectiveAudioPreference
-} from '$lib/server/languages/audio-preference';
-import { resolveAudioPreferenceForItem } from '$lib/server/languages/audio-preference-resolver';
-import { normalizeLanguageCode } from '$lib/shared/languages';
+} from '#lib/server/languages/audio-preference.js';
+import { resolveAudioPreferenceForItem } from '#lib/server/languages/audio-preference-resolver.js';
+import { normalizeLanguageCode } from '#lib/shared/languages.js';
 import { CloudflareProtectedError } from '../http/CloudflareDetection';
 import {
 	releaseEnricher,
 	type EnrichmentOptions,
 	type IndexerConfigForEnrichment
 } from '../../quality';
-import { createChildLogger } from '$lib/logging';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
-import { tmdb } from '$lib/server/tmdb';
-import { db } from '$lib/server/db/index.js';
-import { movies, series } from '$lib/server/db/schema.js';
+import { tmdb } from '#lib/server/tmdb.js';
+import { db } from '#lib/server/db/index.js';
+import { movies, series } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { blocklistService } from '$lib/server/blocklist/BlocklistService.js';
-import { DANGEROUS_EXTENSIONS, EXECUTABLE_EXTENSIONS } from '$lib/config/constants.js';
-import { matchTitleContainment } from '$lib/server/releases/release-identity.js';
+import { blocklistService } from '#lib/server/blocklist/BlocklistService.js';
+import { DANGEROUS_EXTENSIONS, EXECUTABLE_EXTENSIONS } from '#lib/config/constants.js';
+import { matchTitleContainment } from '#lib/server/releases/release-identity.js';
 
 /** Options for search orchestration */
 export interface SearchOrchestratorOptions {

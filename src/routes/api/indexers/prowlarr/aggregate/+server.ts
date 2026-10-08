@@ -1,12 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import {
 	getProwlarrConnection,
 	saveProwlarrConnection,
 	enableAggregateMode,
 	disableAggregateMode
-} from '$lib/server/indexers/prowlarr/ProwlarrConnectionService.js';
+} from '#lib/server/indexers/prowlarr/ProwlarrConnectionService.js';
 import { z } from 'zod';
 
 const schema = z.object({ enable: z.boolean() });

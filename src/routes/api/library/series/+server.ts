@@ -1,13 +1,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { db } from '$lib/server/db/index.js';
-import { series, rootFolders } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { series, rootFolders } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { addSeriesSchema } from '$lib/validation/schemas.js';
-import { addSeriesToLibrary } from '$lib/server/library/add/add-series.js';
-import { ValidationError, isAppError } from '$lib/errors';
-import { requireAuth } from '$lib/server/auth/authorization.js';
-import { createChildLogger } from '$lib/logging';
+import { addSeriesSchema } from '#lib/validation/schemas.js';
+import { addSeriesToLibrary } from '#lib/server/library/add/add-series.js';
+import { ValidationError, isAppError } from '#lib/errors/index.js';
+import { requireAuth } from '#lib/server/auth/authorization.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'LibrarySeriesApi', logDomain: 'scans' });
 

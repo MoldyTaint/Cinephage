@@ -5,7 +5,7 @@
  * https://aria2.github.io/manual/en/html/aria2c.html#rpc-interface
  */
 
-import type { ConnectionTestResult } from '$lib/types/downloadClient';
+import type { ConnectionTestResult } from '#lib/types/downloadClient.js';
 import type {
 	AddDownloadOptions,
 	DownloadClientConfig,

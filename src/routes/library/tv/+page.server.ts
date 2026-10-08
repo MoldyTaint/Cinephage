@@ -1,4 +1,4 @@
-import { db } from '$lib/server/db/index.js';
+import { db } from '#lib/server/db/index.js';
 import {
 	series,
 	seasons,
@@ -8,18 +8,18 @@ import {
 	scoringProfiles,
 	episodeFiles,
 	downloadQueue
-} from '$lib/server/db/schema.js';
+} from '#lib/server/db/schema.js';
 import { eq, and, inArray, ne, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
-import type { LibrarySeries, EpisodeFile, QualityProfileSummary } from '$lib/types/library';
-import { todayDateString } from '$lib/utils/format.js';
-import { matchesSeriesStatusFilter } from '$lib/utils/format-status.js';
-import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-import { ACTIVE_DOWNLOAD_STATUSES } from '$lib/types/queue';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
-import { createChildLogger } from '$lib/logging';
-import { getLanguageSettingsService } from '$lib/server/subtitles/services/LanguageSettingsService.js';
-import { requireAdminPage } from '$lib/server/auth/authorization.js';
+import type { LibrarySeries, EpisodeFile, QualityProfileSummary } from '#lib/types/library.js';
+import { todayDateString } from '#lib/utils/format.js';
+import { matchesSeriesStatusFilter } from '#lib/utils/format-status.js';
+import { getLibraryEntityService } from '#lib/server/library/LibraryEntityService.js';
+import { ACTIVE_DOWNLOAD_STATUSES } from '#lib/types/queue.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { getLanguageSettingsService } from '#lib/server/subtitles/services/LanguageSettingsService.js';
+import { requireAdminPage } from '#lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'LibraryTvListPage', logDomain: 'scans' });
 

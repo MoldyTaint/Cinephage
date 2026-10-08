@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { UnifiedActivity } from '$lib/types/activity';
+import type { UnifiedActivity } from '#lib/types/activity.js';
 import { ActivityService } from './ActivityService';
 import type { DownloadHistoryRecord, DownloadQueueRecord } from './types';
 import { applyFilters, sortActivities, buildActivitySummary } from './activity-filters.js';

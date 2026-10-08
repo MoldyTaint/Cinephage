@@ -28,15 +28,15 @@ import { z } from 'zod';
 import {
 	RenamePreviewService,
 	type RenameStreamEvent
-} from '$lib/server/library/naming/RenamePreviewService';
-import type { RenamePreviewResult } from '$lib/library/naming/types.js';
-import { renamePreviewCache } from '$lib/server/library/naming/RenamePreviewCache.js';
-import { computeRenamePreviewFingerprint } from '$lib/server/library/naming/rename-preview-fingerprint.js';
-import { db } from '$lib/server/db';
-import { movieFiles, episodeFiles } from '$lib/server/db/schema';
+} from '#lib/server/library/naming/RenamePreviewService.js';
+import type { RenamePreviewResult } from '#lib/library/naming/types.js';
+import { renamePreviewCache } from '#lib/server/library/naming/RenamePreviewCache.js';
+import { computeRenamePreviewFingerprint } from '#lib/server/library/naming/rename-preview-fingerprint.js';
+import { db } from '#lib/server/db/index.js';
+import { movieFiles, episodeFiles } from '#lib/server/db/schema.js';
 import { count } from 'drizzle-orm';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { createChildLogger } from '$lib/logging';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'RenamePreviewApi', logDomain: 'scans' });
 

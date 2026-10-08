@@ -10,14 +10,14 @@
 
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { z } from 'zod';
 import {
 	getOrCreateGlobalPatternConfig,
 	getLibraryPatternConfig,
 	saveLibraryPatternConfig,
 	updateGlobalPatternConfig
-} from '$lib/server/library/patterns/PatternConfigService.js';
+} from '#lib/server/library/patterns/PatternConfigService.js';
 
 const updateSchema = z.object({
 	libraryId: z.string().optional(), // null/absent = global

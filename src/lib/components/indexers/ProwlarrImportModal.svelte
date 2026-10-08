@@ -14,11 +14,11 @@
 	} from 'lucide-svelte';
 	import { untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
-	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
-	import { createIndexer, ApiError } from '$lib/api';
-	import { getResponseErrorMessage } from '$lib/utils/http';
+	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
+	import { createIndexer, ApiError } from '#lib/api/index.js';
+	import { getResponseErrorMessage } from '#lib/utils/http.js';
 	import { invalidateAll } from '$app/navigation';
-	import { formatRelativeTime } from '$lib/components/activity/activity-display-utils.js';
+	import { formatRelativeTime } from '#lib/components/activity/activity-display-utils.js';
 
 	interface ProwlarrIndexer {
 		id: number;

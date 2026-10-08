@@ -1,12 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db';
-import { namingPresets } from '$lib/server/db/schema';
-import { getBuiltInPreset, type NamingPreset } from '$lib/server/library/naming/presets';
-import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService';
+import { db } from '#lib/server/db/index.js';
+import { namingPresets } from '#lib/server/db/schema.js';
+import { getBuiltInPreset, type NamingPreset } from '#lib/server/library/naming/presets.js';
+import { namingSettingsService } from '#lib/server/library/naming/NamingSettingsService.js';
 import { eq } from 'drizzle-orm';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { createChildLogger } from '$lib/logging';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'NamingPresetApplyApi', logDomain: 'scans' });
 

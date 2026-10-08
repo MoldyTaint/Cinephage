@@ -1,16 +1,16 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import type { PageData } from './$types';
-	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
-	import type { TaskHistoryEntry } from '$lib/types/task';
-	import TasksTable from '$lib/components/tasks/TasksTable.svelte';
-	import CreateTaskPlaceholder from '$lib/components/tasks/CreateTaskPlaceholder.svelte';
-	import { SettingsPage } from '$lib/components/ui/settings';
+	import type { UnifiedTask } from '#lib/server/tasks/UnifiedTaskRegistry.js';
+	import type { TaskHistoryEntry } from '#lib/types/task.js';
+	import TasksTable from '#lib/components/tasks/TasksTable.svelte';
+	import CreateTaskPlaceholder from '#lib/components/tasks/CreateTaskPlaceholder.svelte';
+	import { SettingsPage } from '#lib/components/ui/settings/index.js';
 	import { Plus, XCircle, CheckCircle2 } from 'lucide-svelte';
-	import { createSSE } from '$lib/sse';
-	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
-	import { cancelTask, setTaskEnabled, runTask } from '$lib/api/tasks.js';
-	import { apiPost, type ApiResponse } from '$lib/api/client.js';
+	import { createSSE } from '#lib/sse/index.js';
+	import { layoutState, deriveMobileSseStatus } from '#lib/layout.svelte.js';
+	import { cancelTask, setTaskEnabled, runTask } from '#lib/api/tasks.js';
+	import { apiPost, type ApiResponse } from '#lib/api/client.js';
 
 	let { data }: { data: PageData } = $props();
 

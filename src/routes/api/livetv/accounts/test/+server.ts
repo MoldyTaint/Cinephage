@@ -6,17 +6,17 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getProvider } from '$lib/server/livetv/providers';
-import { createChildLogger } from '$lib/logging';
-import { toFriendlyLiveTvTestError } from '$lib/livetv/errorMessages';
-import { probeStalkerEndpoint } from '$lib/server/livetv/stalker/StalkerPortalClient';
-import { getLiveTvAccountManager } from '$lib/server/livetv/LiveTvAccountManager';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { REDACTED_VALUE } from '$lib/shared/sensitiveSettings';
-import { stalkerLanguageSchema } from '$lib/server/validation/schemas.js';
+import { getProvider } from '#lib/server/livetv/providers/index.js';
+import { createChildLogger } from '#lib/logging/index.js';
+import { toFriendlyLiveTvTestError } from '#lib/livetv/errorMessages.js';
+import { probeStalkerEndpoint } from '#lib/server/livetv/stalker/StalkerPortalClient.js';
+import { getLiveTvAccountManager } from '#lib/server/livetv/LiveTvAccountManager.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { REDACTED_VALUE } from '#lib/shared/sensitiveSettings.js';
+import { stalkerLanguageSchema } from '#lib/server/validation/schemas.js';
 import { z } from 'zod';
-import { ValidationError } from '$lib/errors';
-import type { LiveTvAccount } from '$lib/types/livetv';
+import { ValidationError } from '#lib/errors/index.js';
+import type { LiveTvAccount } from '#lib/types/livetv.js';
 
 const logger = createChildLogger({ module: 'LiveTvAccountsTest', logDomain: 'livetv' });
 

@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { blockedMediaService } from '$lib/server/blocked-media/index.js';
-import { requireAdmin } from '$lib/server/auth/authorization.js';
-import { blockMediaSchema, unblockMediaSchema } from '$lib/validation/schemas.js';
+import { blockedMediaService } from '#lib/server/blocked-media/index.js';
+import { requireAdmin } from '#lib/server/auth/authorization.js';
+import { blockMediaSchema, unblockMediaSchema } from '#lib/validation/schemas.js';
 
 export const GET: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);

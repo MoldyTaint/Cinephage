@@ -5,7 +5,7 @@
  * and validates/sanitizes playlist content.
  */
 
-import { logger } from '$lib/logging';
+import { logger } from '#lib/logging/index.js';
 
 const streamLog = { logDomain: 'streams' as const };
 

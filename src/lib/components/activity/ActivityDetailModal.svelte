@@ -1,15 +1,15 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import {
 		isImportFailedActivity,
 		TASK_TYPE_LABELS,
 		type UnifiedActivity
-	} from '$lib/types/activity';
-	import { formatBytes } from '$lib/utils/format';
+	} from '#lib/types/activity.js';
+	import { formatBytes } from '#lib/utils/format.js';
 	import { X, Clapperboard, Tv, Pause, Play, RotateCcw, Trash2, Info, Folder } from 'lucide-svelte';
-	import { toasts } from '$lib/stores/toast.svelte';
-	import { createFocusTrap, lockBodyScroll } from '$lib/utils/focus';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { toasts } from '#lib/stores/toast.svelte.js';
+	import { createFocusTrap, lockBodyScroll } from '#lib/utils/focus.js';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
 	import {
 		statusConfig,
 		getStatusLabel,

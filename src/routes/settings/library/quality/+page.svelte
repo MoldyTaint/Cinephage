@@ -1,30 +1,30 @@
 <script lang="ts">
-	import * as m from '$lib/paraglide/messages.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import type { PageData } from './$types';
-	import type { ScoringProfile, ScoringProfileFormData } from '$lib/types/profile';
-	import type { UICustomFormat } from '$lib/types/format';
-	import type { CustomFormatFormData } from '$lib/components/formats';
-	import { ProfileList, ProfileModal } from '$lib/components/profiles';
-	import { FormatList, CustomFormatModal } from '$lib/components/formats';
-	import { ConfirmationModal } from '$lib/components/ui/modal';
-	import { SettingsPage } from '$lib/components/ui/settings';
-	import { toasts } from '$lib/stores/toast.svelte';
+	import type { ScoringProfile, ScoringProfileFormData } from '#lib/types/profile.js';
+	import type { UICustomFormat } from '#lib/types/format.js';
+	import type { CustomFormatFormData } from '#lib/components/formats/index.js';
+	import { ProfileList, ProfileModal } from '#lib/components/profiles/index.js';
+	import { FormatList, CustomFormatModal } from '#lib/components/formats/index.js';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
+	import { SettingsPage } from '#lib/components/ui/settings/index.js';
+	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { Sliders, Layers, Clock } from 'lucide-svelte';
-	import { DelayProfileList } from '$lib/components/delayProfiles';
+	import { DelayProfileList } from '#lib/components/delayProfiles/index.js';
 	import {
 		createScoringProfile,
 		updateScoringProfile,
 		deleteScoringProfile
-	} from '$lib/api/settings.js';
-	import { createCustomFormat, updateCustomFormat, deleteCustomFormat } from '$lib/api/indexers.js';
+	} from '#lib/api/settings.js';
+	import { createCustomFormat, updateCustomFormat, deleteCustomFormat } from '#lib/api/indexers.js';
 	import type {
 		ScoringProfileCreate,
 		ScoringProfileUpdate,
 		CustomFormatCreate,
 		CustomFormatUpdateBody
-	} from '$lib/validation/schemas.js';
+	} from '#lib/validation/schemas.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -32,9 +32,9 @@
 	const activeTab = $derived(page.url.searchParams.get('tab') || 'profiles');
 
 	function setTab(tab: string) {
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
 		url.searchParams.set('tab', tab);
-		goto(url.toString(), { replaceState: true });
+		goto(url.toString(), { replace: true });
 	}
 
 	// ===================
@@ -248,7 +248,7 @@
 	// Delay Profiles State
 	// ===================
 	// DelayProfileList is now a self-contained component at
-	// $lib/components/delayProfiles. All dp* state, functions, modal, and
+	// #lib/components/delayProfiles. All dp* state, functions, modal, and
 	// delete confirmation live there. This page just renders it.
 </script>
 

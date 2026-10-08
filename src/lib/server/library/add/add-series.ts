@@ -1,8 +1,8 @@
-import { db } from '$lib/server/db/index.js';
-import { series, seasons, episodes } from '$lib/server/db/schema.js';
+import { db } from '#lib/server/db/index.js';
+import { series, seasons, episodes } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { tmdb } from '$lib/server/tmdb.js';
-import { getLanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
+import { tmdb } from '#lib/server/tmdb.js';
+import { getLanguageProfileService } from '#lib/server/subtitles/services/LanguageProfileService.js';
 import {
 	fetchSeriesDetails,
 	fetchSeriesExternalIds,
@@ -10,21 +10,21 @@ import {
 	getAnimeSubtypeEnforcement,
 	getEffectiveScoringProfileId,
 	triggerSeriesSearch
-} from '$lib/server/library/LibraryAddService.js';
-import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
-import { fetchAndStoreSeriesAlternateTitles } from '$lib/server/services/AlternateTitleService.js';
+} from '#lib/server/library/LibraryAddService.js';
+import { isLikelyAnimeMedia } from '#lib/shared/anime-classification.js';
+import { fetchAndStoreSeriesAlternateTitles } from '#lib/server/services/AlternateTitleService.js';
 import {
 	getEffectiveEpisodeGroup,
 	buildSeasonsAndEpisodesFromGroup
-} from '$lib/server/metadata/EpisodeGroupService.js';
-import { ValidationError } from '$lib/errors';
-import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
-import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
-import { resolveLocalizedTitlesForFormats } from '$lib/server/library/naming/localization.js';
-import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents.js';
-import type { AddSeriesRequest } from '$lib/validation/schemas.js';
-import { createChildLogger } from '$lib/logging';
+} from '#lib/server/metadata/EpisodeGroupService.js';
+import { ValidationError } from '#lib/errors/index.js';
+import { NamingService, type MediaNamingInfo } from '#lib/server/library/naming/NamingService.js';
+import { namingSettingsService } from '#lib/server/library/naming/NamingSettingsService.js';
+import { resolveLocalizedTitlesForFormats } from '#lib/server/library/naming/localization.js';
+import { getLibraryEntityService } from '#lib/server/library/LibraryEntityService.js';
+import { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
+import type { AddSeriesRequest } from '#lib/validation/schemas.js';
+import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ module: 'SeriesAdd', logDomain: 'scans' });
 

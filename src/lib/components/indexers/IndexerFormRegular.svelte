@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { ChevronDown, Lock, Unlock, Globe, Shield } from 'lucide-svelte';
-	import type { IndexerDefinition } from '$lib/types/indexer';
-	import * as m from '$lib/paraglide/messages.js';
+	import type { IndexerDefinition } from '#lib/types/indexer.js';
+	import * as m from '#lib/paraglide/messages.js';
 	import IndexerSettingsFields from './IndexerSettingsFields.svelte';
-	import { SectionHeader, ToggleSetting } from '$lib/components/ui/modal';
-	import { isSensitiveDefinitionSetting } from '$lib/shared/sensitiveSettings';
+	import { SectionHeader, ToggleSetting } from '#lib/components/ui/modal/index.js';
+	import { isSensitiveDefinitionSetting } from '#lib/shared/sensitiveSettings.js';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
 	interface Props {

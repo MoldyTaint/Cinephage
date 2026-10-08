@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db';
-import { subtitleHistory } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.js';
+import { subtitleHistory } from '#lib/server/db/schema.js';
 import { eq, desc, and, gte, lte } from 'drizzle-orm';
 
 /**
