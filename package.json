@@ -72,7 +72,6 @@
 		"vitest": "^5.0.3"
 	},
 	"overrides": {
-		"cookie": "^0.7.0",
 		"devalue": "^5.7.1",
 		"postcss": "^8.5.25",
 		"undici": "^8.0.0",
