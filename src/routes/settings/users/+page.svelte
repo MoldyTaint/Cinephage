@@ -2,13 +2,14 @@
 	import * as m from '$lib/paraglide/messages.js';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { resolvePath } from '$lib/utils/routing';
-	import { ShieldCheck, User, UserPlus, ChevronRight } from 'lucide-svelte';
+	import { ShieldCheck, User, UserPlus, Users, ChevronRight } from 'lucide-svelte';
 	import { authClient } from '$lib/auth/client.js';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { formatDisplayDate } from '$lib/utils/format.js';
 	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
 	import { UserAvatar } from '$lib/components/ui';
 	import { ModalWrapper, ModalHeader, ModalFooter } from '$lib/components/ui/modal';
+	import { MediaServerUserImportModal } from '$lib/components/users';
 	import {
 		isHardReservedUsername,
 		USERNAME_MAX_LENGTH,
@@ -26,6 +27,7 @@
 	// Create user modal
 	// =====================
 	let createOpen = $state(false);
+	let importOpen = $state(false);
 	let creatingUser = $state(false);
 	let newUsername = $state('');
 	let newEmail = $state('');
@@ -113,6 +115,10 @@
 <SettingsPage title={m.nav_users()} subtitle={m.users_subtitle()}>
 	<SettingsSection title={m.users_accountsTitle()} description={m.users_accountsDescription()}>
 		{#snippet actions()}
+			<button class="btn gap-1.5 btn-ghost btn-sm" onclick={() => (importOpen = true)}>
+				<Users class="h-4 w-4" />
+				{m.users_importButton()}
+			</button>
 			<button class="btn gap-1.5 btn-primary btn-sm" onclick={() => (createOpen = true)}>
 				<UserPlus class="h-4 w-4" />
 				{m.users_createButton()}
@@ -290,3 +296,6 @@
 		saveLabel={m.users_createConfirm()}
 	/>
 </ModalWrapper>
+
+<!-- Import users from a media server -->
+<MediaServerUserImportModal open={importOpen} onClose={() => (importOpen = false)} />

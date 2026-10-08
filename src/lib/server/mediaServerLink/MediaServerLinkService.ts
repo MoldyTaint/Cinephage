@@ -29,6 +29,17 @@ const REQUEST_TIMEOUT_MS = 10_000;
 /** Device identity for pairing calls; distinct from the notifier's device. */
 const LINK_DEVICE = 'cinephage-link';
 
+/**
+ * Server types whose user directory can be enumerated (and linked against).
+ * Jellyfin today; Emby shares the /Users response shape and joins this set
+ * once its linking support lands, Plex needs its own roster adapter.
+ */
+const SERVER_TYPES_WITH_USER_DIRECTORY: ReadonlySet<string> = new Set(['jellyfin']);
+
+export function serverTypeSupportsUserDirectory(serverType: string): boolean {
+	return SERVER_TYPES_WITH_USER_DIRECTORY.has(serverType);
+}
+
 export type LinkRecord = {
 	serverId: string;
 	serverName: string;
@@ -48,6 +59,7 @@ export type ServerUserOption = {
 	id: string;
 	name: string;
 	isAdministrator: boolean;
+	isDisabled: boolean;
 };
 
 export type PairingInitiateResult =
@@ -100,6 +112,15 @@ class MediaServerLinkService {
 	private async getJellyfinServer(serverId: string): Promise<MediaBrowserServerRecord | null> {
 		const server = await getMediaBrowserManager().getServerRecord(serverId);
 		if (!server || !server.enabled || server.serverType !== 'jellyfin') {
+			return null;
+		}
+		return server;
+	}
+
+	/** Server record for user-directory operations (roster listing, import). */
+	private async getUserDirectoryServer(serverId: string): Promise<MediaBrowserServerRecord | null> {
+		const server = await getMediaBrowserManager().getServerRecord(serverId);
+		if (!server || !server.enabled || !serverTypeSupportsUserDirectory(server.serverType)) {
 			return null;
 		}
 		return server;
@@ -363,7 +384,7 @@ class MediaServerLinkService {
 
 	/** List a server's users for the admin-mediated picker. */
 	async listServerUsers(serverId: string): Promise<ServerUserOption[] | null> {
-		const server = await this.getJellyfinServer(serverId);
+		const server = await this.getUserDirectoryServer(serverId);
 		if (!server) return null;
 
 		try {
@@ -372,14 +393,15 @@ class MediaServerLinkService {
 			const users = (await response.json()) as Array<{
 				Id?: string;
 				Name?: string;
-				Policy?: { IsAdministrator?: boolean };
+				Policy?: { IsAdministrator?: boolean; IsDisabled?: boolean };
 			}>;
 			return users
 				.filter((user) => user.Id && user.Name)
 				.map((user) => ({
 					id: user.Id!,
 					name: user.Name!,
-					isAdministrator: Boolean(user.Policy?.IsAdministrator)
+					isAdministrator: Boolean(user.Policy?.IsAdministrator),
+					isDisabled: Boolean(user.Policy?.IsDisabled)
 				}));
 		} catch (error) {
 			logger.error({ err: error, serverId }, '[MediaServerLink] list users failed');
@@ -420,6 +442,21 @@ class MediaServerLinkService {
 			'[MediaServerLink] Linked account via admin assignment'
 		);
 		return { outcome: 'linked', link: inserted };
+	}
+
+	/**
+	 * Link a server user the caller has already validated against a fresh
+	 * roster fetch. Bulk import uses this so N links cost one /Users call
+	 * instead of N; the insert itself still refuses cross-account
+	 * duplicates, so a stale validation cannot steal an existing link.
+	 */
+	async linkValidatedServerUser(
+		userId: string,
+		serverId: string,
+		serverUserId: string,
+		serverUsername: string
+	): Promise<LinkRecord | { conflict: string }> {
+		return this.insertLink(userId, serverId, serverUserId, serverUsername);
 	}
 
 	/** Remove a link; scoped to the given Cinephage user. */
