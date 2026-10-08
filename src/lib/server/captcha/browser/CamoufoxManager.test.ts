@@ -1,14 +1,14 @@
 /**
  * CamoufoxManager Tests
  *
- * Tests for browser lifecycle management with mocked @camoufox/camoufox.
+ * Tests for browser lifecycle management with mocked camoufox.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Browser, BrowserContext, Page, Cookie } from 'playwright-core';
 
 // Mock the launcher before importing the module
-vi.mock('@camoufox/camoufox', () => ({
+vi.mock('camoufox', () => ({
 	Camoufox: vi.fn()
 }));
 
@@ -27,7 +27,7 @@ vi.mock('#lib/logging/index.js', () => ({
 }));
 
 // Import after mocking
-const { Camoufox } = await import('@camoufox/camoufox');
+const { Camoufox } = await import('camoufox');
 const { CamoufoxManager, getCamoufoxManager, shutdownCamoufoxManager } =
 	await import('./CamoufoxManager');
 

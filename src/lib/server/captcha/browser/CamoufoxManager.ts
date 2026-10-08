@@ -6,7 +6,7 @@
  * at the C++ level, making it highly effective against Cloudflare and similar protections.
  */
 
-import { Camoufox, type NewBrowserOptions } from '@camoufox/camoufox';
+import { Camoufox, type NewBrowserOptions } from 'camoufox';
 import type { Browser, BrowserContext, Page, Cookie } from 'playwright-core';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

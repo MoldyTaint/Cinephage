@@ -278,7 +278,7 @@ mkdir -p "$INDEXER_CUSTOM_DEFINITIONS_PATH" "$EXTERNAL_LISTS_CUSTOM_PRESETS_PATH
 # CAMOUFOX_AUTO_FETCH=false skips provisioning (air-gapped installs);
 # GITHUB_TOKEN avoids GitHub API rate limits.
 mkdir -p "$CAMOUFOX_TMP_DIR" 2>/dev/null || true
-CAMOUFOX_PIN_TAG="$(node -e "try { console.log(require('./node_modules/@camoufox/camoufox/dist/data-files/browser-pin.json').tag); } catch {}" 2>/dev/null || true)"
+CAMOUFOX_PIN_TAG="$(node -e "try { console.log(require('./node_modules/camoufox/dist/data-files/browser-pin.json').tag); } catch {}" 2>/dev/null || true)"
 CAMOUFOX_PIN_TAG="${CAMOUFOX_PIN_TAG#v}"
 CAMOUFOX_INSTALLED="$(HOME="$HOME" ./node_modules/.bin/camoufox list installed 2>/dev/null | head -24 || true)"
 

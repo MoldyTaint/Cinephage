@@ -15,7 +15,7 @@ import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
-import { findInstalledVersion } from '@camoufox/camoufox';
+import { findInstalledVersion } from 'camoufox';
 import { createChildLogger } from '#lib/logging/index.js';
 
 const logger = createChildLogger({ logDomain: 'indexers' as const });
@@ -39,7 +39,7 @@ export function shouldProvisionBrowser(pairedInstalled: boolean, pinTag: string 
 
 function resolveCliPath(): string | null {
 	try {
-		return createRequire(import.meta.url).resolve('@camoufox/camoufox/dist/__main__.js');
+		return createRequire(import.meta.url).resolve('camoufox/dist/__main__.js');
 	} catch (error) {
 		logger.debug({ err: error }, '[CamoufoxProvision] Launcher CLI not resolvable');
 		return null;

@@ -8,7 +8,7 @@
 	"automergeType": "pr",
 	"packageRules": [
 		{
-			"description": "playwright-core is capped by @camoufox/camoufox at <1.63: the launcher and the paired Camoufox browser build implement the Juggler protocol for the Playwright versions the release was tested with. Lift only after the package raises its peer range.",
+			"description": "playwright-core is capped by camoufox at <1.63: the launcher and the paired Camoufox browser build implement the Juggler protocol for the Playwright versions the release was tested with. Lift only after the package raises its peer range.",
 			"matchPackageNames": ["playwright-core"],
 			"allowedVersions": "<1.63"
 		},

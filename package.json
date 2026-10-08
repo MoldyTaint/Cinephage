@@ -88,11 +88,11 @@
 	},
 	"dependencies": {
 		"@better-auth/api-key": "1.7.7",
-		"@camoufox/camoufox": "^0.5.7",
 		"@parcel/watcher": "^2.6.0",
 		"adm-zip": "^0.6.1",
 		"better-auth": "1.7.7",
 		"better-sqlite3": "^13.0.3",
+		"camoufox": "^0.5.8",
 		"cheerio": "^1.2.0",
 		"date-format-parse": "^0.2.7",
 		"domhandler": "^6.0.1",
