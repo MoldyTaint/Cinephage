@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Loader2, XCircle } from 'lucide-svelte';
+	import { Loader2, XCircle } from '@lucide/svelte';
 	import { TestResult } from '#lib/components/ui/modal/index.js';
 	import type { ConnectionTestResult } from '#lib/types/downloadClient.js';
 	import * as m from '#lib/paraglide/messages.js';

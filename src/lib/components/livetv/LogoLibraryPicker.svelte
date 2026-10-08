@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Loader2, Search } from 'lucide-svelte';
+	import { Loader2, Search } from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { getLogos } from '#lib/api/logos.js';
 	import { getLogoCountries } from '#lib/api/settings.js';

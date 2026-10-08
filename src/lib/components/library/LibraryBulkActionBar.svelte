@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Eye, EyeOff, Sliders, Trash2, Loader2, Languages } from 'lucide-svelte';
+	import { X, Eye, EyeOff, Sliders, Trash2, Loader2, Languages } from '@lucide/svelte';
 	import { mediaTypeCountLabel, type MediaType } from '#lib/utils/media-type.js';
 	import * as m from '#lib/paraglide/messages.js';
 

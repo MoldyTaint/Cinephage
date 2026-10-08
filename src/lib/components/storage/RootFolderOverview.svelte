@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { HardDrive, Pencil, RefreshCw } from 'lucide-svelte';
+	import { HardDrive, Pencil, RefreshCw } from '@lucide/svelte';
 	import { formatBytes } from '#lib/utils/format.js';
 	import { getRootFolderScanLabel, getRootFolderScanBadgeClass } from './utils.js';
 	import type { RootFolderBreakdownItem } from './utils.js';

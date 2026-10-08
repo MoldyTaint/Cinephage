@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { History } from 'lucide-svelte';
+	import { History } from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import type { UnifiedTask } from '#lib/server/tasks/UnifiedTaskRegistry.js';
 	import type { TaskHistoryEntry } from '#lib/types/task.js';

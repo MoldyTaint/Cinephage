@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
 	import type { LibraryMovie, LibrarySeries } from '#lib/types/library.js';
-	import { Clapperboard, Tv } from 'lucide-svelte';
+	import { Clapperboard, Tv } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { resolvePath } from '#lib/utils/routing.js';
 	import type { MediaType } from '#lib/utils/media-type.js';

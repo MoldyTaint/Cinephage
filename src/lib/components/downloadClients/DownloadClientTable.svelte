@@ -9,7 +9,7 @@
 		Server,
 		FlaskConical,
 		Loader2
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import type { UnifiedClientItem } from '#lib/types/downloadClient.js';
 	import DownloadClientStatusBadge from './DownloadClientStatusBadge.svelte';
 	import * as m from '#lib/paraglide/messages.js';

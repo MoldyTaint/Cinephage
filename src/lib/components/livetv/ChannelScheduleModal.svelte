@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Loader2, Tv, Clock, Calendar } from 'lucide-svelte';
+	import { X, Loader2, Tv, Clock, Calendar } from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import type { ChannelLineupItemWithDetails, EpgProgram } from '#lib/types/livetv.js';
 	import { getEpgChannel, getStoredEpgDisplayLanguage } from '#lib/api/livetv.js';

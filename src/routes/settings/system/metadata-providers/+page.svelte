@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { ChevronRight, CheckCircle, AlertCircle } from 'lucide-svelte';
+	import { ChevronRight, CheckCircle, AlertCircle } from '@lucide/svelte';
 	import type { LayoutData } from '../$types';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { refreshAll, goto } from '$app/navigation';

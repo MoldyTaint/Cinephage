@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { Plus } from 'lucide-svelte';
+	import { Plus } from '@lucide/svelte';
 	import { resolve } from '$app/paths';
 	import { resolvePath } from '#lib/utils/routing.js';
 	import type { UnifiedActivity } from '#lib/types/activity.js';

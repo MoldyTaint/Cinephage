@@ -18,7 +18,7 @@
 		RotateCcw,
 		Tv,
 		Unlink
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { authClient } from '#lib/auth/client.js';
 	import { ApiError, apiGet, apiPost, apiDelete } from '#lib/api/client.js';
 	import { toasts } from '#lib/stores/toast.svelte.js';

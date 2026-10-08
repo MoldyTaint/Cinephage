@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Loader2, Plus, X, Sparkles, Search, Trash2 } from 'lucide-svelte';
+	import { Loader2, Plus, X, Sparkles, Search, Trash2 } from '@lucide/svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { getSmartListHelpers } from '#lib/api/smartlists.js';
 	import {

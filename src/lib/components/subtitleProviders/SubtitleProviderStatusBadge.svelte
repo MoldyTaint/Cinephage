@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { AlertCircle, CheckCircle, XCircle, Clock } from 'lucide-svelte';
+	import { AlertCircle, CheckCircle, XCircle, Clock } from '@lucide/svelte';
 	import { formatDisplayDate } from '#lib/utils/format.js';
 
 	interface Props {

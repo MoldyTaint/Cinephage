@@ -14,7 +14,7 @@
 		ShieldX,
 		GitBranchMinus,
 		GitBranchPlus
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import type { RootFolder } from '#lib/types/downloadClient.js';
 	import { sortRootFoldersForMediaType } from '#lib/utils/root-folders.js';
 

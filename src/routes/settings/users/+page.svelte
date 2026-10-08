@@ -2,7 +2,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { goto, refreshAll } from '$app/navigation';
 	import { resolvePath } from '#lib/utils/routing.js';
-	import { ShieldCheck, User, UserPlus, Users, ChevronRight } from 'lucide-svelte';
+	import { ShieldCheck, User, UserPlus, Users, ChevronRight } from '@lucide/svelte';
 	import { authClient } from '#lib/auth/client.js';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { formatDisplayDate } from '#lib/utils/format.js';

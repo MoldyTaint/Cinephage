@@ -9,7 +9,7 @@
 	import { FORMAT_CATEGORY_LABELS, FORMAT_CATEGORY_ORDER } from '#lib/types/format.js';
 	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
 	import FormatConditionBuilder from './FormatConditionBuilder.svelte';
-	import { X, Save, Loader2, FlaskConical, Check, AlertTriangle, Info } from 'lucide-svelte';
+	import { X, Save, Loader2, FlaskConical, Check, AlertTriangle, Info } from '@lucide/svelte';
 	import { testCustomFormat } from '#lib/api/indexers.js';
 
 	interface Props {

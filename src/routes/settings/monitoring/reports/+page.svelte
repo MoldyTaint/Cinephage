@@ -18,7 +18,7 @@
 		ShieldX,
 		Unlink,
 		X
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import MatchFileModal from '#lib/components/library/MatchFileModal.svelte';

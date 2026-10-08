@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { DatabaseSearch, Download, Server, Captions, Monitor, Archive } from 'lucide-svelte';
+	import { DatabaseSearch, Download, Server, Captions, Monitor, Archive } from '@lucide/svelte';
 	import { SettingsTabNav } from '#lib/components/settings/index.js';
 	import * as m from '#lib/paraglide/messages.js';
 

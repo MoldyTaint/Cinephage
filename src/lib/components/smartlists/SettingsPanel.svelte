@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { Settings, Zap } from 'lucide-svelte';
+	import { Settings, Zap } from '@lucide/svelte';
 	import type { RootFolderBasic as RootFolder } from '#lib/types/downloadClient.js';
 
 	interface ScoringProfile {

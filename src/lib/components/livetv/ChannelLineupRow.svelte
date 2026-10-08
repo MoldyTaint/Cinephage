@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { GripVertical, Pencil, Trash2, Tv, Loader2, Info } from 'lucide-svelte';
+	import { GripVertical, Pencil, Trash2, Tv, Loader2, Info } from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import type {
 		ChannelLineupItemWithDetails,

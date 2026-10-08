@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { Key, Copy, Eye, EyeOff, RefreshCw, Server, Check, AlertCircle } from 'lucide-svelte';
+	import { Key, Copy, Eye, EyeOff, RefreshCw, Server, Check, AlertCircle } from '@lucide/svelte';
 	import type { LayoutData } from '../$types';
 	import { untrack } from 'svelte';
 	import { copyToClipboard as copyTextToClipboard } from '#lib/utils/clipboard.js';

@@ -2,7 +2,7 @@
 	import { browser } from '$app/env';
 	import { theme } from '#lib/theme.svelte.js';
 	import { themes } from '#lib/themes.js';
-	import { Palette, Check } from 'lucide-svelte';
+	import { Palette, Check } from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { apiPut } from '#lib/api/client.js';
 

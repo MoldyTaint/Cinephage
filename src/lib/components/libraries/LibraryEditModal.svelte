@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { AlertCircle } from 'lucide-svelte';
+	import { AlertCircle } from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { ModalWrapper, ModalHeader, ModalFooter } from '#lib/components/ui/modal/index.js';
 	import { toasts } from '#lib/stores/toast.svelte.js';

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Search, Layers, RefreshCw, Trash2 } from 'lucide-svelte';
+	import { X, Search, Layers, RefreshCw, Trash2 } from '@lucide/svelte';
 	import { createFocusTrap, lockBodyScroll } from '#lib/utils/focus.js';
 
 	interface CollectionResult {

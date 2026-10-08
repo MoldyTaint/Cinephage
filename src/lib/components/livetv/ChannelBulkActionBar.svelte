@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, FolderOpen, Trash2, Loader2, Pencil } from 'lucide-svelte';
+	import { X, FolderOpen, Trash2, Loader2, Pencil } from '@lucide/svelte';
 	import type { ChannelCategory } from '#lib/types/livetv.js';
 	import * as m from '#lib/paraglide/messages.js';
 

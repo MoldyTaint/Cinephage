@@ -19,7 +19,7 @@
 		parseKeywordIds,
 		extractYear
 	} from '#lib/utils/discoverParams.js';
-	import { Search, Eye, EyeOff, X, Loader2, Bug } from 'lucide-svelte';
+	import { Search, Eye, EyeOff, X, Loader2, Bug } from '@lucide/svelte';
 	import { getMediaTypeLabel } from '#lib/types/tmdb-guards.js';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { searchTmdb, getDiscover, getDiscoverUnfiltered } from '#lib/api/index.js';

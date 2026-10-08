@@ -12,7 +12,7 @@
 		FileText,
 		Zap,
 		Check
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { copyToClipboard } from '#lib/utils/clipboard.js';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 

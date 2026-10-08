@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { AlertTriangle, XCircle, File, Folder, Film, Monitor, Tv } from 'lucide-svelte';
+	import { AlertTriangle, XCircle, File, Folder, Film, Monitor, Tv } from '@lucide/svelte';
 	import { ModalWrapper } from '#lib/components/ui/modal/index.js';
 	import { severityBadgeClass, insightTypeLabel, dismissInsight, formatBytes } from './utils.js';
 	import { getInsightItems } from '#lib/api/storage.js';

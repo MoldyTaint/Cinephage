@@ -11,13 +11,13 @@ import {
 	Pause,
 	Minus,
 	SearchX
-} from 'lucide-svelte';
+} from '@lucide/svelte';
 
 /**
  * Status → display metadata mapping shared across all activity UI components.
  *
  * Note: `icon` is typed loosely (`typeof CheckCircle2`) because every
- * lucide-svelte icon shares the same component signature.
+ * @lucide/svelte icon shares the same component signature.
  *
  * Labels are resolved at call time via paraglide so the config object
  * stores getter functions instead of static strings.

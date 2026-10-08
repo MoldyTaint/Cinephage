@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-svelte';
+	import { ArrowUpDown, ArrowUp, ArrowDown } from '@lucide/svelte';
 
 	interface Props {
 		compact: boolean;

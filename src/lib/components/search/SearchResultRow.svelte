@@ -13,7 +13,7 @@
 		ArrowUpCircle,
 		ArrowDownCircle,
 		Ban
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { getContext } from 'svelte';
 	import { formatBytes } from '#lib/utils/format.js';
 	import type { ScoreComponents } from '#lib/server/quality/types.js';

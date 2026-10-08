@@ -23,7 +23,7 @@
 		Library,
 		Globe,
 		Database
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import type { PageData } from './$types';
 	import * as m from '#lib/paraglide/messages.js';
 	import { refreshSmartList, addSmartListItems } from '#lib/api/index.js';

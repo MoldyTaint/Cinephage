@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Loader2, AlertTriangle, Trash2, Download } from 'lucide-svelte';
+	import { X, Loader2, AlertTriangle, Trash2, Download } from '@lucide/svelte';
 	import ModalWrapper from './ModalWrapper.svelte';
 	import * as m from '#lib/paraglide/messages.js';
 

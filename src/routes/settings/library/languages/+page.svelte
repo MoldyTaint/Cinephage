@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
 	import { SettingsPage } from '#lib/components/ui/settings/index.js';
-	import { Info, RefreshCw, Save, CheckCircle } from 'lucide-svelte';
+	import { Info, RefreshCw, Save, CheckCircle } from '@lucide/svelte';
 	import LanguageSettingsForm from '#lib/components/settings/languages/LanguageSettingsForm.svelte';
 	import LanguageProfilesManager from '#lib/components/settings/languages/LanguageProfilesManager.svelte';
 	import type { PageData } from './$types';

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { refreshAll } from '$app/navigation';
-	import { Plus, Search } from 'lucide-svelte';
+	import { Plus, Search } from '@lucide/svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { getResponseErrorMessage } from '#lib/utils/http.js';

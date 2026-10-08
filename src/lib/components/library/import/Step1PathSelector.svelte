@@ -12,7 +12,7 @@
 		Search,
 		Sparkles,
 		X
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 
 	type MediaType = 'movie' | 'tv';
 

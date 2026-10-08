@@ -9,7 +9,7 @@
 		Star,
 		Image,
 		Download
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { getPosterUrl } from '#lib/utils/poster-url.js';
 
 	interface PreviewItem {

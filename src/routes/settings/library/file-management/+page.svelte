@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { FolderSync } from 'lucide-svelte';
+	import { FolderSync } from '@lucide/svelte';
 	import FolderBrowser from '#lib/components/library/FolderBrowser.svelte';
 	import TagInput from '#lib/components/ui/TagInput.svelte';
 	import { SettingsPage, SettingsSection } from '#lib/components/ui/settings/index.js';

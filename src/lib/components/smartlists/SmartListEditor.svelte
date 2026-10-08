@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { ArrowLeft, Loader2, Film, Tv, Save } from 'lucide-svelte';
+	import { ArrowLeft, Loader2, Film, Tv, Save } from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { onMount } from 'svelte';
 	import { toasts } from '#lib/stores/toast.svelte.js';

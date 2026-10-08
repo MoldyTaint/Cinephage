@@ -10,7 +10,7 @@
 		Search,
 		HardDrive,
 		Settings
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { resolve } from '$app/paths';
 	import type { DashboardConfig } from '#lib/types/dashboard.js';
 

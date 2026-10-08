@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { AlertTriangle, RefreshCw } from 'lucide-svelte';
+	import { AlertTriangle, RefreshCw } from '@lucide/svelte';
 	import InteractiveSearchModal from './InteractiveSearchModal.svelte';
 	import type { SearchMode } from './InteractiveSearchModal.svelte';
 	import type { Release } from './SearchResultRow.svelte';

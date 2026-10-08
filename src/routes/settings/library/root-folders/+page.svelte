@@ -2,7 +2,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { goto, refreshAll } from '$app/navigation';
 	import { page } from '$app/state';
-	import { Plus } from 'lucide-svelte';
+	import { Plus } from '@lucide/svelte';
 	import { SettingsPage } from '#lib/components/ui/settings/index.js';
 	import type { PageData } from './$types';
 	import type {

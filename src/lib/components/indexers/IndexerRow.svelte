@@ -12,7 +12,7 @@
 		ToggleRight,
 		Settings,
 		ExternalLink
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import IndexerStatusBadge from './IndexerStatusBadge.svelte';
 	import type { IndexerWithStatus } from '#lib/types/indexer.js';
 

@@ -15,7 +15,7 @@
 		Search,
 		ChevronDown,
 		ChevronUp
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { toDateString } from '#lib/utils/format.js';
 
 	interface Props {

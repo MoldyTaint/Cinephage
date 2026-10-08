@@ -7,7 +7,7 @@
 	import type { FormatCategory } from '#lib/types/format.js';
 	import * as m from '#lib/paraglide/messages.js';
 	import { groupFormatScoresByCategory, FORMAT_CATEGORY_LABELS } from '#lib/types/format.js';
-	import { X, Save, Info, Loader2, Settings, Layers, Search } from 'lucide-svelte';
+	import { X, Save, Info, Loader2, Settings, Layers, Search } from '@lucide/svelte';
 	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
 	import { SectionHeader } from '#lib/components/ui/modal/index.js';
 	import FormatScoreAccordion from './FormatScoreAccordion.svelte';

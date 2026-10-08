@@ -11,7 +11,7 @@
 		HardDrive,
 		ChevronDown,
 		ChevronUp
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import Skeleton from '#lib/components/ui/Skeleton.svelte';
 	import { resolve } from '$app/paths';
 	import { formatBytes } from '#lib/utils/format.js';

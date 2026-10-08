@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { refreshAll } from '$app/navigation';
-	import { Plus, X, ArrowUp, ArrowDown, Flag, Info } from 'lucide-svelte';
+	import { Plus, X, ArrowUp, ArrowDown, Flag, Info } from '@lucide/svelte';
 	import { getResponseErrorMessage } from '#lib/utils/http.js';
 	import { ALL_LANGUAGE_OPTIONS } from '#lib/shared/languages.js';
 	import { requirementKey } from '#lib/shared/language-profile.js';

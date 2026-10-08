@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ChevronDown, Lock, Unlock, Globe, Shield } from 'lucide-svelte';
+	import { ChevronDown, Lock, Unlock, Globe, Shield } from '@lucide/svelte';
 	import type { IndexerDefinition } from '#lib/types/indexer.js';
 	import * as m from '#lib/paraglide/messages.js';
 	import IndexerSettingsFields from './IndexerSettingsFields.svelte';

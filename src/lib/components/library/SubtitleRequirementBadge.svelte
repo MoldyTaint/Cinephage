@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Captions, CaptionsOff } from 'lucide-svelte';
+	import { Captions, CaptionsOff } from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import type { SubtitleRequirementProgress } from '#lib/utils/subtitle-status-display.js';
 

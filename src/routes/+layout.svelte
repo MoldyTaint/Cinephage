@@ -47,7 +47,7 @@
 		Palette,
 		Pin,
 		Inbox
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 
 	const GITHUB_URL = 'https://github.com/MoldyTaint/Cinephage';

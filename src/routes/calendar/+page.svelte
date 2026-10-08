@@ -13,7 +13,7 @@
 		List,
 		Plus,
 		Info
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { getLocale } from '#lib/paraglide/runtime.js';
 	import TmdbImage from '#lib/components/tmdb/TmdbImage.svelte';

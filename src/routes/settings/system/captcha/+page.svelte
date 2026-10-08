@@ -11,7 +11,7 @@
 		Play,
 		RefreshCw,
 		AlertCircle
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { formatDisplayDate } from '#lib/utils/format.js';
 	import { SettingsPage, SettingsSection } from '#lib/components/ui/settings/index.js';

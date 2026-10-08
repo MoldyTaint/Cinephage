@@ -11,7 +11,7 @@
 	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
 	import { SettingsPage } from '#lib/components/ui/settings/index.js';
 	import { toasts } from '#lib/stores/toast.svelte.js';
-	import { Sliders, Layers, Clock } from 'lucide-svelte';
+	import { Sliders, Layers, Clock } from '@lucide/svelte';
 	import { DelayProfileList } from '#lib/components/delayProfiles/index.js';
 	import {
 		createScoringProfile,

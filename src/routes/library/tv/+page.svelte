@@ -25,7 +25,7 @@
 		Eye,
 		EyeOff,
 		ChevronDown
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { viewPreferences } from '#lib/stores/view-preferences.svelte.js';
 	import { enhance } from '$app/forms';

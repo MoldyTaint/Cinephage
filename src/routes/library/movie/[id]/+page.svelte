@@ -42,7 +42,7 @@
 		Eye,
 		EyeOff,
 		Info
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { page } from '$app/state';
 	import { goto, refreshAll } from '$app/navigation';
 	import { resolvePath } from '#lib/utils/routing.js';

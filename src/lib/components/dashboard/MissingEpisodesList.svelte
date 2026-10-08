@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { Calendar } from 'lucide-svelte';
+	import { Calendar } from '@lucide/svelte';
 	import TmdbImage from '#lib/components/tmdb/TmdbImage.svelte';
 	import Skeleton from '#lib/components/ui/Skeleton.svelte';
 	import { formatDisplayDate } from '#lib/utils/format.js';

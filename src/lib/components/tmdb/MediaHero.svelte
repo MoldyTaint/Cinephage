@@ -22,7 +22,7 @@
 		Maximize2,
 		EyeOff,
 		CircleX
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { fade } from 'svelte/transition';
 	import type { Video } from '#lib/types/tmdb.js';
 	import { formatCurrency, formatLanguage, formatDisplayDateShort } from '#lib/utils/format.js';

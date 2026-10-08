@@ -6,7 +6,7 @@
 	import { getResponseErrorMessage } from '#lib/utils/http.js';
 	import { resolve } from '$app/paths';
 	import { updateLanguageSettings, ApiError } from '#lib/api/index.js';
-	import { ArrowRight } from 'lucide-svelte';
+	import { ArrowRight } from '@lucide/svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { ALL_LANGUAGE_OPTIONS, getLanguageName } from '#lib/shared/languages.js';
 	import type { LanguageSettingsUpdateInput } from '#lib/validation/schemas.js';

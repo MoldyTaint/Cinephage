@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Loader2, XCircle, Tv, Radio, List, Globe } from 'lucide-svelte';
+	import { X, Loader2, XCircle, Tv, Radio, List, Globe } from '@lucide/svelte';
 	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
 	import { TestResult } from '#lib/components/ui/modal/index.js';
 	import LiveTvProviderPicker from './LiveTvProviderPicker.svelte';

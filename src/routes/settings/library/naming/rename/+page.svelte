@@ -19,7 +19,7 @@
 		RotateCcw,
 		FileEdit,
 		FolderSync
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import type {
 		RenamePreviewResult,
 		RenameExecuteResult,

@@ -11,7 +11,7 @@
 		ToggleRight,
 		Settings,
 		Trash2
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import SubtitleProviderRow from './SubtitleProviderRow.svelte';
 	import SubtitleProviderStatusBadge from './SubtitleProviderStatusBadge.svelte';
 	import type { SubtitleProviderConfig } from '#lib/server/subtitles/types.js';

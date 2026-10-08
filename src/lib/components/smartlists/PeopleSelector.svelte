@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { Loader2, X } from 'lucide-svelte';
+	import { Loader2, X } from '@lucide/svelte';
 	import { getSmartListHelpers } from '#lib/api/smartlists.js';
 
 	interface PersonResult {

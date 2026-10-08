@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { resolvePath } from '#lib/utils/routing.js';
 	import { toasts, type ToastType } from '#lib/stores/toast.svelte.js';
-	import { CheckCircle, XCircle, AlertCircle, Info, X } from 'lucide-svelte';
+	import { CheckCircle, XCircle, AlertCircle, Info, X } from '@lucide/svelte';
 	import { fly } from 'svelte/transition';
 	import * as m from '#lib/paraglide/messages.js';
 

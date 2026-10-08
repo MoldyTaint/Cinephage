@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Loader2, StopCircle, CheckCircle2, XCircle, Search } from 'lucide-svelte';
+	import { X, Loader2, StopCircle, CheckCircle2, XCircle, Search } from '@lucide/svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { getWorker, deleteWorker } from '#lib/api/settings.js';

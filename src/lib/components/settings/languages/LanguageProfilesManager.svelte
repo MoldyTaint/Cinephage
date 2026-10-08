@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { refreshAll } from '$app/navigation';
-	import { Plus, Trash2, Pencil, Star, Globe, Copy, Loader2 } from 'lucide-svelte';
+	import { Plus, Trash2, Pencil, Star, Globe, Copy, Loader2 } from '@lucide/svelte';
 	import { getResponseErrorMessage } from '#lib/utils/http.js';
 	import { getLanguageName } from '#lib/shared/languages.js';
 	import { requirementKey } from '#lib/shared/language-profile.js';

@@ -5,7 +5,7 @@
 	import type { PersonCastCredit, PersonCrewCredit } from '#lib/types/tmdb.js';
 	import PersonHero from '#lib/components/tmdb/PersonHero.svelte';
 	import FilmographyCard from '#lib/components/tmdb/FilmographyCard.svelte';
-	import { Film, Tv, Clapperboard } from 'lucide-svelte';
+	import { Film, Tv, Clapperboard } from '@lucide/svelte';
 	import { getPersonCredits } from '#lib/api/index.js';
 
 	type CreditWithStatus = (PersonCastCredit | PersonCrewCredit) & {

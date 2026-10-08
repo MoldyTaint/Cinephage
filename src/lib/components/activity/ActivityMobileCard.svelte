@@ -11,7 +11,7 @@
 		Tv,
 		ChevronDown,
 		ChevronUp
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { getMediaLink, canLinkToMedia } from '#lib/utils/media-link.js';
 	import { formatBytes } from '#lib/utils/format.js';
 	import {

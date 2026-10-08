@@ -14,7 +14,7 @@
 		Captions,
 		CaptionsOff,
 		Trash2
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import QualityBadge from './QualityBadge.svelte';
 	import AutoSearchStatus from './AutoSearchStatus.svelte';
 	import SubtitleRequirementBadge from './SubtitleRequirementBadge.svelte';

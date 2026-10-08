@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Loader2, Save, Trash2 } from 'lucide-svelte';
+	import { Loader2, Save, Trash2 } from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 
 	interface Props {

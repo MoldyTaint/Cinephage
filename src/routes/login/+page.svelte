@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { User, Lock, AlertCircle, Eye, EyeOff } from 'lucide-svelte';
+	import { User, Lock, AlertCircle, Eye, EyeOff } from '@lucide/svelte';
 	import { authClient } from '#lib/auth/client.js';
 	import { ensureVersionPrefix } from '#lib/version.js';
 	import * as m from '#lib/paraglide/messages.js';

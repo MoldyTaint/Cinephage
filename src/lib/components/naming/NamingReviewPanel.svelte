@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { RefreshCw } from 'lucide-svelte';
+	import { RefreshCw } from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { TokenPicker } from '#lib/components/naming/index.js';
 

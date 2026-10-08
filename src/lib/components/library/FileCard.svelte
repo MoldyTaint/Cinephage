@@ -16,7 +16,7 @@
 		CaptionsOff,
 		Download,
 		Loader2
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { normalizeLanguageCode } from '#lib/shared/languages.js';
 	import { formatBytes, getFileName, formatDisplayDateShort } from '#lib/utils/format.js';
 

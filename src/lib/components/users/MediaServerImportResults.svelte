@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { Check, Copy, Link2Off, XCircle } from 'lucide-svelte';
+	import { Check, Copy, Link2Off, XCircle } from '@lucide/svelte';
 
 	interface ImportRowResult {
 		serverUserId: string;

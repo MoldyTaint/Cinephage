@@ -3,7 +3,7 @@
 	import type { LibraryMovie, LibrarySeries } from '#lib/types/library.js';
 	import { isLibraryMovie, getBestQualityFromFiles, displayTitle } from '#lib/types/library.js';
 	import TmdbImage from '#lib/components/tmdb/TmdbImage.svelte';
-	import { Eye, EyeOff, Check, X, Download, AlertTriangle } from 'lucide-svelte';
+	import { Eye, EyeOff, Check, X, Download, AlertTriangle } from '@lucide/svelte';
 	import { resolvePath } from '#lib/utils/routing.js';
 
 	type LibraryItem = LibraryMovie | LibrarySeries;

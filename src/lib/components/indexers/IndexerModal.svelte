@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Loader2, Globe, Lock, Zap } from 'lucide-svelte';
+	import { X, Loader2, Globe, Lock, Zap } from '@lucide/svelte';
 	import type { IndexerDefinition, Indexer, IndexerFormData } from '#lib/types/indexer.js';
 	import { computeUIHints } from '#lib/types/indexer.js';
 	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Plus, RefreshCw, Loader2 } from 'lucide-svelte';
+	import { Plus, RefreshCw, Loader2 } from '@lucide/svelte';
 	import { LiveTvAccountTable, LiveTvAccountModal } from '#lib/components/livetv/index.js';
 	import { toFriendlyLiveTvTestError } from '#lib/livetv/errorMessages.js';
 	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';

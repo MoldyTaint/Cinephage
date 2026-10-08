@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Plus, GripVertical, Pencil, Trash2, Check, Loader2 } from 'lucide-svelte';
+	import { X, Plus, GripVertical, Pencil, Trash2, Check, Loader2 } from '@lucide/svelte';
 	import type { ChannelCategory, ChannelLineupItemWithDetails } from '#lib/types/livetv.js';
 	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
 	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { FolderOpen, BarChart3, Search, Captions, TriangleAlert } from 'lucide-svelte';
+	import { FolderOpen, BarChart3, Search, Captions, TriangleAlert } from '@lucide/svelte';
 	import { resolve } from '$app/paths';
 	import { getWritableRootFoldersForMediaType } from '#lib/utils/root-folders.js';
 	import * as m from '#lib/paraglide/messages.js';

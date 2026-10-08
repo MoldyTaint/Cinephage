@@ -31,7 +31,7 @@
 	import { apiPostStream } from '#lib/api/index.js';
 	import type { SeriesEditData } from '#lib/components/library/SeriesEditModal.svelte';
 	import type { SearchMode } from '#lib/components/search/InteractiveSearchModal.svelte';
-	import { CheckSquare, FileEdit, RefreshCw, X } from 'lucide-svelte';
+	import { CheckSquare, FileEdit, RefreshCw, X } from '@lucide/svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { goto, refreshAll } from '$app/navigation';

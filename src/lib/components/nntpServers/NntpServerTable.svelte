@@ -16,7 +16,7 @@
 		Loader2,
 		GripVertical,
 		Link2
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 
 	interface NntpServer {
 		id: string;

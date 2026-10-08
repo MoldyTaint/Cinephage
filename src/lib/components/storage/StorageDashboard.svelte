@@ -10,7 +10,7 @@
 		ChevronRight,
 		TrendingUp,
 		Database
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import type { StorageSummary, ScanSuccess, ServerStatus } from './utils.js';
 	import type { LibraryBreakdownItem, RootFolderBreakdownItem } from './utils.js';
 	import {

@@ -2,7 +2,7 @@
 	import type { PersonCastCredit, PersonCrewCredit } from '#lib/types/tmdb.js';
 	import TmdbImage from './TmdbImage.svelte';
 	import { resolvePath } from '#lib/utils/routing.js';
-	import { Check, Clock } from 'lucide-svelte';
+	import { Check, Clock } from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 
 	// Extended type that includes library status (added by enrichWithLibraryStatus)

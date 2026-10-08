@@ -14,7 +14,7 @@
 		AlertCircle,
 		Clock,
 		ExternalLink
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import type { PageData } from './$types';
 	import * as m from '#lib/paraglide/messages.js';
 	import { refreshSmartList, deleteSmartList, updateSmartList } from '#lib/api/index.js';

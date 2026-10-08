@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ChevronDown, ChevronUp, Trash2 } from 'lucide-svelte';
+	import { ChevronDown, ChevronUp, Trash2 } from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 
 	import type { BlocklistEntry } from './index.js';

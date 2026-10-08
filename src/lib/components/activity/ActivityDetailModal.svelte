@@ -6,7 +6,17 @@
 		type UnifiedActivity
 	} from '#lib/types/activity.js';
 	import { formatBytes } from '#lib/utils/format.js';
-	import { X, Clapperboard, Tv, Pause, Play, RotateCcw, Trash2, Info, Folder } from 'lucide-svelte';
+	import {
+		X,
+		Clapperboard,
+		Tv,
+		Pause,
+		Play,
+		RotateCcw,
+		Trash2,
+		Info,
+		Folder
+	} from '@lucide/svelte';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { createFocusTrap, lockBodyScroll } from '#lib/utils/focus.js';
 	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';

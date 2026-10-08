@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Loader2, Pencil } from 'lucide-svelte';
+	import { X, Loader2, Pencil } from '@lucide/svelte';
 	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
 	import type { ChannelCleanNamePreview } from '#lib/types/livetv.js';
 	import * as m from '#lib/paraglide/messages.js';

@@ -9,7 +9,7 @@
 		Loader2,
 		X,
 		Search
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import type { ChannelLineupItemWithDetails, EpgProgram } from '#lib/types/livetv.js';
 	import { onMount } from 'svelte';

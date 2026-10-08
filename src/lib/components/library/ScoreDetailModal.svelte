@@ -10,7 +10,7 @@
 		AlertCircle,
 		ChevronDown,
 		ChevronRight
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import type { FileScoreResponse } from '#lib/types/score.js';
 
 	interface Props {

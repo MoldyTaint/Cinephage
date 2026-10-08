@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Search } from 'lucide-svelte';
+	import { Search } from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import type { IndexerFilters } from '#lib/types/indexer.js';
 

@@ -23,7 +23,7 @@
 		ArrowLeft,
 		Eye,
 		EyeOff
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import {
 		formatLanguage,
 		formatDisplayDateShort,

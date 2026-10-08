@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { Loader2, CheckCircle2, XCircle, FolderOpen, Info } from 'lucide-svelte';
+	import { Loader2, CheckCircle2, XCircle, FolderOpen, Info } from '@lucide/svelte';
 	import type {
 		RootFolder,
 		RootFolderFormData,

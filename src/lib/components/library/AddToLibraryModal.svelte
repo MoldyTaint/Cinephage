@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Loader2, Search } from 'lucide-svelte';
+	import { X, Loader2, Search } from '@lucide/svelte';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { PersonDetails } from '#lib/types/tmdb.js';
 	import TmdbImage from './TmdbImage.svelte';
-	import { ExternalLink, Briefcase } from 'lucide-svelte';
+	import { ExternalLink, Briefcase } from '@lucide/svelte';
 	import { formatDisplayDate } from '#lib/utils/format.js';
 	import * as m from '#lib/paraglide/messages.js';
 

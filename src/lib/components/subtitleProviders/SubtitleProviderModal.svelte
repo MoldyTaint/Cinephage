@@ -11,7 +11,7 @@
 		User,
 		Crown,
 		CreditCard
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import type {
 		SubtitleProviderConfig,
 		ProviderImplementation

@@ -11,7 +11,7 @@
 		Settings,
 		Trash2,
 		ArrowLeft
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';

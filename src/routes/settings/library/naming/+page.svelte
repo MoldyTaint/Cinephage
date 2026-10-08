@@ -19,7 +19,7 @@
 		Tv,
 		Wand2,
 		X
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import type { PageData as GeneratedPageData } from './$types';
 	import { SettingsPage } from '#lib/components/ui/settings/index.js';
 	import {

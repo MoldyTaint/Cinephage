@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
-	import { X } from 'lucide-svelte';
+	import { X } from '@lucide/svelte';
 	import type { LiveTvAccount, LiveTvCategory, CachedChannel } from '#lib/types/livetv.js';
 	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
 	import { toasts } from '#lib/stores/toast.svelte.js';

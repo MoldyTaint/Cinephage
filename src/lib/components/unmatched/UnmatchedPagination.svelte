@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { ChevronLeft, ChevronRight } from 'lucide-svelte';
+	import { ChevronLeft, ChevronRight } from '@lucide/svelte';
 	import { unmatchedFilesStore } from '#lib/stores/unmatched-files.svelte.js';
 
 	let pagination = $derived(unmatchedFilesStore.pagination);

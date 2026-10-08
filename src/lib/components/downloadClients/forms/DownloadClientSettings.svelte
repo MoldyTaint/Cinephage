@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { FolderOpen } from 'lucide-svelte';
+	import { FolderOpen } from '@lucide/svelte';
 	import { SectionHeader } from '#lib/components/ui/modal/index.js';
 	import type { DownloadClientDefinition } from '#lib/types/downloadClient.js';
 	import * as m from '#lib/paraglide/messages.js';

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { Folder, ChevronUp, Loader2, Home, Check } from 'lucide-svelte';
+	import { Folder, ChevronUp, Loader2, Home, Check } from '@lucide/svelte';
 	import { browseFilesystem } from '#lib/api/filesystem.js';
 
 	interface DirectoryEntry {

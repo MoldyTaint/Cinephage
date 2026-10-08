@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { Plus } from 'lucide-svelte';
+	import { Plus } from '@lucide/svelte';
 	import { SettingsPage, SettingsSection } from '#lib/components/ui/settings/index.js';
 	import { goto, refreshAll } from '$app/navigation';
 	import { onMount } from 'svelte';

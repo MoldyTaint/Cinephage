@@ -12,7 +12,7 @@
 		Zap,
 		Search,
 		Download
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { formatBytes, getStatusColor } from '#lib/utils/format.js';
 	import { formatSeriesStatus } from '#lib/utils/format-status.js';
 	import { getPosterUrl } from '#lib/utils/poster-url.js';

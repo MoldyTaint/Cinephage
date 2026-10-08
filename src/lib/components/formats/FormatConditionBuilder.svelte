@@ -24,7 +24,7 @@
 		FLAG_LABELS,
 		FLAG_DESCRIPTIONS
 	} from '#lib/types/format.js';
-	import { Plus, Trash2, Info, AlertCircle } from 'lucide-svelte';
+	import { Plus, Trash2, Info, AlertCircle } from '@lucide/svelte';
 
 	interface Props {
 		conditions: FormatCondition[];

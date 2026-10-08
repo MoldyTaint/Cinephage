@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, Loader2, XCircle, Plus, Trash2 } from 'lucide-svelte';
+	import { X, Loader2, XCircle, Plus, Trash2 } from '@lucide/svelte';
 	import type {
 		MediaBrowserServerPublic,
 		MediaBrowserServerType,

@@ -9,7 +9,7 @@
 		Tv,
 		Monitor,
 		Search
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { SettingsPage } from '#lib/components/ui/settings/index.js';
 	import { StorageDashboard, InsightCard } from '#lib/components/storage/index.js';
 	import {

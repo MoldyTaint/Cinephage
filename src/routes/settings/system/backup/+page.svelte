@@ -11,7 +11,7 @@
 		ChevronDown,
 		ChevronUp,
 		FolderOpen
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { FolderBrowser } from '#lib/components/library/index.js';
 	import type { LayoutData } from '../$types';
 	import { refreshAll } from '$app/navigation';

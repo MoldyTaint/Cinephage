@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { resolvePath } from '#lib/utils/routing.js';
 	import { page } from '$app/state';
-	import { ChevronLeft, ChevronRight } from 'lucide-svelte';
+	import { ChevronLeft, ChevronRight } from '@lucide/svelte';
 
 	interface NavItem {
 		href: string;
 		label: string;
-		icon: typeof import('lucide-svelte').Search;
+		icon: typeof import('@lucide/svelte').Search;
 	}
 
 	interface Props {

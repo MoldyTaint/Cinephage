@@ -9,7 +9,7 @@
 		Loader2,
 		AlertCircle,
 		ChevronRight
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
 	import TmdbImage from '#lib/components/tmdb/TmdbImage.svelte';

@@ -5,7 +5,7 @@
 	import PersonCard from '#lib/components/tmdb/PersonCard.svelte';
 	import SeasonList from '#lib/components/tmdb/SeasonList.svelte';
 	import SectionRow from '#lib/components/discover/SectionRow.svelte';
-	import { ArrowLeft } from 'lucide-svelte';
+	import { ArrowLeft } from '@lucide/svelte';
 
 	let { data }: { data: PageData } = $props();
 

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { Loader2, ChevronDown, Clapperboard, Info, X, Check } from 'lucide-svelte';
+	import { Loader2, ChevronDown, Clapperboard, Info, X, Check } from '@lucide/svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
 	import TmdbImage from '#lib/components/tmdb/TmdbImage.svelte';

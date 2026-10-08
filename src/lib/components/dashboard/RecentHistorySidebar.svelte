@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { Activity, Clapperboard, Tv, Clock, ArrowRight } from 'lucide-svelte';
+	import { Activity, Clapperboard, Tv, Clock, ArrowRight } from '@lucide/svelte';
 	import Skeleton from '#lib/components/ui/Skeleton.svelte';
 	import { resolvePath } from '#lib/utils/routing.js';
 	import { formatBytes } from '#lib/utils/format.js';

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Library, Pencil } from 'lucide-svelte';
+	import { Library, Pencil } from '@lucide/svelte';
 	import { formatBytes } from '#lib/utils/format.js';
 	import type { LibraryBreakdownItem } from './utils.js';
 

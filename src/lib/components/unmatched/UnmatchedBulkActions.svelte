@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { X, Link, Trash2 } from 'lucide-svelte';
+	import { X, Link, Trash2 } from '@lucide/svelte';
 	import { unmatchedFilesStore } from '#lib/stores/unmatched-files.svelte.js';
 
 	interface Props {

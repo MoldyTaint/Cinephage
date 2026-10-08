@@ -10,7 +10,7 @@
 		Search,
 		Tv,
 		X
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import type { MediaType, DetectionGroup, MatchResult } from './types.js';
 
 	interface ImportRouteContext {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
-	import { X, Search, Loader2, RefreshCw, Captions, AlertTriangle, Info } from 'lucide-svelte';
+	import { X, Search, Loader2, RefreshCw, Captions, AlertTriangle, Info } from '@lucide/svelte';
 	import SubtitleSearchResultRow from './SubtitleSearchResultRow.svelte';
 	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
 	import { searchSubtitles, downloadSubtitle, getSubtitleProviders } from '#lib/api/subtitles.js';

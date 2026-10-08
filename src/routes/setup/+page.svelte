@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { User, Lock, CheckCircle, AlertCircle } from 'lucide-svelte';
+	import { User, Lock, CheckCircle, AlertCircle } from '@lucide/svelte';
 	import { authClient } from '#lib/auth/client.js';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { ensureVersionPrefix } from '#lib/version.js';

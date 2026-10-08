@@ -9,7 +9,7 @@
 		ChevronRight,
 		Link,
 		Loader2
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import type { LibraryIssue, RootFolderOption } from '#lib/types/unmatched.js';
 	import { getUnmatchedIssues, updateMovie, updateSeries } from '#lib/api/library.js';

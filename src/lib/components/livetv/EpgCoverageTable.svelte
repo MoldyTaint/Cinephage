@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { SvelteMap } from 'svelte/reactivity';
-	import { Tv, Check, AlertCircle, ArrowRight, Calendar, Loader2, Search } from 'lucide-svelte';
+	import { Tv, Check, AlertCircle, ArrowRight, Calendar, Loader2, Search } from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import type {
 		ChannelLineupItemWithDetails,

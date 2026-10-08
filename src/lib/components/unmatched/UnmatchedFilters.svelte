@@ -9,7 +9,7 @@
 		SquareCheck,
 		RefreshCw,
 		Zap
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { unmatchedFilesStore } from '#lib/stores/unmatched-files.svelte.js';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 

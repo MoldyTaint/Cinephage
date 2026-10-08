@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { CheckCircle2, XCircle } from 'lucide-svelte';
+	import { CheckCircle2, XCircle } from '@lucide/svelte';
 	import { SectionHeader } from '#lib/components/ui/modal/index.js';
 	import { ALL_LANGUAGE_OPTIONS } from '#lib/shared/languages.js';
 	import * as m from '#lib/paraglide/messages.js';

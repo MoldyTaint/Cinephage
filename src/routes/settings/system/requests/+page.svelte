@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { Loader2 } from 'lucide-svelte';
+	import { Loader2 } from '@lucide/svelte';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { SettingsPage, SettingsSection } from '#lib/components/ui/settings/index.js';
 	import { ToggleSetting } from '#lib/components/ui/modal/index.js';

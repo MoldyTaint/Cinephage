@@ -9,7 +9,7 @@
 		HardDrive,
 		Clapperboard,
 		Tv
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import type { UnmatchedFolder } from '#lib/types/unmatched.js';
 	import { getFileName } from '#lib/utils/format.js';
 	import { SvelteMap } from 'svelte/reactivity';

@@ -6,7 +6,7 @@
 	import TasksTable from '#lib/components/tasks/TasksTable.svelte';
 	import CreateTaskPlaceholder from '#lib/components/tasks/CreateTaskPlaceholder.svelte';
 	import { SettingsPage } from '#lib/components/ui/settings/index.js';
-	import { Plus, XCircle, CheckCircle2 } from 'lucide-svelte';
+	import { Plus, XCircle, CheckCircle2 } from '@lucide/svelte';
 	import { createSSE } from '#lib/sse/index.js';
 	import { layoutState, deriveMobileSseStatus } from '#lib/layout.svelte.js';
 	import { cancelTask, setTaskEnabled, runTask } from '#lib/api/tasks.js';

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { Search, HardDrive, Film, Tv, X, SlidersHorizontal, ChevronDown } from 'lucide-svelte';
+	import { Search, HardDrive, Film, Tv, X, SlidersHorizontal, ChevronDown } from '@lucide/svelte';
 	import { SettingsPage } from '#lib/components/ui/settings/index.js';
 	import { MediaExplorerTable } from '#lib/components/status/index.js';
 	import { createProgressiveRenderer } from '#lib/utils/progressive-render.svelte.ts';

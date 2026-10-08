@@ -8,7 +8,7 @@
 		TimerOff,
 		Ban,
 		PackageCheck
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import type { RequestStatus } from '#lib/api/requests.js';
 
 	let { status, size = 'sm' }: { status: RequestStatus; size?: 'xs' | 'sm' } = $props();

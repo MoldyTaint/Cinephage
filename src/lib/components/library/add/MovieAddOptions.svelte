@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Calendar, Eye } from 'lucide-svelte';
+	import { Calendar, Eye } from '@lucide/svelte';
 	import { DesiredQualitiesPicker } from '#lib/components/library/index.js';
 	import * as m from '#lib/paraglide/messages.js';
 	import type { DesiredQuality } from '#lib/types/library.js';

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-	import { Calendar, LayoutGrid, Settings } from 'lucide-svelte';
+	import { Calendar, LayoutGrid, Settings } from '@lucide/svelte';
 	import {
 		EpgStatusPanel,
 		EpgCoverageTable,

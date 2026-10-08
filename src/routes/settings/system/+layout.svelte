@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Server, Film, Shield, Download, Zap, Inbox } from 'lucide-svelte';
+	import { Server, Film, Shield, Download, Zap, Inbox } from '@lucide/svelte';
 	import { SettingsTabNav } from '#lib/components/settings/index.js';
 	import * as m from '#lib/paraglide/messages.js';
 

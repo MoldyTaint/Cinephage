@@ -8,7 +8,7 @@
 		AlertCircle,
 		Search,
 		Trash2
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import type { UnmatchedFile } from '#lib/types/unmatched.js';
 	import { formatDisplayDateShort } from '#lib/utils/format.js';
 

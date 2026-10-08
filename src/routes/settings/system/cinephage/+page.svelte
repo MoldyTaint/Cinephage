@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { refreshAll } from '$app/navigation';
 	import { toasts } from '#lib/stores/toast.svelte.js';
-	import { Sparkles, Loader2 } from 'lucide-svelte';
+	import { Sparkles, Loader2 } from '@lucide/svelte';
 	import { SettingsPage } from '#lib/components/ui/settings/index.js';
 	import * as m from '#lib/paraglide/messages.js';
 	import { ensureVersionPrefix } from '#lib/version.js';

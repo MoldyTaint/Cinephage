@@ -1,6 +1,14 @@
 <script lang="ts">
 	import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
-	import { Download, Loader2, Search, CalendarSync, CalendarClock, X, Trash2 } from 'lucide-svelte';
+	import {
+		Download,
+		Loader2,
+		Search,
+		CalendarSync,
+		CalendarClock,
+		X,
+		Trash2
+	} from '@lucide/svelte';
 	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
 	import { copyToClipboard } from '#lib/utils/clipboard.js';
 

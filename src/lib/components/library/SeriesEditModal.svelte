@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { X, FolderOpen, Info } from 'lucide-svelte';
+	import { X, FolderOpen, Info } from '@lucide/svelte';
 	import { FolderBrowser } from '#lib/components/library/index.js';
 	import { ModalWrapper, ModalFooter } from '#lib/components/ui/modal/index.js';
 	import { sortRootFoldersForMediaType } from '#lib/utils/root-folders.js';

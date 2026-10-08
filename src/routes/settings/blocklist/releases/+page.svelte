@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Search, Ban, Clock, Trash2 } from 'lucide-svelte';
+	import { Search, Ban, Clock, Trash2 } from '@lucide/svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { SettingsPage } from '#lib/components/ui/settings/index.js';

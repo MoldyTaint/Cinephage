@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Tv, Radio, List } from 'lucide-svelte';
+	import { Tv, Radio, List } from '@lucide/svelte';
 	import { providerDefinitions } from './providerDefinitions';
 	import type { LiveTvProviderType } from '#lib/types/livetv.js';
 	import * as m from '#lib/paraglide/messages.js';

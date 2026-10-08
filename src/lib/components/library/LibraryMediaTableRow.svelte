@@ -13,7 +13,7 @@
 		Zap,
 		Search,
 		Download
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { resolvePath } from '#lib/utils/routing.js';
 	import { formatBytes, getStatusColor } from '#lib/utils/format.js';
 	import { formatRelativeDate } from '#lib/utils/format-relative-date.js';

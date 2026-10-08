@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
 	import type { ActivityFilters } from '#lib/types/activity.js';
-	import { X, Calendar, HardDrive, Globe, Users, Monitor, ArrowUpCircle } from 'lucide-svelte';
+	import { X, Calendar, HardDrive, Globe, Users, Monitor, ArrowUpCircle } from '@lucide/svelte';
 
 	interface Props {
 		filters: ActivityFilters;

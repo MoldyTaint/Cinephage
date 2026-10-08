@@ -11,7 +11,7 @@
 		type ActivityCategoryTag
 	} from './activity-display-utils.js';
 	import ActivityTypeTag from './ActivityTypeTag.svelte';
-	import { ExternalLink } from 'lucide-svelte';
+	import { ExternalLink } from '@lucide/svelte';
 
 	interface Props {
 		activity: UnifiedActivity;

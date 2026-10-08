@@ -9,7 +9,7 @@
 		TimerOff,
 		PackageCheck,
 		Inbox
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import {
 		listNotifications,
 		markNotificationsRead,

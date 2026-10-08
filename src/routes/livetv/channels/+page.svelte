@@ -10,7 +10,7 @@
 		Copy,
 		Check,
 		Image
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import type { PageData } from './$types';
 	import {
 		ChannelLineupTable,

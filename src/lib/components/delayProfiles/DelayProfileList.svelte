@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
 	import { refreshAll } from '$app/navigation';
-	import { Clock, Plus, Pencil, Trash2 } from 'lucide-svelte';
+	import { Clock, Plus, Pencil, Trash2 } from '@lucide/svelte';
 	import {
 		ModalWrapper,
 		ModalHeader,

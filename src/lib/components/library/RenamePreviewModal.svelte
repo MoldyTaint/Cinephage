@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { X, RefreshCw, CheckCircle, AlertTriangle, ArrowRight, Film, Tv } from 'lucide-svelte';
+	import { X, RefreshCw, CheckCircle, AlertTriangle, ArrowRight, Film, Tv } from '@lucide/svelte';
 	import type { RenamePreviewResult } from '#lib/server/library/naming/RenamePreviewService.js';
 	import { createFocusTrap, lockBodyScroll } from '#lib/utils/focus.js';
 	import { mediaTypeLabel, type MediaType } from '#lib/utils/media-type.js';

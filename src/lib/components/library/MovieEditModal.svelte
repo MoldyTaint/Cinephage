@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, FolderOpen, Search, Layers, Trash2, Pencil, Info } from 'lucide-svelte';
+	import { X, FolderOpen, Search, Layers, Trash2, Pencil, Info } from '@lucide/svelte';
 	import { FolderBrowser } from '#lib/components/library/index.js';
 	import type { LibraryMovie, DesiredQuality } from '#lib/types/library.js';
 	import { ModalWrapper, ModalFooter } from '#lib/components/ui/modal/index.js';

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ChevronDown, ChevronRight, MessageSquare } from 'lucide-svelte';
+	import { ChevronDown, ChevronRight, MessageSquare } from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import type { UnifiedTask } from '#lib/server/tasks/UnifiedTaskRegistry.js';
 	import type { TaskHistoryEntry } from '#lib/types/task.js';

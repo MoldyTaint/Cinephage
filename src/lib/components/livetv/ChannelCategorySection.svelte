@@ -8,7 +8,7 @@
 		Pencil,
 		Trash2,
 		Tv
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import ChannelLineupRow from './ChannelLineupRow.svelte';
 	import type {
 		ChannelLineupItemWithDetails,

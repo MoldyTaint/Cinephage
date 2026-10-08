@@ -10,7 +10,7 @@
 	} from '#lib/api/index.js';
 	import { formatDuration } from '#lib/utils/format.js';
 	import { toasts } from '#lib/stores/toast.svelte.js';
-	import { RotateCw, X, ChevronDown, ChevronUp, Ban } from 'lucide-svelte';
+	import { RotateCw, X, ChevronDown, ChevronUp, Ban } from '@lucide/svelte';
 	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
 
 	interface Batch {

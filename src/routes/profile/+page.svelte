@@ -18,7 +18,7 @@
 		Pencil,
 		ShieldCheck,
 		Globe
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { authClient } from '#lib/auth/client.js';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { ApiError, apiGet, apiPost, apiPut, apiDelete } from '#lib/api/client.js';

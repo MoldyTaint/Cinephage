@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ChevronDown, Settings } from 'lucide-svelte';
+	import { ChevronDown, Settings } from '@lucide/svelte';
 	import type { IndexerDefinition } from '#lib/types/indexer.js';
 	import * as m from '#lib/paraglide/messages.js';
 	import { SectionHeader, ToggleSetting } from '#lib/components/ui/modal/index.js';

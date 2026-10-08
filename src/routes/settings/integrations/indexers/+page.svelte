@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { refreshAll } from '$app/navigation';
-	import { Plus, Download } from 'lucide-svelte';
+	import { Plus, Download } from '@lucide/svelte';
 	import type { PageData } from './$types';
 	import type {
 		Indexer,

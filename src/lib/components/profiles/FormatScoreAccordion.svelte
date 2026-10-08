@@ -25,7 +25,7 @@
 		Sparkles,
 		FileCode,
 		MoreHorizontal
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 
 	interface Props {
 		formatScores: Map<FormatCategory, FormatScoreEntry[]>;

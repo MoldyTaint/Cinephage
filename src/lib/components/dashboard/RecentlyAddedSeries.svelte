@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { Tv } from 'lucide-svelte';
+	import { Tv } from '@lucide/svelte';
 	import TmdbImage from '#lib/components/tmdb/TmdbImage.svelte';
 	import Skeleton from '#lib/components/ui/Skeleton.svelte';
 	import { resolve } from '$app/paths';

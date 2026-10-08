@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Activity, BarChart2, ListTodo, ScrollText } from 'lucide-svelte';
+	import { Activity, BarChart2, ListTodo, ScrollText } from '@lucide/svelte';
 	import { SettingsTabNav } from '#lib/components/settings/index.js';
 	import * as m from '#lib/paraglide/messages.js';
 

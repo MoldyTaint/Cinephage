@@ -36,7 +36,7 @@
 		type ActivitySummary
 	} from '#lib/types/activity.js';
 	import type { ActivityStreamEvents } from '#lib/types/sse/events/activity-events.js';
-	import { Activity, Loader2 } from 'lucide-svelte';
+	import { Activity, Loader2 } from '@lucide/svelte';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { supportsQueuePauseResume } from '#lib/components/activity/activity-display-utils.js';
 	import {

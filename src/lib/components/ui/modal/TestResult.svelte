@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { CheckCircle2, XCircle } from 'lucide-svelte';
+	import { CheckCircle2, XCircle } from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 
 	interface TestResultData {

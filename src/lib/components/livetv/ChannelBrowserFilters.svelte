@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Search } from 'lucide-svelte';
+	import { Search } from '@lucide/svelte';
 	import type { LiveTvAccount, LiveTvCategory } from '#lib/types/livetv.js';
 	import * as m from '#lib/paraglide/messages.js';
 

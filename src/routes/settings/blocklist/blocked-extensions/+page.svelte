@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, ShieldAlert } from 'lucide-svelte';
+	import { X, ShieldAlert } from '@lucide/svelte';
 	import { updateBlockedExtensions } from '#lib/api/settings.js';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { SettingsPage } from '#lib/components/ui/settings/index.js';

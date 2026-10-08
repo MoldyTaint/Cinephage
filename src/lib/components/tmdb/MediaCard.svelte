@@ -9,7 +9,7 @@
 	} from '#lib/types/tmdb-guards.js';
 	import { resolvePath } from '#lib/utils/routing.js';
 	import TmdbImage from './TmdbImage.svelte';
-	import { Check, Clock, Plus, Clapperboard } from 'lucide-svelte';
+	import { Check, Clock, Plus, Clapperboard } from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { getSmartReleaseLine } from '#lib/utils/smartReleaseLine.js';
 	import { formatReleaseLine } from '#lib/utils/releaseLineText.js';

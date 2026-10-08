@@ -10,7 +10,7 @@
 		Loader2,
 		Trash2,
 		Captions
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import EpisodeRow from './EpisodeRow.svelte';
 	import AutoSearchStatus from './AutoSearchStatus.svelte';
 	import { formatBytes, todayDateString } from '#lib/utils/format.js';

@@ -27,7 +27,7 @@
 		ArrowLeft,
 		Eye,
 		EyeOff
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { formatBytes, formatLanguage, formatDisplayDateShort } from '#lib/utils/format.js';
 	import { resolvePath } from '#lib/utils/routing.js';
