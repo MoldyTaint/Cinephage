@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { Plus, X, ArrowUp, ArrowDown, Flag, Info } from 'lucide-svelte';
 	import { getResponseErrorMessage } from '#lib/utils/http.js';
 	import { ALL_LANGUAGE_OPTIONS } from '#lib/shared/languages.js';
@@ -208,7 +208,7 @@
 				await createLanguageProfile(payload);
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			onClose();
 		} catch (e) {
 			modalError =

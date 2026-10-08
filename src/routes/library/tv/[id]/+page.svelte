@@ -34,7 +34,7 @@
 	import { CheckSquare, FileEdit, RefreshCw, X } from 'lucide-svelte';
 	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 	import { page } from '$app/state';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, refreshAll } from '$app/navigation';
 	import { resolvePath } from '#lib/utils/routing.js';
 	import { getLibraryDetailBackHref } from '#lib/utils/libraryReturnNavigation.js';
 	import { createDynamicSSE } from '#lib/sse/index.js';
@@ -1535,7 +1535,7 @@
 				body: JSON.stringify({ wantsSubtitlesOverride: value })
 			});
 			if (!response.ok) throw new Error('Failed to update episode subtitle gate');
-			await invalidateAll();
+			await refreshAll();
 		} catch (error) {
 			showActionError(m.toast_library_tvDetail_failedToUpdateMonitor(), error);
 		}
@@ -1553,7 +1553,7 @@
 				const body = (await response.json().catch(() => ({}))) as { error?: string };
 				throw new Error(body.error ?? 'Search failed');
 			}
-			await invalidateAll();
+			await refreshAll();
 		} catch (error) {
 			showActionError(m.toast_library_tvDetail_failedToUpdateMonitor(), error);
 		} finally {
@@ -1573,7 +1573,7 @@
 				const body = (await response.json().catch(() => ({}))) as { error?: string };
 				throw new Error(body.error ?? 'Failed to save subtitle languages');
 			}
-			await invalidateAll();
+			await refreshAll();
 		} finally {
 			savingRequirements = false;
 		}

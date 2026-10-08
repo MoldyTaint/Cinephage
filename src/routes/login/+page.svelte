@@ -35,7 +35,7 @@
 
 			// Refresh all server load data (root layout now carries user
 			// identity) before entering the app.
-			await goto('/', { invalidateAll: true });
+			await goto('/', { refreshAll: true });
 		} catch (e) {
 			error = e instanceof Error ? e.message : m.login_unexpectedError();
 		} finally {

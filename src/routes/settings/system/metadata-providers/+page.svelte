@@ -3,7 +3,7 @@
 	import { ChevronRight, CheckCircle, AlertCircle } from 'lucide-svelte';
 	import type { LayoutData } from '../$types';
 	import { toasts } from '#lib/stores/toast.svelte.js';
-	import { invalidateAll, goto } from '$app/navigation';
+	import { refreshAll, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { ModalWrapper, ModalHeader, ModalFooter } from '#lib/components/ui/modal/index.js';
 	import { SettingsPage, SettingsSection } from '#lib/components/ui/settings/index.js';
@@ -62,7 +62,7 @@
 		try {
 			await updateTmdbSettings(tmdbApiKey);
 
-			await invalidateAll();
+			await refreshAll();
 			toasts.success(m.settings_integrations_tmdbKeySaved());
 			closeTmdbModal();
 		} catch (error) {
@@ -78,7 +78,7 @@
 		enrichmentError = null;
 		try {
 			await updateMetadataProviderSettings({ animeEnrichmentEnabled });
-			await invalidateAll();
+			await refreshAll();
 			toasts.success('Anime enrichment settings saved');
 			closeEnrichmentModal();
 		} catch (error) {

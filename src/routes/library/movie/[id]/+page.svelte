@@ -44,7 +44,7 @@
 		Info
 	} from 'lucide-svelte';
 	import { page } from '$app/state';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, refreshAll } from '$app/navigation';
 	import { resolvePath } from '#lib/utils/routing.js';
 	import { getLibraryDetailBackHref } from '#lib/utils/libraryReturnNavigation.js';
 	import { deriveSubtitleProgress } from '#lib/utils/subtitle-status-display.js';
@@ -158,12 +158,12 @@
 				movie.files = [...movie.files, payload.file];
 			}
 			movie.hasFile = movie.files.length > 0;
-			invalidateAll();
+			refreshAll();
 		},
 		'file:removed': (payload) => {
 			movie.files = movie.files.filter((f) => f.id !== payload.fileId);
 			movie.hasFile = movie.files.length > 0;
-			invalidateAll();
+			refreshAll();
 		}
 	});
 
@@ -266,7 +266,7 @@
 			if (!res.ok) throw new Error(result.error ?? 'Failed to add movie');
 			toasts.success(`${addingPart.title} added to library`);
 			addingPart = null;
-			await invalidateAll();
+			await refreshAll();
 		} catch (err) {
 			showActionError('Failed to add movie', err);
 		} finally {
@@ -293,7 +293,7 @@
 			if (result.added > 0) {
 				toasts.success(`Added ${result.added} movie${result.added === 1 ? '' : 's'} to library`);
 				trackPanelOpen = false;
-				await invalidateAll();
+				await refreshAll();
 			}
 		} catch (err) {
 			showActionError('Failed to add collection', err);
@@ -497,7 +497,7 @@
 				const body = (await response.json().catch(() => ({}))) as { error?: string };
 				throw new Error(body.error ?? 'Failed to save subtitle languages');
 			}
-			await invalidateAll();
+			await refreshAll();
 		} finally {
 			savingRequirements = false;
 		}
@@ -514,7 +514,7 @@
 				const body = (await response.json().catch(() => ({}))) as { error?: string };
 				throw new Error(body.error ?? 'Search failed');
 			}
-			await invalidateAll();
+			await refreshAll();
 		} catch (error) {
 			toasts.error(error instanceof Error ? error.message : 'Subtitle search failed');
 		}

@@ -5,7 +5,7 @@
 	import { RootFolderModal } from '#lib/components/rootFolders/index.js';
 	import { validateRootFolder, updateRootFolder } from '#lib/api/settings.js';
 	import { scanLibrary } from '#lib/api/library.js';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import type {
 		RootFolder,
@@ -63,7 +63,7 @@
 		folderSaveError = null;
 		try {
 			await updateRootFolder(editingFolder.id, formData as RootFolderUpdate);
-			await invalidateAll();
+			await refreshAll();
 			closeFolderModal();
 			toasts.success(m.status_folder_updated());
 		} catch (error) {

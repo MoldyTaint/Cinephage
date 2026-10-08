@@ -8,7 +8,7 @@
 	import RequestButton from '#lib/components/requests/RequestButton.svelte';
 	import RequestStatusBadge from '#lib/components/requests/RequestStatusBadge.svelte';
 	import { approveRequest, declineRequest } from '#lib/api/requests.js';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import {
 		Plus,
 		CircleCheckBig,
@@ -74,7 +74,7 @@
 		try {
 			await approveRequest(requestState.requestId);
 			toasts.success(m.requests_approved());
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			toasts.error(e instanceof Error ? e.message : m.requests_errorGeneric());
 		} finally {
@@ -92,7 +92,7 @@
 			toasts.info(m.requests_declined());
 			adminDeclining = false;
 			adminReason = '';
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			toasts.error(e instanceof Error ? e.message : m.requests_errorGeneric());
 		} finally {

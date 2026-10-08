@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { Plus, Trash2, Pencil, Star, Globe, Copy, Loader2 } from 'lucide-svelte';
 	import { getResponseErrorMessage } from '#lib/utils/http.js';
 	import { getLanguageName } from '#lib/shared/languages.js';
@@ -64,7 +64,7 @@
 		settingDefault = true;
 		try {
 			await updateLanguageSettings({ defaultProfileId: profile.id });
-			await invalidateAll();
+			await refreshAll();
 			toasts.success(m.settings_languages_defaultSaved());
 		} catch (error) {
 			toasts.error(
@@ -113,7 +113,7 @@
 		deleting = true;
 		try {
 			await deleteLanguageProfile(deleteTarget.id);
-			await invalidateAll();
+			await refreshAll();
 			confirmDeleteOpen = false;
 			deleteTarget = null;
 		} catch (error) {

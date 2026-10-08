@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, refreshAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Plus } from 'lucide-svelte';
 	import { SettingsPage } from '#lib/components/ui/settings/index.js';
@@ -107,7 +107,7 @@
 					? await updateRootFolder(editingFolder.id, formData as RootFolderUpdate)
 					: await createRootFolder(formData as RootFolderCreate);
 
-			await invalidateAll();
+			await refreshAll();
 			closeFolderModal();
 			showAnimeEnforcementAutoDisabledWarning(payload);
 
@@ -134,7 +134,7 @@
 			const payload = await deleteRootFolder(deleteFolderTarget.id);
 
 			showAnimeEnforcementAutoDisabledWarning(payload);
-			await invalidateAll();
+			await refreshAll();
 			confirmFolderDeleteOpen = false;
 			deleteFolderTarget = null;
 		} catch (error) {

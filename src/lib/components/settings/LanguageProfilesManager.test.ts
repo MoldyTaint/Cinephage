@@ -9,16 +9,16 @@ const {
 	updateLanguageProfile,
 	deleteLanguageProfile,
 	updateLanguageSettings,
-	invalidateAll
+	refreshAll
 } = vi.hoisted(() => ({
 	createLanguageProfile: vi.fn().mockResolvedValue({ success: true }),
 	updateLanguageProfile: vi.fn().mockResolvedValue({ success: true }),
 	deleteLanguageProfile: vi.fn().mockResolvedValue({ success: true }),
 	updateLanguageSettings: vi.fn().mockResolvedValue({}),
-	invalidateAll: vi.fn().mockResolvedValue(undefined)
+	refreshAll: vi.fn().mockResolvedValue(undefined)
 }));
 
-vi.mock('$app/navigation', () => ({ invalidateAll }));
+vi.mock('$app/navigation', () => ({ refreshAll }));
 
 vi.mock('#lib/api/index.js', () => ({
 	createLanguageProfile,
@@ -93,7 +93,7 @@ describe('language profiles manager', () => {
 
 		expect(updateLanguageSettings).toHaveBeenCalledTimes(1);
 		expect(updateLanguageSettings).toHaveBeenCalledWith({ defaultProfileId: 'p1' });
-		expect(invalidateAll).toHaveBeenCalledTimes(1);
+		expect(refreshAll).toHaveBeenCalledTimes(1);
 	});
 
 	it('shows the empty state with a create CTA when no profiles exist', async () => {
@@ -326,6 +326,6 @@ describe('language profile deletion', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
 		expect(deleteLanguageProfile).toHaveBeenCalledWith('p1');
-		expect(invalidateAll).toHaveBeenCalled();
+		expect(refreshAll).toHaveBeenCalled();
 	});
 });

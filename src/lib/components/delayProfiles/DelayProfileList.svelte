@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { Clock, Plus, Pencil, Trash2 } from 'lucide-svelte';
 	import {
 		ModalWrapper,
@@ -87,7 +87,7 @@
 				toasts.success(m.settings_quality_delay_updated());
 			}
 			dpModalOpen = false;
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			toasts.error(e instanceof Error ? e.message : 'Failed to save');
 		} finally {
@@ -103,7 +103,7 @@
 			toasts.success(m.settings_quality_delay_deleted({ name: dpDeleteTarget.name }));
 			dpDeleteOpen = false;
 			dpDeleteTarget = null;
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			toasts.error(e instanceof Error ? e.message : 'Failed to delete');
 		} finally {

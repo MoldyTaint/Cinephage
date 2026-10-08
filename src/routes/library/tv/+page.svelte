@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { goto, beforeNavigate, afterNavigate, invalidateAll } from '$app/navigation';
+	import { goto, beforeNavigate, afterNavigate, refreshAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { resolvePath } from '#lib/utils/routing.js';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -115,7 +115,7 @@
 	async function handleBulkLanguageApplied(updated: number) {
 		selectedSeries.clear();
 		toasts.success(m.toast_library_tv_qualityUpdatedCount({ count: updated }));
-		await invalidateAll();
+		await refreshAll();
 	}
 	let isQualityModalOpen = $state(false);
 	let isDeleteModalOpen = $state(false);

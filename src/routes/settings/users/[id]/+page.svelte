@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { resolvePath } from '#lib/utils/routing.js';
 	import { page } from '$app/state';
 	import {
@@ -110,7 +110,7 @@
 			toasts.error(result.error.message || m.users_actionFailed());
 			return false;
 		}
-		await invalidateAll();
+		await refreshAll();
 		return true;
 	}
 
@@ -366,7 +366,7 @@
 			}
 			toasts.success(m.users_deleted({ username: data.profile.username ?? '' }));
 			deleteModalOpen = false;
-			await invalidateAll();
+			await refreshAll();
 			window.location.href = resolvePath('/settings/users');
 		} finally {
 			deletingUser = false;

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll, goto } from '$app/navigation';
+	import { refreshAll, goto } from '$app/navigation';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
 	import {
@@ -48,7 +48,7 @@
 				throw new Error(result?.errorMessage ?? result?.error ?? 'Smart list refresh failed');
 			}
 
-			await invalidateAll();
+			await refreshAll();
 		} catch (error) {
 			actionError = error instanceof Error ? error.message : 'Smart list refresh failed';
 		} finally {
@@ -71,7 +71,7 @@
 		try {
 			await deleteSmartList(id);
 
-			await invalidateAll();
+			await refreshAll();
 			confirmDeleteOpen = false;
 			deleteTarget = null;
 		} catch (error) {
@@ -84,7 +84,7 @@
 
 	async function toggleEnabled(list: (typeof data.lists)[0]) {
 		await updateSmartList(list.id, { enabled: !list.enabled });
-		await invalidateAll();
+		await refreshAll();
 	}
 
 	function formatDate(dateString: string | null): string {

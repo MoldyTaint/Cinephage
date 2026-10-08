@@ -2,7 +2,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { Plus } from 'lucide-svelte';
 	import { SettingsPage, SettingsSection } from '#lib/components/ui/settings/index.js';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, refreshAll } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import type { PageData } from './$types';
@@ -164,7 +164,7 @@
 
 			toasts.success('Library deleted');
 			confirmLibraryDeleteOpen = false;
-			await invalidateAll();
+			await refreshAll();
 		} catch (error) {
 			toasts.error(error instanceof Error ? error.message : 'Failed to delete library');
 		} finally {

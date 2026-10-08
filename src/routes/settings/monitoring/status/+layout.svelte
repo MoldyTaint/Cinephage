@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { createSSE } from '#lib/sse/index.js';
 	import { layoutState, deriveMobileSseStatus } from '#lib/layout.svelte.js';
 
@@ -41,7 +41,7 @@
 			if (payload?.timestamp) {
 				layoutState.markInsightsUpdated(payload.timestamp);
 			}
-			void invalidateAll();
+			void refreshAll();
 		}
 	});
 
@@ -54,7 +54,7 @@
 	// outside the /status/* area (and thus not listening to the SSE streams
 	// above). Cheap relative to the cost of showing stale data.
 	onMount(() => {
-		void invalidateAll();
+		void refreshAll();
 	});
 
 	$effect(() => {

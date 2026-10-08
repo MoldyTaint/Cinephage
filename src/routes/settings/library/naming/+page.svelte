@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import {
@@ -459,7 +459,7 @@
 			savedPresetSelection = normalizeNamingPresetSelection(responseData.presetSelection);
 			config = createNormalizedNamingConfig(responseData.config);
 			applyPresetSelection(savedPresetSelection);
-			await invalidateAll();
+			await refreshAll();
 			success = true;
 			setTimeout(() => (success = false), 3000);
 		} catch (e) {
@@ -499,7 +499,7 @@
 				(result as Record<string, unknown>).presetSelection as NamingPresetSelection
 			);
 			applyPresetSelection(savedPresetSelection);
-			await invalidateAll();
+			await refreshAll();
 			success = true;
 			setTimeout(() => (success = false), 3000);
 		} catch (e) {

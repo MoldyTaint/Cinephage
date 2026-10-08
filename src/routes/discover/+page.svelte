@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
 	import { page } from '$app/state';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, refreshAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { resolvePath } from '#lib/utils/routing.js';
 	import type { TmdbMediaItem } from '#lib/types/tmdb.js';
@@ -67,7 +67,7 @@
 
 	function handleAddSuccess() {
 		// Refresh the page data to update library status indicators
-		invalidateAll();
+		refreshAll();
 	}
 
 	// Search state

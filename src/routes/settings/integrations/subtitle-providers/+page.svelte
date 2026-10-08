@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { Plus, Search } from 'lucide-svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { getResponseErrorMessage } from '#lib/utils/http.js';
@@ -244,7 +244,7 @@
 	async function handleToggle(provider: SubtitleProviderWithDefinition) {
 		try {
 			await updateSubtitleProvider(provider.id, { enabled: !provider.enabled });
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			toasts.error(
 				e instanceof ApiError
@@ -264,7 +264,7 @@
 				await updateSubtitleProvider(id, { enabled: true });
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			selectedIds.clear();
 		} catch (e) {
 			toasts.error(
@@ -287,7 +287,7 @@
 				await updateSubtitleProvider(id, { enabled: false });
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			selectedIds.clear();
 		} catch (e) {
 			toasts.error(
@@ -319,7 +319,7 @@
 				await deleteSubtitleProvider(id);
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			selectedIds.clear();
 			confirmBulkDeleteOpen = false;
 		} catch (e) {
@@ -422,7 +422,7 @@
 				await createSubtitleProvider(typedFormData);
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			closeModal();
 		} catch (e) {
 			if (e instanceof ApiError) {
@@ -439,7 +439,7 @@
 		if (!editingProvider) return;
 		try {
 			await deleteSubtitleProvider(editingProvider.id);
-			await invalidateAll();
+			await refreshAll();
 			closeModal();
 		} catch (e) {
 			toasts.error(e instanceof Error ? e.message : 'Failed to delete provider');
@@ -450,7 +450,7 @@
 		if (!deleteTarget) return;
 		try {
 			await deleteSubtitleProvider(deleteTarget.id);
-			await invalidateAll();
+			await refreshAll();
 			confirmDeleteOpen = false;
 			deleteTarget = null;
 		} catch (e) {
@@ -461,7 +461,7 @@
 	async function handleReorder(providerIds: string[]) {
 		try {
 			await reorderSubtitleProviders(providerIds);
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			toasts.error(
 				e instanceof ApiError

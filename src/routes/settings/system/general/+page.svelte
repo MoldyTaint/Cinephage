@@ -5,7 +5,7 @@
 	import { untrack } from 'svelte';
 	import { copyToClipboard as copyTextToClipboard } from '#lib/utils/clipboard.js';
 	import { toasts } from '#lib/stores/toast.svelte.js';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
 	import { formatDisplayDate } from '#lib/utils/format.js';
@@ -62,7 +62,7 @@
 			const result = await createApiKeys();
 
 			if (result.success) {
-				await invalidateAll();
+				await refreshAll();
 				toasts.success(m.settings_system_apiKeysGenerated());
 			}
 		} catch (err) {
@@ -97,7 +97,7 @@
 			const result = await regenerateApiKey(keyId);
 
 			if (result.success && result.data?.key) {
-				await invalidateAll();
+				await refreshAll();
 				if (type === 'main') showMainKey = true;
 				else showStreamingKey = true;
 				toasts.success(m.settings_system_keyRegenerated({ label }));

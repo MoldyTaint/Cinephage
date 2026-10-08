@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, refreshAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import type { PageData } from './$types';
 	import type { ScoringProfile, ScoringProfileFormData } from '#lib/types/profile.js';
@@ -98,7 +98,7 @@
 				} & ScoringProfileUpdate);
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			closeProfileModal();
 		} catch (e) {
 			profileError = e instanceof Error ? e.message : 'An unexpected error occurred';
@@ -120,7 +120,7 @@
 		try {
 			await updateScoringProfile({ id: profileId, formatScores: {} });
 
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			profileError = e instanceof Error ? e.message : 'An unexpected error occurred';
 		} finally {
@@ -139,7 +139,7 @@
 		try {
 			await deleteScoringProfile(profileDeleteTarget.id);
 
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			toasts.error(e instanceof Error ? e.message : m.settings_quality_failedToDeleteProfile());
 		} finally {
@@ -155,7 +155,7 @@
 				isDefault: true
 			});
 
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			toasts.error(e instanceof Error ? e.message : m.settings_quality_failedToSetDefault());
 		}
@@ -215,7 +215,7 @@
 				);
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			closeFormatModal();
 		} catch (e) {
 			formatError = e instanceof Error ? e.message : 'An unexpected error occurred';
@@ -235,7 +235,7 @@
 		try {
 			await deleteCustomFormat(formatDeleteTarget.id);
 
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			toasts.error(e instanceof Error ? e.message : m.settings_quality_failedToDeleteFormat());
 		} finally {

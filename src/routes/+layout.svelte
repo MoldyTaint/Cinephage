@@ -1,7 +1,7 @@
 <script lang="ts">
 	import './layout.css';
 	import { browser } from '$app/env';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, refreshAll } from '$app/navigation';
 	import type { ReadonlyURL } from '$app/state';
 	import { ThemeSelector, LanguageSelector, UserAvatar } from '#lib/components/ui/index.js';
 	import { NotificationBell } from '#lib/components/requests/index.js';
@@ -217,7 +217,7 @@
 			await authClient.signOut();
 			// Drop all server-loaded state (the root layout carries user
 			// identity) before leaving the app.
-			await invalidateAll();
+			await refreshAll();
 			await goto('/login');
 		} catch {
 			// Error handled by auth client
@@ -495,7 +495,7 @@
 				layoutState.setScanState(false, null);
 				const count = payload.results?.length ?? 0;
 				toasts.success(m.settings_general_scanCompleteFoldersScanned({ count }));
-				void invalidateAll();
+				void refreshAll();
 			},
 			scanError: () => {
 				layoutState.setScanState(false, null);
@@ -522,7 +522,7 @@
 			syncStop: () => {
 				layoutState.setMediaServerSyncing(false);
 				toasts.success(m.settings_monitoring_mediaServerSyncComplete());
-				void invalidateAll();
+				void refreshAll();
 			}
 		});
 </script>

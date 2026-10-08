@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { Plus, Search } from 'lucide-svelte';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -342,7 +342,7 @@
 				await createDownloadClient(payload as unknown as DownloadClientCreate);
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			closeModal();
 		} catch (error) {
 			if (error instanceof ApiError) {
@@ -361,7 +361,7 @@
 		if (!editingClient) return;
 		try {
 			await deleteDownloadClient(editingClient.id);
-			await invalidateAll();
+			await refreshAll();
 			closeModal();
 		} catch (error) {
 			toasts.error(
@@ -386,7 +386,7 @@
 		if (!deleteTarget) return;
 		try {
 			await deleteDownloadClient(deleteTarget.id);
-			await invalidateAll();
+			await refreshAll();
 			confirmDeleteOpen = false;
 			deleteTarget = null;
 		} catch (error) {
@@ -406,7 +406,7 @@
 	async function handleToggle(client: UnifiedClientItem) {
 		try {
 			await updateDownloadClient(client.id, { enabled: !client.enabled });
-			await invalidateAll();
+			await refreshAll();
 		} catch (error) {
 			toasts.error(
 				toDownloadClientErrorMessage(
@@ -438,7 +438,7 @@
 				)
 			);
 		} finally {
-			await invalidateAll();
+			await refreshAll();
 			testingId = null;
 		}
 	}
@@ -451,7 +451,7 @@
 				await updateDownloadClient(id, { enabled: true });
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			selectedIds.clear();
 		} catch (error) {
 			toasts.error(
@@ -477,7 +477,7 @@
 				await updateDownloadClient(id, { enabled: false });
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			selectedIds.clear();
 		} catch (error) {
 			toasts.error(
@@ -512,7 +512,7 @@
 				await deleteDownloadClient(id);
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			selectedIds.clear();
 			confirmBulkDeleteOpen = false;
 		} catch (error) {
@@ -552,7 +552,7 @@
 				}
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			toasts.info(
 				m.settings_integrations_bulkTestComplete({
 					successCount: String(successCount),

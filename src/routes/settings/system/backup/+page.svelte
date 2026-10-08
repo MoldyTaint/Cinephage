@@ -14,7 +14,7 @@
 	} from 'lucide-svelte';
 	import { FolderBrowser } from '#lib/components/library/index.js';
 	import type { LayoutData } from '../$types';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
 	import { formatDisplayDate } from '#lib/utils/format.js';
 	import { SettingsPage, SettingsSection } from '#lib/components/ui/settings/index.js';
@@ -475,7 +475,7 @@
 			selectedBackupFile = null;
 			backupPreview = null;
 			selectedRestoreSections = [];
-			await invalidateAll();
+			await refreshAll();
 		} catch (error) {
 			backupError =
 				error instanceof Error ? error.message : m.settings_system_backup_errorRestoreFailed();

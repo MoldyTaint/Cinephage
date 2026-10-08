@@ -17,7 +17,7 @@
 	import ModalWrapper from '#lib/components/ui/modal/ModalWrapper.svelte';
 	import { createIndexer, ApiError } from '#lib/api/index.js';
 	import { getResponseErrorMessage } from '#lib/utils/http.js';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { formatRelativeTime } from '#lib/components/activity/activity-display-utils.js';
 
 	interface JackettIndexer {
@@ -117,7 +117,7 @@
 					body: JSON.stringify({ url: connection.url, autoSync, syncIntervalHours, syncAddNew })
 				});
 				if (res.ok) {
-					await invalidateAll();
+					await refreshAll();
 				}
 			} finally {
 				savingSettings = false;
@@ -225,7 +225,7 @@
 		importing = false;
 		doneResult = { type: 'import', result };
 		step = 'done';
-		await invalidateAll();
+		await refreshAll();
 	}
 
 	async function browseAndImport() {
@@ -264,7 +264,7 @@
 			await refreshConnection();
 			doneResult = { type: 'sync', result: data.result as SyncResult };
 			step = 'done';
-			await invalidateAll();
+			await refreshAll();
 		} catch {
 			syncError = 'Sync failed. Check that Jackett is still accessible.';
 		} finally {
@@ -282,7 +282,7 @@
 			autoSync = false;
 			syncIntervalHours = 24;
 			confirmingDelete = false;
-			await invalidateAll();
+			await refreshAll();
 		} catch {
 			// ignore
 		}

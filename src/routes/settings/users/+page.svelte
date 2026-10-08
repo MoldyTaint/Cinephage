@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, refreshAll } from '$app/navigation';
 	import { resolvePath } from '#lib/utils/routing.js';
 	import { ShieldCheck, User, UserPlus, Users, ChevronRight } from 'lucide-svelte';
 	import { authClient } from '#lib/auth/client.js';
@@ -101,7 +101,7 @@
 			toasts.success(m.users_createSuccess({ username: newUsername }));
 			createOpen = false;
 			resetCreateForm();
-			await invalidateAll();
+			await refreshAll();
 		} finally {
 			creatingUser = false;
 		}

@@ -19,7 +19,7 @@
 	} from '#lib/components/storage/utils.js';
 	import { getInsightItems, type InsightItem } from '#lib/api/storage.js';
 	import { layoutState } from '#lib/layout.svelte.js';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import {
 		scanLibrary,
@@ -201,7 +201,7 @@
 				await batchSeries([id], { monitored: false });
 			}
 			toasts.success('Unmonitored');
-			void invalidateAll();
+			void refreshAll();
 		} catch (e) {
 			toasts.error(e instanceof Error ? e.message : 'Failed to unmonitor');
 		} finally {
@@ -221,7 +221,7 @@
 				await deleteSeries(id, false, true);
 			}
 			toasts.success('Removed from library');
-			void invalidateAll();
+			void refreshAll();
 		} catch (e) {
 			toasts.error(e instanceof Error ? e.message : 'Failed to remove');
 		} finally {
@@ -236,7 +236,7 @@
 		try {
 			await apiDelete(`/api/library/unmatched/${uuid}?deleteFile=true`);
 			toasts.success('File deleted');
-			void invalidateAll();
+			void refreshAll();
 		} catch (e) {
 			toasts.error(e instanceof Error ? e.message : 'Failed to delete');
 		} finally {
@@ -251,7 +251,7 @@
 		try {
 			await apiDelete('/api/library/unmatched', { fileIds: uuids, deleteFromDisk: true });
 			toasts.success(`Deleted ${uuids.length} file${uuids.length === 1 ? '' : 's'}`);
-			void invalidateAll();
+			void refreshAll();
 		} catch (e) {
 			toasts.error(e instanceof Error ? e.message : 'Failed to delete');
 		} finally {
@@ -352,7 +352,7 @@
 		const success = await dismissInsight(insightId);
 		if (success) {
 			selectedInsight = null;
-			void invalidateAll();
+			void refreshAll();
 		}
 	}
 
@@ -1062,7 +1062,7 @@
 									<InsightCard
 										{insight}
 										onOpen={() => openInsightDetail(insight)}
-										onDismissed={() => void invalidateAll()}
+										onDismissed={() => void refreshAll()}
 									/>
 								{/each}
 							</div>
@@ -1078,7 +1078,7 @@
 									<InsightCard
 										{insight}
 										onOpen={() => openInsightDetail(insight)}
-										onDismissed={() => void invalidateAll()}
+										onDismissed={() => void refreshAll()}
 									/>
 								{/each}
 							</div>

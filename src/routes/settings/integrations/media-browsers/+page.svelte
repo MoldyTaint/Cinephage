@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { Plus, Search } from 'lucide-svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toasts } from '#lib/stores/toast.svelte.js';
@@ -249,7 +249,7 @@
 				await createMediaBrowserNotification(payload as unknown as MediaBrowserServerCreate);
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			closeModal();
 		} catch (error) {
 			if (error instanceof ApiError) {
@@ -266,7 +266,7 @@
 		if (!editingServer) return;
 		try {
 			await deleteMediaBrowserNotification(editingServer.id);
-			await invalidateAll();
+			await refreshAll();
 			closeModal();
 		} catch (error) {
 			toasts.error(
@@ -291,7 +291,7 @@
 		if (!deleteTarget) return;
 		try {
 			await deleteMediaBrowserNotification(deleteTarget.id);
-			await invalidateAll();
+			await refreshAll();
 			confirmDeleteOpen = false;
 			deleteTarget = null;
 		} catch (error) {
@@ -311,7 +311,7 @@
 	async function handleToggle(server: MediaBrowserServerPublic) {
 		try {
 			await updateMediaBrowserNotification(server.id, { enabled: !server.enabled });
-			await invalidateAll();
+			await refreshAll();
 		} catch (error) {
 			toasts.error(
 				getServerErrorMessage(
@@ -347,7 +347,7 @@
 				)
 			);
 		} finally {
-			await invalidateAll();
+			await refreshAll();
 			testingId = null;
 		}
 	}
@@ -360,7 +360,7 @@
 				await updateMediaBrowserNotification(id, { enabled: true });
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			selectedIds.clear();
 		} catch (error) {
 			toasts.error(
@@ -383,7 +383,7 @@
 				await updateMediaBrowserNotification(id, { enabled: false });
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			selectedIds.clear();
 		} catch (error) {
 			toasts.error(
@@ -415,7 +415,7 @@
 				await deleteMediaBrowserNotification(id);
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			selectedIds.clear();
 			confirmBulkDeleteOpen = false;
 		} catch (error) {
@@ -450,7 +450,7 @@
 				}
 			}
 
-			await invalidateAll();
+			await refreshAll();
 			toasts.info(
 				m.settings_integrations_bulkTestComplete({
 					successCount: String(successCount),

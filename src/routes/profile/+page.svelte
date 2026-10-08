@@ -24,7 +24,7 @@
 	import { ApiError, apiGet, apiPost, apiPut, apiDelete } from '#lib/api/client.js';
 	import { getRequestCounts, type RequestCountResponse } from '#lib/api/requests.js';
 	import QuotaSummary from '#lib/components/requests/QuotaSummary.svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { formatDisplayDate } from '#lib/utils/format.js';
 	import { SettingsPage, SettingsSection } from '#lib/components/ui/settings/index.js';
 	import { LanguageSelector, UserAvatar } from '#lib/components/ui/index.js';
@@ -79,7 +79,7 @@
 			}
 			editingName = false;
 			toasts.success(m.profile_nameSaved());
-			await invalidateAll();
+			await refreshAll();
 		} finally {
 			savingName = false;
 		}

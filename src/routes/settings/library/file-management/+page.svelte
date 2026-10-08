@@ -7,7 +7,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { updateFileManagementSettings, updateSidecarSettings } from '#lib/api/settings.js';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import type { PageData } from './$types';
 	import type { ImportMethod } from '#lib/validation/schemas.js';
 	import { DANGEROUS_EXTENSIONS, EXECUTABLE_EXTENSIONS } from '#lib/config/constants.js';
@@ -103,7 +103,7 @@
 				autoEnabledPreserveSymlinkFolderIds: data.settings.autoEnabledPreserveSymlinkFolderIds,
 				defaultImportFolder: defaultImportFolder.trim() || undefined
 			})) as { autoEnabledCount?: number; autoRevertedCount?: number } | undefined;
-			await invalidateAll();
+			await refreshAll();
 			toasts.success(m.settings_fileManagement_saved());
 			if (result?.autoEnabledCount) {
 				toasts.warning(

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { Loader2, RefreshCw, Server, ShieldCheck } from 'lucide-svelte';
 	import { apiGet, apiPost } from '#lib/api/client.js';
@@ -168,7 +168,7 @@
 			});
 			results = res.results ?? [];
 			step = 'results';
-			void invalidateAll();
+			void refreshAll();
 		} catch (error) {
 			toasts.error(error instanceof Error ? error.message : m.users_importLoadFailed());
 		} finally {

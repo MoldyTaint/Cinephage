@@ -4,7 +4,7 @@
 	import { onMount } from 'svelte';
 	import { ModalWrapper, ModalHeader, ModalFooter } from '#lib/components/ui/modal/index.js';
 	import { toasts } from '#lib/stores/toast.svelte.js';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { createLibrary, updateLibrary, getScoringProfiles } from '#lib/api/settings.js';
 	import { getLanguageProfiles } from '#lib/api/subtitles.js';
 	import type { LibraryCreate, LibraryUpdate } from '#lib/validation/schemas.js';
@@ -189,7 +189,7 @@
 				await updateLibrary(libraryId, payload as LibraryUpdate);
 				toasts.success(m.settings_general_libraryUpdated());
 			}
-			await invalidateAll();
+			await refreshAll();
 
 			// Offer to apply the new library default to existing items when the
 			// profile assignment CHANGED (edit mode only).
