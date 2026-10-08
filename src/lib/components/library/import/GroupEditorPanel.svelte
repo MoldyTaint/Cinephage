@@ -27,12 +27,12 @@
 		selectedMatch = null as MatchResult | null,
 		searchQuery = $bindable(''),
 		matchCandidates = [],
-		// eslint-disable-next-line no-useless-assignment
+		// eslint-disable-next-line no-useless-assignment, @typescript-eslint/no-unused-vars
 		importTarget = $bindable('new' as 'new' | 'existing'),
 		seasonNumber = $bindable(1),
 		episodeNumber = $bindable(1),
 		batchSeasonOverride = $bindable(null as number | null),
-		// eslint-disable-next-line no-useless-assignment
+		// eslint-disable-next-line no-useless-assignment, @typescript-eslint/no-unused-vars
 		selectedRootFolder = $bindable(''),
 		isMediaTypeLockedByContext = false,
 		isBatchTvImport = false,

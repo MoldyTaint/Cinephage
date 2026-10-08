@@ -43,7 +43,7 @@
 		saved?: boolean;
 	}
 
-	/* eslint-disable no-useless-assignment -- write-only bindable outputs consumed by the page header */
+	/* eslint-disable no-useless-assignment, @typescript-eslint/no-unused-vars -- write-only bindable outputs consumed by the page header */
 	let {
 		settings,
 		countries,
@@ -51,7 +51,7 @@
 		busy = $bindable(),
 		saved = $bindable()
 	}: Props = $props();
-	/* eslint-enable no-useless-assignment */
+	/* eslint-enable no-useless-assignment, @typescript-eslint/no-unused-vars */
 
 	// All language dropdowns share the client-safe registry; nullable settings
 	// use '' as the "none" sentinel in their selects.
