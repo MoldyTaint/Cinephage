@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { monitoringScheduler } from '#lib/server/monitoring/MonitoringScheduler.js';
 import { createChildLogger } from '#lib/logging/index.js';
@@ -20,7 +19,7 @@ export const POST: RequestHandler = async (event) => {
 	try {
 		const result = await monitoringScheduler.runNewEpisodeCheck();
 
-		return json({
+		return Response.json({
 			success: true,
 			message: 'New episode check completed',
 			result
@@ -30,7 +29,7 @@ export const POST: RequestHandler = async (event) => {
 			'[API] Failed to run new episode check',
 			error instanceof Error ? error : undefined
 		);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: 'Failed to run new episode check',

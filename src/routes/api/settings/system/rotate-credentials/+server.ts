@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { rotateCredentials } from '#lib/server/crypto/credentialRotation.js';
@@ -20,7 +19,7 @@ export const POST: RequestHandler = async (event) => {
 
 	try {
 		const result = rotateCredentials();
-		return json({
+		return Response.json({
 			success: true,
 			message:
 				result.failed > 0
@@ -33,7 +32,7 @@ export const POST: RequestHandler = async (event) => {
 			{ err: error instanceof Error ? error : undefined },
 			'[API] Failed to rotate credentials'
 		);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: 'Failed to rotate credentials',

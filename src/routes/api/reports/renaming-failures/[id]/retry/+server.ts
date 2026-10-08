@@ -1,4 +1,4 @@
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '#lib/server/db/index.js';
 import { renamingFailures, movieFiles, episodeFiles } from '#lib/server/db/schema.js';
@@ -24,10 +24,10 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 
 	if (!failure) throw error(404, 'Renaming failure record not found');
 	if (failure.status === 'resolved') {
-		return json({ success: false, error: 'Record is already resolved' }, { status: 400 });
+		return Response.json({ success: false, error: 'Record is already resolved' }, { status: 400 });
 	}
 	if (NON_RETRYABLE.has(failure.reason)) {
-		return json(
+		return Response.json(
 			{ success: false, error: `Cannot retry: reason '${failure.reason}' requires a manual fix` },
 			{ status: 422 }
 		);
@@ -37,7 +37,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 	try {
 		await access(failure.sourcePath);
 	} catch {
-		return json(
+		return Response.json(
 			{ success: false, error: 'Source file no longer exists — cannot retry' },
 			{ status: 422 }
 		);
@@ -47,7 +47,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 	if (failure.reason === 'collision') {
 		try {
 			await access(failure.intendedPath);
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error:
@@ -73,7 +73,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 	} catch (err) {
 		const message = err instanceof Error ? err.message : 'Rename failed';
 		logger.warn({ err, id }, '[Reports] Renaming retry failed at fs.rename');
-		return json({ success: false, error: message }, { status: 500 });
+		return Response.json({ success: false, error: message }, { status: 500 });
 	}
 
 	// Update the library file record to reflect the new path
@@ -105,5 +105,5 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 		{ id, from: failure.sourcePath, to: failure.intendedPath },
 		'[Reports] Renaming retry succeeded'
 	);
-	return json({ success: true, message: 'File renamed successfully' });
+	return Response.json({ success: true, message: 'File renamed successfully' });
 };

@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { getUpcomingItems } from '#lib/server/calendar/queries.js';
@@ -11,13 +10,13 @@ const upcomingQuerySchema = z.object({
 export const GET: RequestHandler = async ({ url, locals }) => {
 	const result = upcomingQuerySchema.safeParse(Object.fromEntries(url.searchParams));
 	if (!result.success) {
-		return json({ error: 'Invalid parameters' }, { status: 400 });
+		return Response.json({ error: 'Invalid parameters' }, { status: 400 });
 	}
 	if (!locals.user) {
-		return json({ error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ error: 'Unauthorized' }, { status: 401 });
 	}
 
 	const prefs = await getUserPreference(locals.user.id, 'calendar');
 	const items = await getUpcomingItems(result.data.limit, prefs.upcomingShowNonLibrary);
-	return json(items);
+	return Response.json(items);
 };

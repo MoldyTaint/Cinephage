@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getIndexerManager } from '#lib/server/indexers/IndexerManager.js';
 import { indexerCreateSchema } from '#lib/validation/schemas.js';
@@ -18,7 +17,7 @@ export const GET: RequestHandler = async () => {
 	// Redact sensitive settings (api keys, passwords, cookies)
 	const redactedIndexers = all.map(redactIndexer);
 
-	return json(redactedIndexers);
+	return Response.json(redactedIndexers);
 };
 
 export const POST: RequestHandler = async (event) => {
@@ -33,7 +32,7 @@ export const POST: RequestHandler = async (event) => {
 	// Verify the definition exists
 	const definition = manager.getDefinition(validated.definitionId);
 	if (!definition) {
-		return json(
+		return Response.json(
 			{
 				error: 'Invalid definition',
 				details: `Unknown indexer definition: ${validated.definitionId}`
@@ -45,7 +44,7 @@ export const POST: RequestHandler = async (event) => {
 	// Reject creating indexers from internal/auto-managed definitions
 	// (e.g. cinephage-stream). These are seeded by their owning subsystem.
 	if (definition.internal) {
-		return json(
+		return Response.json(
 			{
 				error: 'Cannot create indexer from internal definition',
 				details: `Definition '${validated.definitionId}' is auto-managed by a built-in subsystem and cannot be created manually.`
@@ -79,5 +78,5 @@ export const POST: RequestHandler = async (event) => {
 		minimumCompletionPercentage: validated.minimumCompletionPercentage
 	});
 
-	return json({ success: true, indexer: redactIndexer(created) });
+	return Response.json({ success: true, indexer: redactIndexer(created) });
 };

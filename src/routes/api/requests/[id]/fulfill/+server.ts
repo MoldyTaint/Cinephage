@@ -3,7 +3,6 @@
  * disagree). Admin only.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { getRequestService } from '#lib/server/requests/RequestService.js';
@@ -15,7 +14,7 @@ export const POST: RequestHandler = async (event) => {
 
 	try {
 		const fulfilled = await getRequestService().markFulfilledAdmin(event.params.id);
-		return json({ success: true, request: fulfilled });
+		return Response.json({ success: true, request: fulfilled });
 	} catch (error) {
 		return toRequestErrorResponse(error);
 	}

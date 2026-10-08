@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '#lib/server/db/index.js';
 import { importFailures } from '#lib/server/db/schema.js';
@@ -54,7 +53,7 @@ export const GET: RequestHandler = async (event) => {
 				.where(and(active, eq(importFailures.failureStage, 'max_retries')))
 		]);
 
-		return json({
+		return Response.json({
 			success: true,
 			data: {
 				total: total.count,
@@ -68,6 +67,6 @@ export const GET: RequestHandler = async (event) => {
 		});
 	} catch (err) {
 		logger.error({ err }, '[Reports] Failed to load import failure stats');
-		return json({ success: false, error: 'Failed to load stats' }, { status: 500 });
+		return Response.json({ success: false, error: 'Failed to load stats' }, { status: 500 });
 	}
 };

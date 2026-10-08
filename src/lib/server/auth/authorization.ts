@@ -5,7 +5,7 @@
  * Multi-user: accounts hold role 'admin' or 'user'; viewer accounts are
  * additionally constrained by the non-admin API allowlist in hooks.server.ts.
  */
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { RequestEvent } from '@sveltejs/kit';
 
 /**
@@ -64,7 +64,7 @@ export function requireAdmin(event: RequestEvent): Response | null {
  */
 export function requireAdminLocals(locals: App.Locals): Response | null {
 	if (!locals.user) {
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: 'Unauthorized. Authentication required.',
@@ -75,7 +75,7 @@ export function requireAdminLocals(locals: App.Locals): Response | null {
 	}
 
 	if (locals.user.role !== 'admin') {
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: 'Forbidden. Admin access required.',
@@ -103,7 +103,7 @@ export function requireAdminLocals(locals: App.Locals): Response | null {
  */
 export function requireAuth(event: RequestEvent): Response | null {
 	if (!event.locals.user) {
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: 'Unauthorized. Authentication required.',

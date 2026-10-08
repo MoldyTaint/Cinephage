@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { LanguageProfileService } from '#lib/server/subtitles/services/LanguageProfileService.js';
 import { languageProfileV2CreateSchema } from '#lib/validation/schemas.js';
@@ -12,7 +11,7 @@ export const GET: RequestHandler = async () => {
 	const service = LanguageProfileService.getInstance();
 	const profiles = await service.getProfiles();
 
-	return json(profiles);
+	return Response.json(profiles);
 };
 
 /**
@@ -26,5 +25,5 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	const created = await service.createProfile(validated);
 
-	return json({ success: true, profile: created });
+	return Response.json({ success: true, profile: created });
 };

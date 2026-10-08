@@ -7,7 +7,6 @@
  * Auth: admin only.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { parseBody } from '#lib/server/api/validate.js';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
@@ -22,7 +21,7 @@ export const GET: RequestHandler = async (event) => {
 	if (authError) return authError;
 
 	const settings = await getRequestSettingsService().getRequestSettings();
-	return json({ success: true, settings });
+	return Response.json({ success: true, settings });
 };
 
 export const PUT: RequestHandler = async (event) => {
@@ -32,11 +31,11 @@ export const PUT: RequestHandler = async (event) => {
 	try {
 		const next = await parseBody(event.request, requestSettingsSchema);
 		const settings = await getRequestSettingsService().saveRequestSettings(next);
-		return json({ success: true, settings });
+		return Response.json({ success: true, settings });
 	} catch (error) {
 		// Invalid bodies are client errors, not unhandled 500s.
 		if (isAppError(error)) {
-			return json({ success: false, error: error.message }, { status: error.statusCode });
+			return Response.json({ success: false, error: error.message }, { status: error.statusCode });
 		}
 		throw error;
 	}

@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { libraryJobService } from '#lib/server/library/jobs/LibraryJobService.js';
@@ -9,5 +8,5 @@ export const GET: RequestHandler = async (event) => {
 	const authError = requireAdmin(event);
 	if (authError) return authError;
 	const jobs = libraryJobService.listBatchJobs(event.params.key);
-	return json({ success: true, jobs });
+	return Response.json({ success: true, jobs });
 };

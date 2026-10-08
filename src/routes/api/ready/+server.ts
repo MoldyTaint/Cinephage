@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '#lib/server/db/index.js';
 import { settings } from '#lib/server/db/schema.js';
@@ -22,7 +21,7 @@ export const GET: RequestHandler = async () => {
 	// non-critical background services are still warming up.
 	const ready = databaseReady && servicesStarted;
 
-	return json(
+	return Response.json(
 		{
 			status: ready ? 'ready' : 'starting',
 			version: resolveAppVersion(),

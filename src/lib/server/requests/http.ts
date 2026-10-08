@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { isAppError } from '#lib/errors/index.js';
 import { createChildLogger } from '#lib/logging/index.js';
@@ -47,7 +46,7 @@ export const bulkRequestSchema = z.object({
 /** Maps RequestError (code + context) onto the standard error envelope. */
 export function toRequestErrorResponse(error: unknown): Response {
 	if (error instanceof RequestError) {
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error.message,
@@ -58,7 +57,7 @@ export function toRequestErrorResponse(error: unknown): Response {
 		);
 	}
 	if (isAppError(error)) {
-		return json({ success: false, ...error.toJSON() }, { status: error.statusCode });
+		return Response.json({ success: false, ...error.toJSON() }, { status: error.statusCode });
 	}
 	// Unknown failures never leak internals to the (viewer-reachable)
 	// create path; the detail stays in the server log.
@@ -66,5 +65,8 @@ export function toRequestErrorResponse(error: unknown): Response {
 		{ error: error instanceof Error ? error.message : String(error) },
 		'[Requests] Unhandled error surfaced to a client'
 	);
-	return json({ success: false, error: 'Request failed', code: 'internal' }, { status: 500 });
+	return Response.json(
+		{ success: false, error: 'Request failed', code: 'internal' },
+		{ status: 500 }
+	);
 }

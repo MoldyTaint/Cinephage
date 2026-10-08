@@ -7,7 +7,6 @@
  * POST /api/streaming/strm/update
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { strmService, getStreamingBaseUrl } from '#lib/server/streaming/index.js';
 import { getBaseUrl } from '#lib/server/streaming/url.js';
@@ -24,7 +23,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	// Require authentication
 	if (!locals.user) {
-		return json(
+		return Response.json(
 			{
 				success: false,
 				totalFiles: 0,
@@ -78,12 +77,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			'[StrmUpdateAPI] Bulk update complete'
 		);
 
-		return json(result);
+		return Response.json(result);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
 		logger.error({ error: message }, '[StrmUpdateAPI] Bulk update failed');
 
-		return json(
+		return Response.json(
 			{
 				success: false,
 				totalFiles: 0,

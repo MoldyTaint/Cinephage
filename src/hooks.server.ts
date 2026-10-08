@@ -1,8 +1,7 @@
-import { json, redirect } from '@sveltejs/kit';
+import { redirect } from '@sveltejs/kit';
 import { sequence, type Handle } from '@sveltejs/kit/hooks';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-
 import { AUTH_BASE_PATH } from '#lib/auth/config.js';
 import { createRequestLogger, runWithLogContext } from '#lib/logging/index.js';
 import { isAppError } from '#lib/errors/index.js';
@@ -354,7 +353,7 @@ const customHandler: Handle = async ({ event, resolve }) => {
 					const apiKey = apiKeyFromQuery || apiKeyFromHeader;
 
 					if (!apiKey) {
-						return json(
+						return Response.json(
 							{
 								success: false,
 								error: 'API key required',
@@ -405,7 +404,7 @@ const customHandler: Handle = async ({ event, resolve }) => {
 								'[Auth] API key does not have streaming or full-access permissions'
 							);
 
-							return json(
+							return Response.json(
 								{
 									success: false,
 									error: 'Unauthorized',
@@ -441,7 +440,7 @@ const customHandler: Handle = async ({ event, resolve }) => {
 									{ logDomain: 'auth', endpoint: pathname },
 									'[Auth] Rejected streaming key for banned owner'
 								);
-								return json(
+								return Response.json(
 									{
 										success: false,
 										error: 'Unauthorized',
@@ -471,7 +470,7 @@ const customHandler: Handle = async ({ event, resolve }) => {
 							'[Auth] API key validation error'
 						);
 
-						return json(
+						return Response.json(
 							{
 								success: false,
 								error: 'API key validation failed',
@@ -497,7 +496,7 @@ const customHandler: Handle = async ({ event, resolve }) => {
 					} else {
 						if (!event.locals.user && !isPublicRoute(routePath)) {
 							if (routePath.startsWith('/api/')) {
-								return json(
+								return Response.json(
 									{
 										success: false,
 										error: 'Unauthorized',
@@ -537,7 +536,7 @@ const customHandler: Handle = async ({ event, resolve }) => {
 					const method = event.request.method.toUpperCase();
 					const hasEncodedSlash = /%2f/i.test(routePath);
 					if (hasEncodedSlash || !isViewerAllowedApiPath(routePath, method)) {
-						return json(
+						return Response.json(
 							{
 								success: false,
 								error: 'Forbidden. Admin access required.',
@@ -667,7 +666,7 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				requestLogger.error({ err: error }, 'Unhandled error in request');
 
 				if (isAppError(error)) {
-					const response = json(
+					const response = Response.json(
 						{
 							success: false,
 							...error.toJSON()
@@ -684,7 +683,7 @@ const customHandler: Handle = async ({ event, resolve }) => {
 					return response;
 				}
 
-				const response = json(
+				const response = Response.json(
 					{
 						success: false,
 						error: 'Internal Server Error',

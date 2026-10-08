@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAuth } from '#lib/server/auth/authorization.js';
 import { grabService } from '#lib/server/downloads/GrabService.js';
@@ -30,7 +29,7 @@ export const POST: RequestHandler = async (event) => {
 				{ logDomain: 'downloads', code: error.code, context: error.context },
 				'[Grab] Rejected: invalid request body'
 			);
-			return json(
+			return Response.json(
 				{ success: false, error: error.message, errorCode: error.code } satisfies GrabResponse,
 				{ status: error.statusCode }
 			);
@@ -56,7 +55,7 @@ export const POST: RequestHandler = async (event) => {
 				},
 				'[Grab] BLOCKED: Release category mismatch - potential wrong content type'
 			);
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: `Category mismatch: ${actualContentType} release cannot be grabbed for ${data.mediaType}`
@@ -80,7 +79,7 @@ export const POST: RequestHandler = async (event) => {
 			},
 			'[Grab] BLOCKED: Missing protocol field in request'
 		);
-		return json({ success: false, error: 'protocol is required' } satisfies GrabResponse, {
+		return Response.json({ success: false, error: 'protocol is required' } satisfies GrabResponse, {
 			status: 422
 		});
 	}
@@ -138,12 +137,14 @@ export const POST: RequestHandler = async (event) => {
 			{ logDomain: 'downloads', error: message, title: data.title },
 			'Failed to grab release'
 		);
-		return json({ success: false, error: message } satisfies GrabResponse, { status: 500 });
+		return Response.json({ success: false, error: message } satisfies GrabResponse, {
+			status: 500
+		});
 	}
 
 	if (!result.success) {
 		if (result.error) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: result.error,
@@ -153,7 +154,7 @@ export const POST: RequestHandler = async (event) => {
 			);
 		}
 
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: result.decision.reason || 'Release does not meet requirements',
@@ -164,7 +165,7 @@ export const POST: RequestHandler = async (event) => {
 		);
 	}
 
-	return json({
+	return Response.json({
 		success: true,
 		data: {
 			...result.download!,

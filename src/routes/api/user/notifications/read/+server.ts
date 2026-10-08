@@ -3,7 +3,6 @@
  * everything read; an explicit empty array is a no-op.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { parseBody } from '#lib/server/api/validate.js';
 import { getRequestNotificationService } from '#lib/server/requests/RequestNotificationService.js';
@@ -15,10 +14,10 @@ const markReadSchema = z.object({
 
 export const POST: RequestHandler = async (event) => {
 	if (!event.locals.user) {
-		return json({ success: false, error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 	}
 
 	const { ids } = await parseBody(event.request, markReadSchema);
 	await getRequestNotificationService().markRead(event.locals.user.id, ids);
-	return json({ success: true });
+	return Response.json({ success: true });
 };

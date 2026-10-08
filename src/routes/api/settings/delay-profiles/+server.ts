@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { delayProfileService } from '#lib/server/monitoring/specifications/DelaySpecification.js';
@@ -25,7 +24,7 @@ export const GET: RequestHandler = async (event) => {
 	if (authError) return authError;
 
 	const profiles = await delayProfileService.getProfiles();
-	return json(profiles);
+	return Response.json(profiles);
 };
 
 export const POST: RequestHandler = async (event) => {
@@ -36,7 +35,7 @@ export const POST: RequestHandler = async (event) => {
 	const parsed = createDelayProfileSchema.safeParse(body);
 
 	if (!parsed.success) {
-		return json(
+		return Response.json(
 			{ error: 'Invalid request body', details: parsed.error.flatten() },
 			{ status: 400 }
 		);
@@ -44,8 +43,11 @@ export const POST: RequestHandler = async (event) => {
 
 	try {
 		const id = await delayProfileService.createProfile(parsed.data);
-		return json({ success: true, id }, { status: 201 });
+		return Response.json({ success: true, id }, { status: 201 });
 	} catch (err) {
-		return json({ error: 'Failed to create delay profile', details: String(err) }, { status: 500 });
+		return Response.json(
+			{ error: 'Failed to create delay profile', details: String(err) },
+			{ status: 500 }
+		);
 	}
 };

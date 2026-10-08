@@ -4,7 +4,6 @@
  * POST /api/livetv/portals/[id]/scan/results/approve - Approve scan results
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getPortalScannerService } from '#lib/server/livetv/stalker/index.js';
 import { createChildLogger } from '#lib/logging/index.js';
@@ -35,7 +34,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const scannerService = getPortalScannerService();
 		const accountIds = await scannerService.approveMultiple(parsed.data.resultIds);
 
-		return json({
+		return Response.json({
 			success: true,
 			approved: accountIds.length,
 			accountIds
@@ -48,7 +47,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// Validation errors
 		if (error instanceof ValidationError) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: error.message,
@@ -59,7 +58,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to approve scan results'

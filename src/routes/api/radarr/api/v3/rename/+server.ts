@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { requireArrCompatEnabled } from '#lib/server/arr/requireArrCompatEnabled.js';
@@ -13,7 +12,7 @@ export const GET: RequestHandler = async (event) => {
 	if (authError) return authError;
 
 	const movieId = Number.parseInt(event.url.searchParams.get('movieId') ?? '', 10);
-	if (Number.isNaN(movieId)) return json([]);
+	if (Number.isNaN(movieId)) return Response.json([]);
 
-	return json(await buildMovieRename(movieId));
+	return Response.json(await buildMovieRename(movieId));
 };

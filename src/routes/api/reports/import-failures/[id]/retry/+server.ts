@@ -1,4 +1,4 @@
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '#lib/server/db/index.js';
 import { importFailures, downloadQueue } from '#lib/server/db/schema.js';
@@ -28,7 +28,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 
 	if (!failure) throw error(404, 'Import failure record not found');
 	if (failure.status === 'resolved') {
-		return json({ success: false, error: 'Record is already resolved' }, { status: 400 });
+		return Response.json({ success: false, error: 'Record is already resolved' }, { status: 400 });
 	}
 
 	// Find the matching download queue entry.
@@ -63,7 +63,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 	}
 
 	if (!queueItem) {
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error:
@@ -75,7 +75,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 
 	const hasPath = Boolean(queueItem.outputPath?.trim() || queueItem.clientDownloadPath?.trim());
 	if (!hasPath) {
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: 'Queue entry has no recorded file path. A re-download would be required to retry.'
@@ -92,7 +92,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 			.set({ status: 'completed', errorMessage: null, lastAttemptAt: new Date().toISOString() })
 			.where(eq(downloadQueue.id, queueItem.id));
 	} else if (!['completed', 'postprocessing'].includes(queueItem.status)) {
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: `Cannot retry import: queue item is in '${queueItem.status}' state.`
@@ -109,12 +109,16 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 			{ importFailureId: id, queueItemId: queueItem.id, result },
 			'[Reports] Import retry requested'
 		);
-		return json({ success: true, message: 'Import retry queued', importStatus: result.status });
+		return Response.json({
+			success: true,
+			message: 'Import retry queued',
+			importStatus: result.status
+		});
 	} catch (err) {
 		// Roll back the status change so the record doesn't get stuck in 'retrying'
 		await db.update(importFailures).set({ status: 'failed' }).where(eq(importFailures.id, id));
 		logger.error({ err, importFailureId: id }, '[Reports] Import retry failed');
 		const message = err instanceof Error ? err.message : 'Import retry failed';
-		return json({ success: false, error: message }, { status: 500 });
+		return Response.json({ success: false, error: message }, { status: 500 });
 	}
 };

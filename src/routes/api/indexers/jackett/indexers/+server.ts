@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import {
@@ -22,7 +21,7 @@ export const GET: RequestHandler = async (event) => {
 
 	const conn = await getJackettConnection();
 	if (!conn) {
-		return json({ error: 'No Jackett connection configured.' }, { status: 400 });
+		return Response.json({ error: 'No Jackett connection configured.' }, { status: 400 });
 	}
 
 	const base = normalizeJackettUrl(conn.url);
@@ -33,7 +32,7 @@ export const GET: RequestHandler = async (event) => {
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
 		const isTimeout = message.toLowerCase().includes('timeout') || message.includes('TimeoutError');
-		return json(
+		return Response.json(
 			{
 				error: isTimeout
 					? 'Connection timed out. Check that Jackett is still running.'
@@ -70,5 +69,5 @@ export const GET: RequestHandler = async (event) => {
 
 	indexers.sort((a, b) => a.name.localeCompare(b.name));
 
-	return json({ indexers });
+	return Response.json({ indexers });
 };

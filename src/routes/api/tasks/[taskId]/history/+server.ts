@@ -3,8 +3,7 @@
  *
  * GET /api/tasks/[taskId]/history - Returns execution history for a specific task
  */
-
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getUnifiedTaskById } from '#lib/server/tasks/UnifiedTaskRegistry.js';
 import { taskHistoryService } from '#lib/server/tasks/TaskHistoryService.js';
@@ -48,7 +47,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	// Get history for this task
 	const { entries, total } = await taskHistoryService.getHistoryForTask(taskId, limit, offset);
 
-	return json({
+	return Response.json({
 		success: true,
 		taskId,
 		history: entries,

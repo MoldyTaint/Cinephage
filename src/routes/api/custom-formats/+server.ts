@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '#lib/server/db/index.js';
 import { customFormats } from '#lib/server/db/schema.js';
@@ -69,7 +68,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		);
 	}
 
-	return json({
+	return Response.json({
 		formats: allFormats,
 		count: allFormats.length,
 		builtInCount: allFormats.filter((f) => f.isBuiltIn).length,
@@ -109,7 +108,7 @@ export const POST: RequestHandler = async (event) => {
 
 	invalidateFormatCache();
 
-	return json(newFormat[0], { status: 201 });
+	return Response.json(newFormat[0], { status: 201 });
 };
 
 export const PUT: RequestHandler = async (event) => {
@@ -143,7 +142,7 @@ export const PUT: RequestHandler = async (event) => {
 
 	invalidateFormatCache();
 
-	return json(updated[0]);
+	return Response.json(updated[0]);
 };
 
 export const DELETE: RequestHandler = async (event) => {
@@ -164,5 +163,5 @@ export const DELETE: RequestHandler = async (event) => {
 
 	invalidateFormatCache();
 
-	return json({ success: true, deleted: deleted[0] });
+	return Response.json({ success: true, deleted: deleted[0] });
 };

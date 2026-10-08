@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getRootFolderService } from '#lib/server/downloadClients/RootFolderService.js';
 import { rootFolderUpdateSchema } from '#lib/validation/schemas.js';
@@ -17,7 +16,7 @@ export const GET: RequestHandler = async ({ params }) => {
 	const service = getRootFolderService();
 	const folder = await service.getFolder(params.id);
 
-	return json(assertFound(folder, 'Root folder', params.id));
+	return Response.json(assertFound(folder, 'Root folder', params.id));
 };
 
 /**
@@ -43,10 +42,10 @@ export const PUT: RequestHandler = async (event) => {
 			reason: 'root-folder-updated',
 			entityId: params.id
 		});
-		return json({ success: true, ...result });
+		return Response.json({ success: true, ...result });
 	} catch (error) {
 		if (isAppError(error)) {
-			return json(error.toJSON(), { status: error.statusCode });
+			return Response.json(error.toJSON(), { status: error.statusCode });
 		}
 		if (error instanceof Error && error.message.includes('not found')) {
 			throw new NotFoundError('Root folder', params.id);
@@ -74,7 +73,7 @@ export const DELETE: RequestHandler = async (event) => {
 			reason: 'root-folder-deleted',
 			entityId: params.id
 		});
-		return json({ success: true, ...result });
+		return Response.json({ success: true, ...result });
 	} catch (error) {
 		if (error instanceof Error && error.message.includes('not found')) {
 			throw new NotFoundError('Root folder', params.id);

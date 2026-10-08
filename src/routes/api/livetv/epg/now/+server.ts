@@ -7,7 +7,6 @@
  * EPG data is fetched from that channel instead of the primary channel.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getEpgService } from '#lib/server/livetv/epg/index.js';
 import { channelLineupService } from '#lib/server/livetv/lineup/index.js';
@@ -29,7 +28,7 @@ export const GET: RequestHandler = async () => {
 		const lineup = await channelLineupService.getLineup();
 
 		if (lineup.length === 0) {
-			return json({
+			return Response.json({
 				success: true,
 				channels: {}
 			});
@@ -62,13 +61,13 @@ export const GET: RequestHandler = async () => {
 			};
 		}
 
-		return json({
+		return Response.json({
 			success: true,
 			channels
 		});
 	} catch (error) {
 		logger.error('[API] Failed to get EPG now/next', error instanceof Error ? error : undefined);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to get EPG data'

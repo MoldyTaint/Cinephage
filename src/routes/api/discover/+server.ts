@@ -5,7 +5,6 @@ import { tmdb } from '#lib/server/tmdb.js';
 import { db } from '#lib/server/db/index.js';
 import { languageSettings } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { createChildLogger } from '#lib/logging/index.js';
@@ -48,7 +47,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const result = discoverQuerySchema.safeParse(queryParams);
 
 	if (!result.success) {
-		return json(
+		return Response.json(
 			{
 				error: 'Invalid query parameters',
 				details: result.error.flatten()
@@ -149,13 +148,13 @@ export const GET: RequestHandler = async ({ url }) => {
 		});
 		const enrichedResults = await enrichWithReleaseDates(filteredResults);
 
-		return json({
+		return Response.json({
 			results: enrichedResults,
 			pagination
 		});
 	} catch (e) {
 		const message = e instanceof Error ? e.message : 'Unknown error';
 		logger.error({ err: e, ...{ errorMessage: message } }, 'Discover API error');
-		return json({ error: 'Failed to load content' }, { status: 500 });
+		return Response.json({ error: 'Failed to load content' }, { status: 500 });
 	}
 };

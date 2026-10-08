@@ -2,7 +2,6 @@
  * POST /api/usenet/servers/sync - Sync NNTP servers from download clients
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getNntpServerService } from '#lib/server/streaming/nzb/NntpServerService.js';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
@@ -20,7 +19,7 @@ export const POST: RequestHandler = async (event) => {
 	try {
 		const result = await service.syncFromDownloadClients();
 
-		return json({
+		return Response.json({
 			success: true,
 			synced: result.synced,
 			skipped: result.skipped,
@@ -28,6 +27,6 @@ export const POST: RequestHandler = async (event) => {
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
-		return json({ error: message }, { status: 500 });
+		return Response.json({ error: message }, { status: 500 });
 	}
 };

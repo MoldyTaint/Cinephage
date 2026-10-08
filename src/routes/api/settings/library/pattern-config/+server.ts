@@ -7,8 +7,7 @@
  * Manages per-library and global pattern recognition settings (Phase 1).
  * Ignore/bonus patterns are glob strings; structure uses folder_depth or regex mode.
  */
-
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { z } from 'zod';
@@ -36,11 +35,11 @@ export const GET: RequestHandler = async (event) => {
 
 	if (libraryId) {
 		const config = await getLibraryPatternConfig(libraryId);
-		return json(config);
+		return Response.json(config);
 	}
 
 	const global = await getOrCreateGlobalPatternConfig();
-	return json(global);
+	return Response.json(global);
 };
 
 export const PUT: RequestHandler = async (event) => {
@@ -61,9 +60,9 @@ export const PUT: RequestHandler = async (event) => {
 
 	if (libraryId) {
 		const config = await saveLibraryPatternConfig(libraryId, input);
-		return json(config);
+		return Response.json(config);
 	}
 
 	const config = await updateGlobalPatternConfig(input);
-	return json(config);
+	return Response.json(config);
 };

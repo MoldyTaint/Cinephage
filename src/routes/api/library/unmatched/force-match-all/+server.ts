@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '#lib/server/db/index.js';
 import { unmatchedFiles } from '#lib/server/db/schema.js';
@@ -74,14 +73,14 @@ export const POST: RequestHandler = async (event) => {
 			}
 		}
 
-		return json({
+		return Response.json({
 			success: true,
 			data: { matched, failed, eligible: eligible.length },
 			meta: { timestamp: new Date().toISOString() }
 		});
 	} catch (error) {
 		logger.error('[API] Error in force-match-all', error instanceof Error ? error : undefined);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Force match all failed',

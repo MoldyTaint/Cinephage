@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '#lib/server/db/index.js';
 import { episodes, episodeFiles, series, rootFolders } from '#lib/server/db/schema.js';
@@ -25,7 +24,7 @@ export const DELETE: RequestHandler = async ({ params }) => {
 			.where(eq(episodes.id, episodeId));
 
 		if (!episode) {
-			return json({ success: false, error: 'Episode not found' }, { status: 404 });
+			return Response.json({ success: false, error: 'Episode not found' }, { status: 404 });
 		}
 
 		// Get file with series and root folder info
@@ -45,13 +44,13 @@ export const DELETE: RequestHandler = async ({ params }) => {
 			.where(eq(episodeFiles.id, fileId));
 
 		if (!file) {
-			return json({ success: false, error: 'File not found' }, { status: 404 });
+			return Response.json({ success: false, error: 'File not found' }, { status: 404 });
 		}
 
 		// Verify this file is associated with the episode
 		const fileEpisodeIds = file.episodeIds || [];
 		if (!fileEpisodeIds.includes(episodeId)) {
-			return json(
+			return Response.json(
 				{ success: false, error: 'File is not associated with this episode' },
 				{ status: 400 }
 			);
@@ -59,7 +58,7 @@ export const DELETE: RequestHandler = async ({ params }) => {
 
 		// Block deletion from read-only folders
 		if (file.rootFolderReadOnly) {
-			return json(
+			return Response.json(
 				{ success: false, error: 'Cannot delete files from read-only folder' },
 				{ status: 400 }
 			);
@@ -122,10 +121,10 @@ export const DELETE: RequestHandler = async ({ params }) => {
 			entityId: file.seriesId
 		});
 
-		return json({ success: true });
+		return Response.json({ success: true });
 	} catch (error) {
 		logger.error('[API] Error deleting episode file', error instanceof Error ? error : undefined);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to delete file'

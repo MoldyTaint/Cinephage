@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '#lib/server/db/index.js';
 import { rejectedReleases } from '#lib/server/db/schema.js';
@@ -39,7 +38,7 @@ export const GET: RequestHandler = async (event) => {
 					.where(and(active, eq(rejectedReleases.primaryReason, 'delay_profile_pending')))
 			]);
 
-		return json({
+		return Response.json({
 			success: true,
 			data: {
 				total: total.count,
@@ -51,6 +50,6 @@ export const GET: RequestHandler = async (event) => {
 		});
 	} catch (err) {
 		logger.error({ err }, '[Reports] Failed to load rejected release stats');
-		return json({ success: false, error: 'Failed to load stats' }, { status: 500 });
+		return Response.json({ success: false, error: 'Failed to load stats' }, { status: 500 });
 	}
 };

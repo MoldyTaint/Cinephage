@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '#lib/server/db/index.js';
 import { movies, rootFolders, series } from '#lib/server/db/schema.js';
@@ -85,7 +84,7 @@ export const GET: RequestHandler = async () => {
 			}))
 		];
 
-		return json({
+		return Response.json({
 			success: true,
 			data: {
 				libraryItems,
@@ -101,7 +100,7 @@ export const GET: RequestHandler = async () => {
 			'[API] Error fetching unmatched library issues',
 			error instanceof Error ? error : undefined
 		);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to fetch library issues',

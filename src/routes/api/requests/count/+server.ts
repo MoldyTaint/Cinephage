@@ -5,7 +5,6 @@
  *                           admins: global counts + pending for the badge.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '#lib/server/db/index.js';
 import { requests } from '#lib/server/db/schema.js';
@@ -17,7 +16,7 @@ import { requesterFromLocals } from '#lib/server/requests/http.js';
 export const GET: RequestHandler = async (event) => {
 	const requester = requesterFromLocals(event.locals);
 	if (!requester) {
-		return json({ success: false, error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 	}
 
 	const base = db.select({ status: requests.status, count: sql<number>`count(*)` }).from(requests);
@@ -55,7 +54,7 @@ export const GET: RequestHandler = async (event) => {
 
 	const globalSettings = await getRequestSettingsService().getRequestSettings();
 
-	return json({
+	return Response.json({
 		success: true,
 		counts,
 		quota,

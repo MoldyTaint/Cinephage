@@ -4,7 +4,6 @@
  * POST /api/livetv/lineup/bulk-category - Set category for multiple lineup items
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { channelLineupService } from '#lib/server/livetv/lineup/index.js';
 import { ValidationError } from '#lib/errors/index.js';
@@ -26,7 +25,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		if (body.itemIds.length === 0) {
-			return json({
+			return Response.json({
 				success: true,
 				updated: 0
 			});
@@ -37,14 +36,14 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		const updated = await channelLineupService.bulkSetCategory(body.itemIds, categoryId);
 
-		return json({
+		return Response.json({
 			success: true,
 			updated
 		});
 	} catch (error) {
 		// Validation errors
 		if (error instanceof ValidationError) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: error.message,
@@ -54,7 +53,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			);
 		}
 		logger.error('[API] Failed to bulk set category', error instanceof Error ? error : undefined);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to update categories'

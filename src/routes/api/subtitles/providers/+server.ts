@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getSubtitleProviderManager } from '#lib/server/subtitles/services/SubtitleProviderManager.js';
 import { getSubtitleProviderFactory } from '#lib/server/subtitles/providers/SubtitleProviderFactory.js';
@@ -41,7 +40,7 @@ export const GET: RequestHandler = async () => {
 			: null
 	}));
 
-	return json(redactedProviders);
+	return Response.json(redactedProviders);
 };
 
 /**
@@ -57,7 +56,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	const factory = getSubtitleProviderFactory();
 	const definition = factory.getDefinition(validated.implementation);
 	if (!definition) {
-		return json(
+		return Response.json(
 			{
 				error: 'Invalid implementation',
 				details: `Unknown provider implementation: ${validated.implementation}`
@@ -78,5 +77,5 @@ export const POST: RequestHandler = async ({ request }) => {
 		requestsPerMinute: validated.requestsPerMinute
 	});
 
-	return json({ success: true, provider: created });
+	return Response.json({ success: true, provider: created });
 };

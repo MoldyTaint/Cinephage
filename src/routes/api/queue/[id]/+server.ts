@@ -1,4 +1,4 @@
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '#lib/server/db/index.js';
 import {
@@ -192,7 +192,7 @@ export const GET: RequestHandler = async ({ params, locals }) => {
 			clientInfo = client;
 		}
 
-		return json({
+		return Response.json({
 			...queueItem,
 			media: mediaInfo,
 			downloadClient: clientInfo
@@ -234,12 +234,12 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 		// Handle different actions using downloadMonitor which emits SSE events
 		if (action === 'pause') {
 			await downloadMonitor.pauseDownload(id);
-			return json({ success: true, action: 'paused' });
+			return Response.json({ success: true, action: 'paused' });
 		}
 
 		if (action === 'resume') {
 			await downloadMonitor.resumeDownload(id);
-			return json({ success: true, action: 'resumed' });
+			return Response.json({ success: true, action: 'resumed' });
 		}
 
 		throw error(400, 'No valid action specified');
@@ -366,7 +366,7 @@ export const DELETE: RequestHandler = async ({ params, url, locals }) => {
 		acquisitionService.cancelByQueueId(id, 'removed from queue');
 		await db.delete(downloadQueue).where(eq(downloadQueue.id, id));
 
-		return json({ success: true, message: 'Queue item removed' });
+		return Response.json({ success: true, message: 'Queue item removed' });
 	} catch (err) {
 		if (err instanceof Error && 'status' in err) throw err;
 		logger.error('Error deleting queue item', err instanceof Error ? err : undefined);

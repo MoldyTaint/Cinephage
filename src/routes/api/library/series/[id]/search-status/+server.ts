@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { isSeriesSearching } from '#lib/server/library/ActiveSearchTracker.js';
 
@@ -11,7 +10,7 @@ export const GET: RequestHandler = async ({ params }) => {
 
 	const isSearching = isSeriesSearching(seriesId);
 
-	return json({
+	return Response.json({
 		isSearching,
 		seriesId
 	});

@@ -1,4 +1,4 @@
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { z } from 'zod';
@@ -22,7 +22,7 @@ export const PUT: RequestHandler = async (event) => {
 
 	const cat = await svc.update(id, parsed.data);
 	if (!cat) throw error(404, 'Category not found');
-	return json(cat);
+	return Response.json(cat);
 };
 
 export const DELETE: RequestHandler = async (event) => {
@@ -32,5 +32,5 @@ export const DELETE: RequestHandler = async (event) => {
 	const { id } = event.params;
 	const removed = await svc.remove(id);
 	if (!removed) throw error(400, 'Cannot delete fallback category or not found');
-	return json({ success: true });
+	return Response.json({ success: true });
 };

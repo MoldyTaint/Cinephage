@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { db } from '#lib/server/db/index.js';
@@ -65,11 +64,11 @@ export const POST: RequestHandler = async ({ request }) => {
 			.where(eq(libraries.id, libraryId))
 			.limit(1);
 		if (!library) {
-			return json({ success: false, error: 'Library not found' }, { status: 404 });
+			return Response.json({ success: false, error: 'Library not found' }, { status: 404 });
 		}
 		const resolvedType = library.mediaType === 'tv' ? 'series' : 'movie';
 		if (resolvedType !== mediaType) {
-			return json(
+			return Response.json(
 				{ success: false, error: `Library media type is ${resolvedType}, not ${mediaType}` },
 				{ status: 400 }
 			);
@@ -80,7 +79,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				: await db.select({ id: movies.id }).from(movies).where(eq(movies.libraryId, libraryId));
 		mediaIds = rows.map((row) => row.id);
 		if (mediaIds.length === 0) {
-			return json({ success: true, updated: 0 });
+			return Response.json({ success: true, updated: 0 });
 		}
 	} else {
 		mediaIds = explicitIds;
@@ -207,7 +206,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 	}
 
-	return json({
+	return Response.json({
 		success: true,
 		updated: mediaIds.length
 	});

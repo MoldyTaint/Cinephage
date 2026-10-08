@@ -7,7 +7,6 @@
  * POST /api/streaming/strm/reprobe
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '#lib/server/db/index.js';
 import { movieFiles, movies, episodeFiles, series, rootFolders } from '#lib/server/db/schema.js';
@@ -220,11 +219,11 @@ export const POST: RequestHandler = async (event) => {
 		);
 
 		result.distinctTotal = distinctPaths.size;
-		return json(result);
+		return Response.json(result);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
 		logger.error({ error: message }, '[StrmReprobeAPI] Failed');
-		return json(
+		return Response.json(
 			{
 				success: false,
 				total: 0,

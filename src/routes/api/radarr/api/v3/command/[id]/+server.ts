@@ -1,4 +1,4 @@
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { requireArrCompatEnabled } from '#lib/server/arr/requireArrCompatEnabled.js';
@@ -18,5 +18,5 @@ export const GET: RequestHandler = async (event) => {
 	const command = Number.isFinite(id) ? getCommand(id) : undefined;
 	if (!command) throw error(404, 'Command not found');
 
-	return json(command);
+	return Response.json(command);
 };

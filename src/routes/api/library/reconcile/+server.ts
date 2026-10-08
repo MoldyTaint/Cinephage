@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { monitoringScheduler } from '#lib/server/monitoring/MonitoringScheduler.js';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
@@ -31,10 +30,10 @@ export const POST: RequestHandler = async (event) => {
 		const result = await monitoringScheduler.runLibraryReconcile();
 		const durationMs = Date.now() - startedAt;
 		logger.info({ durationMs }, '[/api/library/reconcile] Completed');
-		return json({ success: true, durationMs, result });
+		return Response.json({ success: true, durationMs, result });
 	} catch (err) {
 		logger.error({ err }, '[/api/library/reconcile] Failed');
-		return json(
+		return Response.json(
 			{ success: false, error: err instanceof Error ? err.message : 'Reconciliation failed' },
 			{ status: 500 }
 		);

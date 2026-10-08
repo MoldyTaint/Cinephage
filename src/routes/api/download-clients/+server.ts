@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDownloadClientManager } from '#lib/server/downloadClients/DownloadClientManager.js';
 import {
@@ -19,7 +18,7 @@ export const GET: RequestHandler = async () => {
 	const clients = await manager.getClients();
 
 	// Password is already excluded from DownloadClient type (only hasPassword boolean is included)
-	return json(clients);
+	return Response.json(clients);
 };
 
 /**
@@ -79,5 +78,5 @@ export const POST: RequestHandler = async (event) => {
 
 	const created = await manager.createClient(input);
 
-	return json({ success: true, client: created });
+	return Response.json({ success: true, client: created });
 };

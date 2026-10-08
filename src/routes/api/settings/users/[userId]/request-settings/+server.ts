@@ -8,7 +8,6 @@
  * Auth: admin only. Unknown users 404.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '#lib/server/db/index.js';
 import { user } from '#lib/server/db/schema.js';
@@ -31,13 +30,13 @@ export const GET: RequestHandler = async (event) => {
 	if (authError) return authError;
 
 	if (!(await userExists(event.params.userId))) {
-		return json({ success: false, error: 'Unknown user' }, { status: 404 });
+		return Response.json({ success: false, error: 'Unknown user' }, { status: 404 });
 	}
 
 	const settings = await getUserRequestSettingsService().getUserRequestSettings(
 		event.params.userId
 	);
-	return json({ success: true, settings });
+	return Response.json({ success: true, settings });
 };
 
 export const PUT: RequestHandler = async (event) => {
@@ -45,7 +44,7 @@ export const PUT: RequestHandler = async (event) => {
 	if (authError) return authError;
 
 	if (!(await userExists(event.params.userId))) {
-		return json({ success: false, error: 'Unknown user' }, { status: 404 });
+		return Response.json({ success: false, error: 'Unknown user' }, { status: 404 });
 	}
 
 	try {
@@ -54,11 +53,11 @@ export const PUT: RequestHandler = async (event) => {
 			event.params.userId,
 			update
 		);
-		return json({ success: true, settings });
+		return Response.json({ success: true, settings });
 	} catch (error) {
 		// Invalid bodies are client errors, not unhandled 500s.
 		if (isAppError(error)) {
-			return json({ success: false, error: error.message }, { status: error.statusCode });
+			return Response.json({ success: false, error: error.message }, { status: error.statusCode });
 		}
 		throw error;
 	}

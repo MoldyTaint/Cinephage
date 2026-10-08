@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '#lib/server/db/index.js';
 import {
@@ -57,7 +56,10 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 	const type = params.type as ReportType;
 
 	if (!VALID_TYPES.includes(type)) {
-		return json({ success: false, error: `Unknown report type: ${type}` }, { status: 400 });
+		return Response.json(
+			{ success: false, error: `Unknown report type: ${type}` },
+			{ status: 400 }
+		);
 	}
 
 	const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
@@ -318,7 +320,7 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 			}
 		}
 
-		return json({
+		return Response.json({
 			success: true,
 			data: {
 				records,
@@ -335,7 +337,10 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 			{ err, type, logDomain: reportTypeDomain(type) },
 			'[Reports] Failed to load report records'
 		);
-		return json({ success: false, error: 'Failed to load report records' }, { status: 500 });
+		return Response.json(
+			{ success: false, error: 'Failed to load report records' },
+			{ status: 500 }
+		);
 	}
 };
 
@@ -352,22 +357,25 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	const type = params.type as ReportType;
 
 	if (!VALID_TYPES.includes(type)) {
-		return json({ success: false, error: `Unknown report type: ${type}` }, { status: 400 });
+		return Response.json(
+			{ success: false, error: `Unknown report type: ${type}` },
+			{ status: 400 }
+		);
 	}
 
 	let body: { ids?: string[]; status: string; resolveAll?: boolean };
 	try {
 		body = await request.json();
 	} catch {
-		return json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
+		return Response.json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
 	}
 
 	if (!body.status) {
-		return json({ success: false, error: 'status is required' }, { status: 400 });
+		return Response.json({ success: false, error: 'status is required' }, { status: 400 });
 	}
 
 	if (!body.resolveAll && (!Array.isArray(body.ids) || body.ids.length === 0)) {
-		return json(
+		return Response.json(
 			{ success: false, error: 'ids (array) or resolveAll (boolean) is required' },
 			{ status: 400 }
 		);
@@ -412,7 +420,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 					break;
 				}
 				case 'unmatched-imports':
-					return json(
+					return Response.json(
 						{ success: false, error: 'Unmatched imports are managed via the library page' },
 						{ status: 400 }
 					);
@@ -453,7 +461,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 					}
 					break;
 				case 'unmatched-imports':
-					return json(
+					return Response.json(
 						{ success: false, error: 'Unmatched imports are managed via the library page' },
 						{ status: 400 }
 					);
@@ -461,12 +469,12 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 			updated = ids.length;
 		}
 
-		return json({ success: true, data: { updated } });
+		return Response.json({ success: true, data: { updated } });
 	} catch (err) {
 		logger.error(
 			{ err, type, logDomain: reportTypeDomain(type) },
 			'[Reports] Failed to update record status'
 		);
-		return json({ success: false, error: 'Failed to update records' }, { status: 500 });
+		return Response.json({ success: false, error: 'Failed to update records' }, { status: 500 });
 	}
 };

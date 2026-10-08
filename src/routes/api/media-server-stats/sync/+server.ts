@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getMediaServerStatsSyncService } from '#lib/server/mediaServerStats/MediaServerStatsSyncService.js';
 import { createChildLogger } from '#lib/logging/index.js';
@@ -21,5 +20,5 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 	});
 
-	return json({ success: true, message: 'Sync started' });
+	return Response.json({ success: true, message: 'Sync started' });
 };

@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { subtitleProviderTestSchema } from '#lib/server/validation/schemas.js';
 import { getSubtitleProviderFactory } from '#lib/server/subtitles/providers/SubtitleProviderFactory.js';
@@ -34,7 +33,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	const provider = factory.createProvider(testConfig);
 	const testResult = await provider.test();
 
-	return json({
+	return Response.json({
 		success: testResult.success,
 		message: testResult.message,
 		responseTime: testResult.responseTime

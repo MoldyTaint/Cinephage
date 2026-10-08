@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { globalBlockedVideoExtensionsSchema } from '#lib/validation/schemas.js';
@@ -15,7 +14,7 @@ export const GET: RequestHandler = async (event) => {
 	if (authError) return authError;
 
 	const data = await getBlockedVideoExtensions();
-	return json({ success: true, ...data });
+	return Response.json({ success: true, ...data });
 };
 
 export const PUT: RequestHandler = async (event) => {
@@ -30,5 +29,5 @@ export const PUT: RequestHandler = async (event) => {
 
 	downloadMonitor.checkBlockedExtensions().catch(() => {});
 
-	return json({ success: true, ...result });
+	return Response.json({ success: true, ...result });
 };

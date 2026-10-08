@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { db } from '#lib/server/db/index.js';
@@ -41,13 +40,13 @@ export const POST: RequestHandler = async (event) => {
 
 	const tmdbCollectionId = parseInt(event.params.tmdbId, 10);
 	if (isNaN(tmdbCollectionId)) {
-		return json({ success: false, error: 'Invalid collection ID' }, { status: 400 });
+		return Response.json({ success: false, error: 'Invalid collection ID' }, { status: 400 });
 	}
 
 	const body = await event.request.json().catch(() => null);
 	const parsed = trackSchema.safeParse(body);
 	if (!parsed.success) {
-		return json({ success: false, error: 'Invalid request body' }, { status: 400 });
+		return Response.json({ success: false, error: 'Invalid request body' }, { status: 400 });
 	}
 
 	const { rootFolderId, scoringProfileId, monitored, searchOnAdd: shouldSearch } = parsed.data;
@@ -61,12 +60,15 @@ export const POST: RequestHandler = async (event) => {
 	});
 
 	if (!collection) {
-		return json({ success: false, error: 'Collection not found on TMDB' }, { status: 404 });
+		return Response.json(
+			{ success: false, error: 'Collection not found on TMDB' },
+			{ status: 404 }
+		);
 	}
 
 	const parts = collection.parts ?? [];
 	if (parts.length === 0) {
-		return json({ success: true, added: 0, skipped: 0, errors: [] });
+		return Response.json({ success: true, added: 0, skipped: 0, errors: [] });
 	}
 
 	// Find which parts are already in the library
@@ -82,7 +84,7 @@ export const POST: RequestHandler = async (event) => {
 	const missing = parts.filter((p) => !existingTmdbIds.has(p.id));
 
 	if (missing.length === 0) {
-		return json({ success: true, added: 0, skipped: parts.length, errors: [] });
+		return Response.json({ success: true, added: 0, skipped: parts.length, errors: [] });
 	}
 
 	const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
@@ -211,5 +213,5 @@ export const POST: RequestHandler = async (event) => {
 		}
 	}
 
-	return json({ success: true, ...results });
+	return Response.json({ success: true, ...results });
 };

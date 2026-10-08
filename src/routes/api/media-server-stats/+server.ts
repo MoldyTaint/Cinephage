@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '#lib/server/db/index.js';
 import {
@@ -342,5 +341,5 @@ export const GET: RequestHandler = async () => {
 		serverStatuses
 	};
 
-	return json(summary);
+	return Response.json(summary);
 };

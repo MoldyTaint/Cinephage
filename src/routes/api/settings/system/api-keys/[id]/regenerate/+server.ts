@@ -1,7 +1,5 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createChildLogger } from '#lib/logging/index.js';
-
 import { regenerateRecoverableApiKey } from '#lib/server/auth/index.js';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 
@@ -15,12 +13,12 @@ export const POST: RequestHandler = async (event) => {
 	const { params, request, locals } = event;
 	// Require authentication
 	if (!locals.user) {
-		return json({ error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ error: 'Unauthorized' }, { status: 401 });
 	}
 
 	const { id } = params;
 	if (!id) {
-		return json({ error: 'API key ID is required' }, { status: 400 });
+		return Response.json({ error: 'API key ID is required' }, { status: 400 });
 	}
 
 	try {
@@ -31,10 +29,10 @@ export const POST: RequestHandler = async (event) => {
 		});
 
 		if (!newKey) {
-			return json({ error: 'API key not found' }, { status: 404 });
+			return Response.json({ error: 'API key not found' }, { status: 404 });
 		}
 
-		return json({
+		return Response.json({
 			success: true,
 			data: {
 				id: newKey.id,
@@ -48,6 +46,6 @@ export const POST: RequestHandler = async (event) => {
 			{ err: error, component: 'ApiKeyRegenerateApi', keyId: id },
 			'Error regenerating API key'
 		);
-		return json({ error: 'Failed to regenerate API key' }, { status: 500 });
+		return Response.json({ error: 'Failed to regenerate API key' }, { status: 500 });
 	}
 };

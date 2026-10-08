@@ -22,7 +22,6 @@
  *     The "start"/"done" totals always reflect the FULL result.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import {
@@ -242,7 +241,7 @@ export const GET: RequestHandler = async (event) => {
 	const { url } = event;
 	const parsedQuery = previewQuerySchema.safeParse(Object.fromEntries(url.searchParams));
 	if (!parsedQuery.success) {
-		return json(
+		return Response.json(
 			{ error: 'Invalid query parameters', details: parsedQuery.error.flatten() },
 			{
 				status: 400

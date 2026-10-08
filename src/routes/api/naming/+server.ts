@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { normalizeNamingConfig, normalizeNamingPresetSelection } from '#lib/naming/editor-state.js';
 import { namingSettingsService } from '#lib/server/library/naming/NamingSettingsService.js';
@@ -15,7 +14,7 @@ export const GET: RequestHandler = async () => {
 	const config = await namingSettingsService.getConfig();
 	const presetSelection = await namingSettingsService.getPresetSelection();
 
-	return json({
+	return Response.json({
 		config,
 		presetSelection,
 		defaults: DEFAULT_NAMING_CONFIG
@@ -38,7 +37,7 @@ export const PUT: RequestHandler = async (event) => {
 		presetSelection: normalizeNamingPresetSelection(validation.presetSelection)
 	});
 
-	return json({
+	return Response.json({
 		success: true,
 		config: updatedSettings.config,
 		presetSelection: updatedSettings.presetSelection
@@ -56,7 +55,7 @@ export const DELETE: RequestHandler = async (event) => {
 	const defaultConfig = await namingSettingsService.resetToDefaults();
 	const presetSelection = await namingSettingsService.getPresetSelection();
 
-	return json({
+	return Response.json({
 		success: true,
 		config: defaultConfig,
 		presetSelection,

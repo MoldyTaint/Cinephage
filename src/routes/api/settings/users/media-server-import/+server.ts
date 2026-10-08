@@ -12,7 +12,6 @@
  * viewer allowlist in hooks.server.ts).
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { z } from 'zod';
 import { parseBody } from '#lib/server/api/validate.js';
@@ -45,13 +44,13 @@ export const GET: RequestHandler = async (event) => {
 				users = preview.users;
 				break;
 			case 'no-server':
-				return json({ success: false, outcome: preview.outcome }, { status: 404 });
+				return Response.json({ success: false, outcome: preview.outcome }, { status: 404 });
 			case 'server-error':
-				return json({ success: false, outcome: preview.outcome }, { status: 502 });
+				return Response.json({ success: false, outcome: preview.outcome }, { status: 502 });
 		}
 	}
 
-	return json({ success: true, servers, users });
+	return Response.json({ success: true, servers, users });
 };
 
 export const POST: RequestHandler = async (event) => {
@@ -85,10 +84,10 @@ export const POST: RequestHandler = async (event) => {
 
 	switch (result.outcome) {
 		case 'ok':
-			return json({ success: true, results: result.results });
+			return Response.json({ success: true, results: result.results });
 		case 'no-server':
-			return json({ success: false, outcome: result.outcome }, { status: 404 });
+			return Response.json({ success: false, outcome: result.outcome }, { status: 404 });
 		case 'server-error':
-			return json({ success: false, outcome: result.outcome }, { status: 502 });
+			return Response.json({ success: false, outcome: result.outcome }, { status: 502 });
 	}
 };

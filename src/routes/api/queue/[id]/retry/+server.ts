@@ -1,4 +1,4 @@
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '#lib/server/db/index.js';
 import { downloadQueue, downloadClients } from '#lib/server/db/schema.js';
@@ -166,7 +166,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 				result = await new DebridHandler().retry(queueItem);
 			} catch (retryError) {
 				if (isAmbiguousDebridSubmission(retryError)) {
-					return json(
+					return Response.json(
 						{
 							success: false,
 							error: 'Provider submission outcome is unknown; automatic retry was refused.'
@@ -175,7 +175,10 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 					);
 				}
 				if (isDebridConfigurationFailure(retryError)) {
-					return json({ success: false, error: DEBRID_CONFIGURATION_ERROR }, { status: 400 });
+					return Response.json(
+						{ success: false, error: DEBRID_CONFIGURATION_ERROR },
+						{ status: 400 }
+					);
 				}
 				throw retryError;
 			}
@@ -187,7 +190,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 					: isDebridConfigurationFailure(message)
 						? 400
 						: 500;
-				return json({ success: false, error: message }, { status });
+				return Response.json({ success: false, error: message }, { status });
 			}
 
 			const updatedItem = await db
@@ -196,7 +199,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 				.where(eq(downloadQueue.id, id))
 				.get();
 
-			return json({
+			return Response.json({
 				success: true,
 				message: 'Download retry initiated',
 				retryMode: 'debrid',
@@ -349,7 +352,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 					'Import retry initiated for failed queue item'
 				);
 
-				return json({
+				return Response.json({
 					success: true,
 					message,
 					retryMode: 'import',
@@ -394,7 +397,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 						.where(eq(downloadQueue.id, id));
 
 					const importResult = await getImportService().requestImport(id);
-					return json({
+					return Response.json({
 						success: true,
 						message: 'Files located and import initiated',
 						retryMode: 'import',
@@ -421,7 +424,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 		// or a concurrent automatic grab can claim it.
 		const rearm = await acquisitionService.rearmForQueueId(id);
 		if (!rearm.ok) {
-			return json({ success: false, error: rearm.reason }, { status: 409 });
+			return Response.json({ success: false, error: rearm.reason }, { status: 409 });
 		}
 
 		// Try native client retry first (SABnzbd/NZBGet can retry from history cache)
@@ -482,7 +485,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 		// Redact sensitive URLs before returning
 		const safeItem = toSafeQueueItem(updatedItem);
 
-		return json({
+		return Response.json({
 			success: true,
 			message: 'Download retry initiated',
 			queueItem: safeItem
@@ -491,6 +494,6 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 		if (err instanceof Error && 'status' in err) throw err;
 		logger.error('Error retrying download', err instanceof Error ? err : undefined);
 		const message = err instanceof Error ? err.message : 'Failed to retry download';
-		return json({ success: false, error: message }, { status: 500 });
+		return Response.json({ success: false, error: message }, { status: 500 });
 	}
 };

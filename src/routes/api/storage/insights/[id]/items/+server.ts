@@ -1,4 +1,4 @@
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.js';
 import { storageInsights } from '#lib/server/db/schema.js';
@@ -31,7 +31,7 @@ export const GET: RequestHandler = async (event) => {
 	const resolver = getInsightItemResolver(insight.insightType as InsightType);
 	const result = await resolver({ db, insight, page, limit });
 
-	return json({
+	return Response.json({
 		success: true,
 		data: {
 			items: result.items,

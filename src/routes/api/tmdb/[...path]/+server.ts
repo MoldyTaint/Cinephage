@@ -1,5 +1,4 @@
 import { tmdb } from '#lib/server/tmdb.js';
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createChildLogger } from '#lib/logging/index.js';
 import { isAppError, getErrorMessage } from '#lib/errors/index.js';
@@ -31,7 +30,7 @@ const handler: RequestHandler = async ({ params, url, locals }) => {
 	const path = params.path;
 	if (!path) {
 		log.warn('Request missing path');
-		return json({ error: 'No path provided', correlationId }, { status: 400 });
+		return Response.json({ error: 'No path provided', correlationId }, { status: 400 });
 	}
 
 	// Forward query params
@@ -58,17 +57,17 @@ const handler: RequestHandler = async ({ params, url, locals }) => {
 				mediaType,
 				locals.user?.id ?? null
 			);
-			return json({ ...data, results: withRequestState });
+			return Response.json({ ...data, results: withRequestState });
 		}
 
-		return json(data);
+		return Response.json(data);
 	} catch (e) {
 		const message = getErrorMessage(e);
 		const statusCode = isAppError(e) ? e.statusCode : 500;
 
 		log.error({ err: e, ...{ endpoint } }, 'TMDB proxy error');
 
-		return json({ error: message, correlationId }, { status: statusCode });
+		return Response.json({ error: message, correlationId }, { status: statusCode });
 	}
 };
 

@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { db } from '#lib/server/db/index.js';
@@ -34,12 +33,12 @@ export const GET: RequestHandler = async (event) => {
 	});
 
 	if (!settingsData) {
-		return json({ success: true, filters: DEFAULT_FILTERS });
+		return Response.json({ success: true, filters: DEFAULT_FILTERS });
 	}
 
 	try {
 		const stored = JSON.parse(settingsData.value) as Partial<GlobalTmdbFilters>;
-		return json({
+		return Response.json({
 			success: true,
 			filters: {
 				...DEFAULT_FILTERS,
@@ -48,7 +47,7 @@ export const GET: RequestHandler = async (event) => {
 		});
 	} catch {
 		// Invalid JSON, return defaults
-		return json({ success: true, filters: DEFAULT_FILTERS });
+		return Response.json({ success: true, filters: DEFAULT_FILTERS });
 	}
 };
 
@@ -93,5 +92,5 @@ export const PUT: RequestHandler = async (event) => {
 
 	tmdb.invalidateSettings();
 
-	return json({ success: true, filters: result });
+	return Response.json({ success: true, filters: result });
 };

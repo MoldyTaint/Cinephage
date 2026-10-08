@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '#lib/server/db/index.js';
 import { mediaBrowserServers, mediaServerSyncedItems } from '#lib/server/db/schema.js';
@@ -72,7 +71,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const offset = (page - 1) * limit;
 	const pagedItems = aggregated.slice(offset, offset + limit);
 
-	return json({
+	return Response.json({
 		items: pagedItems,
 		total,
 		page,

@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { fileManagementSchema } from '#lib/validation/schemas.js';
@@ -15,7 +14,7 @@ export const GET: RequestHandler = async (event) => {
 	if (authError) return authError;
 
 	const data = await getFileManagementSettings();
-	return json({ success: true, ...data });
+	return Response.json({ success: true, ...data });
 };
 
 export const PUT: RequestHandler = async (event) => {
@@ -58,5 +57,5 @@ export const PUT: RequestHandler = async (event) => {
 	await setFileManagementSettings(settingsToSave);
 	invalidateFileManagementCache();
 
-	return json({ success: true, ...settingsToSave, autoEnabledCount, autoRevertedCount });
+	return Response.json({ success: true, ...settingsToSave, autoEnabledCount, autoRevertedCount });
 };

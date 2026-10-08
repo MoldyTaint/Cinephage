@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { tokenRegistry } from '#lib/server/library/naming/tokens/index.js';
 import { TemplateEngine } from '#lib/server/library/naming/template/index.js';
@@ -23,7 +22,7 @@ export const POST: RequestHandler = async (event) => {
 		const { formats } = body as { formats: Record<string, string> };
 
 		if (!formats || typeof formats !== 'object') {
-			return json({ error: 'formats object is required' }, { status: 400 });
+			return Response.json({ error: 'formats object is required' }, { status: 400 });
 		}
 
 		const results: Record<
@@ -56,9 +55,9 @@ export const POST: RequestHandler = async (event) => {
 			};
 		}
 
-		return json({ results });
+		return Response.json({ results });
 	} catch (err) {
 		logger.error({ err, component: 'NamingValidateApi' }, 'Error validating naming formats');
-		return json({ error: 'Failed to validate formats' }, { status: 500 });
+		return Response.json({ error: 'Failed to validate formats' }, { status: 500 });
 	}
 };

@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '#lib/server/db/index.js';
 import { movies, movieFiles, rootFolders } from '#lib/server/db/schema.js';
@@ -86,14 +85,14 @@ export const GET: RequestHandler = async (event) => {
 			};
 		});
 
-		return json({
+		return Response.json({
 			success: true,
 			movies: moviesWithFiles,
 			total: moviesWithFiles.length
 		});
 	} catch (error) {
 		logger.error('[API] Error fetching movies', error instanceof Error ? error : undefined);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to fetch movies'
@@ -127,7 +126,7 @@ export const POST: RequestHandler = async (event) => {
 		const addResult = await addMovieToLibrary(result.data);
 
 		if (addResult.outcome === 'exists') {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: 'Movie already exists in library',
@@ -137,7 +136,7 @@ export const POST: RequestHandler = async (event) => {
 			);
 		}
 
-		return json({
+		return Response.json({
 			success: true,
 			movie: {
 				id: addResult.movieId,
@@ -154,7 +153,7 @@ export const POST: RequestHandler = async (event) => {
 		logger.error('[API] Error adding movie', error instanceof Error ? error : undefined);
 
 		if (isAppError(error)) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					...error.toJSON()
@@ -164,7 +163,7 @@ export const POST: RequestHandler = async (event) => {
 		}
 
 		if (error instanceof Error && /FOREIGN KEY constraint failed/i.test(error.message)) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error:
@@ -175,7 +174,7 @@ export const POST: RequestHandler = async (event) => {
 			);
 		}
 
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to add movie'

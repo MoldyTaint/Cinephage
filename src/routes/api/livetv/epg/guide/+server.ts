@@ -12,7 +12,6 @@
  *   text columns are returned unchanged.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getEpgService } from '#lib/server/livetv/epg/index.js';
 import {
@@ -95,7 +94,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		}
 
 		if (channelIds.length === 0) {
-			return json({
+			return Response.json({
 				success: true,
 				programs: {},
 				timeRange: {
@@ -131,7 +130,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			programs[channelId] = channelPrograms;
 		}
 
-		return json({
+		return Response.json({
 			success: true,
 			programs,
 			timeRange: {
@@ -142,7 +141,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	} catch (error) {
 		// Validation errors
 		if (error instanceof ValidationError) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: error.message,
@@ -152,7 +151,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			);
 		}
 		logger.error('[API] Failed to get EPG guide', error instanceof Error ? error : undefined);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to get EPG guide data'

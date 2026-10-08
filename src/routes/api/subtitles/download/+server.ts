@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getSubtitleDownloadService } from '#lib/server/subtitles/services/SubtitleDownloadService.js';
 import { LanguageProfileService } from '#lib/server/subtitles/services/LanguageProfileService.js';
@@ -97,7 +96,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 		libraryMediaEvents.emitMovieUpdated(validated.movieId);
 
-		return json({
+		return Response.json({
 			success: true,
 			subtitle: downloadResult
 		});
@@ -124,11 +123,11 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 		libraryMediaEvents.emitSeriesUpdated(episode.seriesId);
 
-		return json({
+		return Response.json({
 			success: true,
 			subtitle: downloadResult
 		});
 	}
 
-	return json({ error: 'Either movieId or episodeId is required' }, { status: 400 });
+	return Response.json({ error: 'Either movieId or episodeId is required' }, { status: 400 });
 };

@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '#lib/server/db/index.js';
 import { movies } from '#lib/server/db/schema.js';
@@ -209,13 +208,13 @@ export const POST: RequestHandler = async ({ request }) => {
 			});
 		}
 
-		return json({
+		return Response.json({
 			success: true,
 			...results
 		});
 	} catch (error) {
 		logger.error('[API] Error in bulk movie add', error instanceof Error ? error : undefined);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to add movies'

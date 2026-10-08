@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getSubtitleProviderManager } from '#lib/server/subtitles/services/SubtitleProviderManager.js';
 import { subtitleProviderUpdateSchema } from '#lib/server/validation/schemas.js';
@@ -13,7 +12,7 @@ export const GET: RequestHandler = async ({ params }) => {
 	const provider = assertFound(await manager.getProvider(params.id), 'Provider', params.id);
 
 	// Redact sensitive fields
-	return json({
+	return Response.json({
 		...provider,
 		apiKey: provider.apiKey ? '[REDACTED]' : null,
 		password: provider.password ? '[REDACTED]' : null
@@ -39,7 +38,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 		requestsPerMinute: validated.requestsPerMinute
 	});
 
-	return json({ success: true, provider: updated });
+	return Response.json({ success: true, provider: updated });
 };
 
 /**
@@ -49,5 +48,5 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 export const DELETE: RequestHandler = async ({ params }) => {
 	const manager = await getSubtitleProviderManager();
 	await manager.deleteProvider(params.id);
-	return json({ success: true });
+	return Response.json({ success: true });
 };

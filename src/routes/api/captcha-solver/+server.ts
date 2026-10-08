@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { captchaSolverSettingsService } from '#lib/server/captcha/index.js';
 import { captchaSolverSettingsUpdateSchema } from '#lib/validation/schemas.js';
@@ -18,7 +17,7 @@ export const GET: RequestHandler = async (event) => {
 	try {
 		const config = captchaSolverSettingsService.getConfig();
 
-		return json({
+		return Response.json({
 			success: true,
 			settings: {
 				enabled: config.enabled,
@@ -35,7 +34,7 @@ export const GET: RequestHandler = async (event) => {
 			'[API] Failed to get captcha solver settings',
 			error instanceof Error ? error : undefined
 		);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: 'Failed to get captcha solver settings'
@@ -59,7 +58,7 @@ export const PUT: RequestHandler = async (event) => {
 		const validation = captchaSolverSettingsUpdateSchema.safeParse(body);
 
 		if (!validation.success) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: 'Invalid request body',
@@ -74,7 +73,7 @@ export const PUT: RequestHandler = async (event) => {
 		// Update settings
 		const updatedConfig = captchaSolverSettingsService.updateConfig(settings);
 
-		return json({
+		return Response.json({
 			success: true,
 			message: 'Captcha solver settings updated',
 			settings: {
@@ -92,7 +91,7 @@ export const PUT: RequestHandler = async (event) => {
 			'[API] Failed to update captcha solver settings',
 			error instanceof Error ? error : undefined
 		);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: 'Failed to update captcha solver settings'
@@ -113,7 +112,7 @@ export const DELETE: RequestHandler = async (event) => {
 	try {
 		const defaultConfig = captchaSolverSettingsService.resetToDefaults();
 
-		return json({
+		return Response.json({
 			success: true,
 			message: 'Captcha solver settings reset to defaults',
 			settings: {
@@ -131,7 +130,7 @@ export const DELETE: RequestHandler = async (event) => {
 			'[API] Failed to reset captcha solver settings',
 			error instanceof Error ? error : undefined
 		);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: 'Failed to reset captcha solver settings'

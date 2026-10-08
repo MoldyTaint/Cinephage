@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import {
 	NamingService,
@@ -113,7 +112,10 @@ export const POST: RequestHandler = async (event) => {
 	try {
 		const parsed = namingPreviewSchema.safeParse(await request.json());
 		if (!parsed.success) {
-			return json({ success: false, error: parsed.error.issues[0].message }, { status: 400 });
+			return Response.json(
+				{ success: false, error: parsed.error.issues[0].message },
+				{ status: 400 }
+			);
 		}
 		const { config: customConfig } = parsed.data;
 
@@ -153,7 +155,7 @@ export const POST: RequestHandler = async (event) => {
 			}
 		};
 
-		return json({
+		return Response.json({
 			previews,
 			config: mergedConfig,
 			sampleData: {
@@ -163,7 +165,7 @@ export const POST: RequestHandler = async (event) => {
 		});
 	} catch (error) {
 		logger.error('Error generating naming preview', error instanceof Error ? error : undefined);
-		return json({ error: 'Failed to generate naming preview' }, { status: 500 });
+		return Response.json({ error: 'Failed to generate naming preview' }, { status: 500 });
 	}
 };
 
@@ -203,12 +205,12 @@ export const GET: RequestHandler = async () => {
 			}
 		};
 
-		return json({
+		return Response.json({
 			previews,
 			config
 		});
 	} catch (error) {
 		logger.error('Error getting naming preview', error instanceof Error ? error : undefined);
-		return json({ error: 'Failed to get naming preview' }, { status: 500 });
+		return Response.json({ error: 'Failed to get naming preview' }, { status: 500 });
 	}
 };

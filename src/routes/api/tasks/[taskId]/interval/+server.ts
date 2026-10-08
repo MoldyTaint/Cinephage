@@ -3,8 +3,7 @@
  *
  * PUT /api/tasks/[taskId]/interval - Updates the interval for a scheduled task
  */
-
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import {
 	getUnifiedTaskById,
@@ -88,7 +87,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 		nextRunTime
 	});
 
-	return json({
+	return Response.json({
 		success: true,
 		taskId,
 		intervalHours

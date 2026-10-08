@@ -4,8 +4,7 @@
  * GET /api/workers/[id] - Get worker details and logs
  * DELETE /api/workers/[id] - Cancel/remove a worker
  */
-
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { workerManager } from '#lib/server/workers/index.js';
 
@@ -19,7 +18,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 		throw error(404, 'Worker not found');
 	}
 
-	return json({
+	return Response.json({
 		...worker.getState(),
 		logs: workerManager.getLogs(id, logsLimit)
 	});
@@ -38,7 +37,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 	if (worker.isActive && !force) {
 		// Cancel the worker first
 		const cancelled = workerManager.cancel(id);
-		return json({
+		return Response.json({
 			success: cancelled,
 			action: 'cancelled',
 			message: cancelled ? 'Worker cancelled' : 'Failed to cancel worker'
@@ -47,7 +46,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 
 	// Remove the worker
 	const removed = workerManager.remove(id);
-	return json({
+	return Response.json({
 		success: removed,
 		action: 'removed',
 		message: removed ? 'Worker removed' : 'Failed to remove worker'

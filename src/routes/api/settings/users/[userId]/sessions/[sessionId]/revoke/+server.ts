@@ -10,7 +10,6 @@
  * Auth: admin only.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { and, eq } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.js';
@@ -31,7 +30,7 @@ export const POST: RequestHandler = async (event) => {
 		.limit(1);
 
 	if (!row) {
-		return json({ success: false, error: 'Session not found' }, { status: 404 });
+		return Response.json({ success: false, error: 'Session not found' }, { status: 404 });
 	}
 
 	// The admin plugin's endpoint authorizes from the request context, so the
@@ -42,5 +41,5 @@ export const POST: RequestHandler = async (event) => {
 		headers: event.request.headers
 	});
 
-	return json({ success: true });
+	return Response.json({ success: true });
 };

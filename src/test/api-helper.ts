@@ -4,9 +4,7 @@
  * Provides utilities for testing SvelteKit API endpoints directly.
  * Creates mock Request objects and parses Response objects for assertions.
  */
-
-import { json, type RequestEvent, type RequestHandler } from '@sveltejs/kit';
-
+import { type RequestEvent, type RequestHandler } from '@sveltejs/kit';
 import { isAppError } from '#lib/errors/index.js';
 import { logger } from '#lib/logging/index.js';
 
@@ -148,7 +146,7 @@ export async function callHandlerRaw(
 		response = await handler(event as RequestEvent);
 	} catch (error) {
 		if (isAppError(error)) {
-			response = json({ success: false, ...error.toJSON() }, { status: error.statusCode });
+			response = Response.json({ success: false, ...error.toJSON() }, { status: error.statusCode });
 		} else {
 			throw error;
 		}

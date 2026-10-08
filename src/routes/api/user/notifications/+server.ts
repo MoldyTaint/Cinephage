@@ -4,13 +4,12 @@
  * GET /api/user/notifications — own rows; ?unread=true filters; ?take=N.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { getRequestNotificationService } from '#lib/server/requests/RequestNotificationService.js';
 
 export const GET: RequestHandler = async (event) => {
 	if (!event.locals.user) {
-		return json({ success: false, error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 	}
 
 	const service = getRequestNotificationService();
@@ -20,5 +19,5 @@ export const GET: RequestHandler = async (event) => {
 	});
 	const unreadCount = await service.getUnreadCount(event.locals.user.id);
 
-	return json({ success: true, notifications: feed, unreadCount });
+	return Response.json({ success: true, notifications: feed, unreadCount });
 };

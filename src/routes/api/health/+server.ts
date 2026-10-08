@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '#lib/server/db/index.js';
 import { settings } from '#lib/server/db/schema.js';
@@ -36,7 +35,7 @@ export const GET: RequestHandler = async () => {
 			: 'starting';
 	const httpStatus = status === 'unhealthy' ? 503 : 200;
 
-	return json(
+	return Response.json(
 		{
 			status,
 			version: resolveAppVersion(),

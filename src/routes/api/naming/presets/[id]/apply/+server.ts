@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '#lib/server/db/index.js';
 import { namingPresets } from '#lib/server/db/schema.js';
@@ -32,7 +31,7 @@ export const POST: RequestHandler = async (event) => {
 			const [customPreset] = await db.select().from(namingPresets).where(eq(namingPresets.id, id));
 
 			if (!customPreset) {
-				return json({ error: 'Preset not found' }, { status: 404 });
+				return Response.json({ error: 'Preset not found' }, { status: 404 });
 			}
 
 			presetConfig = customPreset.config as NamingPreset['config'];
@@ -44,12 +43,12 @@ export const POST: RequestHandler = async (event) => {
 		// Get the updated config to return
 		const updatedConfig = await namingSettingsService.getConfig();
 
-		return json({
+		return Response.json({
 			success: true,
 			config: updatedConfig
 		});
 	} catch (err) {
 		logger.error({ err, component: 'NamingPresetApplyApi' }, 'Error applying naming preset');
-		return json({ error: 'Failed to apply preset' }, { status: 500 });
+		return Response.json({ error: 'Failed to apply preset' }, { status: 500 });
 	}
 };

@@ -8,7 +8,6 @@
  * 409 — decline/retry are the verbs there.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { getRequestService } from '#lib/server/requests/RequestService.js';
 import { toRequestErrorResponse, requesterFromLocals } from '#lib/server/requests/http.js';
@@ -16,15 +15,15 @@ import { toRequestErrorResponse, requesterFromLocals } from '#lib/server/request
 export const DELETE: RequestHandler = async (event) => {
 	const requester = requesterFromLocals(event.locals);
 	if (!requester) {
-		return json({ success: false, error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 	}
 
 	try {
 		const result = await getRequestService().cancelOrRemove(event.params.id, requester);
 		if (result.kind === 'cancelled') {
-			return json({ success: true, request: result.request });
+			return Response.json({ success: true, request: result.request });
 		}
-		return json({ success: true, deleted: true });
+		return Response.json({ success: true, deleted: true });
 	} catch (error) {
 		return toRequestErrorResponse(error);
 	}

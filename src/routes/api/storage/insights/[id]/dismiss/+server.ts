@@ -1,4 +1,4 @@
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.js';
 import { storageInsights } from '#lib/server/db/schema.js';
@@ -34,5 +34,5 @@ export const POST: RequestHandler = async (event) => {
 
 	storageEvents.emitInsightDismissed({ insightId, dismissedAt: now });
 
-	return json({ success: true, id: result[0].id, dismissedAt: now });
+	return Response.json({ success: true, id: result[0].id, dismissedAt: now });
 };

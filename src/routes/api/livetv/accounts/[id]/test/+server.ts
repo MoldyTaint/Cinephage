@@ -4,7 +4,6 @@
  * POST /api/livetv/accounts/[id]/test - Test an existing account connection
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getLiveTvAccountManager } from '#lib/server/livetv/LiveTvAccountManager.js';
 import { createChildLogger } from '#lib/logging/index.js';
@@ -22,7 +21,7 @@ export const POST: RequestHandler = async ({ params }) => {
 		const result = await manager.testAccount(params.id);
 
 		if (!result.success && result.error === 'Account not found') {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: 'Account not found'
@@ -38,7 +37,7 @@ export const POST: RequestHandler = async ({ params }) => {
 					error: toFriendlyLiveTvTestError(result.error)
 				};
 
-		return json({
+		return Response.json({
 			success: true,
 			result: responseResult
 		});
@@ -48,7 +47,7 @@ export const POST: RequestHandler = async ({ params }) => {
 			error instanceof Error ? error : undefined
 		);
 
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: toFriendlyLiveTvTestError(

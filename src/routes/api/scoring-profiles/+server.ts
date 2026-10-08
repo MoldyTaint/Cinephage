@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '#lib/server/db/index.js';
 import { scoringProfiles } from '#lib/server/db/schema.js';
@@ -95,7 +94,7 @@ export const GET: RequestHandler = async () => {
 
 	const allProfiles = [...mappedBuiltInProfiles, ...mappedCustomProfiles];
 
-	return json({
+	return Response.json({
 		profiles: allProfiles,
 		count: allProfiles.length,
 		defaultProfileId: defaultProfileId ?? 'balanced'
@@ -110,7 +109,10 @@ export const POST: RequestHandler = async (event) => {
 	const data = await parseBody(request, scoringProfileCreateSchema);
 	const duplicateByName = await findProfileByNameCaseInsensitive(data.name);
 	if (duplicateByName) {
-		return json({ error: `Profile with name '${data.name}' already exists` }, { status: 409 });
+		return Response.json(
+			{ error: `Profile with name '${data.name}' already exists` },
+			{ status: 409 }
+		);
 	}
 
 	if (data.id) {
@@ -177,7 +179,7 @@ export const POST: RequestHandler = async (event) => {
 	qualityFilter.clearProfileCache();
 
 	const created = newProfile[0];
-	return json(
+	return Response.json(
 		{
 			...created,
 			movieMinSizeGb: toNullableNumber(created.movieMinSizeGb),
@@ -251,7 +253,7 @@ export const PUT: RequestHandler = async (event) => {
 			throw new AppError('Profile not found after update', 'INTERNAL_ERROR', 500);
 		}
 
-		return json({
+		return Response.json({
 			...builtIn,
 			preventDowngrades: updated.preventDowngrades ?? false,
 			formatScores: updated.formatScores ?? {},
@@ -273,7 +275,7 @@ export const PUT: RequestHandler = async (event) => {
 	if (updateData.name !== undefined) {
 		const duplicateByName = await findProfileByNameCaseInsensitive(updateData.name, id);
 		if (duplicateByName) {
-			return json(
+			return Response.json(
 				{ error: `Profile with name '${updateData.name}' already exists` },
 				{ status: 409 }
 			);
@@ -320,7 +322,7 @@ export const PUT: RequestHandler = async (event) => {
 	qualityFilter.clearProfileCache(id);
 
 	const updatedProfile = updated[0];
-	return json({
+	return Response.json({
 		...updatedProfile,
 		movieMinSizeGb: toNullableNumber(updatedProfile.movieMinSizeGb),
 		movieMaxSizeGb: toNullableNumber(updatedProfile.movieMaxSizeGb),
@@ -348,5 +350,5 @@ export const DELETE: RequestHandler = async (event) => {
 
 	qualityFilter.clearProfileCache(id);
 
-	return json({ success: true, deleted: deleted[0] });
+	return Response.json({ success: true, deleted: deleted[0] });
 };

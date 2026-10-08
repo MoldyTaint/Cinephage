@@ -4,7 +4,6 @@
  * GET /api/tasks - Returns all tasks with their current status
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import {
 	UNIFIED_TASK_DEFINITIONS,
@@ -64,7 +63,7 @@ export const GET: RequestHandler = async () => {
 		})
 	);
 
-	return json({
+	return Response.json({
 		success: true,
 		tasks
 	});

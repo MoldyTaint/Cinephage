@@ -5,7 +5,6 @@
  * POST /api/livetv/accounts - Create a new Live TV account
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getLiveTvAccountManager } from '#lib/server/livetv/LiveTvAccountManager.js';
 import { redactAccountSecrets } from '#lib/server/livetv/accountRedaction.js';
@@ -26,7 +25,7 @@ export const GET: RequestHandler = async (event) => {
 	const manager = getLiveTvAccountManager();
 	const accounts = await manager.getAccounts();
 
-	return json({
+	return Response.json({
 		success: true,
 		accounts: accounts.map(redactAccountSecrets)
 	});
@@ -44,7 +43,10 @@ export const POST: RequestHandler = async (event) => {
 	// Validate input
 	const parsed = liveTvAccountCreateSchema.safeParse(body);
 	if (!parsed.success) {
-		return json({ success: false, error: parsed.error.issues[0].message }, { status: 400 });
+		return Response.json(
+			{ success: false, error: parsed.error.issues[0].message },
+			{ status: 400 }
+		);
 	}
 
 	const manager = getLiveTvAccountManager();
@@ -55,7 +57,7 @@ export const POST: RequestHandler = async (event) => {
 	try {
 		const account = await manager.createAccount(parsed.data, testFirst);
 
-		return json(
+		return Response.json(
 			{
 				success: true,
 				account: redactAccountSecrets(account)
@@ -77,7 +79,7 @@ export const POST: RequestHandler = async (event) => {
 
 		// Connection test failures return specific error
 		if (message.includes('Connection test failed')) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: message
@@ -88,7 +90,7 @@ export const POST: RequestHandler = async (event) => {
 
 		// Unique constraint violation
 		if (message.includes('UNIQUE constraint failed')) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: 'An account with this configuration already exists'
@@ -98,7 +100,7 @@ export const POST: RequestHandler = async (event) => {
 		}
 
 		// Generic error - don't leak details
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: 'Failed to create account'

@@ -5,7 +5,6 @@
  * Returns the per-item activity (monitoringHistory) for a specific task run
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '#lib/server/db/index.js';
 import { monitoringHistory, movies, series, episodes } from '#lib/server/db/schema.js';
@@ -39,7 +38,7 @@ export const GET: RequestHandler = async ({ params }) => {
 	const { historyId } = params;
 
 	if (!historyId) {
-		return json({ error: 'History ID is required' }, { status: 400 });
+		return Response.json({ error: 'History ID is required' }, { status: 400 });
 	}
 
 	try {
@@ -106,13 +105,13 @@ export const GET: RequestHandler = async ({ params }) => {
 			};
 		});
 
-		return json({
+		return Response.json({
 			success: true,
 			activity,
 			total: activity.length
 		});
 	} catch (error) {
 		logger.error({ historyId, error }, '[TaskHistoryActivity] Failed to fetch activity');
-		return json({ error: 'Failed to fetch activity' }, { status: 500 });
+		return Response.json({ error: 'Failed to fetch activity' }, { status: 500 });
 	}
 };

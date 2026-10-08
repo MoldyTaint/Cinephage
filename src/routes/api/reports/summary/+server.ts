@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '#lib/server/db/index.js';
 import {
@@ -41,7 +40,7 @@ export const GET: RequestHandler = async (event) => {
 			db.select({ count: count() }).from(unmatchedFiles)
 		]);
 
-		return json({
+		return Response.json({
 			success: true,
 			data: {
 				rejectedReleases: rejectedCount.count,
@@ -53,6 +52,9 @@ export const GET: RequestHandler = async (event) => {
 		});
 	} catch (err) {
 		logger.error({ err }, '[Reports] Failed to load summary counts');
-		return json({ success: false, error: 'Failed to load report summary' }, { status: 500 });
+		return Response.json(
+			{ success: false, error: 'Failed to load report summary' },
+			{ status: 500 }
+		);
 	}
 };

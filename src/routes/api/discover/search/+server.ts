@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { tmdb } from '#lib/server/tmdb.js';
 import { contentFilterPipeline } from '#lib/server/filters/ContentFilterPipeline.js';
@@ -21,7 +20,10 @@ export const GET: RequestHandler = async ({ url }) => {
 	const result = searchQuerySchema.safeParse(params);
 
 	if (!result.success) {
-		return json({ error: 'Invalid parameters', details: result.error.flatten() }, { status: 400 });
+		return Response.json(
+			{ error: 'Invalid parameters', details: result.error.flatten() },
+			{ status: 400 }
+		);
 	}
 
 	const { query, type, page, exclude_in_library } = result.data;
@@ -29,7 +31,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	// Check if TMDB is configured
 	const tmdbConfigured = await tmdb.isConfigured();
 	if (!tmdbConfigured) {
-		return json({ error: 'TMDB API key not configured' }, { status: 503 });
+		return Response.json({ error: 'TMDB API key not configured' }, { status: 503 });
 	}
 
 	// Type for TMDB search responses
@@ -52,7 +54,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			const data = (await tmdb.fetch(
 				`/search/movie?query=${encodeURIComponent(title)}&page=${page}${year ? `&year=${year}` : ''}`
 			)) as SearchResponse | null;
-			if (!data) return json({ error: 'TMDB API key not configured' }, { status: 503 });
+			if (!data) return Response.json({ error: 'TMDB API key not configured' }, { status: 503 });
 			results = data.results.map((m) => ({ ...m, media_type: 'movie' }));
 			totalResults = data.total_results;
 			totalPages = data.total_pages;
@@ -60,7 +62,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			const data = (await tmdb.fetch(
 				`/search/tv?query=${encodeURIComponent(title)}&page=${page}${year ? `&first_air_date_year=${year}` : ''}`
 			)) as SearchResponse | null;
-			if (!data) return json({ error: 'TMDB API key not configured' }, { status: 503 });
+			if (!data) return Response.json({ error: 'TMDB API key not configured' }, { status: 503 });
 			results = data.results.map((t) => ({ ...t, media_type: 'tv' }));
 			totalResults = data.total_results;
 			totalPages = data.total_pages;
@@ -68,7 +70,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			const data = (await tmdb.fetch(
 				`/search/person?query=${encodeURIComponent(query)}&page=${page}`
 			)) as SearchResponse | null;
-			if (!data) return json({ error: 'TMDB API key not configured' }, { status: 503 });
+			if (!data) return Response.json({ error: 'TMDB API key not configured' }, { status: 503 });
 			results = data.results.map((p) => ({ ...p, media_type: 'person' }));
 			totalResults = data.total_results;
 			totalPages = data.total_pages;
@@ -77,7 +79,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			const data = (await tmdb.fetch(
 				`/search/multi?query=${encodeURIComponent(query)}&page=${page}`
 			)) as SearchResponse | null;
-			if (!data) return json({ error: 'TMDB API key not configured' }, { status: 503 });
+			if (!data) return Response.json({ error: 'TMDB API key not configured' }, { status: 503 });
 			results = data.results;
 			totalResults = data.total_results;
 			totalPages = data.total_pages;
@@ -90,7 +92,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		});
 		const enrichedResults = await enrichWithReleaseDates(filteredResults);
 
-		return json({
+		return Response.json({
 			results: enrichedResults,
 			pagination: {
 				page,
@@ -101,6 +103,6 @@ export const GET: RequestHandler = async ({ url }) => {
 	} catch (e) {
 		const message = e instanceof Error ? e.message : 'Unknown error';
 		logger.error({ err: e, ...{ errorMessage: message, query } }, 'Search API error');
-		return json({ error: 'Search failed' }, { status: 500 });
+		return Response.json({ error: 'Search failed' }, { status: 500 });
 	}
 };

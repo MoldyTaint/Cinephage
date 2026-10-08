@@ -4,7 +4,6 @@
  * GET /api/livetv/cinephage-iptv/countries - List all IPTV countries from Cinephage API
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createChildLogger } from '#lib/logging/index.js';
 import { getStreamingIndexerSettings } from '#lib/server/streaming/settings.js';
@@ -106,7 +105,7 @@ export const GET: RequestHandler = async () => {
 	try {
 		const countries = await getCachedCountries();
 
-		return json({
+		return Response.json({
 			success: true,
 			countries: countries.map((c) => ({
 				code: c.code,
@@ -120,6 +119,6 @@ export const GET: RequestHandler = async () => {
 		const message = error instanceof Error ? error.message : String(error);
 		logger.error({ error: message }, '[CinephageCountries] Failed to fetch countries');
 
-		return json({ success: false, error: message }, { status: 500 });
+		return Response.json({ success: false, error: message }, { status: 500 });
 	}
 };

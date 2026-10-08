@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { blocklistService } from '#lib/server/monitoring/specifications/BlocklistSpecification.js';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
@@ -31,7 +30,7 @@ export const GET: RequestHandler = async (event) => {
 		})
 	]);
 
-	return json({ entries, total });
+	return Response.json({ entries, total });
 };
 
 const deleteSchema = z.object({
@@ -47,7 +46,7 @@ export const DELETE: RequestHandler = async (event) => {
 	const parsed = deleteSchema.safeParse(body);
 
 	if (!parsed.success) {
-		return json(
+		return Response.json(
 			{ error: 'Invalid request body', details: parsed.error.flatten() },
 			{ status: 400 }
 		);
@@ -57,15 +56,15 @@ export const DELETE: RequestHandler = async (event) => {
 
 	if (action === 'purgeExpired') {
 		await blocklistService.cleanExpiredEntries();
-		return json({ success: true, message: 'Expired entries purged' });
+		return Response.json({ success: true, message: 'Expired entries purged' });
 	}
 
 	if (ids && ids.length > 0) {
 		await blocklistService.removeFromBlocklistByIds(ids);
-		return json({ success: true, removed: ids.length });
+		return Response.json({ success: true, removed: ids.length });
 	}
 
-	return json({ error: 'No action specified' }, { status: 400 });
+	return Response.json({ error: 'No action specified' }, { status: 400 });
 };
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -73,7 +72,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	const parsed = addToBlocklistSchema.safeParse(body);
 
 	if (!parsed.success) {
-		return json(
+		return Response.json(
 			{ error: 'Invalid request body', details: parsed.error.flatten() },
 			{ status: 400 }
 		);
@@ -103,7 +102,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 	);
 
-	return json({ success: true, id });
+	return Response.json({ success: true, id });
 };
 
 export const PUT: RequestHandler = async ({ request }) => {
@@ -111,7 +110,7 @@ export const PUT: RequestHandler = async ({ request }) => {
 	const parsed = updateBlocklistExpirySchema.safeParse(body);
 
 	if (!parsed.success) {
-		return json(
+		return Response.json(
 			{ error: 'Invalid request body', details: parsed.error.flatten() },
 			{ status: 400 }
 		);
@@ -120,5 +119,5 @@ export const PUT: RequestHandler = async ({ request }) => {
 	const { id, expiresInHours } = parsed.data;
 	await blocklistService.updateExpiry(id, expiresInHours);
 
-	return json({ success: true });
+	return Response.json({ success: true });
 };

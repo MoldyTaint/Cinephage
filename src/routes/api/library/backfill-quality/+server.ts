@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { backfillMissingQuality } from '#lib/server/library/quality-backfill.js';
 import { createChildLogger } from '#lib/logging/index.js';
@@ -16,13 +15,13 @@ export const POST: RequestHandler = async () => {
 		logger.info('[API] Starting quality backfill');
 		const result = await backfillMissingQuality();
 
-		return json({
+		return Response.json({
 			success: true,
 			...result
 		});
 	} catch (error) {
 		logger.error('[API] Quality backfill failed', error instanceof Error ? error : undefined);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Unknown error'

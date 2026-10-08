@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { libraryJobService } from '#lib/server/library/jobs/LibraryJobService.js';
@@ -22,7 +21,7 @@ export const GET: RequestHandler = async (event) => {
 	const status = LIBRARY_JOB_STATUSES.find((s) => s === statusParam);
 
 	const jobs = await libraryJobService.listJobs({ type, status, parentJobId, limit });
-	return json({ success: true, jobs });
+	return Response.json({ success: true, jobs });
 };
 
 export const POST: RequestHandler = async (event) => {
@@ -31,11 +30,11 @@ export const POST: RequestHandler = async (event) => {
 	const body = await event.request.json().catch(() => ({}));
 	if (body.type === 'scan_root_folder' && typeof body.rootFolderId === 'string') {
 		const job = await libraryJobService.enqueueRootFolderScan(body.rootFolderId);
-		return json({ success: true, job });
+		return Response.json({ success: true, job });
 	}
 	if (body.type === 'scan_all_root_folders') {
 		const job = await libraryJobService.enqueueFullScan();
-		return json({ success: true, job });
+		return Response.json({ success: true, job });
 	}
-	return json({ success: false, error: 'Unsupported job type' }, { status: 400 });
+	return Response.json({ success: false, error: 'Unsupported job type' }, { status: 400 });
 };

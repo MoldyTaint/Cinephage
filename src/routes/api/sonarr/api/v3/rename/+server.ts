@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { requireArrCompatEnabled } from '#lib/server/arr/requireArrCompatEnabled.js';
@@ -13,7 +12,7 @@ export const GET: RequestHandler = async (event) => {
 	if (authError) return authError;
 
 	const seriesId = Number.parseInt(event.url.searchParams.get('seriesId') ?? '', 10);
-	if (Number.isNaN(seriesId)) return json([]);
+	if (Number.isNaN(seriesId)) return Response.json([]);
 
-	return json(await buildSeriesRename(seriesId));
+	return Response.json(await buildSeriesRename(seriesId));
 };

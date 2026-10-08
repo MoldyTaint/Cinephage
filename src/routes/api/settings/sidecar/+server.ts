@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
@@ -20,7 +19,7 @@ const schema = z.object({
 export const GET: RequestHandler = (event) => {
 	const authError = requireAdmin(event);
 	if (authError) return authError;
-	return json(getSidecarSettings());
+	return Response.json(getSidecarSettings());
 };
 
 export const PUT: RequestHandler = async (event) => {
@@ -28,5 +27,5 @@ export const PUT: RequestHandler = async (event) => {
 	if (authError) return authError;
 	const update = await parseBody(event.request, schema);
 	setSidecarSettings(update);
-	return json(getSidecarSettings());
+	return Response.json(getSidecarSettings());
 };

@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getIndexerManager } from '#lib/server/indexers/IndexerManager.js';
 import type { SearchCriteria } from '#lib/server/indexers/types/index.js';
@@ -10,7 +9,6 @@ import { searchQuerySchema } from '#lib/validation/schemas.js';
 import { extractSearchYear } from '#lib/utils/search-query.js';
 import { qualityFilter, type EnrichmentOptions } from '#lib/server/quality/index.js';
 import { createChildLogger } from '#lib/logging/index.js';
-
 import { redactUrl } from '#lib/server/utils/urlSecurity.js';
 import { db } from '#lib/server/db/index.js';
 import { movies, series, settings } from '#lib/server/db/schema.js';
@@ -65,7 +63,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const result = searchQuerySchema.safeParse(params);
 
 	if (!result.success) {
-		return json(
+		return Response.json(
 			{
 				error: 'Invalid query parameters',
 				details: result.error.flatten()
@@ -171,7 +169,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	} else {
 		// Basic search requires a query
 		if (!q) {
-			return json({ error: 'Query (q) is required for basic search' }, { status: 400 });
+			return Response.json({ error: 'Query (q) is required for basic search' }, { status: 400 });
 		}
 		criteria = {
 			searchType: 'basic',
@@ -310,7 +308,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		});
 
 		if (!availability.ok) {
-			return json(
+			return Response.json(
 				{
 					error: availability.message,
 					errorCode: availability.code
@@ -326,7 +324,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			timeout: INTERACTIVE_SEARCH_TIMEOUT_MS
 		});
 
-		return json({
+		return Response.json({
 			releases: redactReleaseUrls(searchResult.releases),
 			meta: {
 				totalResults: searchResult.totalResults,
@@ -364,7 +362,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	});
 
 	if (!availability.ok) {
-		return json(
+		return Response.json(
 			{
 				error: availability.message,
 				errorCode: availability.code
@@ -379,7 +377,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		timeout: INTERACTIVE_SEARCH_TIMEOUT_MS
 	});
 
-	return json({
+	return Response.json({
 		releases: redactReleaseUrls(searchResult.releases),
 		meta: {
 			totalResults: searchResult.totalResults,

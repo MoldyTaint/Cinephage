@@ -5,7 +5,6 @@
  * DELETE /api/workers - Clear all completed workers
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { workerManager } from '#lib/server/workers/index.js';
 import type { WorkerType } from '#lib/server/workers/index.js';
@@ -22,7 +21,7 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	const stats = workerManager.getStats();
 
-	return json({
+	return Response.json({
 		workers,
 		stats,
 		config: workerManager.getConfig()
@@ -32,7 +31,7 @@ export const GET: RequestHandler = async ({ url }) => {
 export const DELETE: RequestHandler = async () => {
 	const cleared = workerManager.clearCompleted();
 
-	return json({
+	return Response.json({
 		success: true,
 		cleared
 	});

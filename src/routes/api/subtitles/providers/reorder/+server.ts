@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { getSubtitleProviderManager } from '#lib/server/subtitles/services/SubtitleProviderManager.js';
@@ -30,7 +29,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	for (const id of providerIds) {
 		if (!existingIds.has(id)) {
-			return json({ error: `Provider not found: ${id}` }, { status: 404 });
+			return Response.json({ error: `Provider not found: ${id}` }, { status: 404 });
 		}
 	}
 
@@ -53,7 +52,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		'[ProviderReorder] Reordered provider priorities'
 	);
 
-	return json({
+	return Response.json({
 		success: true,
 		updated: updates.length
 	});

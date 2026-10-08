@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { getCinephageSettingsService } from '#lib/server/cinephage/settings/CinephageSettingsService.js';
@@ -15,7 +14,7 @@ export const PUT: RequestHandler = async (event) => {
 
 	const parsedResult = cinephageSubsystemUpdateSchema.safeParse(await event.request.json());
 	if (!parsedResult.success) {
-		return json(
+		return Response.json(
 			{ error: 'Invalid request', details: parsedResult.error.flatten() },
 			{ status: 400 }
 		);
@@ -25,5 +24,5 @@ export const PUT: RequestHandler = async (event) => {
 	await settings.updateConfig(parsedResult.data);
 
 	const updated = await settings.getConfig();
-	return json({ success: true, config: updated });
+	return Response.json({ success: true, config: updated });
 };

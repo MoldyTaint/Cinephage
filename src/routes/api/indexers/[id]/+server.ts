@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getIndexerManager } from '#lib/server/indexers/IndexerManager.js';
 import { CINEPHAGE_STREAM_DEFINITION_ID } from '#lib/server/indexers/types/index.js';
@@ -20,7 +19,7 @@ export const GET: RequestHandler = async (event) => {
 	const manager = await getIndexerManager();
 	const indexer = assertFound(await manager.getIndexer(params.id), 'Indexer', params.id);
 
-	return json(redactIndexer(indexer));
+	return Response.json(redactIndexer(indexer));
 };
 
 export const DELETE: RequestHandler = async (event) => {
@@ -32,12 +31,12 @@ export const DELETE: RequestHandler = async (event) => {
 
 	try {
 		await manager.deleteIndexer(params.id);
-		return json({ success: true });
+		return Response.json({ success: true });
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		// Built-in indexer delete attempts return a clear 403.
 		if (message.includes('built-in indexer')) {
-			return json({ error: message }, { status: 403 });
+			return Response.json({ error: message }, { status: 403 });
 		}
 		if (message.includes('not found')) {
 			throw new NotFoundError('Indexer', params.id);
@@ -145,11 +144,11 @@ export const PUT: RequestHandler = async (event) => {
 				});
 		}
 
-		return json({ success: true, indexer: redactIndexer(updated) });
+		return Response.json({ success: true, indexer: redactIndexer(updated) });
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		if (message.includes('built-in indexer') || message.includes('restricted field')) {
-			return json({ error: message }, { status: 403 });
+			return Response.json({ error: message }, { status: 403 });
 		}
 		if (message.includes('not found')) {
 			throw new NotFoundError('Indexer', params.id);

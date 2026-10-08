@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import {
 	buildTokensResponse,
@@ -10,7 +9,7 @@ import {
  * Returns all available naming tokens organized by category
  */
 export const GET: RequestHandler = async () => {
-	return json({
+	return Response.json({
 		tokens: buildTokensResponse(),
 		categories: TOKEN_CATEGORIES
 	});

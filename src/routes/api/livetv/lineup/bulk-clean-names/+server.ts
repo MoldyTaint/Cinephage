@@ -4,7 +4,6 @@
  * POST /api/livetv/lineup/bulk-clean-names - Apply normalized names to multiple lineup items
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { channelLineupService } from '#lib/server/livetv/lineup/index.js';
 import { ValidationError } from '#lib/errors/index.js';
@@ -22,7 +21,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		if (body.itemIds.length === 0) {
-			return json({
+			return Response.json({
 				success: true,
 				updated: 0,
 				skippedExistingCustom: 0,
@@ -32,13 +31,13 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		const result = await channelLineupService.bulkApplyCleanNames(body.itemIds);
 
-		return json({
+		return Response.json({
 			success: true,
 			...result
 		});
 	} catch (error) {
 		if (error instanceof ValidationError) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: error.message,
@@ -52,7 +51,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			'[API] Failed to bulk apply clean names',
 			error instanceof Error ? error : undefined
 		);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to apply clean names'

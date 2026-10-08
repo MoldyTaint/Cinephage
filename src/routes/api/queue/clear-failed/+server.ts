@@ -8,7 +8,6 @@
  *   dryRun=true - Preview what would be cleared without actually clearing
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { downloadMonitor } from '#lib/server/downloadClients/monitoring/index.js';
 import { createChildLogger } from '#lib/logging/index.js';
@@ -28,7 +27,7 @@ export const POST: RequestHandler = async ({ url }) => {
 			dryRun
 		});
 
-		return json({
+		return Response.json({
 			success: true,
 			dryRun,
 			olderThanDays,
@@ -42,7 +41,7 @@ export const POST: RequestHandler = async ({ url }) => {
 		const message = error instanceof Error ? error.message : 'Unknown error';
 		logger.error({ error: message }, 'Clear failed items failed');
 
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: message

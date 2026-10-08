@@ -7,7 +7,6 @@
  * Aggregate scope data only; no usernames or request ids cross the wire.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '#lib/server/db/index.js';
 import { episodes, movies, requests, series } from '#lib/server/db/schema.js';
@@ -16,7 +15,7 @@ import { ACTIVE_REQUEST_STATUSES } from '#lib/server/requests/types.js';
 
 export const GET: RequestHandler = async (event) => {
 	if (!event.locals.user) {
-		return json({ success: false, error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 	}
 
 	const mediaType = event.url.searchParams.get('mediaType');
@@ -26,7 +25,7 @@ export const GET: RequestHandler = async (event) => {
 		!Number.isInteger(tmdbIdParam) ||
 		tmdbIdParam <= 0
 	) {
-		return json({ success: false, error: 'Invalid mediaType or tmdbId' }, { status: 400 });
+		return Response.json({ success: false, error: 'Invalid mediaType or tmdbId' }, { status: 400 });
 	}
 
 	const activeRows = await db
@@ -46,7 +45,7 @@ export const GET: RequestHandler = async (event) => {
 			.from(movies)
 			.where(eq(movies.tmdbId, tmdbIdParam))
 			.limit(1);
-		return json({
+		return Response.json({
 			success: true,
 			mediaType,
 			tmdbId: tmdbIdParam,
@@ -73,7 +72,7 @@ export const GET: RequestHandler = async (event) => {
 		availableEpisodes = rows.map((r) => `${r.seasonNumber}x${r.episodeNumber}`);
 	}
 
-	return json({
+	return Response.json({
 		success: true,
 		mediaType,
 		tmdbId: tmdbIdParam,

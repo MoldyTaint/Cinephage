@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { requireArrCompatEnabled } from '#lib/server/arr/requireArrCompatEnabled.js';
@@ -15,5 +14,5 @@ export const POST: RequestHandler = async (event) => {
 
 	const body = await event.request.json().catch(() => ({}));
 	const result = await pushRelease('sonarr', body, withForwardedApiKey(event));
-	return json(result.body, { status: result.status });
+	return Response.json(result.body, { status: result.status });
 };

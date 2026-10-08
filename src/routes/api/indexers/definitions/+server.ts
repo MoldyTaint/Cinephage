@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { getIndexerManager } from '#lib/server/indexers/IndexerManager.js';
 import { toUIDefinition } from '#lib/server/indexers/loader/index.js';
 
@@ -35,5 +34,5 @@ export async function GET() {
 		})
 		.sort((a, b) => a.name.localeCompare(b.name));
 
-	return json(definitions);
+	return Response.json(definitions);
 }

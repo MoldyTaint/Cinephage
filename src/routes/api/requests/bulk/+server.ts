@@ -5,7 +5,6 @@
  * HTTP connection for the sum of all orchestrator latencies.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { parseBody } from '#lib/server/api/validate.js';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
@@ -25,7 +24,7 @@ export const POST: RequestHandler = async (event) => {
 
 	const requester = requesterFromLocals(event.locals);
 	if (!requester) {
-		return json({ success: false, error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 	}
 
 	try {
@@ -69,7 +68,7 @@ export const POST: RequestHandler = async (event) => {
 				await runOne(id);
 			}
 		}
-		return json({ success: true, results });
+		return Response.json({ success: true, results });
 	} catch (error) {
 		return toRequestErrorResponse(error);
 	}

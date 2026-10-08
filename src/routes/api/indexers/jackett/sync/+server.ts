@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { syncJackettIndexers } from '#lib/server/indexers/jackett/JackettConnectionService.js';
@@ -10,8 +9,11 @@ export const POST: RequestHandler = async (event) => {
 
 	try {
 		const result = await syncJackettIndexers();
-		return json({ success: true, result });
+		return Response.json({ success: true, result });
 	} catch (err) {
-		return json({ error: err instanceof Error ? err.message : 'Sync failed' }, { status: 500 });
+		return Response.json(
+			{ error: err instanceof Error ? err.message : 'Sync failed' },
+			{ status: 500 }
+		);
 	}
 };

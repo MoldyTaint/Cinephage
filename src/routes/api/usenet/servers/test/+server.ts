@@ -2,7 +2,6 @@
  * POST /api/usenet/servers/test - Test NNTP connection without saving
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { nntpServerTestSchema } from '#lib/validation/schemas.js';
 import { testNntpConnection } from '#lib/server/streaming/nzb/NntpTestUtils.js';
@@ -22,13 +21,13 @@ export const POST: RequestHandler = async (event) => {
 	try {
 		data = await request.json();
 	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
+		return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
 
 	const result = nntpServerTestSchema.safeParse(data);
 
 	if (!result.success) {
-		return json(
+		return Response.json(
 			{
 				error: 'Validation failed',
 				details: result.error.flatten()
@@ -45,13 +44,13 @@ export const POST: RequestHandler = async (event) => {
 
 	if (testResult.success) {
 		logger.info({ host, greeting: testResult.greeting }, '[NNTP Test] Connection successful');
-		return json({
+		return Response.json({
 			success: true,
 			greeting: testResult.greeting
 		});
 	} else {
 		logger.warn({ host, error: testResult.error }, '[NNTP Test] Connection failed');
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: testResult.error

@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { requireArrCompatEnabled } from '#lib/server/arr/requireArrCompatEnabled.js';
@@ -19,5 +18,5 @@ export const GET: RequestHandler = async (event) => {
 	const movieIdParam = event.url.searchParams.get('movieId');
 	const movieId = movieIdParam ? Number.parseInt(movieIdParam, 10) : undefined;
 
-	return json(await buildQueueDetails('Radarr', { movieId }));
+	return Response.json(await buildQueueDetails('Radarr', { movieId }));
 };

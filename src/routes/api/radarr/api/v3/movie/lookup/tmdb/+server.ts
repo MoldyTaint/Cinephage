@@ -1,4 +1,4 @@
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { requireArrCompatEnabled } from '#lib/server/arr/requireArrCompatEnabled.js';
@@ -26,5 +26,5 @@ export const GET: RequestHandler = async (event) => {
 	}
 	if (!movie) error(404, 'Movie not found');
 
-	return json(movie);
+	return Response.json(movie);
 };

@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
 import type { RequestHandler } from './$types.js';
 import { z } from 'zod';
@@ -37,14 +36,17 @@ export const POST: RequestHandler = async (event) => {
 			// BODY_SIZE_LIMIT, surfacing here as a 413 Payload Too Large.
 			const status = (error as { status?: number } | null)?.status;
 			if (status === 413) {
-				return json({ success: false, error: 'Request payload too large' }, { status: 413 });
+				return Response.json(
+					{ success: false, error: 'Request payload too large' },
+					{ status: 413 }
+				);
 			}
-			return json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
+			return Response.json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
 		}
 
 		const parsed = bulkSchema.safeParse(body);
 		if (!parsed.success) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: 'Validation failed',
@@ -59,7 +61,7 @@ export const POST: RequestHandler = async (event) => {
 			if (!importPath) continue;
 
 			if (!(await isPathAllowed(importPath))) {
-				return json(
+				return Response.json(
 					{
 						success: false,
 						error: `Access denied: Path ${importPath} is outside allowed directories`
@@ -69,7 +71,7 @@ export const POST: RequestHandler = async (event) => {
 			}
 
 			if (await isPathInsideManagedRoot(importPath)) {
-				return json(
+				return Response.json(
 					{
 						success: false,
 						error: `Import source ${importPath} cannot be inside a managed root folder`
@@ -101,7 +103,7 @@ export const POST: RequestHandler = async (event) => {
 			'[API] Manual import bulk submitted as library jobs'
 		);
 
-		return json({
+		return Response.json({
 			success: true,
 			data: {
 				parentJobId,
@@ -111,7 +113,7 @@ export const POST: RequestHandler = async (event) => {
 		});
 	} catch (error) {
 		logger.error('[API] Manual import bulk failed', error instanceof Error ? error : undefined);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to submit import jobs'

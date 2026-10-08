@@ -3,8 +3,7 @@
  *
  * PUT /api/tasks/[taskId]/enabled - Enable or disable a task
  */
-
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getUnifiedTaskById } from '#lib/server/tasks/UnifiedTaskRegistry.js';
 import { taskSettingsService } from '#lib/server/tasks/TaskSettingsService.js';
@@ -58,7 +57,7 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 	// Emit settings change event for SSE clients
 	monitoringScheduler.emit('taskSettingsUpdated', { taskId, enabled });
 
-	return json({
+	return Response.json({
 		success: true,
 		taskId,
 		enabled

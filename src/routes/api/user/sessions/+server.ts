@@ -8,7 +8,6 @@
  * the endpoint is safe for viewer accounts.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.js';
@@ -25,7 +24,7 @@ const revokeSchema = z.object({
 
 export const GET: RequestHandler = async ({ locals }) => {
 	if (!locals.user) {
-		return json({ success: false, error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 	}
 
 	const rows = await db
@@ -41,7 +40,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 		.where(eq(session.userId, locals.user.id));
 
 	const currentToken = locals.session?.token ?? null;
-	return json({
+	return Response.json({
 		success: true,
 		// Tokens are only compared server-side, never shipped to the client.
 		sessions: rows.map(({ token, ...rest }) => ({ ...rest, current: token === currentToken }))
@@ -50,7 +49,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 
 export const DELETE: RequestHandler = async ({ request, locals }) => {
 	if (!locals.user) {
-		return json({ success: false, error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 	}
 
 	const currentToken = locals.session?.token ?? null;
@@ -61,7 +60,7 @@ export const DELETE: RequestHandler = async ({ request, locals }) => {
 	try {
 		sessionId = (await parseOptionalBody(request, revokeSchema)).sessionId;
 	} catch {
-		return json({ success: false, error: 'Invalid request body' }, { status: 400 });
+		return Response.json({ success: false, error: 'Invalid request body' }, { status: 400 });
 	}
 
 	if (sessionId) {
@@ -79,11 +78,11 @@ export const DELETE: RequestHandler = async ({ request, locals }) => {
 			.returning({ id: session.id });
 
 		if (revoked.length === 0) {
-			return json({ success: false, error: 'Session not found' }, { status: 404 });
+			return Response.json({ success: false, error: 'Session not found' }, { status: 404 });
 		}
 
 		logger.info({ userId: locals.user.id }, '[UserSessions] Revoked one own session');
-		return json({ success: true });
+		return Response.json({ success: true });
 	}
 
 	await db
@@ -96,5 +95,5 @@ export const DELETE: RequestHandler = async ({ request, locals }) => {
 		);
 
 	logger.info({ userId: locals.user.id }, '[UserSessions] Revoked all other own sessions');
-	return json({ success: true });
+	return Response.json({ success: true });
 };

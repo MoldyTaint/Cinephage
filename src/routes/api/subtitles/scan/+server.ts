@@ -1,4 +1,4 @@
-import { json, type RequestEvent } from '@sveltejs/kit';
+import { type RequestEvent } from '@sveltejs/kit';
 import { getSubtitleScannerService } from '#lib/server/subtitles/services/SubtitleScannerService.js';
 import { subtitleScanSchema } from '#lib/validation/schemas.js';
 import { parseOptionalBody } from '#lib/server/api/validate.js';
@@ -15,7 +15,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	if (data.movieId) {
 		const result = await scanner.scanMovieSubtitles(data.movieId);
-		return json({
+		return Response.json({
 			success: true,
 			type: 'movie',
 			...result
@@ -24,7 +24,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	if (data.seriesId) {
 		const result = await scanner.scanSeriesSubtitles(data.seriesId);
-		return json({
+		return Response.json({
 			success: true,
 			type: 'series',
 			...result
@@ -33,7 +33,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	if (data.scanAll) {
 		const result = await scanner.scanAll();
-		return json({
+		return Response.json({
 			success: true,
 			type: 'all',
 			movies: result.movies,
@@ -41,5 +41,5 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 	}
 
-	return json({ error: 'Specify movieId, seriesId, or scanAll: true' }, { status: 400 });
+	return Response.json({ error: 'Specify movieId, seriesId, or scanAll: true' }, { status: 400 });
 };

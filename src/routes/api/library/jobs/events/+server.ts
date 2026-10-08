@@ -1,5 +1,4 @@
 import type { RequestHandler } from './$types.js';
-import { json } from '@sveltejs/kit';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { createSSEStream } from '#lib/server/sse.js';
 import { libraryJobService } from '#lib/server/library/jobs/LibraryJobService.js';
@@ -15,7 +14,7 @@ export const GET: RequestHandler = async (event) => {
 		const payload = jobId
 			? await libraryJobService.getJob(jobId)
 			: await libraryJobService.listActiveJobs();
-		return json({ success: true, data: payload });
+		return Response.json({ success: true, data: payload });
 	}
 
 	return createSSEStream(async (send) => {

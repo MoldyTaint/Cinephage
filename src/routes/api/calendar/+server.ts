@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { getCalendarData } from '#lib/server/calendar/queries.js';
@@ -47,7 +46,10 @@ const calendarQuerySchema = z.object({
 export const GET: RequestHandler = async ({ url }) => {
 	const result = calendarQuerySchema.safeParse(Object.fromEntries(url.searchParams));
 	if (!result.success) {
-		return json({ error: 'Invalid parameters', details: result.error.flatten() }, { status: 400 });
+		return Response.json(
+			{ error: 'Invalid parameters', details: result.error.flatten() },
+			{ status: 400 }
+		);
 	}
 
 	const { month, type, libraryOnly, minRating, genreIds, excludeAdult, certifications } =
@@ -61,5 +63,5 @@ export const GET: RequestHandler = async ({ url }) => {
 		excludeAdult,
 		certifications
 	);
-	return json(days);
+	return Response.json(days);
 };

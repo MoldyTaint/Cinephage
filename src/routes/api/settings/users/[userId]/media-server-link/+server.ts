@@ -12,7 +12,6 @@
  * viewer allowlist in hooks.server.ts).
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { parseBody } from '#lib/server/api/validate.js';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
@@ -39,7 +38,7 @@ export const GET: RequestHandler = async (event) => {
 		users = await mediaServerLinkService.listServerUsers(serverId);
 	}
 
-	return json({ success: true, links, servers, users });
+	return Response.json({ success: true, links, servers, users });
 };
 
 export const POST: RequestHandler = async (event) => {
@@ -55,13 +54,13 @@ export const POST: RequestHandler = async (event) => {
 
 	switch (result.outcome) {
 		case 'linked':
-			return json({ success: true, link: result.link });
+			return Response.json({ success: true, link: result.link });
 		case 'no-server':
-			return json({ success: false, outcome: result.outcome }, { status: 404 });
+			return Response.json({ success: false, outcome: result.outcome }, { status: 404 });
 		case 'unknown-server-user':
-			return json({ success: false, outcome: result.outcome }, { status: 404 });
+			return Response.json({ success: false, outcome: result.outcome }, { status: 404 });
 		case 'conflict':
-			return json(
+			return Response.json(
 				{ success: false, outcome: result.outcome, error: result.message },
 				{ status: 409 }
 			);
@@ -74,9 +73,9 @@ export const DELETE: RequestHandler = async (event) => {
 
 	const serverId = event.url.searchParams.get('serverId');
 	if (!serverId) {
-		return json({ success: false, error: 'serverId is required' }, { status: 400 });
+		return Response.json({ success: false, error: 'serverId is required' }, { status: 400 });
 	}
 
 	const removed = await mediaServerLinkService.unlink(event.params.userId, serverId);
-	return json({ success: removed });
+	return Response.json({ success: removed });
 };

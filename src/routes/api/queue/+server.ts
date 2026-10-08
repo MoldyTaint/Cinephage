@@ -3,7 +3,6 @@
  * List all items in the download queue
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '#lib/server/db/index.js';
 import { downloadQueue, movies, series, downloadClients } from '#lib/server/db/schema.js';
@@ -149,7 +148,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	// Get stats
 	const stats = await downloadMonitor.getStats();
 
-	return json({
+	return Response.json({
 		success: true,
 		data: {
 			items,

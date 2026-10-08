@@ -4,7 +4,6 @@
  * POST /api/livetv/accounts/test - Test a new account configuration (without saving)
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getProvider } from '#lib/server/livetv/providers/index.js';
 import { createChildLogger } from '#lib/logging/index.js';
@@ -158,7 +157,7 @@ export const POST: RequestHandler = async (event) => {
 			const manager = getLiveTvAccountManager();
 			const stored = await manager.getAccount(parsed.data.accountId);
 			if (!stored) {
-				return json({ success: false, error: 'Account not found' }, { status: 404 });
+				return Response.json({ success: false, error: 'Account not found' }, { status: 404 });
 			}
 			if (
 				parsed.data.xstreamConfig &&
@@ -239,7 +238,7 @@ export const POST: RequestHandler = async (event) => {
 					error: toFriendlyLiveTvTestError(providerResult.error, parsed.data.providerType)
 				};
 
-		return json({
+		return Response.json({
 			success: true,
 			result
 		});
@@ -254,7 +253,7 @@ export const POST: RequestHandler = async (event) => {
 				'[API] Live TV account test rejected due to invalid input'
 			);
 
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: getFriendlyValidationMessage(error),
@@ -270,7 +269,7 @@ export const POST: RequestHandler = async (event) => {
 			error instanceof Error ? error : undefined
 		);
 
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: toFriendlyLiveTvTestError(

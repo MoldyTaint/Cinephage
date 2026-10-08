@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '#lib/server/db/index.js';
 import { movies, episodes, series } from '#lib/server/db/schema.js';
@@ -92,7 +91,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			'[AutoSearch] Movie auto-search complete'
 		);
 
-		return json(toResponse(result));
+		return Response.json(toResponse(result));
 	}
 
 	// Auto-search for episode
@@ -123,8 +122,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			'[AutoSearch] Episode auto-search complete'
 		);
 
-		return json(toResponse(result));
+		return Response.json(toResponse(result));
 	}
 
-	return json({ error: 'Either movieId or episodeId is required' }, { status: 400 });
+	return Response.json({ error: 'Either movieId or episodeId is required' }, { status: 400 });
 };

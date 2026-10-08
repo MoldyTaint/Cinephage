@@ -2,7 +2,6 @@
  * POST /api/usenet/servers/:id/test - Test NNTP server connection
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getNntpServerService } from '#lib/server/streaming/nzb/NntpServerService.js';
 import { testNntpConnection } from '#lib/server/streaming/nzb/NntpTestUtils.js';
@@ -22,7 +21,7 @@ export const POST: RequestHandler = async (event) => {
 	const server = await service.getServerWithPassword(params.id);
 
 	if (!server) {
-		return json({ error: 'Server not found' }, { status: 404 });
+		return Response.json({ error: 'Server not found' }, { status: 404 });
 	}
 
 	logger.info(
@@ -48,13 +47,13 @@ export const POST: RequestHandler = async (event) => {
 
 	if (result.success) {
 		logger.info({ id: server.id, greeting: result.greeting }, '[NNTP Test] Connection successful');
-		return json({
+		return Response.json({
 			success: true,
 			greeting: result.greeting
 		});
 	} else {
 		logger.warn({ id: server.id, error: result.error }, '[NNTP Test] Connection failed');
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: result.error

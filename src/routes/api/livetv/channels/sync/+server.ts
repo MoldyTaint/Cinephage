@@ -4,7 +4,6 @@
  * POST /api/livetv/channels/sync - Trigger channel sync for accounts
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getLiveTvChannelService, getLiveTvAccountManager } from '#lib/server/livetv/index.js';
 import { liveTvEvents } from '#lib/server/livetv/LiveTvEvents.js';
@@ -43,7 +42,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				}
 			}
 
-			return json({
+			return Response.json({
 				success: true,
 				results
 			});
@@ -80,13 +79,13 @@ export const POST: RequestHandler = async ({ request }) => {
 			}
 		}
 
-		return json({
+		return Response.json({
 			success: true,
 			results
 		});
 	} catch (error) {
 		logger.error('[API] Failed to sync channels', error instanceof Error ? error : undefined);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to sync channels'

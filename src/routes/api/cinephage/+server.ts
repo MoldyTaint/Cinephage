@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { getCinephageSettingsService } from '#lib/server/cinephage/settings/CinephageSettingsService.js';
@@ -63,7 +62,7 @@ export const GET: RequestHandler = async (event) => {
 		})
 	);
 
-	return json({
+	return Response.json({
 		success: true,
 		config: {
 			enabled: config.enabled,

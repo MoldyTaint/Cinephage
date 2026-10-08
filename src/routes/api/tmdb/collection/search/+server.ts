@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { tmdb } from '#lib/server/tmdb.js';
 
@@ -9,9 +8,9 @@ import { tmdb } from '#lib/server/tmdb.js';
 export const GET: RequestHandler = async ({ url }) => {
 	const q = url.searchParams.get('q')?.trim() ?? '';
 	if (!q) {
-		return json([]);
+		return Response.json([]);
 	}
 
 	const results = await tmdb.searchCollections(q);
-	return json(results);
+	return Response.json(results);
 };

@@ -2,7 +2,6 @@
  * Retry a failed request (re-runs the approval step). Admin only.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { getRequestService } from '#lib/server/requests/RequestService.js';
@@ -15,12 +14,12 @@ export const POST: RequestHandler = async (event) => {
 
 	const requester = requesterFromLocals(event.locals);
 	if (!requester) {
-		return json({ success: false, error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 	}
 
 	try {
 		const retried = await getRequestService().retry(event.params.id, requester);
-		return json({ success: true, request: retried });
+		return Response.json({ success: true, request: retried });
 	} catch (error) {
 		return toRequestErrorResponse(error);
 	}

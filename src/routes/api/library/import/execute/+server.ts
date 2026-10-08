@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { manualImportSchema } from '#lib/validation/schemas.js';
 import { manualImportService } from '#lib/server/library/manual-import-service.js';
@@ -37,14 +36,17 @@ export const POST: RequestHandler = async (event) => {
 			// BODY_SIZE_LIMIT, surfacing here as a 413 Payload Too Large.
 			const status = (error as { status?: number } | null)?.status;
 			if (status === 413) {
-				return json({ success: false, error: 'Request payload too large' }, { status: 413 });
+				return Response.json(
+					{ success: false, error: 'Request payload too large' },
+					{ status: 413 }
+				);
 			}
-			return json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
+			return Response.json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
 		}
 
 		const parsed = manualImportSchema.safeParse(body);
 		if (!parsed.success) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: 'Validation failed',
@@ -58,7 +60,7 @@ export const POST: RequestHandler = async (event) => {
 		const importPath = payload.sourcePath ?? payload.selectedFilePath;
 
 		if (!importPath || !(await isPathAllowed(importPath))) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: 'Access denied: Path is outside allowed directories'
@@ -67,7 +69,7 @@ export const POST: RequestHandler = async (event) => {
 			);
 		}
 		if (await isPathInsideManagedRoot(importPath)) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: 'Import source cannot be inside a managed root folder.'
@@ -85,7 +87,10 @@ export const POST: RequestHandler = async (event) => {
 				dedupeKey: `manual_import:${importPath}:${payload.tmdbId}:${payload.libraryId ?? 'new'}`,
 				metadata: { request: payload }
 			});
-			return json({ success: true, data: { jobId: job.id, background: true } }, { status: 202 });
+			return Response.json(
+				{ success: true, data: { jobId: job.id, background: true } },
+				{ status: 202 }
+			);
 		}
 
 		const result = await manualImportService.executeImport(payload);
@@ -93,10 +98,10 @@ export const POST: RequestHandler = async (event) => {
 			source: payload.mediaType === 'tv' ? 'series' : 'movie',
 			reason: 'manual-import'
 		});
-		return json({ success: true, data: result });
+		return Response.json({ success: true, data: result });
 	} catch (error) {
 		logger.error('[API] Manual import execute failed', error instanceof Error ? error : undefined);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: getExecuteErrorMessage(error)

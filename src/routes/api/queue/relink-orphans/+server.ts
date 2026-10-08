@@ -10,7 +10,6 @@
  * "Clear Failed") while the download was still running in the client.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { downloadMonitor } from '#lib/server/downloadClients/monitoring/index.js';
 import { createChildLogger } from '#lib/logging/index.js';
@@ -23,7 +22,7 @@ export const POST: RequestHandler = async () => {
 	try {
 		const result = await downloadMonitor.relinkOrphanedDownloads();
 
-		return json({
+		return Response.json({
 			success: true,
 			relinked: result.relinked.length,
 			details: result.relinked
@@ -31,6 +30,6 @@ export const POST: RequestHandler = async () => {
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
 		logger.error({ error: message }, 'Orphan relink failed');
-		return json({ success: false, error: message }, { status: 500 });
+		return Response.json({ success: false, error: message }, { status: 500 });
 	}
 };

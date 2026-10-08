@@ -3,7 +3,6 @@
  * POST /api/smartlists/[id]/refresh - Manually refresh a smart list
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getSmartListService } from '#lib/server/smartlists/index.js';
 
@@ -12,14 +11,14 @@ export const POST: RequestHandler = async ({ params }) => {
 
 	const list = await service.getSmartList(params.id);
 	if (!list) {
-		return json({ error: 'Smart list not found' }, { status: 404 });
+		return Response.json({ error: 'Smart list not found' }, { status: 404 });
 	}
 
 	try {
 		const result = await service.refreshSmartList(params.id, 'manual');
-		return json(result);
+		return Response.json(result);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
-		return json({ error: message }, { status: 500 });
+		return Response.json({ error: message }, { status: 500 });
 	}
 };

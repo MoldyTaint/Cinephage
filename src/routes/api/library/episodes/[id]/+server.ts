@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '#lib/server/db/index.js';
 import { episodes, episodeFiles, series, seasons, rootFolders } from '#lib/server/db/schema.js';
@@ -29,7 +28,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		const [episode] = await db.select().from(episodes).where(eq(episodes.id, params.id)).limit(1);
 
 		if (!episode) {
-			return json({ success: false, error: 'Episode not found' }, { status: 404 });
+			return Response.json({ success: false, error: 'Episode not found' }, { status: 404 });
 		}
 
 		// Detect if monitoring is being enabled (was false, now true)
@@ -73,7 +72,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 						},
 						'[API] Skipping search for episode in unmonitored series'
 					);
-					return json({ success: true });
+					return Response.json({ success: true });
 				}
 
 				// Fire and forget - don't block the response
@@ -98,10 +97,10 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 		libraryMediaEvents.emitSeriesUpdated(episode.seriesId);
 
-		return json({ success: true });
+		return Response.json({ success: true });
 	} catch (error) {
 		logger.error('[API] Error updating episode', error instanceof Error ? error : undefined);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to update episode'
@@ -139,16 +138,19 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			.where(eq(episodes.id, params.id));
 
 		if (!episode) {
-			return json({ success: false, error: 'Episode not found' }, { status: 404 });
+			return Response.json({ success: false, error: 'Episode not found' }, { status: 404 });
 		}
 
 		if (!episode.hasFile) {
-			return json({ success: false, error: 'Episode has no files to delete' }, { status: 400 });
+			return Response.json(
+				{ success: false, error: 'Episode has no files to delete' },
+				{ status: 400 }
+			);
 		}
 
 		// Block file deletion from read-only folders
 		if (deleteFiles && episode.rootFolderReadOnly) {
-			return json(
+			return Response.json(
 				{ success: false, error: 'Cannot delete files from read-only folder' },
 				{ status: 400 }
 			);
@@ -248,10 +250,10 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 		libraryMediaEvents.emitSeriesUpdated(episode.seriesId);
 
 		// Note: Episode metadata is kept - it will show as "missing"
-		return json({ success: true });
+		return Response.json({ success: true });
 	} catch (error) {
 		logger.error('[API] Error deleting episode files', error instanceof Error ? error : undefined);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to delete episode files'

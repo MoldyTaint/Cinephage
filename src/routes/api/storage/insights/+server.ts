@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { asc, isNull, sql } from 'drizzle-orm';
 import { db } from '#lib/server/db/index.js';
 import { storageInsights } from '#lib/server/db/schema.js';
@@ -23,5 +22,5 @@ export const GET: RequestHandler = async (event) => {
 		.orderBy(asc(SEVERITY_ORDER), asc(storageInsights.insightType))
 		.all();
 
-	return json({ success: true, insights: rows });
+	return Response.json({ success: true, insights: rows });
 };

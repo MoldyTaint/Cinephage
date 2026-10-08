@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getRootFolderService } from '#lib/server/downloadClients/RootFolderService.js';
 import { rootFolderCreateSchema } from '#lib/validation/schemas.js';
@@ -15,7 +14,7 @@ import { invalidateRootFolderPathCache } from '#lib/server/filesystem/path-guard
 export const GET: RequestHandler = async () => {
 	const service = getRootFolderService();
 	const folders = await service.getFolders();
-	return json(folders);
+	return Response.json(folders);
 };
 
 /**
@@ -56,5 +55,5 @@ export const POST: RequestHandler = async (event) => {
 		entityId: created.folder.id
 	});
 
-	return json({ success: true, folder: created.folder, scanJobId: created.scanJobId });
+	return Response.json({ success: true, folder: created.folder, scanJobId: created.scanJobId });
 };

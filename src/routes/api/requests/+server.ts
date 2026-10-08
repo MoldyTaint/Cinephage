@@ -11,7 +11,6 @@
  * self-scoping is enforced HERE, never in the UI.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '#lib/server/db/index.js';
 import { user } from '#lib/server/db/schema.js';
@@ -76,7 +75,7 @@ function toRequestDto(
 export const GET: RequestHandler = async (event) => {
 	const requester = requesterFromLocals(event.locals);
 	if (!requester) {
-		return json({ success: false, error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 	}
 
 	const filter = event.url.searchParams.get('filter') ?? 'all';
@@ -112,7 +111,7 @@ export const GET: RequestHandler = async (event) => {
 		}
 	}
 
-	return json({
+	return Response.json({
 		success: true,
 		requests: results.map((r) => toRequestDto(r, usersById))
 	});
@@ -121,13 +120,13 @@ export const GET: RequestHandler = async (event) => {
 export const POST: RequestHandler = async (event) => {
 	const requester = requesterFromLocals(event.locals);
 	if (!requester) {
-		return json({ success: false, error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 	}
 
 	try {
 		const body = await parseBody(event.request, createRequestSchema);
 		const created = await getRequestService().create(requester, body);
-		return json({ success: true, request: created }, { status: 201 });
+		return Response.json({ success: true, request: created }, { status: 201 });
 	} catch (error) {
 		return toRequestErrorResponse(error);
 	}

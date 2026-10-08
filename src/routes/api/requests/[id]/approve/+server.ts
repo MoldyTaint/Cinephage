@@ -4,7 +4,6 @@
  * and may park in awaiting_target when no writable target exists.
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { getRequestService } from '#lib/server/requests/RequestService.js';
@@ -17,12 +16,12 @@ export const POST: RequestHandler = async (event) => {
 
 	const requester = requesterFromLocals(event.locals);
 	if (!requester) {
-		return json({ success: false, error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 	}
 
 	try {
 		const approved = await getRequestService().approve(event.params.id, requester);
-		return json({ success: true, request: approved });
+		return Response.json({ success: true, request: approved });
 	} catch (error) {
 		return toRequestErrorResponse(error);
 	}

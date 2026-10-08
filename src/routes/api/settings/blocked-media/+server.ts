@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { blockedMediaService } from '#lib/server/blocked-media/index.js';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
@@ -21,7 +20,7 @@ export const GET: RequestHandler = async (event) => {
 		offset
 	});
 
-	return json(result);
+	return Response.json(result);
 };
 
 export const POST: RequestHandler = async (event) => {
@@ -32,7 +31,7 @@ export const POST: RequestHandler = async (event) => {
 	const parsed = blockMediaSchema.safeParse(body);
 
 	if (!parsed.success) {
-		return json(
+		return Response.json(
 			{ error: 'Invalid request body', details: parsed.error.flatten() },
 			{ status: 400 }
 		);
@@ -40,7 +39,7 @@ export const POST: RequestHandler = async (event) => {
 
 	const entry = await blockedMediaService.blockMedia(parsed.data);
 
-	return json({ success: true, entry });
+	return Response.json({ success: true, entry });
 };
 
 export const DELETE: RequestHandler = async (event) => {
@@ -51,7 +50,7 @@ export const DELETE: RequestHandler = async (event) => {
 	const parsed = unblockMediaSchema.safeParse(body);
 
 	if (!parsed.success) {
-		return json(
+		return Response.json(
 			{ error: 'Invalid request body', details: parsed.error.flatten() },
 			{ status: 400 }
 		);
@@ -59,5 +58,5 @@ export const DELETE: RequestHandler = async (event) => {
 
 	await blockedMediaService.unblockMedia(parsed.data.ids);
 
-	return json({ success: true, removed: parsed.data.ids.length });
+	return Response.json({ success: true, removed: parsed.data.ids.length });
 };

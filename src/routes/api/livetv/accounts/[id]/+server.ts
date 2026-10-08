@@ -6,7 +6,6 @@
  * DELETE /api/livetv/accounts/[id] - Delete account
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getLiveTvAccountManager } from '#lib/server/livetv/LiveTvAccountManager.js';
 import { redactAccountSecrets } from '#lib/server/livetv/accountRedaction.js';
@@ -152,7 +151,7 @@ export const GET: RequestHandler = async (event) => {
 		const account = await manager.getAccount(event.params.id);
 
 		if (!account) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: 'Account not found'
@@ -161,14 +160,14 @@ export const GET: RequestHandler = async (event) => {
 			);
 		}
 
-		return json({
+		return Response.json({
 			success: true,
 			account: redactAccountSecrets(account)
 		});
 	} catch (error) {
 		logger.error('[API] Failed to get Live TV account', error instanceof Error ? error : undefined);
 
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to get account'
@@ -288,7 +287,7 @@ export const PUT: RequestHandler = async (event) => {
 		const manager = getLiveTvAccountManager();
 		const existingAccount = await manager.getAccount(params.id);
 		if (!existingAccount) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: 'Account not found'
@@ -313,7 +312,7 @@ export const PUT: RequestHandler = async (event) => {
 		const account = await manager.updateAccount(params.id, updates);
 
 		if (!account) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: 'Account not found'
@@ -326,7 +325,7 @@ export const PUT: RequestHandler = async (event) => {
 			queueAccountEpgSync(account.id);
 		}
 
-		return json({
+		return Response.json({
 			success: true,
 			account: redactAccountSecrets(account)
 		});
@@ -338,7 +337,7 @@ export const PUT: RequestHandler = async (event) => {
 
 		// Validation errors
 		if (error instanceof ValidationError) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: error.message,
@@ -353,7 +352,7 @@ export const PUT: RequestHandler = async (event) => {
 
 		// Unique constraint violation
 		if (message.includes('UNIQUE constraint failed')) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: 'An account with this configuration already exists'
@@ -362,7 +361,7 @@ export const PUT: RequestHandler = async (event) => {
 			);
 		}
 
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: message || 'Failed to update account'
@@ -384,7 +383,7 @@ export const DELETE: RequestHandler = async (event) => {
 		const deleted = await manager.deleteAccount(event.params.id);
 
 		if (!deleted) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: 'Account not found'
@@ -393,7 +392,7 @@ export const DELETE: RequestHandler = async (event) => {
 			);
 		}
 
-		return json({
+		return Response.json({
 			success: true
 		});
 	} catch (error) {
@@ -402,7 +401,7 @@ export const DELETE: RequestHandler = async (event) => {
 			error instanceof Error ? error : undefined
 		);
 
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to delete account'

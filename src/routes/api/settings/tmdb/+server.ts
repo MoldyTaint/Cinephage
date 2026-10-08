@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireAdmin } from '#lib/server/auth/authorization.js';
 import { db } from '#lib/server/db/index.js';
@@ -23,7 +22,7 @@ export const GET: RequestHandler = async (event) => {
 		where: eq(settings.key, 'tmdb_api_key')
 	});
 
-	return json({
+	return Response.json({
 		success: true,
 		hasApiKey: Boolean(apiKeySetting)
 	});
@@ -39,12 +38,12 @@ export const PUT: RequestHandler = async (event) => {
 
 	const apiKey = parsedBody.apiKey.trim();
 	if (!apiKey) {
-		return json({ success: true, unchanged: true });
+		return Response.json({ success: true, unchanged: true });
 	}
 
 	const validation = tmdbApiKeySchema.safeParse(apiKey);
 	if (!validation.success) {
-		return json(
+		return Response.json(
 			{
 				error: validation.error.issues[0]?.message ?? 'Invalid TMDB API key'
 			},
@@ -61,5 +60,5 @@ export const PUT: RequestHandler = async (event) => {
 
 	tmdb.invalidateSettings();
 
-	return json({ success: true });
+	return Response.json({ success: true });
 };

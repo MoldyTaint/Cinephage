@@ -10,7 +10,6 @@
  * pairing secrets never leave the server (the client only sees the code).
  */
 
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { createChildLogger } from '#lib/logging/index.js';
 import { parseBody } from '#lib/server/api/validate.js';
@@ -25,7 +24,7 @@ const serverIdSchema = z.object({
 
 export const GET: RequestHandler = async ({ locals }) => {
 	if (!locals.user) {
-		return json({ success: false, error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 	}
 
 	const [links, servers] = await Promise.all([
@@ -33,12 +32,12 @@ export const GET: RequestHandler = async ({ locals }) => {
 		mediaServerLinkService.getLinkableServers()
 	]);
 
-	return json({ success: true, links, servers });
+	return Response.json({ success: true, links, servers });
 };
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	if (!locals.user) {
-		return json({ success: false, error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 	}
 
 	const { serverId } = await parseBody(request, serverIdSchema);
@@ -46,20 +45,23 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	switch (result.outcome) {
 		case 'initiated':
-			return json({
+			return Response.json({
 				success: true,
 				code: result.code,
 				expiresAt: result.expiresAt
 			});
 		case 'already-linked':
-			return json({ success: false, outcome: result.outcome, link: result.link }, { status: 409 });
+			return Response.json(
+				{ success: false, outcome: result.outcome, link: result.link },
+				{ status: 409 }
+			);
 		case 'quick-connect-disabled':
-			return json({ success: false, outcome: result.outcome }, { status: 503 });
+			return Response.json({ success: false, outcome: result.outcome }, { status: 503 });
 		case 'no-server':
-			return json({ success: false, outcome: result.outcome }, { status: 404 });
+			return Response.json({ success: false, outcome: result.outcome }, { status: 404 });
 		default:
 			logger.warn({ outcome: result.outcome }, '[UserMediaServerLink] initiate failed');
-			return json(
+			return Response.json(
 				{ success: false, outcome: result.outcome, error: result.message },
 				{ status: 502 }
 			);
@@ -68,7 +70,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 export const PUT: RequestHandler = async ({ request, locals }) => {
 	if (!locals.user) {
-		return json({ success: false, error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 	}
 
 	const { serverId } = await parseBody(request, serverIdSchema);
@@ -78,16 +80,16 @@ export const PUT: RequestHandler = async ({ request, locals }) => {
 		case 'pending':
 		case 'expired':
 		case 'no-pairing':
-			return json({ success: true, outcome: result.outcome });
+			return Response.json({ success: true, outcome: result.outcome });
 		case 'linked':
-			return json({ success: true, outcome: result.outcome, link: result.link });
+			return Response.json({ success: true, outcome: result.outcome, link: result.link });
 		case 'conflict':
-			return json(
+			return Response.json(
 				{ success: false, outcome: result.outcome, error: result.message },
 				{ status: 409 }
 			);
 		default:
-			return json(
+			return Response.json(
 				{ success: false, outcome: result.outcome, error: result.message },
 				{ status: 502 }
 			);
@@ -96,14 +98,14 @@ export const PUT: RequestHandler = async ({ request, locals }) => {
 
 export const DELETE: RequestHandler = async ({ locals, url }) => {
 	if (!locals.user) {
-		return json({ success: false, error: 'Unauthorized' }, { status: 401 });
+		return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
 	}
 
 	const serverId = url.searchParams.get('serverId');
 	if (!serverId) {
-		return json({ success: false, error: 'serverId is required' }, { status: 400 });
+		return Response.json({ success: false, error: 'serverId is required' }, { status: 400 });
 	}
 
 	const removed = await mediaServerLinkService.unlink(locals.user.id, serverId);
-	return json({ success: removed });
+	return Response.json({ success: removed });
 };

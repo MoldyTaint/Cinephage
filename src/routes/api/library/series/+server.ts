@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { db } from '#lib/server/db/index.js';
 import { series, rootFolders } from '#lib/server/db/schema.js';
@@ -64,14 +63,14 @@ export const GET: RequestHandler = async (event) => {
 					: 0
 		}));
 
-		return json({
+		return Response.json({
 			success: true,
 			series: seriesWithStats,
 			total: seriesWithStats.length
 		});
 	} catch (error) {
 		logger.error('[API] Error fetching series', error instanceof Error ? error : undefined);
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to fetch series'
@@ -105,7 +104,7 @@ export const POST: RequestHandler = async (event) => {
 		const addResult = await addSeriesToLibrary(result.data);
 
 		if (addResult.outcome === 'exists') {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error: 'Series already exists in library',
@@ -115,7 +114,7 @@ export const POST: RequestHandler = async (event) => {
 			);
 		}
 
-		return json({
+		return Response.json({
 			success: true,
 			series: {
 				id: addResult.seriesId,
@@ -133,7 +132,7 @@ export const POST: RequestHandler = async (event) => {
 		logger.error('[API] Error adding series', error instanceof Error ? error : undefined);
 
 		if (isAppError(error)) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					...error.toJSON()
@@ -143,7 +142,7 @@ export const POST: RequestHandler = async (event) => {
 		}
 
 		if (error instanceof Error && /FOREIGN KEY constraint failed/i.test(error.message)) {
-			return json(
+			return Response.json(
 				{
 					success: false,
 					error:
@@ -154,7 +153,7 @@ export const POST: RequestHandler = async (event) => {
 			);
 		}
 
-		return json(
+		return Response.json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to add series'
