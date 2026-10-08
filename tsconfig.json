@@ -36,5 +36,10 @@
 		"./src/**/*.js",
 		"./src/**/*.ts",
 		"./src/**/*.svelte"
-	]
+	],
+	// svelte-check walks the whole workspace regardless of include; Inspiration/
+	// holds vendored third-party reference projects whose vite configs fail to
+	// load (ERR_MODULE_NOT_FOUND noise that can mask real output). Declaring
+	// exclude here replaces the generated list, so node_modules is restated.
+	"exclude": ["node_modules/**", "Inspiration/**"]
 }
