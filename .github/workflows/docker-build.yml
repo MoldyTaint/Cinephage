@@ -112,10 +112,15 @@ jobs:
 
       - name: Test Docker image
         run: |
+          # CAMOUFOX_AUTO_FETCH=false: the entrypoint provisions the ~1.4GB
+          # Camoufox browser synchronously before starting the server, and a
+          # throwaway CI container is always a first run - the health window
+          # would expire mid-download. Real deployments exercise that path.
           docker run -d --name cinephage-test \
             -p 3000:3000 \
             -e ORIGIN=http://localhost:3000 \
             -e BETTER_AUTH_SECRET=ci-healthcheck-secret-change-in-production \
+            -e CAMOUFOX_AUTO_FETCH=false \
             cinephage:test
 
           for i in {1..12}; do
