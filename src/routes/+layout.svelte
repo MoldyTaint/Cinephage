@@ -869,20 +869,24 @@
 										href="/profile"
 										class="mb-1 flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-base-200"
 										title={m.nav_profile()}
+										onclick={closeMobileDrawer}
 									>
 										<UserAvatar
 											name={data.user.displayUsername || data.user.username || '?'}
-											src={data.user.mediaServerId
-												? `/api/user/media-server/avatar/${data.user.mediaServerId}`
-												: null}
+											src={data.user.image ??
+												(data.user.mediaServerId
+													? `/api/user/media-server/avatar/${data.user.mediaServerId}`
+													: null)}
 										/>
 										<span class="min-w-0 flex-1">
 											<span class="block truncate text-sm font-medium">
 												{data.user.displayUsername || data.user.username}
 											</span>
-											<span class="block truncate text-xs text-base-content/50">
-												{data.user.username}
-											</span>
+											{#if data.user.sidebarShowUsername && data.user.username}
+												<span class="block truncate text-xs text-base-content/50">
+													{data.user.username}
+												</span>
+											{/if}
 										</span>
 									</a>
 								{/if}

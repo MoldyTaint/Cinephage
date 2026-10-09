@@ -30,7 +30,8 @@ export const BETTER_AUTH_TABLE_DEFINITIONS = [
 			"banReason" text,
 			"banExpires" date,
 			"createdAt" date NOT NULL,
-			"updatedAt" date NOT NULL
+			"updatedAt" date NOT NULL,
+			"lastActiveAt" date
 		)`
 	},
 	{
@@ -44,7 +45,8 @@ export const BETTER_AUTH_TABLE_DEFINITIONS = [
 			"userAgent" text,
 			"impersonatedBy" text,
 			"createdAt" date NOT NULL,
-			"updatedAt" date NOT NULL
+			"updatedAt" date NOT NULL,
+			"lastActiveAt" date
 		)`
 	},
 	{

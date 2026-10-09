@@ -38,7 +38,12 @@ export const user = sqliteTable(
 		banReason: text('banReason'),
 		banExpires: text('banExpires'),
 		createdAt: text('createdAt').notNull(),
-		updatedAt: text('updatedAt').notNull()
+		updatedAt: text('updatedAt').notNull(),
+		// Mirrors the most recent session.lastActiveAt write (see touchLastActive
+		// in session-helpers.ts), but on the user row so it survives a session
+		// being revoked/deleted — the admin users list needs this to still mean
+		// something for an account with zero current sessions.
+		lastActiveAt: text('lastActiveAt')
 	},
 	(table) => [
 		uniqueIndex('idx_user_email').on(table.email),
@@ -62,7 +67,10 @@ export const session = sqliteTable(
 		userAgent: text('userAgent'),
 		impersonatedBy: text('impersonatedBy'),
 		createdAt: text('createdAt').notNull(),
-		updatedAt: text('updatedAt').notNull()
+		updatedAt: text('updatedAt').notNull(),
+		// Updated on a throttle (see touchLastActive in session-helpers.ts), unlike
+		// updatedAt which better-auth only refreshes once per session.updateAge.
+		lastActiveAt: text('lastActiveAt')
 	},
 	(table) => [index('idx_session_user').on(table.userId)]
 );

@@ -33,6 +33,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 			userAgent: session.userAgent,
 			ipAddress: session.ipAddress,
 			createdAt: session.createdAt,
+			lastActiveAt: session.lastActiveAt,
 			expiresAt: session.expiresAt,
 			token: session.token
 		})

@@ -109,7 +109,7 @@
 </script>
 
 <svelte:head>
-	<title>{m.nav_users()} — Cinephage</title>
+	<title>{m.nav_users()} - Cinephage</title>
 </svelte:head>
 
 <SettingsPage title={m.nav_users()} subtitle={m.users_subtitle()}>
@@ -148,9 +148,10 @@
 								<div class="flex items-center gap-3">
 									<UserAvatar
 										name={userRow.displayUsername || userRow.username || '?'}
-										src={userRow.mediaServerId
-											? `/api/settings/users/${userRow.id}/media-server/avatar/${userRow.mediaServerId}`
-											: null}
+										src={userRow.image ??
+											(userRow.mediaServerId
+												? `/api/settings/users/${userRow.id}/media-server/avatar/${userRow.mediaServerId}`
+												: null)}
 										size="md"
 									/>
 									<div class="min-w-0">

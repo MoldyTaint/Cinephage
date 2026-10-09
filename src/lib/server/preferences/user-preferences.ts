@@ -22,7 +22,8 @@ export const preferenceSchemas = {
 	calendar: calendarPreferencesSchema,
 	// null = no account preference (client falls back to localStorage/system);
 	// unlike calendar, an unset theme must not force a concrete value.
-	theme: z.enum(themes).nullable().default(null)
+	theme: z.enum(themes).nullable().default(null),
+	sidebarShowUsername: z.boolean().default(true)
 } as const;
 
 export type PreferenceKey = keyof typeof preferenceSchemas;

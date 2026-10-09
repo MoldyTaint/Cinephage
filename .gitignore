@@ -37,6 +37,7 @@ vite.config.ts.timestamp-*
 # Runtime logs and local app data
 /logs/
 /data/logs/
+/data/avatars/
 /config/
 *.log
 
@@ -121,3 +122,4 @@ data/test/
 docs/
 docs/notes/
 .worktrees/
+

@@ -21,7 +21,9 @@ export const load: PageServerLoad = async ({ locals, params, request }) => {
 			banned: user.banned,
 			banReason: user.banReason,
 			banExpires: user.banExpires,
-			createdAt: user.createdAt
+			createdAt: user.createdAt,
+			image: user.image,
+			lastActiveAt: user.lastActiveAt
 		})
 		.from(user)
 		.where(eq(user.id, params.id))

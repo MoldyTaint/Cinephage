@@ -18,6 +18,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			banReason: user.banReason,
 			banExpires: user.banExpires,
 			createdAt: user.createdAt,
+			image: user.image,
 			mediaServerId: userMediaServerLinks.serverId
 		})
 		.from(user)

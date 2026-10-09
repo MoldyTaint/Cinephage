@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { refreshAll } from '$app/navigation';
+	import { goto, refreshAll } from '$app/navigation';
 	import { resolvePath } from '#lib/utils/routing.js';
 	import { page } from '$app/state';
 	import {
@@ -350,11 +350,19 @@
 	}
 
 	// =====================
-	// Delete
+	// Danger zone: delete user account
 	// =====================
 
 	let deleteModalOpen = $state(false);
 	let deletingUser = $state(false);
+
+	function openDeleteModal() {
+		deleteModalOpen = true;
+	}
+
+	function closeDeleteModal() {
+		deleteModalOpen = false;
+	}
 
 	async function handleDelete() {
 		deletingUser = true;
@@ -365,9 +373,8 @@
 				return;
 			}
 			toasts.success(m.users_deleted({ username: data.profile.username ?? '' }));
-			deleteModalOpen = false;
-			await refreshAll();
-			window.location.href = resolvePath('/settings/users');
+			closeDeleteModal();
+			await goto(resolvePath('/settings/users'), { invalidateAll: true });
 		} finally {
 			deletingUser = false;
 		}
@@ -375,7 +382,7 @@
 </script>
 
 <svelte:head>
-	<title>{displayName} — {m.nav_users()} — Cinephage</title>
+	<title>{displayName} - {m.nav_users()} - Cinephage</title>
 </svelte:head>
 
 <SettingsPage title={displayName} subtitle={m.users_detailSubtitle()}>
@@ -392,9 +399,10 @@
 			<div class="flex flex-col gap-4 sm:flex-row sm:items-center">
 				<UserAvatar
 					name={displayName}
-					src={data.mediaLinks?.[0]
-						? `/api/settings/users/${data.profile.id}/media-server/avatar/${data.mediaLinks[0].serverId}`
-						: null}
+					src={data.profile.image ??
+						(data.mediaLinks?.[0]
+							? `/api/settings/users/${data.profile.id}/media-server/avatar/${data.mediaLinks[0].serverId}`
+							: null)}
 					size="lg"
 				/>
 				<div class="min-w-0 flex-1">
@@ -444,6 +452,13 @@
 								<dd class="min-w-0 truncate">@{data.profile.username}</dd>
 							</div>
 						{/if}
+						{#if data.sessions.length === 0 && data.profile.lastActiveAt}
+							<div class="flex items-center gap-2">
+								<dt class="w-28 shrink-0 text-base-content/50">{m.profile_lastActive()}</dt>
+								<dd>{formatDisplayDate(data.profile.lastActiveAt)}</dd>
+							</div>
+						{/if}
+
 						{#if data.profile.banned && data.profile.banReason}
 							<div class="flex items-center gap-2">
 								<dt class="w-28 shrink-0 text-base-content/50">{m.users_banReasonLabel()}</dt>
@@ -767,25 +782,19 @@
 		>
 	{/if}
 
-	<!-- Danger zone -->
-	<SettingsSection
-		title={m.users_dangerZoneTitle()}
-		description={m.users_dangerZoneDescription()}
-		class="border border-error/20"
-	>
-		<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-			<p class="text-sm text-base-content/70">{m.users_deleteAction()}</p>
-			<button
-				class="btn shrink-0 btn-error btn-sm"
-				disabled={isSelf || isLastAdmin}
-				title={isSelf ? m.users_cannotDeleteSelf() : isLastAdmin ? m.users_lastAdminHint() : ''}
-				onclick={() => (deleteModalOpen = true)}
-			>
+	<!-- Danger zone: hidden when the target is the sole admin -->
+	{#if !isLastAdmin}
+		<SettingsSection
+			title={m.users_dangerZoneTitle()}
+			description={m.users_dangerZoneDescription()}
+			class="border border-error/20"
+		>
+			<button class="btn gap-1.5 btn-outline btn-error btn-sm" onclick={openDeleteModal}>
 				<Trash2 class="h-4 w-4" />
 				{m.users_deleteAction()}
 			</button>
-		</div>
-	</SettingsSection>
+		</SettingsSection>
+	{/if}
 </SettingsPage>
 
 <!-- Ban modal -->

@@ -177,6 +177,14 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				if (path.startsWith('/api/user/media-server/avatar/')) {
 					return method === 'GET';
 				}
+				// Self-uploaded avatar: upload/remove own (self-scoped server-side),
+				// read any account's (renders in shared UI, same as the proxy above).
+				if (path === '/api/user/avatar') {
+					return method === 'POST' || method === 'DELETE';
+				}
+				if (path.startsWith('/api/user/avatar/')) {
+					return method === 'GET';
+				}
 				// Media requests: creation + own-pending cancellation + reads.
 				// Self-scope is enforced server-side in the routes; admin
 				// mutations (approve/decline/retry/fulfill/bulk under

@@ -189,6 +189,14 @@ export const auth = betterAuth({
 				required: false,
 				input: false
 			}
+		},
+		// Self-service account deletion from the profile page. No
+		// sendDeleteAccountVerification: this is a self-hosted/trusted-admin app
+		// (same trust model changePassword already relies on), so a correct
+		// current password is enough. The existing databaseHooks.user.delete.before
+		// guard below (last-admin check) still fires: it runs at internalAdapter.deleteUser, which this endpoint calls.
+		deleteUser: {
+			enabled: true
 		}
 	},
 
