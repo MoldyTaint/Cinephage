@@ -368,14 +368,21 @@
 		try {
 			const tmdbPromise = mediaType === 'tv' ? getTmdb(`tv/${tmdbId}`) : getTmdb(`movie/${tmdbId}`);
 
+			// The destructured names below and the type tuple in the `as unknown as`
+			// cast further down must both stay in this exact order, the cast
+			// bypasses structural type-checking entirely, so a reordering here
+			// (previously `tmdbRes`/`languageProfilesData` swapped relative to the
+			// Promise.all array) silently binds the wrong result to the wrong name
+			// with no compiler error. If you add/reorder an entry, update all three
+			// (names, Promise.all array, type tuple) together.
 			const [
 				foldersData,
 				librariesData,
 				profilesData,
 				classificationData,
 				subtitleProfileData,
-				tmdbRes,
-				languageProfilesData
+				languageProfilesData,
+				tmdbRes
 			] = (await Promise.all([
 				getRootFolders(),
 				getLibraries({ mediaType }),
@@ -392,8 +399,8 @@
 				{ profiles?: ScoringProfile[]; defaultProfileId?: string },
 				{ enforceAnimeSubtype?: boolean },
 				EffectiveSubtitleProfileInfo | null | undefined,
-				unknown,
-				{ profiles?: Array<{ id: string; name: string }> }
+				{ profiles?: Array<{ id: string; name: string }> },
+				unknown
 			];
 
 			rootFolders = Array.isArray(foldersData) ? foldersData : (foldersData.folders ?? []);
