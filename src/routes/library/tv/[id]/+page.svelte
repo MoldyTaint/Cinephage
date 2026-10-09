@@ -122,6 +122,24 @@
 		}
 	});
 
+	// AniList/MAL provider refs resolve in the background (see +page.server.ts,
+	// not awaited there, so a slow/unmatched provider never blocks first
+	// paint). Merge them in once they land; guard against having navigated to
+	// a different series in the meantime.
+	$effect(() => {
+		const forSeriesId = data.series.id;
+		data.animeProviderRefsPromise
+			?.then((refs) => {
+				if (seriesState && seriesState.id === forSeriesId) {
+					seriesState.providerRefs = refs;
+				}
+			})
+			.catch(() => {
+				// Best-effort enrichment; the page already rendered with whatever
+				// refs were already stored.
+			});
+	});
+
 	// SSE Connection - internally handles browser/SSR
 	// Shared type for queue SSE payloads
 	type QueueEventPayload = {

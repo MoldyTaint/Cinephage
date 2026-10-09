@@ -63,7 +63,12 @@ async function jikanFetch(url: string): Promise<Response> {
 	const wait = JIKAN_MIN_INTERVAL_MS - (now - lastRequestAt);
 	if (wait > 0) await new Promise((r) => setTimeout(r, wait));
 	lastRequestAt = Date.now();
-	return fetch(url, { headers: { accept: 'application/json' } });
+	// Without this, a stalled Jikan response blocks the caller indefinitely,
+	// resolveAnimeProviderRef awaits this per query variant directly on the
+	// series page's SSR critical path (see resolveMissingAnimeProviderRefs),
+	// so an unresponsive upstream here previously meant an unbounded page-load
+	// stall.
+	return fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(5000) });
 }
 
 function mapStatus(status?: string | null): string | undefined {

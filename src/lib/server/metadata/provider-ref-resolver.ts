@@ -1,5 +1,8 @@
 import { buildMetadataProviderRegistry } from './provider-registry.js';
 import type { MetadataProviderId, MetadataSearchResult } from './providers/types.js';
+import { createChildLogger } from '#lib/logging/index.js';
+
+const logger = createChildLogger({ module: 'ProviderRefResolver', logDomain: 'system' });
 
 type AnimeProviderId = Extract<MetadataProviderId, 'anilist' | 'mal'>;
 
@@ -103,9 +106,41 @@ export async function resolveAnimeProviderRef(input: {
 		try {
 			const results = await provider.searchTitle(query, 'anime');
 			const best = pickBestMatch(results, queryVariants, input.year);
-			if (best?.confidence === 'high' && best.result.id) return String(best.result.id);
-		} catch {
-			// continue trying other variants
+			if (best?.confidence === 'high' && best.result.id) {
+				logger.debug(
+					{
+						providerId: input.providerId,
+						query,
+						matchedTitle: best.result.title,
+						matchedId: best.result.id
+					},
+					'[ProviderRefResolver] Matched anime provider ref'
+				);
+				return String(best.result.id);
+			}
+			// Diagnostic only - this isn't an error was it zero results,
+			// or a candidate that scored too low/
+			// ambiguous to trust? (resolveMissingAnimeProviderRefs only accepts
+			// 'high' confidence, so a 'low' candidate here is silently skipped.)
+			logger.debug(
+				{
+					providerId: input.providerId,
+					query,
+					resultCount: results.length,
+					bestCandidateTitle: best?.result.title,
+					bestCandidateConfidence: best?.confidence
+				},
+				'[ProviderRefResolver] No confident anime provider match for query variant'
+			);
+		} catch (err) {
+			logger.debug(
+				{
+					providerId: input.providerId,
+					query,
+					error: err instanceof Error ? err.message : String(err)
+				},
+				'[ProviderRefResolver] Query variant failed, trying next'
+			);
 		}
 	}
 
@@ -127,14 +162,29 @@ export async function resolveMissingAnimeProviderRefs(
 		.filter(Boolean);
 	if (queryVariants.length === 0) return baseRefs;
 
+	// resolveAnimeProviderRef tries each query variant (title + aliases)
+	// sequentially, and every variant hits a real upstream fetch (each already
+	// individually timed out, see anilist.ts/mal.ts). With more than one
+	// variant those per-fetch timeouts can still stack up, and this whole call
+	// sits directly on the series page's SSR critical path, so cap the total
+	// time per provider rather than trust the per-fetch timeouts alone. A
+	// timeout here just means this load's enrichment is skipped, not an error,
+	// existing refs are kept and the next page load tries again.
+	const PER_PROVIDER_TIMEOUT_MS = 8000;
+
 	await Promise.all(
 		wantedProviders.map(async (providerId) => {
-			const ref = await resolveAnimeProviderRef({
-				providerId,
-				title: input.title,
-				aliases: input.aliases,
-				year: input.year
-			});
+			const ref = await Promise.race([
+				resolveAnimeProviderRef({
+					providerId,
+					title: input.title,
+					aliases: input.aliases,
+					year: input.year
+				}),
+				new Promise<undefined>((resolve) =>
+					setTimeout(() => resolve(undefined), PER_PROVIDER_TIMEOUT_MS)
+				)
+			]);
 			if (ref) baseRefs[providerId] = ref;
 		})
 	);
