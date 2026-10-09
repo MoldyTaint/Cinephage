@@ -17,9 +17,12 @@ import {
 	episodes,
 	episodeFiles,
 	librarySettings,
-	rootFolders
+	rootFolders,
+	downloadQueue,
+	downloadHistory,
+	requests
 } from '#lib/server/db/schema.js';
-import { eq, and, gt, asc } from 'drizzle-orm';
+import { eq, and, gt, asc, inArray } from 'drizzle-orm';
 import { tmdb, type SearchResult } from '#lib/server/tmdb.js';
 import { mediaInfoService } from './media-info.js';
 import { basename, dirname, extname, isAbsolute, join, relative } from 'path';
@@ -38,6 +41,10 @@ import { matchSpecialEpisodeByTitle } from './episode-title-matcher.js';
 import { getLibraryEntityService } from '#lib/server/library/LibraryEntityService.js';
 import { isLikelyAnimeMedia } from '#lib/shared/anime-classification.js';
 import { canonicalizeArticleTitle, calculateMatchConfidence } from './title-matching.js';
+import { deleteAllSeasonsAndEpisodes } from '#lib/server/metadata/EpisodeGroupService.js';
+import { getDownloadClientManager } from '#lib/server/downloadClients/DownloadClientManager.js';
+import { acquisitionService } from '#lib/server/acquisition/AcquisitionService.js';
+import { RenamePreviewService } from './naming/RenamePreviewService.js';
 
 /**
  * Default match confidence threshold (0.0 - 1.0)
@@ -1681,6 +1688,312 @@ export class MediaMatcherService {
 				suggestedMatches: []
 			})
 			.where(eq(unmatchedFiles.id, unmatchedFileId));
+	}
+
+	/**
+	 * Cancel and remove any active downloads for a library item before a
+	 * rematch regenerates its episode rows (which in-flight downloads may
+	 * reference by UUID) or replaces its identity outright.
+	 *
+	 * Mirrors the cancel-on-delete behavior in the series/movie DELETE
+	 * handlers so a rematch has the same "stop anything in flight" guarantee.
+	 */
+	private async cancelActiveDownloads(
+		mediaType: 'movie' | 'series',
+		mediaId: string
+	): Promise<void> {
+		const queueFilter =
+			mediaType === 'movie'
+				? eq(downloadQueue.movieId, mediaId)
+				: eq(downloadQueue.seriesId, mediaId);
+		const activeQueueItems = await db.select().from(downloadQueue).where(queueFilter);
+
+		for (const queueItem of activeQueueItems) {
+			if (queueItem.downloadClientId) {
+				try {
+					const isTorrent = queueItem.protocol === 'torrent';
+					const clientDownloadId = isTorrent
+						? queueItem.infoHash || queueItem.downloadId
+						: queueItem.downloadId || queueItem.infoHash;
+					if (clientDownloadId) {
+						const clientInstance = await getDownloadClientManager().getClientInstance(
+							queueItem.downloadClientId
+						);
+						if (clientInstance) {
+							await clientInstance.removeDownload(clientDownloadId, true);
+						}
+					}
+				} catch (err) {
+					logger.warn(
+						{
+							queueItemId: queueItem.id,
+							error: err instanceof Error ? err.message : 'Unknown'
+						},
+						'[MediaMatcher] Failed to remove download from client during rematch'
+					);
+				}
+			}
+			acquisitionService.cancelByQueueId(queueItem.id, 'media rematched to a different title');
+			await db.delete(downloadQueue).where(eq(downloadQueue.id, queueItem.id));
+		}
+
+		const historyFilter =
+			mediaType === 'movie'
+				? eq(downloadHistory.movieId, mediaId)
+				: eq(downloadHistory.seriesId, mediaId);
+		await db
+			.update(downloadHistory)
+			.set({ status: 'removed', statusReason: 'media rematched to a different title' })
+			.where(historyFilter);
+	}
+
+	/**
+	 * Reorganize the item's folder and rename its files to match the new
+	 * title/year/tmdbId already written to the row. Runs after the DB row is
+	 * updated since RenamePreviewService reads title/year/tmdbId live from it.
+	 */
+	private async reorganizeAndRename(mediaId: string, mediaType: 'movie' | 'series'): Promise<void> {
+		const renameService = new RenamePreviewService();
+		await renameService.reorganizeFolder(mediaId, mediaType);
+
+		const preview =
+			mediaType === 'movie'
+				? await renameService.previewMovie(mediaId)
+				: await renameService.previewSeries(mediaId);
+		const fileIds = preview.willChange.map((item) => item.fileId);
+		if (fileIds.length > 0) {
+			await renameService.executeRenames(fileIds, mediaType === 'movie' ? 'movie' : 'episode');
+		}
+	}
+
+	/**
+	 * Change an already-added movie's TMDB match in place: re-fetches
+	 * metadata for `newTmdbId`, cancels active downloads, backfills linked
+	 * requests, and renames the folder/file to match. Reuses the same row
+	 * (and therefore every FK into it), so this is NOT a delete+re-add.
+	 */
+	async rematchMovie(
+		movieId: string,
+		newTmdbId: number
+	): Promise<{ title: string; year?: number | null }> {
+		const [movie] = await db.select().from(movies).where(eq(movies.id, movieId));
+		if (!movie) {
+			throw new Error(`Movie not found: ${movieId}`);
+		}
+		if (movie.tmdbId === newTmdbId) {
+			throw new Error('This movie is already matched to that title');
+		}
+
+		const [conflict] = await db
+			.select({ id: movies.id, title: movies.title })
+			.from(movies)
+			.where(eq(movies.tmdbId, newTmdbId))
+			.limit(1);
+		if (conflict) {
+			throw new Error(`"${conflict.title}" is already matched to that TMDB title`);
+		}
+
+		await this.cancelActiveDownloads('movie', movieId);
+
+		const [tmdbMovie, externalIds] = await Promise.all([
+			tmdb.getMovie(newTmdbId),
+			tmdb.getMovieExternalIds(newTmdbId).catch(() => ({ imdb_id: null }))
+		]);
+
+		await db
+			.update(movies)
+			.set({
+				tmdbId: newTmdbId,
+				imdbId: externalIds.imdb_id,
+				title: tmdbMovie.title,
+				originalTitle: tmdbMovie.original_title,
+				originalLanguage: tmdbMovie.original_language,
+				year: tmdbMovie.release_date ? parseInt(tmdbMovie.release_date.split('-')[0]) : movie.year,
+				overview: tmdbMovie.overview,
+				posterPath: tmdbMovie.poster_path,
+				backdropPath: tmdbMovie.backdrop_path,
+				runtime: tmdbMovie.runtime,
+				genres: tmdbMovie.genres?.map((g) => g.name),
+				releaseDate: tmdbMovie.release_date,
+				providerRefs: null
+			})
+			.where(eq(movies.id, movieId));
+
+		await db.update(requests).set({ tmdbId: newTmdbId }).where(eq(requests.movieId, movieId));
+
+		await this.reorganizeAndRename(movieId, 'movie');
+
+		logger.info(
+			{
+				movieId,
+				oldTmdbId: movie.tmdbId,
+				newTmdbId,
+				oldTitle: movie.title,
+				newTitle: tmdbMovie.title
+			},
+			'[MediaMatcher] Rematched movie'
+		);
+
+		return {
+			title: tmdbMovie.title,
+			year: tmdbMovie.release_date ? parseInt(tmdbMovie.release_date.split('-')[0]) : movie.year
+		};
+	}
+
+	/**
+	 * Change an already-added series's TMDB match in place: re-fetches
+	 * metadata for `newTmdbId`, cancels active downloads, regenerates every
+	 * season/episode row from the new show, re-links existing episode files
+	 * by season/episode number, backfills linked requests, and renames the
+	 * folder/files to match. Files whose season/episode number doesn't exist
+	 * on the new show become unmatched again, which is expected, since the
+	 * new show may have a different structure.
+	 */
+	async rematchSeries(
+		seriesId: string,
+		newTmdbId: number
+	): Promise<{ title: string; year?: number | null }> {
+		const [existingSeries] = await db.select().from(series).where(eq(series.id, seriesId));
+		if (!existingSeries) {
+			throw new Error(`Series not found: ${seriesId}`);
+		}
+		if (existingSeries.tmdbId === newTmdbId) {
+			throw new Error('This series is already matched to that title');
+		}
+
+		const [conflict] = await db
+			.select({ id: series.id, title: series.title })
+			.from(series)
+			.where(eq(series.tmdbId, newTmdbId))
+			.limit(1);
+		if (conflict) {
+			throw new Error(`"${conflict.title}" is already matched to that TMDB title`);
+		}
+
+		await this.cancelActiveDownloads('series', seriesId);
+
+		const [tmdbSeries, externalIds] = await Promise.all([
+			tmdb.getTVShow(newTmdbId),
+			tmdb.getTvExternalIds(newTmdbId).catch(() => null)
+		]);
+
+		await db
+			.update(series)
+			.set({
+				tmdbId: newTmdbId,
+				tvdbId: externalIds?.tvdb_id ?? null,
+				imdbId: externalIds?.imdb_id ?? null,
+				title: tmdbSeries.name,
+				originalTitle: tmdbSeries.original_name,
+				originalLanguage: tmdbSeries.original_language,
+				year: tmdbSeries.first_air_date
+					? parseInt(tmdbSeries.first_air_date.split('-')[0])
+					: existingSeries.year,
+				overview: tmdbSeries.overview,
+				posterPath: tmdbSeries.poster_path,
+				backdropPath: tmdbSeries.backdrop_path,
+				status: tmdbSeries.status,
+				network: tmdbSeries.networks?.[0]?.name,
+				genres: tmdbSeries.genres?.map((g) => g.name),
+				firstAirDate: tmdbSeries.first_air_date,
+				episodeGroupId: null,
+				providerRefs: null
+			})
+			.where(eq(series.id, seriesId));
+
+		// Capture (fileId -> episode numbers) before wiping episodes so the
+		// files can be re-linked to the new show's episode rows afterward.
+		const existingEpFiles = await db
+			.select({ id: episodeFiles.id, episodeIds: episodeFiles.episodeIds })
+			.from(episodeFiles)
+			.where(eq(episodeFiles.seriesId, seriesId));
+		const existingEpisodeRows = await db
+			.select({
+				id: episodes.id,
+				seasonNumber: episodes.seasonNumber,
+				episodeNumber: episodes.episodeNumber
+			})
+			.from(episodes)
+			.where(eq(episodes.seriesId, seriesId));
+		const epNumByOldId = new Map(
+			existingEpisodeRows.map((e) => [e.id, { s: e.seasonNumber, e: e.episodeNumber }])
+		);
+		const fileEpNumbers = new Map(
+			existingEpFiles.map((f) => [
+				f.id,
+				(f.episodeIds ?? []).flatMap((eid) => {
+					const ep = epNumByOldId.get(eid);
+					return ep ? [ep] : [];
+				})
+			])
+		);
+
+		await deleteAllSeasonsAndEpisodes(seriesId);
+		await this.populateSeriesEpisodes(
+			seriesId,
+			newTmdbId,
+			tmdbSeries,
+			existingSeries.monitored ?? true
+		);
+
+		if (fileEpNumbers.size > 0) {
+			const newEpisodeRows = await db
+				.select({
+					id: episodes.id,
+					seasonNumber: episodes.seasonNumber,
+					episodeNumber: episodes.episodeNumber
+				})
+				.from(episodes)
+				.where(eq(episodes.seriesId, seriesId));
+			const newIdByKey = new Map(
+				newEpisodeRows.map((e) => [`${e.seasonNumber}-${e.episodeNumber}`, e.id])
+			);
+
+			const linkedEpisodeIds = new Set<string>();
+			for (const [fileId, epNums] of fileEpNumbers) {
+				const newIds = epNums
+					.map(({ s, e }) => newIdByKey.get(`${s}-${e}`))
+					.filter((eid): eid is string => eid !== undefined);
+
+				await db
+					.update(episodeFiles)
+					.set({ episodeIds: newIds.length > 0 ? newIds : null })
+					.where(eq(episodeFiles.id, fileId));
+
+				newIds.forEach((eid) => linkedEpisodeIds.add(eid));
+			}
+
+			if (linkedEpisodeIds.size > 0) {
+				await db
+					.update(episodes)
+					.set({ hasFile: true })
+					.where(inArray(episodes.id, [...linkedEpisodeIds]));
+			}
+		}
+
+		await this.updateSeriesStats(seriesId);
+
+		await db.update(requests).set({ tmdbId: newTmdbId }).where(eq(requests.seriesId, seriesId));
+
+		await this.reorganizeAndRename(seriesId, 'series');
+
+		logger.info(
+			{
+				seriesId,
+				oldTmdbId: existingSeries.tmdbId,
+				newTmdbId,
+				oldTitle: existingSeries.title,
+				newTitle: tmdbSeries.name
+			},
+			'[MediaMatcher] Rematched series'
+		);
+
+		return {
+			title: tmdbSeries.name,
+			year: tmdbSeries.first_air_date
+				? parseInt(tmdbSeries.first_air_date.split('-')[0])
+				: existingSeries.year
+		};
 	}
 
 	/**

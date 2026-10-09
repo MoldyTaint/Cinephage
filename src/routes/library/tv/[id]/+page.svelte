@@ -5,7 +5,8 @@
 		LibrarySeriesHeader,
 		SeasonAccordion,
 		SeriesEditModal,
-		RenamePreviewModal
+		RenamePreviewModal,
+		ChangeMatchModal
 	} from '#lib/components/library/index.js';
 	import { TVSeriesSidebar, BulkActionBar } from '#lib/components/library/tv/index.js';
 	import { MediaSearchModal } from '#lib/components/search/index.js';
@@ -321,6 +322,7 @@
 
 	// State
 	let isEditModalOpen = $state(false);
+	let isChangeMatchModalOpen = $state(false);
 	let isSearchModalOpen = $state(false);
 	let isRenameModalOpen = $state(false);
 	let isDeleteModalOpen = $state(false);
@@ -608,6 +610,18 @@
 
 	function handleEdit() {
 		isEditModalOpen = true;
+	}
+
+	function handleChangeMatch() {
+		isChangeMatchModalOpen = true;
+	}
+
+	function handleChangeMatchSuccess() {
+		isChangeMatchModalOpen = false;
+		// Seasons/episodes were fully regenerated under a new identity; a full
+		// reload keeps this in step with the episode-group-change path above
+		// rather than trying to patch every derived client-side field.
+		window.location.reload();
 	}
 
 	function handleEditClose() {
@@ -1810,6 +1824,7 @@
 		onEdit={handleEdit}
 		onDelete={handleDelete}
 		onRefresh={handleRefresh}
+		onChangeMatch={handleChangeMatch}
 		readOnly={!isAdminUser}
 	/>
 
@@ -1948,6 +1963,17 @@
 	saving={isSaving}
 	onClose={handleEditClose}
 	onSave={handleEditSave}
+/>
+
+<!-- Change Match Modal -->
+<ChangeMatchModal
+	open={isChangeMatchModalOpen}
+	mediaType="tv"
+	mediaId={series.id}
+	currentTitle={series.title}
+	currentYear={series.year}
+	onClose={() => (isChangeMatchModalOpen = false)}
+	onSuccess={handleChangeMatchSuccess}
 />
 
 <!-- Search Modal -->

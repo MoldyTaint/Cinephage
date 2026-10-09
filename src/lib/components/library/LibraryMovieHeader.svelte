@@ -26,7 +26,8 @@
 		MoreHorizontal,
 		ArrowLeft,
 		Eye,
-		EyeOff
+		EyeOff,
+		Replace
 	} from '@lucide/svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { formatBytes, formatLanguage, formatDisplayDateShort } from '#lib/utils/format.js';
@@ -98,6 +99,7 @@
 		onImport?: () => void;
 		onEdit?: () => void;
 		onDelete?: () => void;
+		onChangeMatch?: () => void;
 		onScoreClick?: () => void;
 		/** Viewer mode: hide acquisition/edit controls, keep the informational header. */
 		readOnly?: boolean;
@@ -124,6 +126,7 @@
 		onImport,
 		onEdit,
 		onDelete,
+		onChangeMatch,
 		onScoreClick,
 		readOnly = false
 	}: Props = $props();
@@ -335,6 +338,14 @@
 								{m.action_edit()}
 							</button>
 						</li>
+						{#if onChangeMatch}
+							<li>
+								<button onclick={onChangeMatch}>
+									<Replace size={16} />
+									{m.library_changeMatch_menuLabel()}
+								</button>
+							</li>
+						{/if}
 						<li>
 							<button class="text-error" onclick={onDelete}>
 								<Trash2 size={16} />
@@ -794,6 +805,14 @@
 					tabindex="0"
 					class="menu dropdown-content z-50 mb-2 w-52 rounded-box border border-base-content/10 bg-base-200 p-2 shadow-lg"
 				>
+					{#if onChangeMatch}
+						<li>
+							<button onclick={onChangeMatch}>
+								<Replace size={16} />
+								{m.library_changeMatch_menuLabel()}
+							</button>
+						</li>
+					{/if}
 					<li>
 						<button class="text-error" onclick={onDelete}>
 							<Trash2 size={16} />

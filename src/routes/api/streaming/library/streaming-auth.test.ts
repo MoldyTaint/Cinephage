@@ -72,7 +72,11 @@ vi.mock('#lib/server/auth/index.js', () => ({
 vi.mock('#lib/server/auth/session-helpers.js', () => ({
 	createSupportId: vi.fn(() => 'test-support-id'),
 	setAuthenticatedLocals: vi.fn(),
-	clearAuthenticatedLocals: vi.fn()
+	clearAuthenticatedLocals: vi.fn(),
+	// hooks.server.ts calls this unconditionally on every response (issue
+	// #596's local-HTTP Secure-cookie strip); these tests never set cookies,
+	// so a pass-through is the correct fake.
+	stripSecureCookiesForLocalHttp: vi.fn((_event: unknown, response: Response) => response)
 }));
 
 vi.mock('#lib/server/services/initializer.js', () => ({
