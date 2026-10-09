@@ -175,8 +175,9 @@ import {
  *   season row). EpisodeMonitoredSpecification used to fail open on a broken season link,
  *   treating those episodes as monitored regardless of the season's real state; this both
  *   fixes existing data and pairs with the specification now failing closed instead
+ * Version 164: Add `transferMode` column to `download_queue` and `download_history`.
  */
-export const CURRENT_SCHEMA_VERSION = 163;
+export const CURRENT_SCHEMA_VERSION = 164;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{

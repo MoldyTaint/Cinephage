@@ -375,6 +375,28 @@
 								<span class="text-sm text-base-content/60">{m.activity_detail_releaseGroup()}</span>
 								<p class="font-medium">{activity.releaseGroup || '-'}</p>
 							</div>
+							{#if activity.transferMode}
+								<div class="space-y-1">
+									<span class="text-sm text-base-content/60"
+										>{m.activity_detail_transferMode()}</span
+									>
+									<p
+										class="font-medium"
+										class:text-warning={activity.transferMode === 'copy'}
+										title={activity.transferMode === 'copy'
+											? m.activity_detail_transferModeCopyWarning()
+											: undefined}
+									>
+										{activity.transferMode === 'hardlink'
+											? m.activity_detail_transferModeHardlink()
+											: activity.transferMode === 'copy'
+												? m.activity_detail_transferModeCopy()
+												: activity.transferMode === 'move'
+													? m.activity_detail_transferModeMove()
+													: m.activity_detail_transferModeSymlink()}
+									</p>
+								</div>
+							{/if}
 						</div>
 
 						<!-- Quality -->

@@ -201,6 +201,8 @@ export interface UnifiedActivity {
 	downloadHistoryId?: string; // Link to download history record
 	monitoringHistoryId?: string; // Link to monitoring history record
 	importedPath?: string; // Path where file was imported
+	/** How the file reached importedPath (hardlink/copy/move/symlink). */
+	transferMode?: 'hardlink' | 'copy' | 'move' | 'symlink';
 }
 
 /**
