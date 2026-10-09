@@ -168,11 +168,15 @@ import {
  * Version 161: Encrypt remaining plaintext credentials at rest (secret-field registry walk) and re-encode
  *   the legacy iv:tag:ct surfaces (user API key secrets, media-browser keys, debrid tokens) onto the
  *   versioned cphg1 envelope
- *  Version 162: Add lastActiveAt columns to session and user for throttled last-active tracking.
+ * Version 162: Add lastActiveAt columns to session and user for throttled last-active tracking.
  *   The user-level column preserves activity history after a session is revoked, since
  *   revocation hard-deletes the session row
+ * Version 163: Repair episodes whose season_id is null or dangling (reuses or creates the right
+ *   season row). EpisodeMonitoredSpecification used to fail open on a broken season link,
+ *   treating those episodes as monitored regardless of the season's real state; this both
+ *   fixes existing data and pairs with the specification now failing closed instead
  */
-export const CURRENT_SCHEMA_VERSION = 162;
+export const CURRENT_SCHEMA_VERSION = 163;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{
