@@ -1401,6 +1401,10 @@ export const downloadQueue = sqliteTable(
 		outputPath: text('output_path'),
 		// Path where files were imported to (in root folder)
 		importedPath: text('imported_path'),
+		// How the imported file reached its destination: 'hardlink' | 'copy' |
+		// 'move' | 'symlink'. For multi-file imports (season packs) this is the
+		// first successfully imported file's mode, same as quality/releaseGroup.
+		transferMode: text('transfer_mode'),
 
 		// Quality info (from parsed release name)
 		quality: text('quality', { mode: 'json' }).$type<{
@@ -1715,6 +1719,9 @@ export const downloadHistory = sqliteTable('download_history', {
 
 	// Paths
 	importedPath: text('imported_path'),
+	// How the imported file reached its destination: 'hardlink' | 'copy' |
+	// 'move' | 'symlink'.
+	transferMode: text('transfer_mode'),
 
 	// Created file IDs (for tracking what was imported)
 	movieFileId: text('movie_file_id').references(() => movieFiles.id, { onDelete: 'set null' }),

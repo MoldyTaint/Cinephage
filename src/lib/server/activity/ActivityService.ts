@@ -831,7 +831,8 @@ export class ActivityService {
 			completedAt: history.importedAt || history.completedAt || null,
 			queueItemId,
 			downloadHistoryId: history.id,
-			importedPath: history.importedPath ?? undefined
+			importedPath: history.importedPath ?? undefined,
+			transferMode: (history.transferMode as UnifiedActivity['transferMode']) ?? undefined
 		};
 	}
 
@@ -1072,6 +1073,7 @@ export class ActivityService {
 				quality: downloadHistory.quality,
 				releaseGroup: downloadHistory.releaseGroup,
 				importedPath: downloadHistory.importedPath,
+				transferMode: downloadHistory.transferMode,
 				grabbedAt: downloadHistory.grabbedAt,
 				completedAt: downloadHistory.completedAt,
 				importedAt: downloadHistory.importedAt,
@@ -1635,7 +1637,8 @@ export class ActivityService {
 			completedAt: history.importedAt || history.completedAt || null,
 			queueItemId,
 			downloadHistoryId: history.id,
-			importedPath: history.importedPath ?? undefined
+			importedPath: history.importedPath ?? undefined,
+			transferMode: (history.transferMode as UnifiedActivity['transferMode']) ?? undefined
 		};
 	}
 

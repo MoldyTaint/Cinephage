@@ -250,13 +250,21 @@ export async function transferFile(
 					};
 				} catch (error) {
 					const err = error as NodeJS.ErrnoException;
-					// If hardlink fails (e.g., cross-device, permissions), fall back to copy
-					logger.debug(
+					// isSameFilesystem()'s st_dev comparison can't see pool/disk
+					// boundaries on FUSE-backed setups (e.g. Unraid mergerfs), so
+					// link() can still throw EXDEV here even though the same-fs
+					// check passed. Falling back to copy silently doubles disk
+					// usage for the file's size, so this must be visible at the
+					// default log floor (Issue #597), not buried at debug.
+					logger.warn(
 						{
+							code: err.code,
 							error: err.message,
-							code: err.code
+							sourceDir: dirname(source),
+							destDir: dirname(dest),
+							sizeBytes
 						},
-						'Hardlink failed, falling back to copy'
+						'Hardlink failed, falling back to copy (this duplicates disk usage for the file)'
 					);
 				}
 			} else {

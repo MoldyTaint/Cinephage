@@ -46,7 +46,9 @@ import {
 	deletePhysicalFile,
 	copyExtraFiles,
 	applyFilePermissions,
-	ImportMode
+	ImportMode,
+	type TransferResult,
+	type TransferMode
 } from './FileTransfer';
 import { getDownloadClientManager } from '../DownloadClientManager';
 import { joinCategoryPath } from '../core/client-utils.js';
@@ -67,7 +69,7 @@ import { namingSettingsService } from '#lib/server/library/naming/NamingSettings
 import { resolveAudioLanguages } from '#lib/server/library/naming/preview-metadata.js';
 import { resolveLocalizedTitlesForFormats } from '#lib/server/library/naming/localization.js';
 import { createChildLogger, runWithLogContext } from '#lib/logging/index.js';
-import { todayDateString } from '#lib/utils/format.js';
+import { todayDateString, formatBytes } from '#lib/utils/format.js';
 import {
 	DOWNLOAD,
 	EXCLUDED_FILE_PATTERNS,
@@ -129,6 +131,34 @@ type ImportFailureReason =
 	| 'max_retries_exceeded'
 	| 'no_linked_media';
 
+/**
+ * Surface a silent hardlink->copy fallback on the job's Activity log.
+ *
+ * transferFile() already warns at the file-log level (FileTransfer.ts), but
+ * that's invisible from the Activity page; a copy instead of a hardlink
+ * duplicates the file's full size on disk, so it needs to reach the same
+ * place the user is already watching (GitHub #597).
+ */
+function warnIfHardlinkFellBackToCopy(
+	worker: ImportWorker,
+	transferResult: TransferResult,
+	preferHardlink: boolean | undefined,
+	sourcePath: string,
+	destPath: string
+): void {
+	if (transferResult.mode !== 'copy' || !(preferHardlink ?? true)) return;
+
+	worker.log(
+		'warn',
+		`Copied instead of hardlinked: ${basename(sourcePath)} (hardlink requested but unavailable on this filesystem; duplicates ${formatBytes(transferResult.sizeBytes ?? 0)} of disk space)`,
+		{
+			sourceDir: dirname(sourcePath),
+			destDir: dirname(destPath),
+			sizeBytes: transferResult.sizeBytes
+		}
+	);
+}
+
 async function recordImportFailure(opts: {
 	releaseTitle: string;
 	sourcePath?: string;
@@ -184,6 +214,8 @@ export interface ImportResult {
 		codec?: string;
 		hdr?: string;
 	};
+	/** How the file reached its destination (hardlink/copy/move/symlink). */
+	transferMode?: TransferMode;
 }
 
 /**
@@ -1324,6 +1356,13 @@ export class ImportService extends EventEmitter {
 						? 'move'
 						: 'copy'
 		);
+		warnIfHardlinkFellBackToCopy(
+			worker,
+			transferResult,
+			importOptions.preferHardlink,
+			mainFile.path,
+			destPath
+		);
 		worker.setDestinationPath(destPath);
 
 		if (importOptions.deleteEmptyFolders && transferResult.mode === 'move') {
@@ -1510,6 +1549,7 @@ export class ImportService extends EventEmitter {
 			replacedFileIds: deletedFileIds.length > 0 ? deletedFileIds : undefined,
 			sceneName: fileData.sceneName,
 			releaseGroup: fileData.releaseGroup,
+			transferMode: transferResult.mode,
 			quality: fileData.quality
 		});
 
@@ -1524,7 +1564,8 @@ export class ImportService extends EventEmitter {
 			movieFileId: fileId,
 			title: fileData.sceneName,
 			releaseGroup: fileData.releaseGroup,
-			quality: fileData.quality
+			quality: fileData.quality,
+			transferMode: transferResult.mode
 		});
 
 		logger.info(
@@ -1902,7 +1943,8 @@ export class ImportService extends EventEmitter {
 				episodeFileIds: importedFileIds,
 				title: representativeImport?.sceneName,
 				releaseGroup: representativeImport?.releaseGroup,
-				quality: representativeImport?.quality
+				quality: representativeImport?.quality,
+				transferMode: representativeImport?.transferMode
 			});
 
 			logger.info(
@@ -2118,6 +2160,13 @@ export class ImportService extends EventEmitter {
 					: transferResult.mode === 'move'
 						? 'move'
 						: 'copy'
+		);
+		warnIfHardlinkFellBackToCopy(
+			worker,
+			transferResult,
+			importOptions?.preferHardlink,
+			videoFile.path,
+			destPath
 		);
 
 		if (importOptions?.deleteEmptyFolders && transferResult.mode === 'move') {
@@ -2488,7 +2537,8 @@ export class ImportService extends EventEmitter {
 			replacedFileId: filesToReplace.length > 0 ? filesToReplace[0] : undefined,
 			sceneName: fileData.sceneName,
 			releaseGroup: fileData.releaseGroup,
-			quality: fileData.quality
+			quality: fileData.quality,
+			transferMode: transferResult.mode
 		};
 	}
 
@@ -3635,6 +3685,7 @@ export class ImportService extends EventEmitter {
 			title?: string;
 			releaseGroup?: string;
 			quality?: typeof downloadQueue.$inferSelect.quality;
+			transferMode?: TransferMode;
 		} = {}
 	): Promise<void> {
 		// Get download client name
@@ -3674,6 +3725,7 @@ export class ImportService extends EventEmitter {
 			importedPath: extras.importedPath,
 			movieFileId: extras.movieFileId,
 			episodeFileIds: extras.episodeFileIds,
+			transferMode: extras.transferMode,
 			grabbedAt: queueItem.addedAt,
 			completedAt: queueItem.completedAt,
 			releaseGroup: extras.releaseGroup ?? queueItem.releaseGroup,

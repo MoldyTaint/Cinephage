@@ -160,6 +160,7 @@ import { migration_v160 } from './160-request-system.js';
 import { migration_v161 } from './161-encrypt-credentials-at-rest.js';
 import { migration_v162 } from './162-session-last-active.js';
 import { migration_v163 } from './163-repair-orphaned-episode-seasons.js';
+import { migration_v164 } from './164-transfer-mode.js';
 
 export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v002,
@@ -322,5 +323,6 @@ export const MIGRATIONS: MigrationDefinition[] = [
 	migration_v160,
 	migration_v161,
 	migration_v162,
-	migration_v163
+	migration_v163,
+	migration_v164
 ];
