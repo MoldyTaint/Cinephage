@@ -1,3 +1,4 @@
+import type { EventEmitter } from 'node:events';
 import type { ServiceStatus, BackgroundService } from '#lib/server/services/background-service.js';
 import { createChildLogger } from '#lib/logging/index.js';
 import { upsertInsights } from './upsert.js';
@@ -14,6 +15,9 @@ class InsightsService implements BackgroundService {
 	private insightsLock = false;
 	private listenersAttached = false;
 	private attachPromise: Promise<void> | null = null;
+	// Captured on attach and reused on detach instead of re-importing: see the
+	// equivalent comment in ReconciliationService.detachListeners for why.
+	private attachedReconciliation: EventEmitter | null = null;
 	private readonly rules: StorageInsightRule[];
 
 	constructor() {
@@ -59,7 +63,9 @@ class InsightsService implements BackgroundService {
 		this.listenersAttached = true;
 		this.attachPromise = import('#lib/server/storage/reconciliation/ReconciliationService.js')
 			.then(({ getReconciliationService }) => {
-				getReconciliationService().on('reconcileComplete', this.handleTrigger);
+				const reconciliation = getReconciliationService();
+				reconciliation.on('reconcileComplete', this.handleTrigger);
+				this.attachedReconciliation = reconciliation;
 			})
 			.catch((e) => {
 				logger.error('[InsightsService] failed to subscribe to reconcileComplete', e);
@@ -69,13 +75,8 @@ class InsightsService implements BackgroundService {
 	private detachListeners(): void {
 		if (!this.listenersAttached) return;
 		this.listenersAttached = false;
-		void import('#lib/server/storage/reconciliation/ReconciliationService.js')
-			.then(({ getReconciliationService }) => {
-				getReconciliationService().off('reconcileComplete', this.handleTrigger);
-			})
-			.catch((e) => {
-				logger.error('[InsightsService] failed to unsubscribe from reconcileComplete', e);
-			});
+		this.attachedReconciliation?.off('reconcileComplete', this.handleTrigger);
+		this.attachedReconciliation = null;
 	}
 
 	private handleTrigger = (): void => {
