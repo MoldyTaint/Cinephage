@@ -1049,6 +1049,36 @@ describe('ReleaseParser', () => {
 			expect(result.cleanTitle).toContain('Demon Slayer');
 			expect(result.resolution).toBe('1080p');
 		});
+
+		it('keeps a dual-language alternate title joined with " / " intact (movie)', () => {
+			// Reported identity-mismatch false positive: the release joins a
+			// Russian primary title with its English alternate via " / ".
+			// cleanTitle deliberately keeps both segments, SearchOrchestrator's
+			// alias matching relies on the alternate segment surviving here;
+			// release-identity.ts's matchReleaseToTarget is what scores each
+			// segment separately against the library's title (see its tests).
+			const result = parseRelease(
+				'Зловещие Мертвецы 3: Армия Тьмы / Army of Darkness (1992) BDRip [H.264/1080p] [Theatrical Cut]',
+				{ mode: 'movie' }
+			);
+
+			expect(result.cleanTitle).toBe('Зловещие Мертвецы 3: Армия Тьмы / Army of Darkness');
+			expect(result.year).toBe(1992);
+		});
+
+		it('recovers a title that comes after a leading "Season N Episode M" marker (TV)', () => {
+			// Reported identity-mismatch false positive: extractTitleBeforeEpisode
+			// cut at the leading episode marker (index 0), leaving cleanTitle
+			// empty. The title is recovered from between that marker and the
+			// next one instead.
+			const result = parseRelease(
+				'Season 2 Episode 4 - Гангстерленд / MobLand / - S2E1-4 - 2026 / DUB, 4 x MVO, 2 x DVO, Sub / 4K, HEVC, SDR / WEBDL 2160p'
+			);
+
+			expect(result.cleanTitle).toBe('Гангстерленд / Mobland');
+			expect(result.episode?.season).toBe(2);
+			expect(result.episode?.episodes).toEqual([4]);
+		});
 	});
 
 	describe('extractExternalIds', () => {
