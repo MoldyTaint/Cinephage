@@ -1,6 +1,7 @@
 import type { Handle } from '@sveltejs/kit/hooks';
 import { randomUUID } from 'node:crypto';
 import { cookieName, locales } from '#lib/paraglide/runtime.js';
+import { isLocalNetworkOrigin } from '#lib/server/utils/origin.js';
 import type { AuthSessionRecord, AuthSessionUser } from './auth.js';
 
 function createSupportId(): string {
@@ -136,4 +137,74 @@ function clearAuthenticatedLocals(event: Parameters<Handle>[0]['event']): void {
 	event.locals.apiKeyPermissions = null;
 }
 
-export { createSupportId, setAuthenticatedLocals, clearAuthenticatedLocals };
+/**
+ * Remove the `Secure` attribute from a single Set-Cookie header value.
+ * Case-insensitive on the attribute name; leaves every other attribute
+ * (HttpOnly, SameSite, Path, Max-Age, …) untouched. Pure/no I/O so it's
+ * directly unit-testable - see stripSecureCookiesForLocalHttp for why this
+ * exists.
+ */
+function stripSecureFromSetCookie(value: string): string {
+	return value
+		.split(';')
+		.filter((part) => part.trim().toLowerCase() !== 'secure')
+		.join(';');
+}
+
+/**
+ * better-auth's `useSecureCookies` is a single global flag, computed once at
+ * startup from the stored External URL setting (see getBaseURL() in
+ * secret.ts): if an admin points External URL at an https:// reverse proxy,
+ * EVERY cookie gets `Secure` - including ones set for plain http:// LAN
+ * access, where browsers silently refuse to store a Secure cookie. The
+ * password verifies, the cookie just never sticks, and the user is bounced
+ * back to the login page with no useful error (GitHub issue #596).
+ *
+ * This makes the decision per-request instead: strip `Secure` from outgoing
+ * Set-Cookie headers only when the request is confidently a direct plain-HTTP
+ * LAN connection, so the real HTTPS-proxy path is completely unaffected (no
+ * global weakening - unlike the existing BETTER_AUTH_DISABLE_SECURE_COOKIES
+ * escape hatch, which turns Secure off everywhere).
+ *
+ * "Confidently LAN" requires both:
+ *  - event.url's host is a private IP/localhost (isLocalNetworkOrigin) - this
+ *    reads the raw incoming Host header, which for a direct connection is the
+ *    LAN IP/port and for a reverse-proxied connection is the proxy's public
+ *    domain, regardless of whether adapter-node is configured to trust
+ *    X-Forwarded-* headers (it isn't, here) or not.
+ *  - no X-Forwarded-Proto: https header - defense in depth, so a proxy that
+ *    *does* forward from a private-IP Host but terminates TLS is still
+ *    respected and keeps Secure cookies.
+ */
+function stripSecureCookiesForLocalHttp(
+	event: Parameters<Handle>[0]['event'],
+	response: Response
+): Response {
+	const forwardedProto = event.request.headers.get('x-forwarded-proto');
+	if (forwardedProto?.toLowerCase() === 'https') {
+		return response;
+	}
+	if (!isLocalNetworkOrigin(event.url.origin)) {
+		return response;
+	}
+
+	const setCookies = response.headers.getSetCookie();
+	if (setCookies.length === 0 || !setCookies.some((c) => /;\s*secure/i.test(c))) {
+		return response;
+	}
+
+	const rewritten = new Response(response.body, response);
+	rewritten.headers.delete('set-cookie');
+	for (const cookie of setCookies) {
+		rewritten.headers.append('set-cookie', stripSecureFromSetCookie(cookie));
+	}
+	return rewritten;
+}
+
+export {
+	createSupportId,
+	setAuthenticatedLocals,
+	clearAuthenticatedLocals,
+	stripSecureFromSetCookie,
+	stripSecureCookiesForLocalHttp
+};
