@@ -231,6 +231,37 @@ describe('MediaMatcherService acceptMatch root folder conflict guard (bug #488)'
 		expect(await countEpisodeFiles('s1')).toBe(0);
 	});
 
+	it('links a TV file normally when the root folder path has a trailing slash (GitHub #595)', async () => {
+		// A plain String.startsWith comparison used to false-positive a
+		// conflict whenever the two path strings differed only cosmetically,
+		// e.g. a root folder re-saved with a trailing slash (a real
+		// troubleshooting step users take, and something NFS-backed root
+		// folders can produce on their own). path.relative() normalizes this.
+		await insertRootFolder('rf-a', '/mnt/tv-a/', 'tv');
+		await testDb.db.insert(series).values({
+			id: 's1',
+			tmdbId: 1001,
+			title: 'Show (2016)',
+			path: 'Show (2016)',
+			rootFolderId: 'rf-a',
+			libraryId: 'lib-1'
+		});
+		await insertUnmatchedFile({
+			id: 'uf1',
+			path: '/mnt/tv-a/Show (2016)/Season 4/ep.mkv',
+			rootFolderId: 'rf-a',
+			mediaType: 'tv',
+			parsedSeason: 4,
+			parsedEpisode: 1
+		});
+		mocks.getTVShow.mockResolvedValue({ id: 1001, name: 'Show (2016)', seasons: [] });
+
+		await mediaMatcherService.acceptMatch('uf1', 1001, 'tv');
+
+		expect(await countEpisodeFiles('s1')).toBe(1);
+		expect(await unmatchedStillExists('uf1')).toBe(false);
+	});
+
 	it('links a TV file normally when it is inside the existing series root folder and path', async () => {
 		await insertRootFolder('rf-a', '/mnt/tv-a', 'tv');
 		await testDb.db.insert(series).values({

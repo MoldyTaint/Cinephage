@@ -22,7 +22,7 @@ import {
 import { eq, and, gt, asc } from 'drizzle-orm';
 import { tmdb, type SearchResult } from '#lib/server/tmdb.js';
 import { mediaInfoService } from './media-info.js';
-import { basename, dirname, extname, join, relative } from 'path';
+import { basename, dirname, extname, isAbsolute, join, relative } from 'path';
 import { RootFolderConflictError } from '#lib/errors/index.js';
 import { searchSubtitlesForNewMedia } from '#lib/server/subtitles/services/SubtitleImportService.js';
 import { monitoringScheduler } from '#lib/server/monitoring/MonitoringScheduler.js';
@@ -965,7 +965,17 @@ export class MediaMatcherService {
 		if (!existingRoot) return;
 
 		const expectedDir = join(existingRoot.path, existingPath);
-		if (!file.path.startsWith(expectedDir + '/')) {
+		// path.relative() normalizes both sides (collapses redundant separators,
+		// trailing slashes, '.'/'..' segments) before comparing, a plain
+		// String.startsWith on raw paths falsely conflicted whenever the two
+		// path strings differed only cosmetically (e.g. a root folder path
+		// re-saved with/without a trailing slash), which is exactly what NFS
+		// mounts plus a "reapply root folder" troubleshooting step can produce
+		// (GitHub Issue #595). A relative path that starts with '..' or is itself
+		// absolute means file.path falls outside expectedDir.
+		const rel = relative(expectedDir, file.path);
+		const isInside = rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+		if (!isInside) {
 			throw new RootFolderConflictError(
 				`Refusing to link "${file.path}" to "${title}": the file is not inside "${expectedDir}", where "${title}" is registered under the "${existingRoot.name}" root folder. Linking it would create an unresolvable file path.`
 			);

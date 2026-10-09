@@ -109,19 +109,28 @@ export function calculateMatchConfidence(
 		titleScore = Math.max(titleScore, calculateTitleSimilarity(parsedTitle, tmdbOriginalTitle));
 	}
 
+	// A clear year mismatch (e.g. a 2025 remake vs. the 1981 original of the
+	// same title) is strong evidence this is a different show/movie, not a
+	// formatting quirk, the exact-title floor below must not erase it.
+	const yearsConflict =
+		!!parsedYear && !!tmdbYear && parsedYear !== tmdbYear && Math.abs(parsedYear - tmdbYear) > 1;
+
 	if (parsedYear && tmdbYear && parsedYear === tmdbYear) {
 		titleScore = Math.min(1, titleScore + 0.2);
-	} else if (parsedYear && tmdbYear && parsedYear !== tmdbYear) {
-		if (Math.abs(parsedYear - tmdbYear) > 1) {
-			titleScore = titleScore * 0.7;
-		}
+	} else if (yearsConflict) {
+		titleScore = titleScore * 0.7;
 	}
 
-	if (
+	const exactTitleMatch =
 		normalizeTitleForMatch(parsedTitle) === normalizeTitleForMatch(tmdbTitle) ||
 		(!!tmdbOriginalTitle &&
-			normalizeTitleForMatch(parsedTitle) === normalizeTitleForMatch(tmdbOriginalTitle))
-	) {
+			normalizeTitleForMatch(parsedTitle) === normalizeTitleForMatch(tmdbOriginalTitle));
+
+	// Previously this ran unconditionally, so an exact title match (e.g. two
+	// shows both literally titled "Maigret") always floored the score at
+	// 0.95 regardless of the year penalty just applied above — silently
+	// undoing it and auto-matching the wrong year's entry (GitHub #595).
+	if (exactTitleMatch && !yearsConflict) {
 		titleScore = Math.max(titleScore, 0.95);
 	}
 
