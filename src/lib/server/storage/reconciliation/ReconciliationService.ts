@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { ServiceStatus, BackgroundService } from '#lib/server/services/background-service.js';
+import type { libraryMediaEvents } from '#lib/server/library/LibraryMediaEvents.js';
 import { db } from '#lib/server/db/index.js';
 import {
 	episodeFiles,
@@ -62,6 +63,9 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 	private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	private listenersAttached = false;
 	private attachPromise: Promise<void> | null = null;
+	private attachedScheduler: EventEmitter | null = null;
+	private attachedStatsSync: EventEmitter | null = null;
+	private attachedLibraryEvents: typeof libraryMediaEvents | null = null;
 
 	get status(): ServiceStatus {
 		return this._status;
@@ -112,14 +116,18 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 		this.attachPromise = Promise.all([
 			import('#lib/server/library/library-scheduler.js')
 				.then(({ getLibraryScheduler }) => {
-					getLibraryScheduler().on('scanComplete', this.handleScanComplete);
+					const scheduler = getLibraryScheduler();
+					scheduler.on('scanComplete', this.handleScanComplete);
+					this.attachedScheduler = scheduler;
 				})
 				.catch((e) => {
 					logger.error('[ReconciliationService] failed to subscribe to scanComplete', e);
 				}),
 			import('#lib/server/mediaServerStats/MediaServerStatsSyncService.js')
 				.then(({ getMediaServerStatsSyncService }) => {
-					getMediaServerStatsSyncService().on('syncComplete', this.handleSyncComplete);
+					const statsSync = getMediaServerStatsSyncService();
+					statsSync.on('syncComplete', this.handleSyncComplete);
+					this.attachedStatsSync = statsSync;
 				})
 				.catch((e) => {
 					logger.error('[ReconciliationService] failed to subscribe to syncComplete', e);
@@ -129,6 +137,7 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 			import('#lib/server/library/LibraryMediaEvents.js')
 				.then(({ libraryMediaEvents }) => {
 					libraryMediaEvents.onLibraryDataChanged(this.handleLibraryDataChanged);
+					this.attachedLibraryEvents = libraryMediaEvents;
 				})
 				.catch((e) => {
 					logger.error('[ReconciliationService] failed to subscribe to library:data-changed', e);
@@ -139,27 +148,17 @@ class ReconciliationService extends EventEmitter implements BackgroundService {
 	private detachListeners(): void {
 		if (!this.listenersAttached) return;
 		this.listenersAttached = false;
-		void import('#lib/server/library/library-scheduler.js')
-			.then(({ getLibraryScheduler }) => {
-				getLibraryScheduler().off('scanComplete', this.handleScanComplete);
-			})
-			.catch((e) => {
-				logger.error('[ReconciliationService] failed to unsubscribe from scanComplete', e);
-			});
-		void import('#lib/server/mediaServerStats/MediaServerStatsSyncService.js')
-			.then(({ getMediaServerStatsSyncService }) => {
-				getMediaServerStatsSyncService().off('syncComplete', this.handleSyncComplete);
-			})
-			.catch((e) => {
-				logger.error('[ReconciliationService] failed to unsubscribe from syncComplete', e);
-			});
-		void import('#lib/server/library/LibraryMediaEvents.js')
-			.then(({ libraryMediaEvents }) => {
-				libraryMediaEvents.offLibraryDataChanged(this.handleLibraryDataChanged);
-			})
-			.catch((e) => {
-				logger.error('[ReconciliationService] failed to unsubscribe from library:data-changed', e);
-			});
+		// Use the references captured on attach rather than re-importing: a fresh
+		// dynamic import here can fail if the module runner's transport has
+		// already been torn down (Vite dev SSR, "transport was disconnected"),
+		// or could even resolve to a different post-reload module instance,
+		// silently targeting the wrong emitter and leaking the real listener.
+		this.attachedScheduler?.off('scanComplete', this.handleScanComplete);
+		this.attachedScheduler = null;
+		this.attachedStatsSync?.off('syncComplete', this.handleSyncComplete);
+		this.attachedStatsSync = null;
+		this.attachedLibraryEvents?.offLibraryDataChanged(this.handleLibraryDataChanged);
+		this.attachedLibraryEvents = null;
 	}
 
 	/**
