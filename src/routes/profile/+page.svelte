@@ -719,19 +719,6 @@
 					minlength="8"
 					autocomplete="new-password"
 				/>
-				<button
-					type="button"
-					class="btn absolute top-1/2 right-2 -translate-y-1/2 btn-ghost btn-sm"
-					aria-label={showPasswords ? 'Hide password' : 'Show password'}
-					aria-pressed={showPasswords}
-					onclick={() => (showPasswords = !showPasswords)}
-				>
-					{#if showPasswords}
-						<EyeOff class="h-4 w-4" />
-					{:else}
-						<Eye class="h-4 w-4" />
-					{/if}
-				</button>
 			</div>
 
 			<div class="form-control">
@@ -747,19 +734,6 @@
 					minlength="8"
 					autocomplete="new-password"
 				/>
-				<button
-					type="button"
-					class="btn absolute top-1/2 right-2 -translate-y-1/2 btn-ghost btn-sm"
-					aria-label={showPasswords ? 'Hide password' : 'Show password'}
-					aria-pressed={showPasswords}
-					onclick={() => (showPasswords = !showPasswords)}
-				>
-					{#if showPasswords}
-						<EyeOff class="h-4 w-4" />
-					{:else}
-						<Eye class="h-4 w-4" />
-					{/if}
-				</button>
 				{#if confirmPassword && !passwordsMatch}
 					<p class="mt-1 text-xs text-error">{m.profile_passwordMismatch()}</p>
 				{/if}
