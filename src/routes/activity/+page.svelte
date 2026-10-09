@@ -238,6 +238,25 @@
 	);
 	const selectedPausedQueueIds = $derived.by(() => getSelectedQueueIdsByStatus(['paused']));
 
+	// Cancel (terminate + remove) is eligible for anything not seeding and not
+	// mid-import ('downloading' covers queued/stalled/awaiting too, collapsed
+	// by mapQueueStatus). Unlike pause/resume, debrid items ARE cancelable,
+	// DELETE /api/queue/[id] is protocol-agnostic, so this doesn't reuse
+	// getSelectedQueueIdsByStatus, which filters out debrid via
+	// supportsQueuePauseResume.
+	const selectedCancelableQueueIds = $derived.by(() => {
+		const queueIds: string[] = [];
+		for (const activity of activities) {
+			if (!selectedActiveIds.has(activity.id)) continue;
+			if (!isActiveQueueActivity(activity) || !activity.queueItemId) continue;
+			if (activity.status !== 'downloading' && activity.status !== 'paused') continue;
+			if (!queueIds.includes(activity.queueItemId)) {
+				queueIds.push(activity.queueItemId);
+			}
+		}
+		return queueIds;
+	});
+
 	// Failed downloads live in the History tab. Retry/Remove operate on the
 	// queue item linked from each selected history record via queueItemId.
 	const selectedHistoryFailedQueueIds = $derived.by(() => {
@@ -275,6 +294,8 @@
 				return selectedPausableQueueIds;
 			case 'resume':
 				return selectedPausedQueueIds;
+			case 'cancel':
+				return selectedCancelableQueueIds;
 			case 'retry_failed':
 			case 'remove_failed':
 				return selectedHistoryFailedQueueIds;
@@ -977,6 +998,8 @@
 				return m.activity_queue_confirmPauseTitle();
 			case 'resume':
 				return m.activity_queue_confirmResumeTitle();
+			case 'cancel':
+				return m.activity_queue_confirmCancelTitle();
 			case 'retry_failed':
 				return m.activity_queue_confirmRetryTitle();
 			case 'remove_failed':
@@ -997,6 +1020,8 @@
 				return m.activity_queue_confirmPauseMessage({ count: targetCount }) + skippedSuffix;
 			case 'resume':
 				return m.activity_queue_confirmResumeMessage({ count: targetCount }) + skippedSuffix;
+			case 'cancel':
+				return m.activity_queue_confirmCancelMessage({ count: targetCount }) + skippedSuffix;
 			case 'retry_failed':
 				return m.activity_queue_confirmRetryMessage({ count: targetCount }) + skippedSuffix;
 			case 'remove_failed':
@@ -1012,6 +1037,8 @@
 				return m.activity_queue_pauseSelected();
 			case 'resume':
 				return m.activity_queue_resumeSelected();
+			case 'cancel':
+				return m.activity_queue_cancelSelected();
 			case 'retry_failed':
 				return m.activity_queue_retryFailed();
 			case 'remove_failed':
@@ -1024,6 +1051,7 @@
 	const activeConfirmVariant = $derived.by((): 'error' | 'warning' | 'primary' => {
 		switch (activeConfirmAction) {
 			case 'remove_failed':
+			case 'cancel':
 				return 'error';
 			case 'retry_failed':
 				return 'warning';
@@ -1209,7 +1237,7 @@
 
 	function openActiveConfirm(action: ActiveBulkAction): void {
 		if (activeBulkLoading) return;
-		if (action === 'pause' || action === 'resume') {
+		if (action === 'pause' || action === 'resume' || action === 'cancel') {
 			if (activityTab !== 'active' || !activeSelectionMode) return;
 		} else {
 			// retry_failed / remove_failed work from the History tab (selection mode)
@@ -1252,7 +1280,10 @@
 					? (queueId: string) => runQueueAction(queueId, 'resume')
 					: action === 'retry_failed'
 						? (queueId: string) => retryQueueItem(queueId, { refresh: false })
-						: (queueId: string) =>
+						: // 'cancel' and 'remove_failed' both terminate-at-client + remove from
+							// the queue; they differ only in which rows feed them and the toast
+							// copy shown afterward.
+							(queueId: string) =>
 								removeQueueItem(queueId, {
 									refresh: false,
 									closeDetailModal: false,
@@ -1274,7 +1305,10 @@
 		}
 
 		try {
-			if (successCount > 0 && (action === 'retry_failed' || action === 'remove_failed')) {
+			if (
+				successCount > 0 &&
+				(action === 'retry_failed' || action === 'remove_failed' || action === 'cancel')
+			) {
 				await refreshActivityData({ force: true });
 			}
 		} catch (_error) {
@@ -1289,9 +1323,11 @@
 					? m.toast_activity_pausedDownloads({ count: successCount })
 					: action === 'resume'
 						? m.toast_activity_resumedDownloads({ count: successCount })
-						: action === 'retry_failed'
-							? m.toast_activity_retriedDownloads({ count: successCount })
-							: m.toast_activity_removedDownloads({ count: successCount });
+						: action === 'cancel'
+							? m.toast_activity_cancelledDownloads({ count: successCount })
+							: action === 'retry_failed'
+								? m.toast_activity_retriedDownloads({ count: successCount })
+								: m.toast_activity_removedDownloads({ count: successCount });
 			toasts.success(toastMessage);
 		}
 		if (failedCount > 0) {
@@ -1301,13 +1337,15 @@
 					? m.toast_activity_failedToPause()
 					: action === 'resume'
 						? m.toast_activity_failedToResume()
-						: action === 'retry_failed'
-							? m.toast_activity_failedToRetry()
-							: m.toast_activity_failedToRemove();
+						: action === 'cancel'
+							? m.toast_activity_failedToCancel()
+							: action === 'retry_failed'
+								? m.toast_activity_failedToRetry()
+								: m.toast_activity_failedToRemove();
 			toasts.error(`${toastMessage}${suffix}`);
 		}
 
-		if (action === 'retry_failed' || action === 'remove_failed') {
+		if (action === 'retry_failed' || action === 'remove_failed' || action === 'cancel') {
 			if (activityTab === 'history') selectedHistoryIds.clear();
 			else selectedActiveIds.clear();
 		}
@@ -1594,6 +1632,13 @@
 							disabled={activeBulkLoading || selectedPausedQueueIds.length === 0}
 						>
 							{m.activity_queue_resumeCount({ count: selectedPausedQueueIds.length })}
+						</button>
+						<button
+							class="btn btn-error btn-xs"
+							onclick={() => openActiveConfirm('cancel')}
+							disabled={activeBulkLoading || selectedCancelableQueueIds.length === 0}
+						>
+							{m.activity_queue_cancelCount({ count: selectedCancelableQueueIds.length })}
 						</button>
 						<div class="ml-auto"></div>
 						<button
