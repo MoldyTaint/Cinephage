@@ -14,7 +14,8 @@ import { SECURITY_HEADERS, BASE_SECURITY_HEADERS } from '#lib/server/security/he
 import {
 	createSupportId,
 	setAuthenticatedLocals,
-	clearAuthenticatedLocals
+	clearAuthenticatedLocals,
+	stripSecureCookiesForLocalHttp
 } from '#lib/server/auth/session-helpers.js';
 import { ensureServicesInitialized } from '#lib/server/services/initializer.js';
 import '#lib/server/services/shutdown.js';
@@ -655,7 +656,11 @@ const customHandler: Handle = async ({ event, resolve }) => {
 				const duration = Math.round(performance.now() - startTime);
 				requestLogger.debug({ status: response.status, durationMs: duration }, 'Request completed');
 
-				return response;
+				// See stripSecureCookiesForLocalHttp's doc comment in `src/lib/server/auth/session-helpers.ts` (issue #596):
+				// an https:// External URL makes every cookie Secure globally, which
+				// silently breaks login over plain-http LAN access. This un-sets it
+				// per-request, only for confidently-direct plain-HTTP LAN connections.
+				return stripSecureCookiesForLocalHttp(event, response);
 			} catch (error) {
 				if (isStreamingRoute) {
 					requestLogger.error({ err: error, logDomain: 'streams' }, 'Streaming route error');

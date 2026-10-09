@@ -29,7 +29,14 @@
 			});
 
 			if (result.error) {
-				error = result.error.message || m.login_invalidCredentials();
+				// A 429 here is the rate limiter (5 attempts / 15 min), not a bad
+				// password, surfacing it as "Invalid username or password" hides
+				// the actual cause and reads as if the correct password just
+				// stopped working (GitHub issue #596).
+				error =
+					result.error.status === 429
+						? m.login_rateLimited()
+						: result.error.message || m.login_invalidCredentials();
 				return;
 			}
 

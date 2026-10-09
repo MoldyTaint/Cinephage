@@ -26,6 +26,23 @@ export const PUT: RequestHandler = async (event) => {
 		}
 
 		const { url } = result.data;
+
+		// A path component (e.g. https://proxy.example/cinephage) silently 404s on
+		// every request once saved: the app has no base-path support anywhere
+		// (SvelteKit's paths.base isn't configured), so a reverse proxy forwarding
+		// a subpath has nowhere valid to route to. Reject up front with a clear
+		// reason instead of accepting it and leaving the instance unreachable
+		// through the proxy. See GitHub issue #596.
+		if (url && new URL(url).pathname.replace(/\/+$/, '') !== '') {
+			return Response.json(
+				{
+					error:
+						'External URL must not include a path (e.g. "/cinephage") — subpath reverse-proxy routing is not currently supported. Use a dedicated (sub)domain instead.'
+				},
+				{ status: 400 }
+			);
+		}
+
 		const settingsService = getSystemSettingsService();
 
 		// If url is empty string, treat as null
