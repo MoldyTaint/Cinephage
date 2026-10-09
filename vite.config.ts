@@ -59,11 +59,22 @@ export default defineConfig({
 			// The CSP below matches the static fallback in
 			// src/lib/server/security/headers.ts. SvelteKit renders an inline
 			// bootstrap script on every SSR page, so script-src cannot drop
-			// 'unsafe-inline' unless hashes are present; hash mode makes SvelteKit
-			// emit the sha256 in the per-page CSP header it sets, which
-			// hooks.server.ts preserves instead of overwriting.
+			// 'unsafe-inline' unless hashes/nonces are present; SvelteKit emits
+			// those in the per-page CSP header it sets, which hooks.server.ts
+			// preserves instead of overwriting.
+			//
+			// 'auto' (not 'hash'): streamed/deferred load data (e.g. the
+			// dashboard's recentlyAdded/missingEpisodes/etc. promises) is pushed
+			// via inline <script> tags written AFTER the response headers are
+			// already flushed, so their content can't be hashed in time, in
+			// hash mode SvelteKit doesn't nonce them either, so the browser
+			// silently blocks them and the page's loading state never resolves.
+			// 'auto' uses a per-request nonce for any non-prerendered page
+			// (falling back to hashes only for fully prerendered pages), and
+			// that nonce is attached to every inline script SvelteKit emits,
+			// streamed ones included.
 			csp: {
-				mode: 'hash',
+				mode: 'auto',
 				directives: {
 					'default-src': ['self'],
 					'script-src': ['self'],
