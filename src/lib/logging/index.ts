@@ -355,14 +355,16 @@ function getBasePinoOptions(): LoggerOptions {
 	};
 }
 
-function createRootPinoLogger(): PinoLogger {
+async function createRootPinoLogger(): Promise<PinoLogger> {
 	const options = getBasePinoOptions();
 
 	if (import.meta.env?.SSR && isDev()) {
+		const { createRequire } = await import('node:module');
+
 		return pino(
 			options,
 			pino.transport({
-				target: 'pino-pretty',
+				target: createRequire(import.meta.url).resolve('pino-pretty'),
 				options: {
 					colorize: true,
 					translateTime: 'SYS:standard',
@@ -375,7 +377,7 @@ function createRootPinoLogger(): PinoLogger {
 	return pino(options);
 }
 
-const rootPinoLogger = createRootPinoLogger();
+const rootPinoLogger = await createRootPinoLogger();
 
 let asyncLocalStorage: NodeAsyncLocalStorage<LogStore> | null = null;
 let logCaptureStore: {
