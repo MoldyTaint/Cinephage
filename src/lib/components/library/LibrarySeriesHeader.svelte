@@ -22,7 +22,8 @@
 		MoreHorizontal,
 		ArrowLeft,
 		Eye,
-		EyeOff
+		EyeOff,
+		Replace
 	} from '@lucide/svelte';
 	import {
 		formatLanguage,
@@ -105,6 +106,7 @@
 		onEdit?: () => void;
 		onDelete?: () => void;
 		onRefresh?: () => void;
+		onChangeMatch?: () => void;
 		/** Viewer mode: hide acquisition/edit controls, keep the informational header. */
 		readOnly?: boolean;
 	}
@@ -140,6 +142,7 @@
 		onEdit,
 		onDelete,
 		onRefresh,
+		onChangeMatch,
 		readOnly = false
 	}: Props = $props();
 
@@ -298,6 +301,14 @@
 							</li>
 						{/if}
 						<div class="divider my-1"></div>
+						{#if onChangeMatch}
+							<li>
+								<button onclick={onChangeMatch}>
+									<Replace size={16} />
+									{m.library_changeMatch_menuLabel()}
+								</button>
+							</li>
+						{/if}
 						<li>
 							<button onclick={onEdit}>
 								<Settings size={16} />
@@ -774,6 +785,14 @@
 							<button onclick={onSubtitleAutoSearch} disabled={subtitleAutoSearching}>
 								<Captions size={16} />
 								{m.library_seriesHeader_autoDownloadSubs()}
+							</button>
+						</li>
+					{/if}
+					{#if onChangeMatch}
+						<li>
+							<button onclick={onChangeMatch}>
+								<Replace size={16} />
+								{m.library_changeMatch_menuLabel()}
 							</button>
 						</li>
 					{/if}

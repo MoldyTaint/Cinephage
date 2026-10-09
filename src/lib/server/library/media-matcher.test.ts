@@ -21,7 +21,11 @@ import {
 	episodeFiles,
 	episodes,
 	unmatchedFiles,
-	libraries
+	libraries,
+	downloadQueue,
+	downloadClients,
+	requests,
+	user
 } from '#lib/server/db/schema.js';
 import { RootFolderConflictError } from '#lib/errors/index.js';
 
@@ -35,7 +39,34 @@ const mocks = vi.hoisted(() => ({
 	searchTv: vi.fn(),
 	extractMediaInfo: vi.fn(),
 	getSettings: vi.fn(),
-	resolveOwningLibraryForRootFolder: vi.fn()
+	resolveOwningLibraryForRootFolder: vi.fn(),
+	reorganizeFolder: vi.fn(),
+	previewMovie: vi.fn(),
+	previewSeries: vi.fn(),
+	executeRenames: vi.fn(),
+	getClientInstance: vi.fn(),
+	cancelByQueueId: vi.fn()
+}));
+
+vi.mock('#lib/server/library/naming/RenamePreviewService.js', () => ({
+	RenamePreviewService: class {
+		reorganizeFolder = mocks.reorganizeFolder;
+		previewMovie = mocks.previewMovie;
+		previewSeries = mocks.previewSeries;
+		executeRenames = mocks.executeRenames;
+	}
+}));
+
+vi.mock('#lib/server/downloadClients/DownloadClientManager.js', () => ({
+	getDownloadClientManager: () => ({
+		getClientInstance: mocks.getClientInstance
+	})
+}));
+
+vi.mock('#lib/server/acquisition/AcquisitionService.js', () => ({
+	acquisitionService: {
+		cancelByQueueId: mocks.cancelByQueueId
+	}
 }));
 
 vi.mock('#lib/server/db/index.js', () => ({
@@ -175,6 +206,29 @@ beforeEach(() => {
 		id: 'lib-1',
 		defaultWantsSubtitles: false,
 		qualityProfileId: null
+	});
+
+	const emptyPreview = {
+		willChange: [],
+		alreadyCorrect: [],
+		collisions: [],
+		errors: [],
+		totalFiles: 0,
+		totalWillChange: 0,
+		totalAlreadyCorrect: 0,
+		totalCollisions: 0,
+		totalErrors: 0
+	};
+	mocks.reorganizeFolder.mockResolvedValue({ success: true });
+	mocks.previewMovie.mockResolvedValue(emptyPreview);
+	mocks.previewSeries.mockResolvedValue(emptyPreview);
+	mocks.executeRenames.mockResolvedValue({
+		success: true,
+		processed: 0,
+		succeeded: 0,
+		failed: 0,
+		results: [],
+		warnings: []
 	});
 });
 
@@ -725,5 +779,298 @@ describe('special episode title fallback (AroTheHawk report)', () => {
 		);
 		expect(await countEpisodeFiles('s-bsg2')).toBe(0);
 		expect(await unmatchedStillExists('uf-plan')).toBe(true);
+	});
+});
+
+describe('MediaMatcherService rematchMovie / rematchSeries (Change Match feature)', () => {
+	it('rematches a movie in place: updates metadata, reorganizes the folder, and renames files', async () => {
+		await insertRootFolder('rf-m', '/mnt/movies-a', 'movie');
+		await testDb.db.insert(movies).values({
+			id: 'm1',
+			tmdbId: 1,
+			title: 'Wrong Movie',
+			path: 'Wrong Movie (1999)',
+			rootFolderId: 'rf-m',
+			libraryId: 'lib-1',
+			year: 1999,
+			hasFile: true
+		});
+		mocks.getMovie.mockResolvedValue({
+			id: 2,
+			title: 'Right Movie',
+			original_title: 'Right Movie',
+			original_language: 'en',
+			release_date: '2020-06-01',
+			overview: 'The correct one',
+			poster_path: '/right.jpg',
+			backdrop_path: '/right-bd.jpg',
+			runtime: 100,
+			genres: [{ name: 'Drama' }]
+		});
+		mocks.getMovieExternalIds.mockResolvedValue({ imdb_id: 'tt9999' });
+
+		const result = await mediaMatcherService.rematchMovie('m1', 2);
+
+		expect(result.title).toBe('Right Movie');
+		const [updated] = await testDb.db.select().from(movies).where(eq(movies.id, 'm1'));
+		expect(updated.tmdbId).toBe(2);
+		expect(updated.title).toBe('Right Movie');
+		expect(updated.year).toBe(2020);
+		expect(updated.imdbId).toBe('tt9999');
+		expect(mocks.reorganizeFolder).toHaveBeenCalledWith('m1', 'movie');
+		expect(mocks.previewMovie).toHaveBeenCalledWith('m1');
+	});
+
+	it('rejects rematching a movie onto a tmdbId already used by a different movie', async () => {
+		await insertRootFolder('rf-m', '/mnt/movies-a', 'movie');
+		await testDb.db.insert(movies).values({
+			id: 'm1',
+			tmdbId: 1,
+			title: 'Movie One',
+			path: 'Movie One (1999)',
+			rootFolderId: 'rf-m',
+			libraryId: 'lib-1'
+		});
+		await testDb.db.insert(movies).values({
+			id: 'm2',
+			tmdbId: 2,
+			title: 'Movie Two',
+			path: 'Movie Two (2001)',
+			rootFolderId: 'rf-m',
+			libraryId: 'lib-1'
+		});
+
+		await expect(mediaMatcherService.rematchMovie('m1', 2)).rejects.toThrow(
+			'Movie Two" is already matched'
+		);
+		expect(mocks.reorganizeFolder).not.toHaveBeenCalled();
+	});
+
+	it("rejects a no-op rematch to the movie's current tmdbId", async () => {
+		await insertRootFolder('rf-m', '/mnt/movies-a', 'movie');
+		await testDb.db.insert(movies).values({
+			id: 'm1',
+			tmdbId: 1,
+			title: 'Movie One',
+			path: 'Movie One (1999)',
+			rootFolderId: 'rf-m',
+			libraryId: 'lib-1'
+		});
+
+		await expect(mediaMatcherService.rematchMovie('m1', 1)).rejects.toThrow('already matched');
+	});
+
+	it('cancels active downloads before rematching a movie', async () => {
+		await insertRootFolder('rf-m', '/mnt/movies-a', 'movie');
+		await testDb.db.insert(movies).values({
+			id: 'm1',
+			tmdbId: 1,
+			title: 'Wrong Movie',
+			path: 'Wrong Movie (1999)',
+			rootFolderId: 'rf-m',
+			libraryId: 'lib-1'
+		});
+		await testDb.db.insert(downloadClients).values({
+			id: 'dc1',
+			name: 'Test Client',
+			implementation: 'qbittorrent',
+			host: 'localhost',
+			port: 8080
+		});
+		await testDb.db.insert(downloadQueue).values({
+			id: 'q1',
+			downloadClientId: 'dc1',
+			downloadId: 'abc123',
+			title: 'Wrong.Movie.1999.mkv',
+			protocol: 'torrent',
+			movieId: 'm1'
+		});
+		mocks.getClientInstance.mockResolvedValue({ removeDownload: vi.fn() });
+		mocks.getMovie.mockResolvedValue({ id: 2, title: 'Right Movie', release_date: '2020-01-01' });
+
+		await mediaMatcherService.rematchMovie('m1', 2);
+
+		expect(mocks.cancelByQueueId).toHaveBeenCalledWith('q1', expect.any(String));
+		const remainingQueue = await testDb.db
+			.select()
+			.from(downloadQueue)
+			.where(eq(downloadQueue.id, 'q1'));
+		expect(remainingQueue).toHaveLength(0);
+	});
+
+	it('backfills requests.tmdbId when a movie is rematched', async () => {
+		await insertRootFolder('rf-m', '/mnt/movies-a', 'movie');
+		await testDb.db.insert(movies).values({
+			id: 'm1',
+			tmdbId: 1,
+			title: 'Wrong Movie',
+			path: 'Wrong Movie (1999)',
+			rootFolderId: 'rf-m',
+			libraryId: 'lib-1'
+		});
+		await testDb.db.insert(user).values({
+			id: 'user-1',
+			email: 'requester@example.com',
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString()
+		});
+		await testDb.db.insert(requests).values({
+			id: 'req1',
+			mediaType: 'movie',
+			tmdbId: 1,
+			title: 'Wrong Movie',
+			movieId: 'm1',
+			requestedBy: 'user-1'
+		});
+		mocks.getMovie.mockResolvedValue({ id: 2, title: 'Right Movie', release_date: '2020-01-01' });
+
+		await mediaMatcherService.rematchMovie('m1', 2);
+
+		const [req] = await testDb.db.select().from(requests).where(eq(requests.id, 'req1'));
+		expect(req.tmdbId).toBe(2);
+	});
+
+	it('rematches a series in place: regenerates episodes and re-links existing files by season/episode number', async () => {
+		await insertRootFolder('rf-s', '/mnt/tv-a', 'tv');
+		await testDb.db.insert(series).values({
+			id: 's1',
+			tmdbId: 10,
+			title: 'Wrong Show',
+			path: 'Wrong Show (2020)',
+			rootFolderId: 'rf-s',
+			libraryId: 'lib-1',
+			monitored: true
+		});
+		await testDb.db.insert(episodes).values({
+			id: 'ep-old-1',
+			seriesId: 's1',
+			seasonNumber: 1,
+			episodeNumber: 1,
+			title: 'Old Pilot'
+		});
+		await testDb.db.insert(episodeFiles).values({
+			id: 'ef1',
+			seriesId: 's1',
+			seasonNumber: 1,
+			relativePath: 'Season 1/ep1.mkv',
+			episodeIds: ['ep-old-1']
+		});
+
+		mocks.getTVShow.mockResolvedValue({
+			id: 20,
+			name: 'Right Show',
+			first_air_date: '2021-02-01',
+			seasons: [{ season_number: 1, name: 'Season 1', episode_count: 1 }]
+		});
+		mocks.getSeason.mockResolvedValue({
+			episodes: [
+				{
+					id: 555,
+					season_number: 1,
+					episode_number: 1,
+					name: 'Real Pilot',
+					overview: '',
+					air_date: '2021-02-01',
+					runtime: 30
+				}
+			]
+		});
+
+		const result = await mediaMatcherService.rematchSeries('s1', 20);
+
+		expect(result.title).toBe('Right Show');
+		const [updatedSeries] = await testDb.db.select().from(series).where(eq(series.id, 's1'));
+		expect(updatedSeries.tmdbId).toBe(20);
+		expect(updatedSeries.title).toBe('Right Show');
+		expect(updatedSeries.episodeGroupId).toBeNull();
+
+		const newEpisodes = await testDb.db.select().from(episodes).where(eq(episodes.seriesId, 's1'));
+		expect(newEpisodes).toHaveLength(1);
+		expect(newEpisodes[0].title).toBe('Real Pilot');
+		expect(newEpisodes[0].hasFile).toBe(true);
+
+		const [relinkedFile] = await testDb.db
+			.select()
+			.from(episodeFiles)
+			.where(eq(episodeFiles.id, 'ef1'));
+		expect(relinkedFile.episodeIds).toEqual([newEpisodes[0].id]);
+
+		expect(mocks.reorganizeFolder).toHaveBeenCalledWith('s1', 'series');
+		expect(mocks.previewSeries).toHaveBeenCalledWith('s1');
+	});
+
+	it('leaves a file unmatched when its season/episode number does not exist on the new show', async () => {
+		await insertRootFolder('rf-s', '/mnt/tv-a', 'tv');
+		await testDb.db.insert(series).values({
+			id: 's1',
+			tmdbId: 10,
+			title: 'Wrong Show',
+			path: 'Wrong Show (2020)',
+			rootFolderId: 'rf-s',
+			libraryId: 'lib-1'
+		});
+		await testDb.db.insert(episodes).values({
+			id: 'ep-old-5',
+			seriesId: 's1',
+			seasonNumber: 5,
+			episodeNumber: 9,
+			title: 'Old Episode'
+		});
+		await testDb.db.insert(episodeFiles).values({
+			id: 'ef1',
+			seriesId: 's1',
+			seasonNumber: 5,
+			relativePath: 'Season 5/ep9.mkv',
+			episodeIds: ['ep-old-5']
+		});
+
+		mocks.getTVShow.mockResolvedValue({
+			id: 20,
+			name: 'Right Show',
+			seasons: [{ season_number: 1, name: 'Season 1', episode_count: 1 }]
+		});
+		mocks.getSeason.mockResolvedValue({
+			episodes: [
+				{
+					id: 555,
+					season_number: 1,
+					episode_number: 1,
+					name: 'Pilot',
+					overview: '',
+					air_date: '2021-02-01',
+					runtime: 30
+				}
+			]
+		});
+
+		await mediaMatcherService.rematchSeries('s1', 20);
+
+		const [file] = await testDb.db.select().from(episodeFiles).where(eq(episodeFiles.id, 'ef1'));
+		expect(file.episodeIds).toBeNull();
+	});
+
+	it('rejects rematching a series onto a tmdbId already used by a different series', async () => {
+		await insertRootFolder('rf-s', '/mnt/tv-a', 'tv');
+		await testDb.db.insert(series).values({
+			id: 's1',
+			tmdbId: 10,
+			title: 'Show One',
+			path: 'Show One (2020)',
+			rootFolderId: 'rf-s',
+			libraryId: 'lib-1'
+		});
+		await testDb.db.insert(series).values({
+			id: 's2',
+			tmdbId: 20,
+			title: 'Show Two',
+			path: 'Show Two (2021)',
+			rootFolderId: 'rf-s',
+			libraryId: 'lib-1'
+		});
+
+		await expect(mediaMatcherService.rematchSeries('s1', 20)).rejects.toThrow(
+			'Show Two" is already matched'
+		);
+		expect(mocks.reorganizeFolder).not.toHaveBeenCalled();
 	});
 });

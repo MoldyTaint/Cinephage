@@ -718,6 +718,15 @@ export async function refreshMovie(movieId: string) {
 	return apiPost<MovieRefreshResponse>(`/api/library/movies/${movieId}/refresh`);
 }
 
+export interface RematchResponse {
+	title: string;
+	year?: number | null;
+}
+
+export async function rematchMovie(movieId: string, tmdbId: number) {
+	return apiPost<RematchResponse>(`/api/library/movies/${movieId}/rematch`, { tmdbId });
+}
+
 export async function getMovie(movieId: string) {
 	return apiGet<MovieDetailResponse>(`/api/library/movies/${movieId}`);
 }
@@ -773,6 +782,10 @@ export async function deleteSeries(
 export async function refreshSeries(seriesId: string) {
 	// SSE stream endpoint, not a JSON payload - deliberately untyped.
 	return apiPost(`/api/library/series/${seriesId}/refresh`);
+}
+
+export async function rematchSeries(seriesId: string, tmdbId: number) {
+	return apiPost<RematchResponse>(`/api/library/series/${seriesId}/rematch`, { tmdbId });
 }
 
 export async function getSeriesEpisodeGroups(seriesId: string) {

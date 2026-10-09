@@ -6,7 +6,8 @@
 		MovieFilesTab,
 		MovieEditModal,
 		RenamePreviewModal,
-		ScoreDetailModal
+		ScoreDetailModal,
+		ChangeMatchModal
 	} from '#lib/components/library/index.js';
 	import type { FileScoreResponse } from '#lib/types/score.js';
 	import { MediaSearchModal } from '#lib/components/search/index.js';
@@ -196,6 +197,7 @@
 
 	// State
 	let isEditModalOpen = $state(false);
+	let isChangeMatchModalOpen = $state(false);
 	let isSearchModalOpen = $state(false);
 	let isSubtitleSearchModalOpen = $state(false);
 	let isSubtitleSyncModalOpen = $state(false);
@@ -583,6 +585,15 @@
 		isEditModalOpen = true;
 	}
 
+	function handleChangeMatch() {
+		isChangeMatchModalOpen = true;
+	}
+
+	function handleChangeMatchSuccess() {
+		isChangeMatchModalOpen = false;
+		window.location.reload();
+	}
+
 	function handleEditClose() {
 		isEditModalOpen = false;
 		if (page.url.searchParams.get('edit') === '1') {
@@ -920,6 +931,7 @@
 		onImport={handleImport}
 		onEdit={handleEdit}
 		onDelete={handleDelete}
+		onChangeMatch={handleChangeMatch}
 		onScoreClick={handleScoreClick}
 		{autoSearching}
 		{autoSearchResult}
@@ -1608,6 +1620,17 @@
 	saving={isSaving}
 	onClose={handleEditClose}
 	onSave={handleEditSave}
+/>
+
+<!-- Change Match Modal -->
+<ChangeMatchModal
+	open={isChangeMatchModalOpen}
+	mediaType="movie"
+	mediaId={movie.id}
+	currentTitle={movie.title}
+	currentYear={movie.year}
+	onClose={() => (isChangeMatchModalOpen = false)}
+	onSuccess={handleChangeMatchSuccess}
 />
 
 <!-- Search Modal -->
