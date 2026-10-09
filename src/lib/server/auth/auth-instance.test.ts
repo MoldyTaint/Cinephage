@@ -692,20 +692,36 @@ describe('real Better Auth instance — adversarial escalation matrix', () => {
 		expect(response.status).toBe(400);
 	});
 
-	it('keeps self-service email change and account deletion disabled', async () => {
+	it('keeps self-service email change disabled', async () => {
 		const emailChange = await harness.authRequest('/change-email', {
 			method: 'POST',
 			headers: viewerHeaders,
 			body: JSON.stringify({ newEmail: 'hijacked@test.local' })
 		});
 		expect(emailChange.status).toBe(400);
+	});
 
+	it('lets a viewer delete only their own account via self-service deletion', async () => {
+		// deleteUser is intentionally enabled (profile page danger zone). The
+		// escalation concern here isn't whether it's allowed; it's whether it
+		// stays scoped to the caller's own row: better-auth's /delete-user always
+		// targets ctx.context.session.user.id, never a body-supplied id, so there
+		// is no cross-user path through this endpoint.
 		const selfDelete = await harness.authRequest('/delete-user', {
 			method: 'POST',
 			headers: viewerHeaders,
 			body: JSON.stringify({})
 		});
-		expect(selfDelete.status).toBe(404);
+		expect(selfDelete.status).toBe(200);
+
+		expect(roleOf('secondadmin')).toBe('admin');
+		expect(
+			db
+				.select()
+				.from(user)
+				.all()
+				.find((row) => row.username === 'testviewer')
+		).toBeUndefined();
 	});
 });
 

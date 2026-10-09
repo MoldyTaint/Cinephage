@@ -17,23 +17,30 @@
 		LogOut,
 		Pencil,
 		ShieldCheck,
-		Globe
+		Globe,
+		Palette,
+		Camera,
+		X,
+		Trash2,
+		AtSign
 	} from '@lucide/svelte';
 	import { authClient } from '#lib/auth/client.js';
 	import { toasts } from '#lib/stores/toast.svelte.js';
 	import { ApiError, apiGet, apiPost, apiPut, apiDelete } from '#lib/api/client.js';
 	import { getRequestCounts, type RequestCountResponse } from '#lib/api/requests.js';
 	import QuotaSummary from '#lib/components/requests/QuotaSummary.svelte';
-	import { refreshAll } from '$app/navigation';
+	import { goto, refreshAll } from '$app/navigation';
 	import { formatDisplayDate } from '#lib/utils/format.js';
 	import { SettingsPage, SettingsSection } from '#lib/components/ui/settings/index.js';
-	import { LanguageSelector, UserAvatar } from '#lib/components/ui/index.js';
+	import { LanguageSelector, ThemeSelector, UserAvatar } from '#lib/components/ui/index.js';
+	import { ConfirmationModal } from '#lib/components/ui/modal/index.js';
 
 	type OwnSession = {
 		id: string;
 		userAgent: string | null;
 		ipAddress: string | null;
 		createdAt: string | null;
+		lastActiveAt: string | null;
 		expiresAt: string | null;
 		current: boolean;
 	};
@@ -65,14 +72,14 @@
 	let savingName = $state(false);
 
 	function startEditName() {
-		nameDraft = data.user?.name ?? '';
+		nameDraft = data.user?.displayUsername || data.user?.name || '';
 		editingName = true;
 	}
 
 	async function saveName() {
 		savingName = true;
 		try {
-			const result = await authClient.updateUser({ name: nameDraft.trim() });
+			const result = await authClient.updateUser({ displayUsername: nameDraft.trim() });
 			if (result.error) {
 				toasts.error(result.error.message || m.profile_nameSaveFailed());
 				return;
@@ -82,6 +89,78 @@
 			await refreshAll();
 		} finally {
 			savingName = false;
+		}
+	}
+
+	// =====================
+	// Sidebar username visibility
+	// =====================
+	let sidebarShowUsername = $state(true);
+
+	$effect(() => {
+		sidebarShowUsername = data.user?.sidebarShowUsername ?? true;
+	});
+
+	async function toggleSidebarShowUsername(next: boolean) {
+		const previous = sidebarShowUsername;
+		sidebarShowUsername = next;
+		try {
+			await apiPut('/api/user/preferences/sidebarShowUsername', { value: next });
+			await refreshAll();
+		} catch {
+			sidebarShowUsername = previous;
+			toasts.error(m.users_actionFailed());
+		}
+	}
+
+	// =====================
+	// Avatar upload
+	// =====================
+	let avatarInput = $state<HTMLInputElement | null>(null);
+	let uploadingAvatar = $state(false);
+
+	function triggerAvatarUpload() {
+		avatarInput?.click();
+	}
+
+	async function handleAvatarChange(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+
+		uploadingAvatar = true;
+		try {
+			const formData = new FormData();
+			formData.append('avatar', file);
+			const res = await fetch('/api/user/avatar', { method: 'POST', body: formData });
+			const result = await res.json();
+			if (!res.ok || !result.success) {
+				toasts.error(result.error || m.profile_avatarUploadFailed());
+				return;
+			}
+			await refreshAll();
+		} catch {
+			toasts.error(m.profile_avatarUploadFailed());
+		} finally {
+			uploadingAvatar = false;
+			input.value = '';
+		}
+	}
+
+	async function removeAvatar() {
+		uploadingAvatar = true;
+		try {
+			const res = await fetch('/api/user/avatar', { method: 'DELETE' });
+			const result = await res.json();
+			if (!res.ok || !result.success) {
+				toasts.error(result.error || m.profile_avatarRemoveFailed());
+				return;
+			}
+			await refreshAll();
+		} catch {
+			toasts.error(m.profile_avatarRemoveFailed());
+		} finally {
+			uploadingAvatar = false;
 		}
 	}
 
@@ -320,6 +399,39 @@
 			revokingAll = false;
 		}
 	}
+
+	// =====================
+	// Danger zone: delete account
+	// =====================
+	let deleteModalOpen = $state(false);
+	let deletePassword = $state('');
+	let deletingAccount = $state(false);
+
+	function openDeleteModal() {
+		deletePassword = '';
+		deleteModalOpen = true;
+	}
+
+	function closeDeleteModal() {
+		deleteModalOpen = false;
+		deletePassword = '';
+	}
+
+	async function deleteAccount() {
+		deletingAccount = true;
+		try {
+			const result = await authClient.deleteUser({ password: deletePassword });
+			if (result.error) {
+				toasts.error(result.error.message || m.users_actionFailed());
+				return;
+			}
+			toasts.success(m.profile_deleteAccountSuccess());
+			closeDeleteModal();
+			await goto('/login');
+		} finally {
+			deletingAccount = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -343,13 +455,45 @@
 	<!-- Identity -->
 	<SettingsSection title={m.profile_accountSecurity()}>
 		<div class="flex flex-col gap-4 sm:flex-row sm:items-center">
-			<UserAvatar
-				name={displayName || '?'}
-				src={data.user?.mediaServerId
-					? `/api/user/media-server/avatar/${data.user.mediaServerId}`
-					: null}
-				size="lg"
-			/>
+			<div class="group relative shrink-0">
+				<UserAvatar
+					name={displayName || '?'}
+					src={data.user?.image ??
+						(data.user?.mediaServerId
+							? `/api/user/media-server/avatar/${data.user.mediaServerId}`
+							: null)}
+					size="lg"
+				/>
+				<input
+					bind:this={avatarInput}
+					type="file"
+					accept="image/png,image/jpeg,image/webp"
+					class="hidden"
+					onchange={handleAvatarChange}
+				/>
+				<button
+					class="btn absolute -right-1 -bottom-1 btn-circle bg-base-100 btn-ghost btn-xs"
+					aria-label={m.action_upload()}
+					disabled={uploadingAvatar}
+					onclick={triggerAvatarUpload}
+				>
+					{#if uploadingAvatar}
+						<Loader2 class="h-3.5 w-3.5 animate-spin" />
+					{:else}
+						<Camera class="h-3.5 w-3.5" />
+					{/if}
+				</button>
+				{#if data.user?.image}
+					<button
+						class="btn absolute -top-1 -right-1 btn-circle bg-base-100 btn-ghost text-error btn-xs"
+						aria-label={m.action_delete()}
+						disabled={uploadingAvatar}
+						onclick={removeAvatar}
+					>
+						<X class="h-3 w-3" />
+					</button>
+				{/if}
+			</div>
 			<div class="min-w-0 flex-1">
 				{#if editingName}
 					<div class="flex max-w-md items-center gap-2">
@@ -431,6 +575,25 @@
 				{m.profile_interfaceLanguage()}
 			</div>
 			<LanguageSelector showLabel={false} />
+		</div>
+		<div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+			<div class="flex items-center gap-2 text-sm">
+				<Palette class="h-4 w-4 text-base-content/50" />
+				{m.ui_themeLabel()}
+			</div>
+			<ThemeSelector showLabel={false} />
+		</div>
+		<div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+			<div class="flex items-center gap-2 text-sm">
+				<AtSign class="h-4 w-4 text-base-content/50" />
+				{m.profile_sidebarShowUsername()}
+			</div>
+			<input
+				type="checkbox"
+				class="toggle toggle-sm"
+				checked={sidebarShowUsername}
+				onchange={(e) => toggleSidebarShowUsername(e.currentTarget.checked)}
+			/>
 		</div>
 	</SettingsSection>
 
@@ -556,6 +719,19 @@
 					minlength="8"
 					autocomplete="new-password"
 				/>
+				<button
+					type="button"
+					class="btn absolute top-1/2 right-2 -translate-y-1/2 btn-ghost btn-sm"
+					aria-label={showPasswords ? 'Hide password' : 'Show password'}
+					aria-pressed={showPasswords}
+					onclick={() => (showPasswords = !showPasswords)}
+				>
+					{#if showPasswords}
+						<EyeOff class="h-4 w-4" />
+					{:else}
+						<Eye class="h-4 w-4" />
+					{/if}
+				</button>
 			</div>
 
 			<div class="form-control">
@@ -571,6 +747,19 @@
 					minlength="8"
 					autocomplete="new-password"
 				/>
+				<button
+					type="button"
+					class="btn absolute top-1/2 right-2 -translate-y-1/2 btn-ghost btn-sm"
+					aria-label={showPasswords ? 'Hide password' : 'Show password'}
+					aria-pressed={showPasswords}
+					onclick={() => (showPasswords = !showPasswords)}
+				>
+					{#if showPasswords}
+						<EyeOff class="h-4 w-4" />
+					{:else}
+						<Eye class="h-4 w-4" />
+					{/if}
+				</button>
 				{#if confirmPassword && !passwordsMatch}
 					<p class="mt-1 text-xs text-error">{m.profile_passwordMismatch()}</p>
 				{/if}
@@ -642,6 +831,9 @@
 									{ownSession.ipAddress} ·
 								{/if}
 								{ownSession.createdAt ? formatDisplayDate(ownSession.createdAt) : ''}
+								{#if ownSession.lastActiveAt}
+									· {m.profile_lastActive()} {formatDisplayDate(ownSession.lastActiveAt)}
+								{/if}
 							</div>
 						</div>
 						{#if !ownSession.current}
@@ -663,4 +855,42 @@
 			</ul>
 		{/if}
 	</SettingsSection>
+
+	<!-- Danger zone: hidden when user is the sole admin -->
+	{#if !data.isOnlyAdmin}
+		<SettingsSection
+			title={m.profile_dangerZoneTitle()}
+			description={m.profile_dangerZoneDescription()}
+			class="border border-error/20"
+		>
+			<button class="btn gap-1.5 btn-outline btn-error btn-sm" onclick={openDeleteModal}>
+				<Trash2 class="h-4 w-4" />
+				{m.profile_deleteAccount()}
+			</button>
+		</SettingsSection>
+	{/if}
 </SettingsPage>
+
+<ConfirmationModal
+	open={deleteModalOpen}
+	title={m.profile_deleteAccountConfirmTitle()}
+	message={m.profile_deleteAccountConfirmMessage()}
+	confirmLabel={m.profile_deleteAccount()}
+	confirmVariant="error"
+	loading={deletingAccount}
+	onConfirm={deleteAccount}
+	onCancel={closeDeleteModal}
+>
+	<div class="form-control mt-2">
+		<label class="label" for="delete-account-password">
+			<span class="label-text">{m.profile_currentPassword()}</span>
+		</label>
+		<input
+			id="delete-account-password"
+			type="password"
+			class="input-bordered input w-full"
+			bind:value={deletePassword}
+			autocomplete="current-password"
+		/>
+	</div>
+</ConfirmationModal>

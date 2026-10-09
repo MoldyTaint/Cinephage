@@ -168,8 +168,11 @@ import {
  * Version 161: Encrypt remaining plaintext credentials at rest (secret-field registry walk) and re-encode
  *   the legacy iv:tag:ct surfaces (user API key secrets, media-browser keys, debrid tokens) onto the
  *   versioned cphg1 envelope
+ *  Version 162: Add lastActiveAt columns to session and user for throttled last-active tracking.
+ *   The user-level column preserves activity history after a session is revoked, since
+ *   revocation hard-deletes the session row
  */
-export const CURRENT_SCHEMA_VERSION = 161;
+export const CURRENT_SCHEMA_VERSION = 162;
 
 export const SYSTEM_LIBRARY_SEEDS = [
 	{

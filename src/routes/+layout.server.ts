@@ -2,6 +2,7 @@ import type { LayoutServerLoad } from './$types';
 import { getLibraryEntityService } from '#lib/server/library/LibraryEntityService.js';
 import { tmdb } from '#lib/server/tmdb.js';
 import { mediaServerLinkService } from '#lib/server/mediaServerLink/MediaServerLinkService.js';
+import { getUserPreference } from '#lib/server/preferences/user-preferences.js';
 
 export const load: LayoutServerLoad = async ({ locals }) => {
 	const defaultRegion = await tmdb.getRegion();
@@ -17,9 +18,15 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 				email: locals.user.email,
 				role: locals.user.role ?? 'user',
 				createdAt: locals.user.createdAt ?? null,
+				// Self-uploaded avatar, served via /api/user/avatar/[userId]; the
+				// Jellyfin proxy below is the fallback when this is unset.
+				image: locals.user.image ?? null,
 				// Server id of the account's own media-server link (if any), so
 				// the shell can render the Jellyfin avatar via the proxy route.
-				mediaServerId: (await mediaServerLinkService.getLinks(locals.user.id))[0]?.serverId ?? null
+				mediaServerId: (await mediaServerLinkService.getLinks(locals.user.id))[0]?.serverId ?? null,
+				// Whether the sidebar's account widget shows the @username line
+				// under the display name (SSR-loaded to avoid a layout flash).
+				sidebarShowUsername: await getUserPreference(locals.user.id, 'sidebarShowUsername')
 			}
 		: null;
 
