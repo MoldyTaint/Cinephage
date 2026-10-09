@@ -12,7 +12,7 @@ export type ActivityTab = 'active' | 'history';
 
 // ── Confirmation / bulk action types ──────────────────────────────────
 export type HistoryConfirmAction = 'purge_older_than_retention' | 'purge_all' | 'delete_selected';
-export type ActiveBulkAction = 'pause' | 'resume' | 'retry_failed' | 'remove_failed';
+export type ActiveBulkAction = 'pause' | 'resume' | 'cancel' | 'retry_failed' | 'remove_failed';
 
 // ── Tab-specific status options ───────────────────────────────────────
 export const ACTIVE_TAB_STATUSES: NonNullable<FiltersType['status']>[] = [
