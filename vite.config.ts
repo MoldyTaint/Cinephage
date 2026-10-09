@@ -1,3 +1,9 @@
+// Load .env into process.env for the dev server. Vite's own loadEnv only copies
+// NODE_ENV/BROWSER/BROWSER_ARGS and VITE_-prefixed keys into process.env; everything
+// else (e.g. BETTER_AUTH_SECRET) is otherwise invisible to code that reads
+// process.env directly, same as server.js needs it explicitly in production.
+import 'dotenv/config';
+
 import adapter from '@sveltejs/adapter-node';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import type { Plugin } from 'vite';
