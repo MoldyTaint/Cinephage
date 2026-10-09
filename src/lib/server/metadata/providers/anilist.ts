@@ -117,10 +117,16 @@ export class AniListProvider implements MetadataProvider {
           }
         `,
 				variables: { search: query.trim(), type: mediaTypeToAniListType(type) }
-			})
-		});
+			}),
+			// Without this, a stalled AniList response blocks the caller
+			// indefinitely, resolveAnimeProviderRef awaits this per query variant
+			// directly on the series page's SSR critical path (see
+			// resolveMissingAnimeProviderRefs), so an unresponsive upstream here
+			// previously meant an unbounded page-load stall.
+			signal: AbortSignal.timeout(5000)
+		}).catch(() => null);
 
-		if (!res.ok) return [];
+		if (!res?.ok) return [];
 		const data = (await res.json()) as { data?: { Page?: { media?: AniListMedia[] } } };
 		const media = data.data?.Page?.media ?? [];
 
@@ -163,10 +169,11 @@ export class AniListProvider implements MetadataProvider {
           }
         `,
 				variables: { id: parsedId }
-			})
-		});
+			}),
+			signal: AbortSignal.timeout(5000)
+		}).catch(() => null);
 
-		if (!res.ok) return null;
+		if (!res?.ok) return null;
 		const data = (await res.json()) as { data?: { Media?: AniListMedia | null } };
 		const media = data.data?.Media;
 		if (!media) return null;
