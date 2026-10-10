@@ -212,13 +212,20 @@ export const POST: RequestHandler = async ({ params, request }) => {
 					.select({
 						id: episodes.id,
 						seasonNumber: episodes.seasonNumber,
-						episodeNumber: episodes.episodeNumber
+						episodeNumber: episodes.episodeNumber,
+						monitored: episodes.monitored
 					})
 					.from(episodes)
 					.where(eq(episodes.seriesId, id));
 
 				const epNumByOldId = new Map(
 					existingEpisodeRows.map((e) => [e.id, { s: e.seasonNumber, e: e.episodeNumber }])
+				);
+
+				// Per-episode monitored overrides within a season must also survive
+				// the rebuild, same reasoning as priorSeasonMonitored below.
+				const priorEpisodeMonitored = new Map(
+					existingEpisodeRows.map((e) => [`${e.seasonNumber}-${e.episodeNumber}`, e.monitored])
 				);
 				const fileEpNumbers = new Map(
 					existingEpFiles.map((f) => [
@@ -228,6 +235,20 @@ export const POST: RequestHandler = async ({ params, request }) => {
 							return ep ? [ep] : [];
 						})
 					])
+				);
+
+				// Capture each season's current monitored flag before wiping, so the
+				// rebuild below can preserve a user's per-season unmonitor choice
+				// instead of recomputing it from scratch (which only knows "is this
+				// specials" and the series-level monitorSpecials flag, and so was
+				// silently re-monitoring every season on every refresh).
+				const priorSeasonMonitored = new Map(
+					(
+						await db
+							.select({ seasonNumber: seasons.seasonNumber, monitored: seasons.monitored })
+							.from(seasons)
+							.where(eq(seasons.seriesId, id))
+					).map((s) => [s.seasonNumber, s.monitored])
 				);
 
 				// Delete existing seasons/episodes and rebuild
@@ -240,6 +261,17 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
 					if (seasonValues.length > 0) {
 						const monitorSpecials = seriesData.monitorSpecials ?? false;
+
+						// Preserve existing per-season/per-episode monitored choices
+						// across the rebuild (see the non-grouped branch below for why).
+						for (const sv of seasonValues) {
+							const prior = priorSeasonMonitored.get(sv.seasonNumber!);
+							if (prior !== undefined) sv.monitored = prior;
+						}
+						for (const ev of groupEpisodeValues) {
+							const prior = priorEpisodeMonitored.get(`${ev.seasonNumber}-${ev.episodeNumber}`);
+							if (prior !== undefined) ev.monitored = prior;
+						}
 
 						// Respect monitorSpecials setting for season 0 seasons/episodes
 						if (monitorSpecials) {
@@ -282,7 +314,14 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
 								const isSpecials = tmdbSeasonInfo.season_number === 0;
 								const monitorSpecials = seriesData.monitorSpecials ?? false;
-								const seasonMonitored = !isSpecials || monitorSpecials;
+								// Preserve the user's existing per-season choice across a
+								// refresh rebuild; only fall back to the computed default
+								// for a season that didn't exist before (newly added by
+								// TMDB). Previously this always recomputed from scratch,
+								// silently re-monitoring every unmonitored season on every refresh.
+								const seasonMonitored =
+									priorSeasonMonitored.get(tmdbSeasonInfo.season_number) ??
+									(!isSpecials || monitorSpecials);
 
 								const [newSeason] = await db
 									.insert(seasons)
@@ -310,7 +349,9 @@ export const POST: RequestHandler = async ({ params, request }) => {
 										overview: ep.overview,
 										airDate: ep.air_date,
 										runtime: ep.runtime,
-										monitored: seasonMonitored,
+										monitored:
+											priorEpisodeMonitored.get(`${ep.season_number}-${ep.episode_number}`) ??
+											seasonMonitored,
 										hasFile: false
 									}));
 

@@ -1911,7 +1911,8 @@ export class MediaMatcherService {
 			.select({
 				id: episodes.id,
 				seasonNumber: episodes.seasonNumber,
-				episodeNumber: episodes.episodeNumber
+				episodeNumber: episodes.episodeNumber,
+				monitored: episodes.monitored
 			})
 			.from(episodes)
 			.where(eq(episodes.seriesId, seriesId));
@@ -1928,6 +1929,23 @@ export class MediaMatcherService {
 			])
 		);
 
+		// Preserve per-season/per-episode monitored choices across the rebuild
+		// below, populateSeriesEpisodes has no prior state to consult once the
+		// old rows are gone, so without this every season/episode would reset
+		// to its computed default (silently re-monitoring anything the user
+		// had explicitly turned off; see the refresh endpoint's identical fix).
+		const priorSeasonMonitored = new Map(
+			(
+				await db
+					.select({ seasonNumber: seasons.seasonNumber, monitored: seasons.monitored })
+					.from(seasons)
+					.where(eq(seasons.seriesId, seriesId))
+			).map((s) => [s.seasonNumber, s.monitored])
+		);
+		const priorEpisodeMonitored = new Map(
+			existingEpisodeRows.map((e) => [`${e.seasonNumber}-${e.episodeNumber}`, e.monitored])
+		);
+
 		await deleteAllSeasonsAndEpisodes(seriesId);
 		await this.populateSeriesEpisodes(
 			seriesId,
@@ -1935,6 +1953,35 @@ export class MediaMatcherService {
 			tmdbSeries,
 			existingSeries.monitored ?? true
 		);
+
+		if (priorSeasonMonitored.size > 0) {
+			const newSeasonRows = await db
+				.select({ id: seasons.id, seasonNumber: seasons.seasonNumber })
+				.from(seasons)
+				.where(eq(seasons.seriesId, seriesId));
+			for (const row of newSeasonRows) {
+				const prior = priorSeasonMonitored.get(row.seasonNumber);
+				if (prior !== undefined) {
+					await db.update(seasons).set({ monitored: prior }).where(eq(seasons.id, row.id));
+				}
+			}
+		}
+		if (priorEpisodeMonitored.size > 0) {
+			const newEpisodeRowsForMonitoring = await db
+				.select({
+					id: episodes.id,
+					seasonNumber: episodes.seasonNumber,
+					episodeNumber: episodes.episodeNumber
+				})
+				.from(episodes)
+				.where(eq(episodes.seriesId, seriesId));
+			for (const row of newEpisodeRowsForMonitoring) {
+				const prior = priorEpisodeMonitored.get(`${row.seasonNumber}-${row.episodeNumber}`);
+				if (prior !== undefined) {
+					await db.update(episodes).set({ monitored: prior }).where(eq(episodes.id, row.id));
+				}
+			}
+		}
 
 		if (fileEpNumbers.size > 0) {
 			const newEpisodeRows = await db

@@ -510,6 +510,10 @@ describe('PlaybackSessionService', () => {
 	});
 
 	it('re-resolves when the reused session source URL has expired', async () => {
+		// Computed once and reused below: calling Date.now() again at the
+		// assertion (rather than reusing this value) raced a real second
+		// boundary under CI's slower/loaded scheduler, flaking by ±1s.
+		const expiresAt = Math.floor(Date.now() / 1000) + 60;
 		getStreamsMock.mockResolvedValue({
 			success: true,
 			sources: [
@@ -521,7 +525,7 @@ describe('PlaybackSessionService', () => {
 					referer: 'https://player.example.com/',
 					requiresSegmentProxy: true,
 					provider: 'Vidlink',
-					expiresAt: Math.floor(Date.now() / 1000) + 60
+					expiresAt
 				}
 			]
 		});
@@ -531,7 +535,7 @@ describe('PlaybackSessionService', () => {
 
 		const first = await service.createOrReuseSession({ tmdbId: 550, type: 'movie' });
 		expect(first.session).toBeTruthy();
-		expect(first.session?.sourceExpiresAt).toBe(Math.floor(Date.now() / 1000) + 60);
+		expect(first.session?.sourceExpiresAt).toBe(expiresAt);
 
 		// Simulate the source URL expiring while the session TTL is still valid.
 		vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 120 * 1000);
