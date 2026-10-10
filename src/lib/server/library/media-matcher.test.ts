@@ -16,6 +16,7 @@ import { eq, and } from 'drizzle-orm';
 import {
 	rootFolders,
 	series,
+	seasons,
 	movies,
 	movieFiles,
 	episodeFiles,
@@ -997,6 +998,93 @@ describe('MediaMatcherService rematchMovie / rematchSeries (Change Match feature
 
 		expect(mocks.reorganizeFolder).toHaveBeenCalledWith('s1', 'series');
 		expect(mocks.previewSeries).toHaveBeenCalledWith('s1');
+	});
+
+	it('preserves per-season and per-episode unmonitored choices across the episode rebuild', async () => {
+		// deleteAllSeasonsAndEpisodes + populateSeriesEpisodes wipes and
+		// recreates every season/episode row; without explicitly carrying
+		// forward the prior monitored flags, a rematch (or an ordinary
+		// refresh, same pattern) would silently re-monitor everything the
+		// user had turned off.
+		await insertRootFolder('rf-s', '/mnt/tv-a', 'tv');
+		await testDb.db.insert(series).values({
+			id: 's1',
+			tmdbId: 10,
+			title: 'Wrong Show',
+			path: 'Wrong Show (2020)',
+			rootFolderId: 'rf-s',
+			libraryId: 'lib-1',
+			monitored: true
+		});
+		await testDb.db.insert(seasons).values({
+			id: 'season-old-1',
+			seriesId: 's1',
+			seasonNumber: 1,
+			monitored: false
+		});
+		await testDb.db.insert(episodes).values([
+			{
+				id: 'ep-old-1',
+				seriesId: 's1',
+				seasonId: 'season-old-1',
+				seasonNumber: 1,
+				episodeNumber: 1,
+				title: 'Old Pilot',
+				monitored: false
+			},
+			{
+				id: 'ep-old-2',
+				seriesId: 's1',
+				seasonId: 'season-old-1',
+				seasonNumber: 1,
+				episodeNumber: 2,
+				title: 'Old Episode 2',
+				monitored: true
+			}
+		]);
+
+		mocks.getTVShow.mockResolvedValue({
+			id: 20,
+			name: 'Right Show',
+			first_air_date: '2021-02-01',
+			seasons: [{ season_number: 1, name: 'Season 1', episode_count: 2 }]
+		});
+		mocks.getSeason.mockResolvedValue({
+			episodes: [
+				{
+					id: 555,
+					season_number: 1,
+					episode_number: 1,
+					name: 'Real Pilot',
+					overview: '',
+					air_date: '2021-02-01',
+					runtime: 30
+				},
+				{
+					id: 556,
+					season_number: 1,
+					episode_number: 2,
+					name: 'Real Episode 2',
+					overview: '',
+					air_date: '2021-02-08',
+					runtime: 30
+				}
+			]
+		});
+
+		await mediaMatcherService.rematchSeries('s1', 20);
+
+		const [newSeason] = await testDb.db
+			.select()
+			.from(seasons)
+			.where(and(eq(seasons.seriesId, 's1'), eq(seasons.seasonNumber, 1)));
+		expect(newSeason.monitored).toBe(false);
+
+		const newEpisodes = await testDb.db.select().from(episodes).where(eq(episodes.seriesId, 's1'));
+		const ep1 = newEpisodes.find((e) => e.episodeNumber === 1);
+		const ep2 = newEpisodes.find((e) => e.episodeNumber === 2);
+		expect(ep1?.monitored).toBe(false);
+		expect(ep2?.monitored).toBe(true);
 	});
 
 	it('leaves a file unmatched when its season/episode number does not exist on the new show', async () => {
